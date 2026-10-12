@@ -170,6 +170,20 @@ type UdpServer struct {
 	// loop and the relay-forward handlers. See rknRateLimiter.
 	rknLimiter *rknRateLimiter
 
+	// relayForwardBlockLogThrottle rate-limits the per-packet Critical log
+	// emitted from HandleRelayForward when the (relay, real-client) block
+	// gate drops a packet. Safe zero value (1-minute window, set during
+	// Start). The packets_dropped counter at
+	// nhp_server_packets_dropped_total{stage="relay_forward_blocked"} is
+	// NOT throttled — every drop still increments it, per the review
+	// requirement that "the per-packet metric must be preserved".
+	//
+	// Field name kept distinct from the per-cache lastWarning (capacity
+	// warnings) and from the package-level lastRelayReplayWarn (replay-
+	// dedupe warnings) — three independent gates, each on its own
+	// throttle.
+	relayForwardBlockLogThrottle logThrottle
+
 	// address association map
 	srcIpAssociatedAddrMapMutex sync.Mutex
 	srcIpAssociatedAddrMap      map[string][]*common.NetAddress // indexed by source ip
@@ -445,19 +459,35 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// relayReplay is sized for relay throughput, NOT ART throughput:
 	// NHP_RLY envelopes carry every web-agent KNK/RKN/EXT behind every
 	// registered relay, so the cache must absorb sustained
-	// relay+agent-RPS without capacity eviction (each eviction
-	// shortens the replay window for every live entry below it).
-	// relayReplayCacheSize defaults to 5× the ART size for that reason.
-	// Operators with higher relay throughput can raise it via
-	// RelayReplayCacheEntries (also restart-only, like ART's).
+	// relay+agent-RPS without capacity eviction. ART evicts the oldest
+	// entry on overflow (server-driven, attacker-rate-bounded); the
+	// relay cache is constructed with newRelayReplayCacheWithParams
+	// (rejectWhenFull=true) so it REFUSES new envelopes on overflow
+	// instead — evicting a live entry would let the dropped envelope
+	// bypass the only replay-rejection hook (NHP_RLY is exempt from
+	// shouldCheckRecvAttack/shouldCheckFlood). See the
+	// relayReplayCacheSize constant and RelayReplayCacheEntries config
+	// comment for the sizing rule and the "raise me before the per-minute
+	// Critical REFUSED log starts firing" guidance.
+	//
+	// The range check runs BEFORE the default-substitution, mirroring the
+	// ART branch above; the previous ordering silently turned a negative
+	// config into the default instead of erroring, which is inconsistent
+	// with the ART branch and would hide a typo in a TOML.
+	if s.config.RelayReplayCacheEntries > 5_000_000 {
+		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
+	}
 	relayEntries := s.config.RelayReplayCacheEntries
 	if relayEntries <= 0 {
 		relayEntries = relayReplayCacheSize
 	}
-	if relayEntries > 5_000_000 {
-		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
-	}
-	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	s.relayReplay = newRelayReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	// Initialize the per-blocked-client log throttle to the same 1-minute
+	// window used by the replay-dedupe and capacity-overflow warnings so
+	// the operator-visible log rates are uniform. setInterval is a
+	// one-shot init helper (not concurrency-safe); Start is the only
+	// caller.
+	s.relayForwardBlockLogThrottle.setInterval(time.Minute)
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for
@@ -1716,15 +1746,40 @@ func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 		// refuse the envelope.
 		return common.ErrServerMissingPeerPubkey
 	}
-	if !s.relayReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+	// Admit returns one of {New, Duplicate, Invalid, CacheFull}. The
+	// three non-New outcomes are differentiated so the caller sees the
+	// right error code: replay → ErrServerDuplicateTransaction (a real
+	// security event, useful for forensic searches), full →
+	// ErrServerReplayCacheFull (a capacity-planning signal, distinct so
+	// operators don't go hunting for a replay storm that's actually a
+	// sustained-throughput ceiling). Invalid is unreachable in
+	// production — the cache is constructed in Start with valid
+	// capacity/ttl and the pubkey length is validated above — but is
+	// mapped to the cache-full error so the device's drop counter
+	// still increments under "replay" (the stage it knows about).
+	switch s.relayReplay.Admit(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+	case replayAdmitNew:
+		return nil
+	case replayAdmitDuplicate:
 		now := time.Now().UnixNano()
 		last := lastRelayReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastRelayReplayWarn.CompareAndSwap(last, now) {
 			log.Warning("server[dedupeRecvRLY] dropped replayed NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
 		}
 		return common.ErrServerDuplicateTransaction
+	case replayAdmitCacheFull:
+		// The capacity-rejection log is already emitted by the cache
+		// itself (Critical, 1/min throttle, includes the "raise
+		// RelayReplayCacheEntries" hint). Returning a distinct error
+		// lets the device's OnPacketDropped hook count this drop as a
+		// replay drop (per its stage taxonomy) while still letting
+		// operators tell "we rejected a duplicate" from "we ran out
+		// of capacity".
+		return common.ErrServerReplayCacheFull
+	default:
+		// replayAdmitInvalid — see comment above.
+		return common.ErrServerReplayCacheFull
 	}
-	return nil
 }
 
 func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACConn, srcAddr *common.NetAddress, dstAddrs []*common.NetAddress, openTime uint32) (artMsg *common.ACOpsResultMsg, err error) {

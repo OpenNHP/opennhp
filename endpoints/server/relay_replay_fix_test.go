@@ -573,3 +573,68 @@ func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
 		}
 	}
 }
+
+// TestDedupeRecvRLY_CacheFullReturnsDistinctError pins the caller-side
+// branch of the Admit four-way split: when the relay cache is full and
+// rejectWhenFull=true, a fresh envelope must be rejected with
+// ErrServerReplayCacheFull — NOT ErrServerDuplicateTransaction. The
+// distinction is what lets operators tell "we rejected a replay" from
+// "we ran out of capacity" from a single error code, instead of being
+// sent to look for a replay storm that's actually a sustained-throughput
+// ceiling.
+//
+// A duplicate of an envelope that IS in the cache (txid=1) must still
+// return ErrServerDuplicateTransaction — the cache-full branch must not
+// swallow the duplicate-detection path. Combined with the
+// TestRelayReplayCacheFullStillRejectsDuplicateFirst unit test on
+// Admit, this nails the order: evict/expire → duplicate → capacity.
+func TestDedupeRecvRLY_CacheFullReturnsDistinctError(t *testing.T) {
+	key := artTestPubkey(0xCD, core.PublicKeySizeEx)
+	s := &UdpServer{
+		// Cap=1: the first envelope is admitted, the second sees a
+		// full cache and is refused. We don't care about TTL for this
+		// test — the cache-full branch fires before any expiry could
+		// free a slot.
+		relayReplay:  newRelayReplayCacheWithParams(1, time.Hour, "RLY-test", time.Now),
+		relayPeerMap: map[string]*core.UdpPeer{base64.StdEncoding.EncodeToString(key): {Type: core.NHP_RELAY}},
+	}
+
+	first := &core.PacketParserData{
+		HeaderType:     core.NHP_RLY,
+		RemotePubKey:   key,
+		SenderTrxId:    1,
+		RemoteSendTime: 100,
+	}
+	if err := s.dedupeRecvRLY(first); err != nil {
+		t.Fatalf("first envelope must be admitted, got %v", err)
+	}
+
+	// Second envelope — different txid so the duplicate detector
+	// doesn't catch it, but the cache is full → CacheFull.
+	second := &core.PacketParserData{
+		HeaderType:     core.NHP_RLY,
+		RemotePubKey:   key,
+		SenderTrxId:    2,
+		RemoteSendTime: 101,
+	}
+	err := s.dedupeRecvRLY(second)
+	if !errors.Is(err, common.ErrServerReplayCacheFull) {
+		t.Fatalf("second envelope (cache full): got %v, want ErrServerReplayCacheFull", err)
+	}
+	if errors.Is(err, common.ErrServerDuplicateTransaction) {
+		t.Fatalf("second envelope (cache full) was misclassified as ErrServerDuplicateTransaction — that's the failure mode this test guards against")
+	}
+
+	// A duplicate of the first envelope (txid=1) is still a duplicate,
+	// not a capacity issue — the duplicate check runs before the
+	// capacity check inside Admit.
+	dup := &core.PacketParserData{
+		HeaderType:     core.NHP_RLY,
+		RemotePubKey:   key,
+		SenderTrxId:    1,
+		RemoteSendTime: 100,
+	}
+	if err := s.dedupeRecvRLY(dup); !errors.Is(err, common.ErrServerDuplicateTransaction) {
+		t.Fatalf("duplicate of retained envelope: got %v, want ErrServerDuplicateTransaction (Duplicate must precede capacity)", err)
+	}
+}

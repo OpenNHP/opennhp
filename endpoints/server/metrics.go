@@ -20,7 +20,7 @@ type serverMetrics struct {
 	acOperations     *metrics.CounterVec // result=ok|error
 	acOpDuration     *metrics.Histogram  // server->AC round trip, seconds
 	blockedAddrs     *metrics.Counter    // sources blocked past the threat threshold
-	packetsDropped   *metrics.CounterVec // stage=replay|too_short|blocked|precheck|rate_limited|conn_limit|parse|validate|decrypt|queue_full
+	packetsDropped   *metrics.CounterVec // stage=replay|too_short|blocked|precheck|rate_limited|conn_limit|parse|validate|decrypt|queue_full|relay_forward_blocked
 	handlerDropped   *metrics.CounterVec // by protocol message type; post-decryption load-shedding
 }
 
@@ -69,6 +69,32 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return float64(s.artReplay.capacityEvictions)
 		})
 
+	// Relay replay cache: capacity-rejection count + current size. The
+	// cache refuses new envelopes on overflow (see relayReplayCacheSize
+	// and newRelayReplayCacheWithParams), so a non-zero value here means
+	// sustained relay RPS has crossed entries/960 — raise
+	// RelayReplayCacheEntries before the per-minute Critical "REFUSED"
+	// log starts flooding.
+	reg.NewCounterFunc("nhp_server_relay_replay_cache_full_rejections_total",
+		"Authenticated NHP_RLY envelopes refused because the relay replay cache was at capacity; sustained throughput above entries/960s is the cause.",
+		func() float64 {
+			if s.relayReplay == nil {
+				return 0
+			}
+			_, rej, _ := s.relayReplay.snapshotForMetrics()
+			return float64(rej)
+		})
+
+	reg.NewGaugeFunc("nhp_server_relay_replay_cache_entries",
+		"Current number of entries in the relay replay cache (NHP_RLY); capacity-planning gauge. Compare against relayReplayCacheSize.",
+		func() float64 {
+			if s.relayReplay == nil {
+				return 0
+			}
+			_, _, n := s.relayReplay.snapshotForMetrics()
+			return float64(n)
+		})
+
 	sm := &serverMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",
@@ -83,7 +109,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			"Source addresses blocked after exceeding the threat threshold.").With(),
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
 			"Inbound packets discarded before becoming a decrypted message, by stage "+
-				"(replay, too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
+				"(replay, too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full, relay_forward_blocked).", "stage"),
 		handlerDropped: reg.NewCounter("nhp_server_handler_dropped_total",
 			"Decrypted messages dropped because the handler goroutine budget "+
 				"(MaxConcurrentHandlers) was exhausted, by message type. Distinct "+
@@ -102,6 +128,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 	for _, stage := range []string{
 		"too_short", "blocked", "precheck", "rate_limited", "conn_limit", // recvPacketRoutine, pre-decryption
 		"replay", "parse", "validate", "decrypt", "queue_full", // packetToMsgRoutine, via OnPacketDropped
+		"relay_forward_blocked", // HandleRelayForward, per-(relay, real-client) block gate (pre-conn)
 	} {
 		sm.packetsDropped.With(stage)
 	}
@@ -159,10 +186,12 @@ func (m *serverMetrics) recordBlockedAddr() {
 // recordDroppedPacket counts an inbound packet discarded before decryption.
 // stage is one of the fixed set seeded in newServerMetrics: the
 // recvPacketRoutine pre-decryption drops ("too_short", "blocked",
-// "precheck", "rate_limited", "conn_limit") and the packetToMsgRoutine
-// drops delivered via core.DeviceOptions.OnPacketDropped ("replay", "parse",
-// "validate", "decrypt", "queue_full"). A bounded label, never
-// attacker-controlled. Safe on a nil receiver.
+// "precheck", "rate_limited", "conn_limit"), the packetToMsgRoutine
+// drops delivered via core.DeviceOptions.OnPacketDropped ("replay",
+// "parse", "validate", "decrypt", "queue_full"), and the
+// HandleRelayForward per-(relay, real-client) block-gate drop
+// ("relay_forward_blocked"). A bounded label, never attacker-controlled.
+// Safe on a nil receiver.
 func (m *serverMetrics) recordDroppedPacket(stage string) {
 	if m == nil {
 		return

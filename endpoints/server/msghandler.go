@@ -948,8 +948,6 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
 
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
-	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
-		relayAddrStr, realAddr, len(innerBytes))
 
 	// Per-(relay, real-client) block check. connectionRoutine's
 	// relay-aware BlockSignal branch (the one that drops the
@@ -963,18 +961,33 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	// time it sent, giving it ~one accepted replay/flood per
 	// three. Raked before conn lookup and the rknLimiter gate so
 	// a blocked client costs the server nothing beyond the map
-	// lookup.
+	// lookup. The per-packet Info log is intentionally below this
+	// gate: a blocked client must produce zero log output (the
+	// only thing the gate emits is the rate-limited Critical at
+	// the bottom of this branch, plus a per-packet counter bump).
 	connKeyEarly := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + realAddr.String()
 	if s.IsRelayForwardBlocked(connKeyEarly) {
 		// Use the precheck drop stage so an operator looking at
 		// the per-stage "packets_dropped_total" series sees the
 		// drop where it actually happens (relay-forward gate,
-		// not the per-conn inner path it never reaches).
+		// not the per-conn inner path it never reaches). The
+		// counter is incremented per packet, never throttled —
+		// the rate-limited Critical log below is a separate
+		// observation channel so a sustained attack doesn't
+		// drown the log while the metric keeps an accurate
+		// count.
 		s.metrics.recordDroppedPacket("relay_forward_blocked")
-		log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active",
-			realAddr, relayAddrStr)
+		if emit, suppressed := s.relayForwardBlockLogThrottle.allow(time.Now().UnixNano()); emit {
+			log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active (%d suppressed since last line)",
+				realAddr, relayAddrStr, suppressed)
+		}
 		return fmt.Errorf("relay forward blocked for %s", realAddr)
 	}
+
+	// Past the block gate — emit the per-forward Info log here so a
+	// blocked client cannot push log output at the operator's rate.
+	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
+		relayAddrStr, realAddr, len(innerBytes))
 
 	// Allocate a pool packet for the inner bytes.
 	innerPkt := s.device.AllocatePoolPacket()

@@ -121,11 +121,50 @@ func TestClosedSetSeriesPreInitializedToZero(t *testing.T) {
 		`nhp_server_packets_dropped_total{stage="validate"} 0`,
 		`nhp_server_packets_dropped_total{stage="decrypt"} 0`,
 		`nhp_server_packets_dropped_total{stage="queue_full"} 0`,
+		`nhp_server_packets_dropped_total{stage="relay_forward_blocked"} 0`,
 		`nhp_server_received_bytes_total`,
 		`nhp_server_sent_bytes_total`,
+		`nhp_server_relay_replay_cache_full_rejections_total 0`,
+		`nhp_server_relay_replay_cache_entries 0`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected pre-initialized series %q\n---\n%s", want, body)
+		}
+	}
+}
+
+// TestRelayReplayCacheMetricsReflectLiveState confirms the new
+// nhp_server_relay_replay_cache_{full_rejections_total,entries} metrics
+// actually read from the cache on every scrape. The relay cache is
+// deliberately populated with a known state (1 entry, 1 capacity rejection)
+// before the scrape so the assertions are not just "the series exists"
+// but "the series has the right value".
+func TestRelayReplayCacheMetricsReflectLiveState(t *testing.T) {
+	now := time.Unix(5000, 0)
+	s := newTestServerWithMetrics()
+	s.relayReplay = newRelayReplayCacheWithParams(2, time.Hour, "RLY-test", func() time.Time { return now })
+	s.artReplay = newARTReplayCacheWithParams(2, time.Hour, "ART-test", func() time.Time { return now })
+
+	// 1 entry inserted, 1 capacity rejection (cap=2, three envelopes).
+	s.relayReplay.Admit(artTestPubkey(0x11), 1, now.Unix())
+	now = now.Add(time.Second)
+	s.relayReplay.Admit(artTestPubkey(0x22), 2, now.Unix())
+	now = now.Add(time.Second)
+	if got := s.relayReplay.Admit(artTestPubkey(0x33), 3, now.Unix()); got != replayAdmitCacheFull {
+		t.Fatalf("setup: third envelope got %v, want CacheFull", got)
+	}
+
+	ms := &metricsServer{us: s}
+	rec := httptest.NewRecorder()
+	ms.handleMetrics(rec, httptest.NewRequest("GET", "/metrics", nil))
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`nhp_server_relay_replay_cache_full_rejections_total 1`,
+		`nhp_server_relay_replay_cache_entries 2`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %q in metrics body:\n%s", want, body)
 		}
 	}
 }

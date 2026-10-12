@@ -86,7 +86,7 @@ type SrcIpMap struct {
 
 type Config struct {
 	ARTReplayCacheEntries   int    `json:"artReplayCacheEntries"`   // Restart-only; zero selects 100000.
-	RelayReplayCacheEntries int    `json:"relayReplayCacheEntries"` // Restart-only; zero selects 500000. Size for NHP_RLY envelopes (every web-agent KNK/RKN/EXT behind every registered relay); raise it for sustained relay throughput above ~520 envelopes/s.
+	RelayReplayCacheEntries int    `json:"relayReplayCacheEntries"` // Restart-only; zero selects 500000. Hard refusal ceiling for NHP_RLY envelopes — sustained throughput above entries/960s will be REFUSED with ErrServerReplayCacheFull (not evicted). Raise it before the per-minute Critical "REFUSED" log starts firing; see relayReplayCacheSize in art_replay_cache.go for the per-entry memory cost.
 	PrivateKeyBase64        string `json:"privateKey"`
 	Hostname                string `json:"hostname"`
 	ListenIp                string `json:"listenIp"`

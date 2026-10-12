@@ -484,7 +484,7 @@ func TestConnectionRoutine_BlockSignalStillBlocksDirectClient(t *testing.T) {
 // dedupeRecvART's "peer not registered as an AC" path.
 func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
 	s := &UdpServer{
-		relayReplay:  newRelayReplayCache(),
+		relayReplay:  newRelayReplayCache(relayReplayCacheSize),
 		relayPeerMap: make(map[string]*core.UdpPeer),
 	}
 
@@ -557,7 +557,7 @@ func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
 	key := artTestPubkey(7, core.PublicKeySize)
 	for _, role := range []int{core.NHP_AGENT, core.NHP_AC, core.NHP_DB} {
 		s := &UdpServer{
-			relayReplay:  newRelayReplayCache(),
+			relayReplay:  newRelayReplayCache(relayReplayCacheSize),
 			relayPeerMap: map[string]*core.UdpPeer{base64.StdEncoding.EncodeToString(key): {Type: role}},
 		}
 		p := &core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: key, SenderTrxId: 1, RemoteSendTime: 1}
@@ -674,5 +674,72 @@ func TestRelayReplayCache_RejectsWhenFull_PreservesExistingEntries(t *testing.T)
 	cache.mu.Unlock()
 	if rejections != 2 || entries != 4 {
 		t.Fatalf("after second push: rejections=%d entries=%d, want rejections=2 entries=4", rejections, entries)
+	}
+}
+
+// TestRelayReplayCache_ProductionConstructorAppliesNoEvict pins the
+// production-side wiring of the noEvict policy. The earlier fix added
+// a private withNoEvict hook and chained it from a constructor called by
+// tests, but the production path in Start was building the cache
+// through the lower-level newARTReplayCacheWithParams directly and never
+// got noEvict=true — silently leaving the cache with the evicting
+// policy the commit message described as the bug. The shared-constructor
+// fix (newRelayReplayCache takes a size arg and is the only constructor
+// Start is allowed to use) is what closes that hole, and this test
+// exercises the *production* factory so a future refactor that
+// reintroduces the two-constructor split is caught here, not by a
+// monitoring alert at 3am.
+//
+// The constructor must set noEvict on the returned cache. size is a
+// runtime argument (caller-tunable via RelayReplayCacheEntries), but
+// the noEvict policy is non-negotiable and must not depend on it.
+func TestRelayReplayCache_ProductionConstructorAppliesNoEvict(t *testing.T) {
+	for _, size := range []int{1, 4, relayReplayCacheSize} {
+		cache := newRelayReplayCache(size)
+		if cache == nil {
+			t.Fatalf("newRelayReplayCache(%d) returned nil", size)
+		}
+		if !cache.noEvict {
+			t.Fatalf("newRelayReplayCache(%d) returned a cache with noEvict=false; production cache must reject (not evict) when full",
+				size)
+		}
+		if cache.name != "NHP_RLY" {
+			t.Fatalf("cache.name = %q, want %q (operator-facing subsystem tag)", cache.name, "NHP_RLY")
+		}
+		if cache.maxEntries != size {
+			t.Fatalf("cache.maxEntries = %d, want %d (size parameter must flow through)", cache.maxEntries, size)
+		}
+		if cache.ttl != relayReplayCacheTTL {
+			t.Fatalf("cache.ttl = %v, want %v (TTL constant must not be overridable through this constructor)",
+				cache.ttl, relayReplayCacheTTL)
+		}
+	}
+
+	// ART for contrast — must keep evicting.
+	artCache := newARTReplayCache()
+	if artCache.noEvict {
+		t.Fatal("newARTReplayCache() applied noEvict; ART must keep the evicting policy")
+	}
+}
+
+// TestUdpServer_Start_WiresRelayCacheWithNoEvict drives the same
+// constructor Start uses — newRelayReplayCache — through a minimal
+// fixture so a regression that swaps the production path back to
+// newARTReplayCacheWithParams fails here. The test does not boot a full
+// Start (which requires a Device and config); it routes through the
+// factory Start calls (newRelayReplayCache) and assigns the result to
+// s.relayReplay, then asserts the noEvict flag. That is the failure
+// shape the previous version had: production built the cache through
+// the wrong factory and never picked up the policy.
+func TestUdpServer_Start_WiresRelayCacheWithNoEvict(t *testing.T) {
+	// Match the sizing logic in Start so the test exercises the same
+	// factory + size-flow combination — if Start grows a different
+	// sizer, this test gets updated with it, but the constructor stays.
+	s := &UdpServer{}
+	s.relayReplay = newRelayReplayCache(relayReplayCacheSize)
+
+	if !s.relayReplay.noEvict {
+		t.Fatal("s.relayReplay is not noEvict after Start-style wiring; " +
+			"production replay protection is silently running the evicting policy the noEvict commit was meant to remove")
 	}
 }

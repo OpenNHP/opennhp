@@ -457,7 +457,12 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if relayEntries > 5_000_000 {
 		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
 	}
-	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	// newRelayReplayCache applies the noEvict policy. Constructing the
+	// cache through the underlying factory would silently keep the
+	// evicting-then-shrinking path here — which is the bug the noEvict
+	// commit was meant to remove. Always go through the relay-specific
+	// constructor so tests and production share the same wiring.
+	s.relayReplay = newRelayReplayCache(relayEntries)
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for

@@ -86,13 +86,20 @@ func newARTReplayCache() *artReplayCache {
 	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", time.Now)
 }
 
-// newRelayReplayCache builds the same cache struct with relay-throughput
-// sizing and the noEvict policy. Keeping the cache struct generic instead
-// of forking it means every future improvement to eviction / expiry order
+// newRelayReplayCache builds the cache struct with relay-throughput sizing
+// and the noEvict policy. Keeping the cache struct generic instead of
+// forking it means every future improvement to eviction / expiry order
 // lands on both caches automatically; the policy difference lives on the
 // cache instance, not a parallel type.
-func newRelayReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", time.Now).withNoEvict()
+//
+// The size parameter is required (no default) so the production caller
+// (Start) must pass it explicitly — an earlier version defaulted it
+// internally, but the production path in Start was constructing the
+// cache through the lower-level factory instead, silently dropping the
+// noEvict policy and leaving NHP_RLY replay protection to the
+// evicting-then-shrinking path the commit was meant to remove.
+func newRelayReplayCache(size int) *artReplayCache {
+	return newARTReplayCacheWithParams(size, relayReplayCacheTTL, "NHP_RLY", time.Now).withNoEvict()
 }
 
 // withNoEvict toggles the cache to reject (not evict) when full. Returns

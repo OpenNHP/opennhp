@@ -69,6 +69,17 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return float64(s.artReplay.capacityEvictions)
 		})
 
+	reg.NewCounterFunc("nhp_server_relay_replay_cache_rejected_total",
+		"NHP_RLY envelopes rejected because the noEvict replay cache was full; live entries were retained.",
+		func() float64 {
+			if s.relayReplay == nil {
+				return 0
+			}
+			s.relayReplay.mu.Lock()
+			defer s.relayReplay.mu.Unlock()
+			return float64(s.relayReplay.capacityRejections)
+		})
+
 	sm := &serverMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",

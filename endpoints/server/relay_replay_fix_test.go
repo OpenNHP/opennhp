@@ -573,3 +573,106 @@ func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
 		}
 	}
 }
+
+// TestRelayReplayCache_RejectsWhenFull_PreservesExistingEntries pins the
+// noEvict behavior of newRelayReplayCache: under sustained NHP_RLY
+// throughput the default 500k-entry capacity covers less than the
+// 600-second acceptance window, so evicting live entries would silently
+// shrink the replay window and let a captured envelope repopulate a
+// fresh inner connection. The fix is for the cache to reject NEW
+// envelopes when full instead — at the cost of a warning + a counter,
+// the existing entries (and therefore the relay→server replay window)
+// stay intact.
+//
+// The test uses a small noEvict capacity (size 4) so it can be filled
+// quickly. It records a sentinel envelope, drives the cache to full
+// with fresh tuples, then confirms:
+//
+//   - the sentinel envelope is still in the cache after the cache is
+//     pushed past capacity (MarkSeen returns false on its duplicate,
+//     NOT true — which would mean noEvict had evicted and the call
+//     re-inserted);
+//
+//   - envelopes past capacity are being rejected by the noEvict
+//     branch (capacityRejections advances, capacityEvictions does not).
+func TestRelayReplayCache_RejectsWhenFull_PreservesExistingEntries(t *testing.T) {
+	now := time.Unix(100, 0)
+	cache := newARTReplayCacheWithParams(4, time.Hour, "test", func() time.Time { return now }).withNoEvict()
+	if !cache.noEvict {
+		t.Fatal("withNoEvict() did not toggle the cache")
+	}
+
+	// Different pubkeys so the duplicate-detection short-circuit does
+	// not mask the noEvict branch.
+	keyA := artTestPubkey(1) // sentinel — we expect to retain this one
+	keyB := artTestPubkey(2) // filler — entries to push the cache to and past capacity
+
+	// 1. Record the sentinel envelope.
+	if !cache.MarkSeen(keyA, 1, 100) {
+		t.Fatal("sentinel envelope rejected on first observation")
+	}
+
+	// 2. Fill the cache to capacity. We already hold 1 entry (the
+	//    sentinel); three more fit. All must be accepted.
+	for i := uint64(1); i <= 3; i++ {
+		if !cache.MarkSeen(keyB, i, int64(i)) {
+			t.Fatalf("fill entry %d rejected before capacity; cache should still have room", i)
+		}
+	}
+
+	// 3. The cache is now full. The next MarkSeen MUST be rejected
+	//    by the noEvict branch (capacityRejections++); the sentinel
+	//    must remain in the cache.
+	var sentinelKey artReplayKey
+	copy(sentinelKey.peerPubkey[:], keyA)
+	sentinelKey.peerPubkeyLen = uint8(len(keyA))
+	sentinelKey.txid = 1
+	sentinelKey.sendTime = 100
+	if cache.MarkSeen(keyB, 99, 99) {
+		t.Fatal("post-fill envelope accepted; noEvict failed to reject at capacity")
+	}
+
+	cache.mu.Lock()
+	rejections := cache.capacityRejections
+	entries := len(cache.entries)
+	evictions := cache.capacityEvictions
+	_, sentinelPresent := cache.entries[sentinelKey]
+	cache.mu.Unlock()
+
+	if entries != 4 {
+		t.Fatalf("cache size after fill = %d, want 4 (noEvict must not shrink the cache)", entries)
+	}
+	if rejections != 1 {
+		t.Fatalf("capacityRejections = %d, want 1 (one over-capacity push)", rejections)
+	}
+	if evictions != 0 {
+		t.Fatalf("capacityEvictions = %d, want 0 (noEvict cache must never evict)", evictions)
+	}
+	if !sentinelPresent {
+		t.Fatal("sentinel envelope is missing from the cache after fill; noEvict silently evicted it")
+	}
+
+	// 4. The sentinel MarkSeen call must return FALSE (cache hit).
+	//    If noEvict had silently evicted and the call were re-
+	//    inserting, it would return true — that is the exact pre-
+	//    fix failure mode the test pins: a captured envelope can
+	//    repopulate a fresh inner connection after eviction.
+	if cache.MarkSeen(keyA, 1, 100) {
+		t.Fatal("sentinel envelope MarkSeen returned true; entry was evicted and the call re-inserted it " +
+			"— captured envelope can repopulate a fresh inner connection after eviction")
+	}
+
+	// 5. And a second post-fill push must also be rejected, so the
+	//    test guards against a regression that disabled both noEvict
+	//    and the counter.
+	if cache.MarkSeen(keyB, 100, 100) {
+		t.Fatal("second post-fill envelope accepted; noEvict regressed")
+	}
+	cache.mu.Lock()
+	rejections = cache.capacityRejections
+	entries = len(cache.entries)
+	cache.mu.Unlock()
+	if rejections != 2 || entries != 4 {
+		t.Fatalf("after second push: rejections=%d entries=%d, want rejections=2 entries=4", rejections, entries)
+	}
+}

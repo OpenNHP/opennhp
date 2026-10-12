@@ -53,16 +53,33 @@ type artReplayEntry struct {
 
 // artReplayCache is a bounded, concurrency-safe TTL set. Entries are appended
 // in expiry order, so expiration and capacity eviction are O(1).
+//
+// noEvict toggles two policies at the capacity boundary: when false (the
+// ART default), a full cache evicts the oldest entry to make room for the
+// new one — the answer-result traffic is low-volume enough that an
+// occasional live eviction shortens the replay window in a way the
+// staleness check still absorbs. When true (the relay cache), a full cache
+// rejects the new envelope: under sustained relay+agent RPS the default
+// 500k-entry capacity covers only capacity/TTL ≈ ~520 envelopes/s for the
+// ~960s relay-replay TTL, so live eviction would silently shrink the
+// replay window below the staleness acceptance floor and let a captured
+// envelope repopulate a fresh inner connection. Rejecting new envelopes
+// is the only policy that keeps the window intact when capacity saturates
+// — the operator-facing consequence is a per-minute warning plus a
+// counter, and a sustained under-pressure run degrades the cache (the
+// right answer) instead of silently weakening protection.
 type artReplayCache struct {
-	name              string
-	mu                sync.Mutex
-	capacityEvictions uint64
-	lastWarning       time.Time
-	entries           map[artReplayKey]struct{}
-	order             *list.List
-	maxEntries        int
-	ttl               time.Duration
-	now               func() time.Time
+	name               string
+	mu                 sync.Mutex
+	capacityEvictions  uint64
+	capacityRejections uint64
+	lastWarning        time.Time
+	entries            map[artReplayKey]struct{}
+	order              *list.List
+	maxEntries         int
+	ttl                time.Duration
+	now                func() time.Time
+	noEvict            bool
 }
 
 func newARTReplayCache() *artReplayCache {
@@ -70,11 +87,21 @@ func newARTReplayCache() *artReplayCache {
 }
 
 // newRelayReplayCache builds the same cache struct with relay-throughput
-// sizing. Keeping the cache struct generic instead of forking it means every
-// future improvement to eviction / expiry order lands on both caches
-// automatically.
+// sizing and the noEvict policy. Keeping the cache struct generic instead
+// of forking it means every future improvement to eviction / expiry order
+// lands on both caches automatically; the policy difference lives on the
+// cache instance, not a parallel type.
 func newRelayReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", time.Now).withNoEvict()
+}
+
+// withNoEvict toggles the cache to reject (not evict) when full. Returns
+// the receiver so the constructor can chain it on. Tests use the same hook
+// to construct a small noEvict cache — the test for "retained envelope
+// is still rejected" cannot use the production 500k capacity.
+func (c *artReplayCache) withNoEvict() *artReplayCache {
+	c.noEvict = true
+	return c
 }
 
 func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, now func() time.Time) *artReplayCache {
@@ -105,18 +132,18 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	key.txid = txid
 	key.sendTime = sendTime
 
-	var warn bool
-	var evictions uint64
+	var warnEvict, warnReject bool
 	c.mu.Lock()
 	defer func() {
 		c.mu.Unlock()
-		if warn {
-			// Name is required so an overflow on the relay path
-			// doesn't masquerade as ART (and vice versa) in the
-			// log — operators reading "ART replay cache capacity
-			// exceeded" would otherwise look in the wrong
-			// subsystem to find the QPS ceiling.
-			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, evictions)
+		// Name is required so an overflow on the relay path doesn't
+		// masquerade as ART (and vice versa) in the log — operators
+		// reading "ART replay cache capacity exceeded" would otherwise
+		// look in the wrong subsystem to find the QPS ceiling.
+		if warnEvict {
+			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, c.capacityEvictions)
+		} else if warnReject {
+			log.Warning("%s replay cache at capacity %d; new envelopes rejected without eviction (%d rejected since start), replay window preserved", c.name, c.maxEntries, c.capacityRejections)
 		}
 	}()
 
@@ -126,10 +153,17 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		return false
 	}
 	if len(c.entries) >= c.maxEntries {
+		if c.noEvict {
+			c.capacityRejections++
+			if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
+				warnReject = true
+				c.lastWarning = now
+			}
+			return false
+		}
 		c.capacityEvictions++
 		if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
-			warn = true
-			evictions = c.capacityEvictions
+			warnEvict = true
 			c.lastWarning = now
 		}
 		c.removeOldest()

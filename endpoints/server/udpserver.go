@@ -441,7 +441,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if entries == 0 {
 		entries = artReplayCacheSize
 	}
-	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", time.Now)
+	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", true, time.Now)
 	// relayReplay is sized for relay throughput, NOT ART throughput:
 	// NHP_RLY envelopes carry every web-agent KNK/RKN/EXT behind every
 	// registered relay, so the cache must absorb sustained
@@ -457,7 +457,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if relayEntries > 5_000_000 {
 		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
 	}
-	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", false, time.Now)
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for
@@ -1720,7 +1720,14 @@ func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 		now := time.Now().UnixNano()
 		last := lastRelayReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastRelayReplayWarn.CompareAndSwap(last, now) {
-			log.Warning("server[dedupeRecvRLY] dropped replayed NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+			// MarkSeen returns false for both duplicates (the original
+			// case this hook was written for) and capacity rejections
+			// (live entries preserved at the relay cache's full state).
+			// The metric nhp_server_relay_replay_cache_rejections_total
+			// distinguishes them; the warning text mentions both so
+			// operators seeing a burst of warnings know to look at the
+			// counter and at RelayReplayCacheEntries tuning.
+			log.Warning("server[dedupeRecvRLY] dropped NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d): duplicate or capacity-full (check nhp_server_relay_replay_cache_rejections_total; raise RelayReplayCacheEntries if sustained)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
 		}
 		return common.ErrServerDuplicateTransaction
 	}

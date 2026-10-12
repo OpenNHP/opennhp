@@ -69,6 +69,21 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return float64(s.artReplay.capacityEvictions)
 		})
 
+	// NHP_RLY refuses new envelopes at capacity rather than evicting live
+	// entries (see art_replay_cache.go evictOnFull comment). Refusal count
+	// is the operator-visible signal that relay throughput has outgrown the
+	// configured cache; raise RelayReplayCacheEntries to absorb it.
+	reg.NewCounterFunc("nhp_server_relay_replay_cache_rejections_total",
+		"New NHP_RLY envelopes refused because the replay cache was at capacity; live entries were preserved.",
+		func() float64 {
+			if s.relayReplay == nil {
+				return 0
+			}
+			s.relayReplay.mu.Lock()
+			defer s.relayReplay.mu.Unlock()
+			return float64(s.relayReplay.capacityRejections)
+		})
+
 	sm := &serverMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",

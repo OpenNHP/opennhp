@@ -53,44 +53,66 @@ type artReplayEntry struct {
 
 // artReplayCache is a bounded, concurrency-safe TTL set. Entries are appended
 // in expiry order, so expiration and capacity eviction are O(1).
+//
+// evictOnFull governs what happens when the cache is at capacity and a fresh
+// key arrives. true (the legacy behavior, used for ART) evicts the oldest
+// live entry to make room, shortening the replay window for every entry
+// below it. false (used for NHP_RLY) refuses the new key instead — at relay
+// RPS a capacity-evicting cache keeps only ~5 minutes of live entries, well
+// under the 600-second acceptance window, so a captured envelope could be
+// re-accepted after eviction and reach a fresh inner connection. Rejecting
+// keeps the cache's contents at their original recency until TTL expiry.
 type artReplayCache struct {
-	name              string
-	mu                sync.Mutex
-	capacityEvictions uint64
-	lastWarning       time.Time
-	entries           map[artReplayKey]struct{}
-	order             *list.List
-	maxEntries        int
-	ttl               time.Duration
-	now               func() time.Time
+	name               string
+	mu                 sync.Mutex
+	capacityEvictions  uint64
+	capacityRejections uint64
+	lastWarning        time.Time
+	entries            map[artReplayKey]struct{}
+	order              *list.List
+	maxEntries         int
+	ttl                time.Duration
+	evictOnFull        bool
+	now                func() time.Time
 }
 
 func newARTReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", time.Now)
+	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", true, time.Now)
 }
 
 // newRelayReplayCache builds the same cache struct with relay-throughput
 // sizing. Keeping the cache struct generic instead of forking it means every
 // future improvement to eviction / expiry order lands on both caches
-// automatically.
+// automatically. Relay sizing deliberately refuses new keys at capacity
+// (see evictOnFull comment on artReplayCache) — evicting live entries at
+// relay RPS would shorten the cache's effective replay window to ~5min,
+// below the 600-second acceptance window.
 func newRelayReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", false, time.Now)
 }
 
-func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, now func() time.Time) *artReplayCache {
+func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, evictOnFull bool, now func() time.Time) *artReplayCache {
 	return &artReplayCache{
-		name:       name,
-		entries:    make(map[artReplayKey]struct{}),
-		order:      list.New(),
-		maxEntries: maxEntries,
-		ttl:        ttl,
-		now:        now,
+		name:        name,
+		entries:     make(map[artReplayKey]struct{}),
+		order:       list.New(),
+		maxEntries:  maxEntries,
+		ttl:         ttl,
+		evictOnFull: evictOnFull,
+		now:         now,
 	}
 }
 
 // MarkSeen records an authenticated (peer pubkey, transaction ID, send time)
-// tuple. It returns true on first observation and false for a duplicate or an
-// invalid peer key. Callers must distinguish invalid input before calling.
+// tuple. It returns true on first observation and false for a duplicate, a
+// capacity rejection, or an invalid peer key. Callers must distinguish
+// invalid input before calling.
+//
+// When the cache is at capacity and the key is fresh, behavior depends on
+// evictOnFull: the ART cache evicts the oldest live entry (preserving
+// throughput under burst), while the NHP_RLY cache refuses the new entry so
+// a captured-and-replayed envelope cannot be re-accepted after the live
+// entry it shadowed was evicted under pressure.
 func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64) bool {
 	if c == nil || c.maxEntries <= 0 || c.ttl <= 0 {
 		return false
@@ -105,18 +127,22 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	key.txid = txid
 	key.sendTime = sendTime
 
-	var warn bool
+	var warnEvict bool
+	var warnReject bool
 	var evictions uint64
 	c.mu.Lock()
 	defer func() {
 		c.mu.Unlock()
-		if warn {
-			// Name is required so an overflow on the relay path
-			// doesn't masquerade as ART (and vice versa) in the
-			// log — operators reading "ART replay cache capacity
-			// exceeded" would otherwise look in the wrong
-			// subsystem to find the QPS ceiling.
+		// Name is required so an overflow on the relay path
+		// doesn't masquerade as ART (and vice versa) in the
+		// log — operators reading "ART replay cache capacity
+		// exceeded" would otherwise look in the wrong
+		// subsystem to find the QPS ceiling.
+		if warnEvict {
 			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, evictions)
+		}
+		if warnReject {
+			log.Warning("%s replay cache capacity %d reached; new envelope refused to protect live entries (%d total refusals)", c.name, c.maxEntries, evictions)
 		}
 	}()
 
@@ -126,13 +152,31 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		return false
 	}
 	if len(c.entries) >= c.maxEntries {
-		c.capacityEvictions++
-		if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
-			warn = true
-			evictions = c.capacityEvictions
-			c.lastWarning = now
+		if c.evictOnFull {
+			c.capacityEvictions++
+			if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
+				warnEvict = true
+				evictions = c.capacityEvictions
+				c.lastWarning = now
+			}
+			c.removeOldest()
+		} else {
+			// Capacity-full but configured to reject. Refuse
+			// the new key rather than evicting a live entry —
+			// evicting would let a captured envelope be
+			// re-accepted once its shadow left the cache,
+			// reaching a fresh inner connection. The caller
+			// (dedupeRecvRLY) maps both duplicates and
+			// capacity refusals to ErrServerDuplicateTransaction
+			// so the upstream takes the same fail-closed path.
+			c.capacityRejections++
+			if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
+				warnReject = true
+				evictions = c.capacityRejections
+				c.lastWarning = now
+			}
+			return false
 		}
-		c.removeOldest()
 	}
 	c.order.PushBack(artReplayEntry{key: key, expiresAt: now.Add(c.ttl)})
 	c.entries[key] = struct{}{}

@@ -686,12 +686,16 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		// HandleRelayForward still fires on the decoded inner packet
 		// (relayConn is a separate conn keyed on the real client).
 		if peerDeviceType == NHP_RELAY {
-			log.Critical("received stale %s envelope from registered relay %s, drop without block",
-				HeaderTypeToString(ppd.HeaderType), ppd.ConnData.RemoteAddr.String())
+			if staleRelayWarnAllowed(time.Now().UnixNano()) {
+				log.Critical("received stale %s envelope from registered relay %s, drop without block (further drops in the same interval are not logged)",
+					HeaderTypeToString(ppd.HeaderType), ppd.ConnData.RemoteAddr.String())
+			}
+			ppd.device.notifyPacketDropped("stale")
 			err = ErrStalePacketReceived
 			return err
 		}
 		log.Critical("received stale packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
+		ppd.device.notifyPacketDropped("stale")
 		threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 		if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
 			// clamp threat count to avoid overflow
@@ -749,6 +753,25 @@ const decompressWarnInterval = int64(time.Minute)
 func decompressWarnAllowed(nowNano int64) bool {
 	last := lastDecompressWarnNano.Load()
 	return nowNano-last >= decompressWarnInterval && lastDecompressWarnNano.CompareAndSwap(last, nowNano)
+}
+
+var lastStaleRelayWarnNano atomic.Int64
+
+// staleRelayWarnAllowed gates the "received stale envelope from
+// registered relay" Critical log so a captured genuine relay
+// envelope replayed at line rate cannot translate one capture into
+// unbounded log volume. The drop itself is unchanged — every stale
+// relay envelope still calls notifyPacketDropped("stale") so the
+// rate is visible in metrics. The throttle interval matches the
+// other Critical-rate-limiters in this file (artSkewWarnAllowed,
+// decompressWarnAllowed) at one minute, which is well under the
+// 600s staleness floor an attacker would have to hold their
+// captured envelope against before it can no longer be replayed
+// at all, so an operator still sees the warning long before it
+// could become silent.
+func staleRelayWarnAllowed(nowNano int64) bool {
+	last := lastStaleRelayWarnNano.Load()
+	return nowNano-last >= int64(time.Minute) && lastStaleRelayWarnNano.CompareAndSwap(last, nowNano)
 }
 
 func inflateBody(body []byte) ([]byte, error) {

@@ -99,8 +99,14 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	key.sendTime = sendTime
 
 	var warn bool
+	var evictions uint64
 	c.mu.Lock()
 	defer func() {
+		// Capture the eviction count under the lock; another
+		// goroutine can be running capacityEvictions++ while this
+		// closure formats the warning, so reading the field after
+		// Unlock would race.
+		evictions = c.capacityEvictions
 		c.mu.Unlock()
 		// "ART replay cache capacity exceeded" — the warning names the
 		// subsystem so an operator reading it knows where to look. There
@@ -108,7 +114,7 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		// different mechanism entirely and lives in
 		// relay_replay_window.go.
 		if warn {
-			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, c.capacityEvictions)
+			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, evictions)
 		}
 	}()
 

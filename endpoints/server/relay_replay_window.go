@@ -26,24 +26,50 @@ const relayReplayWindowSize = 8192
 // words for the bitmap backing array.
 const relayReplayBitmapWords = relayReplayWindowSize / 64 // 128
 
-// relayReplayEpochSlackNanos bounds the allowed clock skew between
-// the relay's own RemoteSendTime (stamped at handshake, see
-// nhp/core/initiator.go:149) and the per-relay epoch anchor we
-// keep in rlyWindow.epochSendTime. The 1 s figure is generous:
-// within a single relay process every envelope has the SAME
-// sendTime (it is the handshake time, not stamped per packet), so
-// the slack is not for in-flight reordering — it is for the small
-// drift between two distinct handshakes of the same relay process
-// across a network round trip. validatePeer's 600 s staleness
-// floor separately bounds the absolute age of any captured
-// envelope, so this slack is only ever a few μs in practice.
+// relayReplayEpochSlackNanos bounds the allowed backward gap between
+// an incoming envelope's sendTime and the per-relay epoch anchor
+// (rlyWindow.epochSendTime) without that envelope being rejected.
+// sendTime is per-packet (each envelope goes through
+// nhp/core/initiator.go's createMsgAssemblerData, which sets
+// mad.LocalInitTime = time.Now().UnixNano() on every call), so the
+// 1 s slack is for the realistic jitter on a busy host: a relay
+// can have two enqueued envelopes at almost-but-not-quite the
+// same instant, and an attacker could try to time a replay to
+// land in the gap between them. 1 s is generous — typical UDP
+// enqueue jitter is microseconds — but a tight bound would turn
+// legitimate load spikes into false rejections, and the attack
+// surface is bounded by the signature on sendTime anyway.
 const relayReplayEpochSlackNanos = int64(time.Second)
+
+// relayReplayIdleTimeout bounds how long a relay's per-relay
+// state survives without any accepted envelope. After this
+// elapsed wall-clock time, the next MarkSeen call drops the
+// entry and starts fresh from the incoming envelope. The figure
+// is the same shape as artReplayCacheTTL — every envelope older
+// than the staleness floor (DefaultRecvStalenessFloorSeconds) is
+// rejected upstream by validatePeer anyway, plus the future-skew
+// bound (ARTRecvFutureSkewSeconds) so a fast-clock relay can age
+// out instead of holding the entry open, plus a 60 s safety
+// margin for the time it takes validatePeer's clocks to converge
+// after a step.
+//
+// This is the recovery path the review identified: a relay whose
+// wall clock steps back into the past (NTP correction, RTC
+// reset, dual relay processes sharing one key) would otherwise
+// push the epoch forward and then get locked out forever, since
+// nothing in the bitmap or the epoch floor clears state on
+// wall-clock movement. Without this timeout, a clock-step-back
+// outage required an nhp-server restart. With it, the outage is
+// bounded by the timeout (about 16 minutes worst case) and the
+// future-skew gate's 300 s upper bound on epoch-push.
+const relayReplayIdleTimeout = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
 
 // rlyWindow is the per-relay anti-replay state. It tracks the most
 // recent W SenderTrxIds the relay has produced (highestTxid + a
-// sliding bitmap) plus the corresponding RemoteSendTime (so a relay
-// restart with a fresh sendTime is recognized as a fresh sender and
-// its low-counter envelope is accepted).
+// sliding bitmap), the latest RemoteSendTime it has recorded (so
+// forward-advance and restart-reset have a single monotonic anchor
+// to compare against), and the epochSendTime floor that pre-restart
+// captures are rejected against.
 //
 // INVARIANT: the bitmap tracks [highestTxid - W + 1, highestTxid],
 // where bit i represents txid = (highestTxid - i). Bit 0 always
@@ -70,11 +96,14 @@ const relayReplayEpochSlackNanos = int64(time.Second)
 //     envelope's RECV window; this bounds the txid replay window.
 //   - anchoring on highestSendTime (separately from highestTxid)
 //     lets a relay process restart re-enter the dedupe: the new
-//     process mints a fresh RemoteSendTime, and we accept envelopes
-//     with sendTime > highestSendTime as legitimate by resetting
-//     the per-relay state. The relay's signature covers
-//     RemoteSendTime, so this reset is unforgeable: only the relay's
-//     own static key can produce an envelope with a newer sendTime.
+//     process is sending in a fresh sendTime range (each envelope
+//     carries time.Now().UnixNano() at the relay's
+//     createMsgAssemblerData call site), and we accept envelopes
+//     with sendTime > highestSendTime AND a txid that has gone
+//     backwards past the window as legitimate by resetting the
+//     per-relay state. The relay's signature covers sendTime, so
+//     this reset is unforgeable: only the relay's own static key
+//     can produce an envelope with a newer sendTime.
 //   - the epochSendTime floor is what makes the txid-driven
 //     branches safe across a restart. Without it, a pre-restart
 //     capture whose txid is larger than the new epoch's anchor
@@ -83,10 +112,20 @@ const relayReplayEpochSlackNanos = int64(time.Second)
 //     re-inject every captured envelope at the rate of one
 //     legitimate envelope. The floor rejects the capture first
 //     because its sendTime is below the new epoch's anchor.
+//
+// IDLE EXPIRATION. lastSeenAt is the wall-clock time of the most
+// recent accepted envelope for this relay. After
+// relayReplayIdleTimeout of no accepted traffic, MarkSeen drops
+// the entry and starts fresh — the recovery path the epoch floor
+// alone does not provide. It is updated only on the accept paths
+// (first observation, restart reset, normal advance, in-window
+// distinct); rejected envelopes do not reset the timer, so a
+// replay flood cannot prevent idle expiration.
 type rlyWindow struct {
 	highestTxid     uint64
 	highestSendTime int64
 	epochSendTime   int64
+	lastSeenAt      time.Time
 	bitmap          [relayReplayBitmapWords]uint64
 }
 
@@ -104,15 +143,32 @@ type rlyWindow struct {
 // and contention is bounded by the number of relay→server handler
 // goroutines — at the NHP wire rate the lock is held for
 // sub-microsecond spans, well under the per-packet envelope cost.
+//
+// now is the wall-clock source; tests can inject a fixed clock to
+// drive the idle-expiration path deterministically. Production code
+// keeps time.Now.
 type relayReplayWindow struct {
 	mu      sync.Mutex
 	windows map[[core.PublicKeySizeEx]byte]*rlyWindow
+	now     func() time.Time
 }
 
 func newRelayReplayWindow() *relayReplayWindow {
 	return &relayReplayWindow{
 		windows: make(map[[core.PublicKeySizeEx]byte]*rlyWindow),
+		now:     time.Now,
 	}
+}
+
+// newRelayReplayWindowWithClock is the test-only constructor. The
+// production constructor above keeps the time.Now call site
+// obvious; tests that drive the idle-expiration path swap in a
+// fixed clock so they don't have to wait the full 16-minute
+// timeout to see the recovery path fire.
+func newRelayReplayWindowWithClock(now func() time.Time) *relayReplayWindow {
+	w := newRelayReplayWindow()
+	w.now = now
+	return w
 }
 
 // replayOutcome makes MarkSeen's three-way verdict explicit so the
@@ -150,13 +206,33 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	now := w.now()
 	state, ok := w.windows[key]
+	if ok && now.Sub(state.lastSeenAt) >= relayReplayIdleTimeout {
+		// Idle expiration. The relay has been silent long enough
+		// that no envelope older than the staleness floor could
+		// still be in flight, so it is safe to drop the entry and
+		// start fresh from the incoming envelope. This is the
+		// recovery path the epoch floor alone does not provide:
+		// a relay whose wall clock has stepped back into the past
+		// (NTP correction, RTC reset, dual relay processes
+		// sharing one key) would otherwise push the epoch forward
+		// on every legitimate envelope and then get locked out
+		// forever, since nothing in the bitmap clears state on
+		// wall-clock movement. Once the relay is silent for
+		// relayReplayIdleTimeout, the next envelope is anchored
+		// here as if it were a brand-new relay.
+		delete(w.windows, key)
+		ok = false
+	}
 	if !ok {
-		// First envelope from this relay. Anchor the window here.
+		// First envelope from this relay (or first envelope after
+		// idle expiration above). Anchor the window here.
 		state = &rlyWindow{
 			highestTxid:     txid,
 			highestSendTime: sendTime,
 			epochSendTime:   sendTime,
+			lastSeenAt:      now,
 		}
 		state.bitmap[0] = 1
 		w.windows[key] = state
@@ -169,8 +245,8 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 	// take the forward-advance branch on the next line below
 	// (advancing the bitmap past the new epoch and accepting the
 	// replay). Reject any envelope whose sendTime is below the
-	// current epoch's anchor (modulo a small slack for
-	// handshake-vs-handshake clock drift) before either the
+	// current epoch's anchor (modulo the per-packet jitter slack
+	// documented on relayReplayEpochSlackNanos) before either the
 	// advance or the restart-reset branch can run. The signature
 	// on sendTime means an attacker cannot push a captured
 	// envelope above the floor by re-signing it, and they cannot
@@ -181,28 +257,31 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 		return false, replayOutcomeOutsideWindow
 	}
 
-	// Restart detection. A relay process that comes back with a
-	// fresh handshake gets a new (signed) RemoteSendTime; its
-	// txid counter is also fresh (Device.NextCounterIndex seeds
-	// from a random number on each new Device). The reset below
-	// is what lets a low-counter envelope from the restarted
-	// relay land in the window — without it, every legitimate
-	// post-restart envelope would be OutsideWindow until the
-	// relay sent W envelopes to push the anchor past it.
+	// Restart detection. A relay process restart produces
+	// envelopes in a fresh sendTime range (the new process
+	// stamps time.Now().UnixNano() at each call site, see
+	// nhp/core/initiator.go:149, so its envelopes are typically
+	// newer than the old process's last recorded sendTime) AND
+	// a reseeded txid counter (Device.NextCounterIndex seeds at
+	// random per new Device, nhp/core/device.go:142). The reset
+	// below is what lets a low-counter envelope from the
+	// restarted relay land in the window — without it, every
+	// legitimate post-restart envelope would be OutsideWindow
+	// until the relay sent W envelopes to push the anchor past
+	// it.
 	//
-	// The reset is unforgeable in practice (RemoteSendTime is
-	// inside the signed payload, so only the relay's static key
-	// can produce a higher sendTime), but we still gate it
-	// narrowly: the txid must also have gone backwards past the
-	// window. Without that back-of-window check, a stale
-	// captured envelope whose sendTime happens to exceed the
-	// current anchor would clear the bitmap — the signature
-	// still binds sendTime so a captured envelope cannot itself
-	// bump it, but tying the reset to a txid that is provably
-	// unrecoverable from the bitmap keeps the rule local: we
-	// only ever clear state we have already decided is
-	// unrecoverable, never state we could still catch a
-	// duplicate in.
+	// The reset is unforgeable in practice (sendTime is inside
+	// the signed payload, so only the relay's static key can
+	// produce a higher sendTime), but we still gate it narrowly:
+	// the txid must also have gone backwards past the window.
+	// Without that back-of-window check, a stale captured
+	// envelope whose sendTime happens to exceed the current
+	// anchor would clear the bitmap — the signature still binds
+	// sendTime so a captured envelope cannot itself bump it, but
+	// tying the reset to a txid that is provably unrecoverable
+	// from the bitmap keeps the rule local: we only ever clear
+	// state we have already decided is unrecoverable, never
+	// state we could still catch a duplicate in.
 	//
 	// The reset also advances epochSendTime to the new envelope's
 	// sendTime, so pre-restart captures can no longer reach the
@@ -217,6 +296,7 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 		state.highestTxid = txid
 		state.highestSendTime = sendTime
 		state.epochSendTime = sendTime
+		state.lastSeenAt = now
 		state.bitmap[0] = 1
 		return true, replayOutcomeAccepted
 	}
@@ -251,6 +331,7 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 		}
 		state.highestTxid = txid
 		state.bitmap[0] |= 1
+		state.lastSeenAt = now
 		return true, replayOutcomeAccepted
 	}
 
@@ -273,6 +354,7 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 		return false, replayOutcomeDuplicate
 	}
 	state.bitmap[word] |= bit
+	state.lastSeenAt = now
 	return true, replayOutcomeAccepted
 }
 

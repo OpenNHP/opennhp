@@ -423,19 +423,29 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 	return true
 }
 
-// futureSkewCached reports whether the (deviceType, peerType, msgType) tuple
-// matches a message whose replay is rejected from an endpoint-owned cache
-// keyed on remoteSendTime. The skew check in validatePeer keys off this
-// predicate so adding a new cached envelope type means extending the
-// predicate here too — otherwise the new cache is left with the
-// staleness-only check and a forward-stamped replay can outlive its cache
-// entry.
+// futureSkewCached reports whether the (deviceType, peerType, msgType)
+// tuple matches a message whose replay is rejected from an
+// endpoint-owned cache keyed on remoteSendTime, OR matches a
+// message type where the future-skew gate serves a defense-in-depth
+// role even though the primary replay path is not a TTL cache.
+//
+// ART (server ← AC): the original case. The cache is TTL-bounded;
+// without the skew gate, a forward-stamped replay can outlive its
+// cache entry and the staleness floor would still pass it.
+//
+// RLY (server ← relay): defense-in-depth. The primary replay
+// protection is now a per-relay sliding window (see
+// endpoints/server/relay_replay_window.go) keyed on SenderTrxId,
+// not a TTL cache. The skew gate here is what bounds how far a
+// fast-clock relay can push the per-relay epoch anchor, which in
+// turn bounds the worst-case lockout if that relay's clock
+// subsequently steps back.
+//
+// Defensive on peerType even though the cache lookup itself is the
+// authoritative gate for ART — we want the warning to read "X from
+// Y" and a stale envelope claiming a role it cannot legitimately
+// publish should not poison the logs.
 func futureSkewCached(deviceType int, peerType int, msgType int) bool {
-	// ART (server ← AC) and RLY (server ← relay). Defensive on
-	// peerType even though the cache lookup itself is the
-	// authoritative gate — we want the warning to read "X from Y" and
-	// a stale envelope claiming a role it cannot legitimately publish
-	// should not poison the logs.
 	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
 		return true
 	}
@@ -641,23 +651,40 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	// Bound clock skew for every message type whose replay is rejected
-	// from a post-validation endpoint-owned replay cache (dedupeRecvART /
-	// dedupeRecvRLY). The TTL of that cache is
-	//   DefaultRecvStalenessFloorSeconds + safety margin
-	// and without this bound an envelope stamped ahead of local time by
-	// more than ARTRecvFutureSkewSeconds can outlive its own cache entry:
-	// the staleness floor only rejects packets *behind* local time, so a
-	// forward-stamped replay sent after the cache entry expires lands on
-	// a fresh conn, misses the cache, and goes through.
+	// Bound clock skew on the relay→server path. The justification
+	// here is NOT the TTL-cache argument that drove the original
+	// ART check (the relay RLY path uses a per-relay sliding
+	// window keyed on SenderTrxId, with no TTL — adding a new
+	// envelope type that uses an endpoint-owned TTL cache still
+	// means extending futureSkewCached, but the property is no
+	// longer load-bearing for RLY).
 	//
-	// The ART skew check predates the relay RLY hook — it used to be
-	// specific to NHP_ART ("Bound ART clock skew so cache entries
-	// outlive every accepted replay"); the same property is required for
-	// any path that caches by remoteSendTime, which today means ART and
-	// NHP_RLY. Adding a new cached type means extending futureSkewCached
-	// here too, otherwise the new cache is left with the staleness-only
-	// check and inherits this exact hole.
+	// What the bound DOES do on the RLY path is limit how far a
+	// fast-clock relay can push the per-relay epoch anchor. The
+	// epoch floor (endpoints/server/relay_replay_window.go) and
+	// idle expiration together recover from a clock-step-back, but
+	// recovery takes up to relayReplayIdleTimeout wall-clock
+	// (~16 minutes). Without this bound, a relay running its clock
+	// 1 hour ahead could push the epoch 1 hour forward; on the
+	// subsequent step-back, every legitimate envelope would fail
+	// the epoch floor until the idle timeout fires. Capping the
+	// forward push at ARTRecvFutureSkewSeconds keeps the worst-case
+	// lockout bounded by futureSkew + idle_timeout, and surfaces
+	// "this relay has a bad clock" as a Critical log instead of
+	// silently degrading to a 16-minute outage.
+	//
+	// Deployment note: relay hosts should run NTP. The
+	// ARTRecvFutureSkewSeconds bound is the upper limit on the
+	// asymmetry the server will tolerate between its own clock
+	// and the relay's; a relay that drifts more than this in
+	// either direction is treated as having a broken clock.
+	//
+	// The ART path still has the original TTL-cache property too:
+	// a forward-stamped ART envelope can outlive its cache entry
+	// and replay after the staleness floor passes, and the skew
+	// check is what closes that hole. Adding a new cached type
+	// here still means extending futureSkewCached, since the TTL
+	// argument applies to ART but not to RLY.
 	if futureSkewCached(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) &&
 		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
 		msgType := HeaderTypeToString(ppd.HeaderType)

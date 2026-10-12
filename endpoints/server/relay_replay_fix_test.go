@@ -872,6 +872,102 @@ func TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor(t *testing.T
 	}
 }
 
+// TestRelayReplayWindow_ClockStepBackRecoversViaIdleExpiration pins
+// the recovery path the review identified as the load-bearing
+// missing invariant: a relay whose wall clock steps back into the
+// past (NTP correction, RTC reset, dual relay processes sharing one
+// static key) would otherwise lock itself out forever, because
+// every legitimate envelope has sendTime < epochSendTime and
+// nothing in the bitmap or epoch floor ever clears state on
+// wall-clock movement. Idle expiration drops the entry after
+// relayReplayIdleTimeout of no accepted traffic, and the next
+// envelope is anchored as if it were from a brand-new relay.
+//
+// The test drives the wall clock with an injected time source so
+// the recovery is observable in milliseconds rather than the
+// 16-minute real timeout.
+func TestRelayReplayWindow_ClockStepBackRecoversViaIdleExpiration(t *testing.T) {
+	clock := time.Now()
+	w := newRelayReplayWindowWithClock(func() time.Time { return clock })
+	key := artTestPubkey(10)
+
+	// Anchor the window in "the past" — say the relay has been
+	// running for a while and recorded an epoch far in the past.
+	const pastEpochSendTime = int64(1_000_000_000) // 1s after Unix epoch
+	if ok, _ := w.MarkSeen(key, 50_000, pastEpochSendTime); !ok {
+		t.Fatal("initial anchor rejected")
+	}
+
+	// The relay's clock then steps back: the new envelope has
+	// sendTime far below the epoch. Under the OLD design
+	// (no idle expiration), the only way to recover would be
+	// a server restart. Confirm the recovery is gated on idle.
+	clock = clock.Add(relayReplayIdleTimeout - time.Second) // not yet idle
+	if ok, _ := w.MarkSeen(key, 50_001, pastEpochSendTime-2*int64(time.Second)); ok {
+		t.Fatal("envelope with sendTime below epoch accepted before idle expiration")
+	}
+
+	// Now the relay has been silent for the full idle timeout.
+	// Step the clock past the boundary.
+	clock = clock.Add(2 * time.Second)
+
+	// Next legitimate envelope should be accepted as a brand-new
+	// anchor, even though its sendTime is far below the old
+	// epoch. The idle-expiration branch deletes the entry before
+	// the epoch-floor check runs, so the floor never sees the old
+	// anchor.
+	if ok, outcome := w.MarkSeen(key, 1, pastEpochSendTime-3*int64(time.Second)); !ok || outcome != replayOutcomeAccepted {
+		t.Fatalf("clock-step-back recovery: ok=%v outcome=%v, want true/Accepted — idle expiration did not clear the epoch", ok, outcome)
+	}
+
+	// The old pre-step-back captures are still rejected (their
+	// sendTime is below the new epoch).
+	if ok, outcome := w.MarkSeen(key, 50_000, pastEpochSendTime); ok || outcome != replayOutcomeOutsideWindow {
+		t.Fatalf("pre-step-back capture after recovery: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
+	}
+}
+
+// TestRelayReplayWindow_IdleExpirationIgnoresRejectedTraffic pins
+// the second half of the recovery contract: a replay flood
+// against a relay that has gone silent must NOT prevent idle
+// expiration from firing. Otherwise an attacker that has captured
+// a relay's envelopes could keep firing them at a slow rate to
+// prevent the entry from being dropped, defeating the recovery
+// path the clock-step-back scenario depends on. lastSeenAt is
+// only updated on the accept paths, so a flood of rejected
+// envelopes does not move the timer.
+func TestRelayReplayWindow_IdleExpirationIgnoresRejectedTraffic(t *testing.T) {
+	clock := time.Now()
+	w := newRelayReplayWindowWithClock(func() time.Time { return clock })
+	key := artTestPubkey(11)
+
+	// Anchor the window.
+	if ok, _ := w.MarkSeen(key, 1_000, 5_000_000_000); !ok {
+		t.Fatal("anchor rejected")
+	}
+
+	// A flood of replays (rejected). The clock moves only on
+	// these replays, not on the anchor.
+	for i := 0; i < 100; i++ {
+		clock = clock.Add(time.Second)
+		if ok, _ := w.MarkSeen(key, 1_000, 5_000_000_000); ok {
+			t.Fatal("replay accepted; window should have caught it")
+		}
+	}
+
+	// The relay has now been silent for 100 s. Advance past
+	// the idle timeout. Even if the attacker keeps replaying,
+	// lastSeenAt is the anchor's timestamp — so the entry is
+	// expired.
+	clock = clock.Add(relayReplayIdleTimeout)
+
+	// A legitimate envelope with a new sendTime should be
+	// accepted as a brand-new anchor.
+	if ok, outcome := w.MarkSeen(key, 1, 6_000_000_000); !ok || outcome != replayOutcomeAccepted {
+		t.Fatalf("recovery after attacker flood: ok=%v outcome=%v, want true/Accepted", ok, outcome)
+	}
+}
+
 // TestRelayReplayWindow_BurstDoesNotBlockLegitimate is the test the
 // reviewer specifically asked for: a burst of capacity + 1 distinct,
 // valid envelopes does not block the next legitimate envelope. The

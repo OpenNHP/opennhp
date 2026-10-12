@@ -285,3 +285,81 @@ func TestFutureSkewCachedPredicate(t *testing.T) {
 		}
 	}
 }
+
+// TestRLYStaleFloorBound pins the tightened NHP_RLY staleness floor.
+// The relay replay cache relies on this floor to keep eviction safe
+// against replay: any entry evicted by capacity was admitted within
+// RLYRecvStalenessFloorSeconds, and a replay sent at the moment of
+// eviction is rejected by this check. Without the tighter floor the
+// cache's capacity-eviction timing (cache_size / throughput) would
+// open a replay window under sustained pressure. The fixture is the
+// same as TestRelayStaleEnvelopeDoesNotBlockRelay, but uses a
+// 61-second delta (just past the RLY floor) instead of 601 (the
+// general floor) — and asserts the returned error is
+// ErrStalePacketReceived.
+func TestRLYStaleFloorBound(t *testing.T) {
+	sender := NewDevice(NHP_RELAY, sentinelPrivateKey(4), nil)
+	receiver := NewDevice(NHP_SERVER, sentinelPrivateKey(36), nil)
+	if sender == nil || receiver == nil {
+		t.Fatal("failed to create relay/server devices")
+	}
+	t.Cleanup(sender.Stop)
+	t.Cleanup(receiver.Stop)
+
+	receiverPeer := &UdpPeer{
+		PubKeyBase64: receiver.PublicKeyBase64(),
+		Ip:           "127.0.0.1",
+		Port:         12351,
+		Type:         NHP_SERVER,
+	}
+	sender.AddPeer(receiverPeer)
+	senderPeer := &UdpPeer{
+		PubKeyBase64: sender.PublicKeyBase64(),
+		Ip:           "127.0.0.1",
+		Port:         12350,
+		Type:         NHP_RELAY,
+	}
+	receiver.AddPeer(senderPeer)
+
+	senderConn := sentinelConnection(sender, 12350, 12351)
+	mad, err := sender.MsgToPacket(&MsgData{
+		ConnData:      senderConn,
+		PeerPk:        receiverPeer.PublicKey(),
+		HeaderType:    NHP_RLY,
+		TransactionId: 1,
+	})
+	if err != nil {
+		t.Fatalf("MsgToPacket failed: %v", err)
+	}
+
+	// Drive the receiver's initTime past the RLY floor (60 s) but
+	// below the general floor (600 s): the tightened staleness
+	// branch must fire here and return ErrStalePacketReceived.
+	staleInit := mad.LocalInitTime + int64((RLYRecvStalenessFloorSeconds+1)*time.Second)
+	receiverConn := sentinelConnection(receiver, 12351, 12350)
+	packet := &Packet{Content: append([]byte(nil), mad.BasePacket.Content...), HeaderType: NHP_RLY}
+	ppd, err := receiver.createPacketParserData(&PacketData{
+		BasePacket: packet,
+		ConnData:   receiverConn,
+		InitTime:   staleInit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ppd.Destroy()
+	if err := ppd.validatePeer(); err != ErrStalePacketReceived {
+		t.Fatalf("validatePeer error = %v, want ErrStalePacketReceived (RLY floor must reject just past the limit)", err)
+	}
+
+	// And the gate must NOT have touched RecvThreatCount or
+	// BlockSignal — the same property the prior commit pinned for
+	// the general 601-second staleness case.
+	if got := atomicLoadInt32(&receiverConn.RecvThreatCount); got != 0 {
+		t.Fatalf("RLY staleness incremented RecvThreatCount = %d, want 0", got)
+	}
+	select {
+	case <-receiverConn.BlockSignal:
+		t.Fatal("RLY staleness sent BlockSignal; the relay's per-connection block budget must stay clean")
+	default:
+	}
+}

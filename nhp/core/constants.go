@@ -81,4 +81,22 @@ const (
 const (
 	DefaultRecvStalenessFloorSeconds = 600
 	ARTRecvFutureSkewSeconds         = 300
+	// RLYRecvStalenessFloorSeconds is the staleness floor applied
+	// specifically to NHP_RLY envelopes. It is intentionally tighter
+	// than DefaultRecvStalenessFloorSeconds (60 s vs 600 s) so the
+	// relay replay cache can rely on eviction as its primary replay
+	// defense: with this floor, an entry evicted by cache overflow at
+	// LocalInitTime T satisfies
+	//   remoteSendTime = T_admit < T - TTL  ≤  T - RLYRecvStalenessFloorSeconds
+	// (since TTL > RLYRecvStalenessFloorSeconds in art_replay_cache.go),
+	// so the staleness check rejects the corresponding replay at the
+	// moment of eviction. Without the tight bound, the cache's
+	// capacity-eviction window would overlap the staleness acceptance
+	// window and a replay could succeed at the tail of an attacker's
+	// flood. The bound also caps the relay→replay-acceptance window
+	// itself: legitimate traffic with a slightly skewed relay clock
+	// (>60 s behind) is rejected, which is acceptable for NHP_RLY
+	// since the relay's authenticated timestamp is verified end-to-end
+	// on each forward.
+	RLYRecvStalenessFloorSeconds = 60
 )

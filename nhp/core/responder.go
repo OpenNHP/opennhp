@@ -658,6 +658,17 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// NHP_RLY. Adding a new cached type means extending futureSkewCached
 	// here too, otherwise the new cache is left with the staleness-only
 	// check and inherits this exact hole.
+	//
+	// NHP_RLY uses the same ARTRecvFutureSkewSeconds bound as ART for
+	// now: the relay→server timestamp is authenticated end-to-end and
+	// out-of-band — i.e. the relay signs it from the source's
+	// perspective before the request reaches the server — so
+	// legitimate traffic stamped more than RLYRecvStalenessFloorSeconds
+	// ahead is vanishingly rare and the existing bound is enough to
+	// keep the cache from outliving its freshness window. Tightening
+	// here would only matter if the staleness check below is also
+	// tightened to a similar order (which it is, via
+	// RLYRecvStalenessFloorSeconds — see the next branch).
 	if futureSkewCached(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) &&
 		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
 		msgType := HeaderTypeToString(ppd.HeaderType)
@@ -666,6 +677,25 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				msgType, ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
 		}
 		return ErrStalePacketReceived
+	}
+	// Tightened staleness bound for NHP_RLY envelopes. The relay→server
+	// path is exempt from the per-connection monotonic / flood gates
+	// (see shouldCheckRecvAttack / shouldCheckFlood) and the relay replay
+	// cache is the only line of defense against captured-and-replayed
+	// envelopes. Without this tighter bound, an entry evicted by the
+	// cache at the moment of capacity pressure could still pass the
+	// staleness floor below, opening a replay window during sustained
+	// floods — see endpoints/server/art_replay_cache.go for the cache
+	// side of this invariant. As with the existing staleness branch, an
+	// authenticated relay's stale envelope is silently dropped without
+	// touching RecvThreatCount or BlockSignal (the relay is
+	// authenticated, so this is not an unauthenticated vector).
+	if ppd.HeaderType == NHP_RLY &&
+		remoteSendTime < (ppd.LocalInitTime-RLYRecvStalenessFloorSeconds*int64(time.Second)) {
+		log.Critical("received stale %s envelope from %s (limit %d seconds; RLY relative to relay relay-cache TTL)",
+			HeaderTypeToString(ppd.HeaderType), ppd.ConnData.RemoteAddr.String(), RLYRecvStalenessFloorSeconds)
+		err = ErrStalePacketReceived
+		return err
 	}
 	if remoteSendTime < (ppd.LocalInitTime - DefaultRecvStalenessFloorSeconds*int64(time.Second)) {
 		// send remote timestamp is too old than receive local time, drop

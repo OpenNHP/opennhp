@@ -584,29 +584,65 @@ func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
 // suite (or previous tests in the same binary) don't pre-arm it.
 func TestRelayForwardBlockLogRateLimit(t *testing.T) {
 	lastRelayForwardBlockLogNano.Store(0)
+	relayForwardBlockSuppressedCount.Store(0)
 
-	// First call within any one-minute window must be admitted.
-	if !relayForwardBlockLogAllowed(time.Unix(1_000_000, 0).UnixNano()) {
+	// First call within any one-minute window must be admitted. The
+	// drained suppressed count includes this call (the count is
+	// incremented first, then drained on admit), so the returned
+	// count is 1 — the operator-visible "1 refusal since last
+	// beacon" message.
+	admitted, drained := relayForwardBlockLogAllowed(time.Unix(1_000_000, 0).UnixNano())
+	if !admitted {
 		t.Fatal("first call in a fresh window was suppressed")
 	}
-	// Subsequent calls inside the same minute must be suppressed,
-	// no matter how many refusals the attacker produces.
+	if drained != 1 {
+		t.Fatalf("first-call drained count = %d, want 1 (this call is itself part of the count)", drained)
+	}
+
+	// Subsequent calls inside the same minute must be suppressed, no
+	// matter how many refusals the attacker produces. The second
+	// tuple is 0 on suppress — the caller is meant to know nothing
+	// fresh is available to log.
 	for i := 0; i < 1000; i++ {
-		if relayForwardBlockLogAllowed(time.Unix(1_000_030, 0).UnixNano()) {
+		admitted, drained = relayForwardBlockLogAllowed(time.Unix(1_000_030, 0).UnixNano())
+		if admitted {
 			t.Fatalf("call %d inside the rate-limit window was admitted", i)
 		}
+		if drained != 0 {
+			t.Fatalf("call %d returned drained = %d on (false, _), want 0 (no fresh state on suppress)", i, drained)
+		}
 	}
+	if got := relayForwardBlockSuppressedCount.Load(); got != 1000 {
+		t.Fatalf("suppressed count after 1000 calls = %d, want 1000", got)
+	}
+
 	// Once a full minute has elapsed since the last logged event,
-	// the next refusal is allowed through — this is what makes the
-	// Critical useful as a "still happening" beacon rather than a
-	// one-shot startup message.
-	if !relayForwardBlockLogAllowed(time.Unix(1_000_000+61, 0).UnixNano()) {
+	// the next refusal is allowed through and the count drains to
+	// the operator (so the beacon can say "1000 refusals since
+	// last message" — useful for sizing the attack). This is what
+	// makes the Critical useful as a "still happening" beacon
+	// rather than a one-shot startup message.
+	admitted, drained = relayForwardBlockLogAllowed(time.Unix(1_000_000+61, 0).UnixNano())
+	if !admitted {
 		t.Fatal("call after the 60-second gate was suppressed")
 	}
+	// 1000 suppressed + 1 admit = 1001 count-up events; drained
+	// includes this admit so it reads 1001.
+	if drained != 1001 {
+		t.Fatalf("post-window drained count = %d, want 1001", drained)
+	}
+	if got := relayForwardBlockSuppressedCount.Load(); got != 0 {
+		t.Fatalf("suppressed count after drain = %d, want 0", got)
+	}
+
 	// And the suppression resets cleanly: the *next* refusal in
 	// the same window after a beacon is suppressed again, exactly
 	// the property the gate has to deliver.
-	if relayForwardBlockLogAllowed(time.Unix(1_000_000+62, 0).UnixNano()) {
+	admitted, drained = relayForwardBlockLogAllowed(time.Unix(1_000_000+62, 0).UnixNano())
+	if admitted {
 		t.Fatal("call immediately after a beacon was admitted — gate did not re-arm")
+	}
+	if drained != 0 {
+		t.Fatalf("re-armed-suppressed drained = %d, want 0", drained)
 	}
 }

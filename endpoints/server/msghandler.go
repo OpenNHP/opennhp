@@ -51,17 +51,51 @@ const relayConnKeySep = "|"
 // the dominant noise source during an attack.
 var lastRelayForwardBlockLogNano atomic.Int64
 
+// relayForwardBlockSuppressedCount counts the number of refusals the
+// gate has dropped since the last beacon. Drain it (atomic Swap to 0)
+// from the goroutine that wins the timestamp CAS so concurrent callers
+// cannot lose their counts between Load/Add and Store(0). The next
+// beacon reports "N refusals since last message", which an operator
+// can correlate with packets_dropped_total{stage=relay_forward_blocked}
+// to size the attack. A Swap(0) is used (not Load then Store) so that an
+// Add from a CAS loser that lands between the winner's Load and the
+// drain is not silently overwritten.
+var relayForwardBlockSuppressedCount atomic.Int64
+
 // relayForwardBlockLogAllowed is the gate the Hot path consults before
-// emitting the Critical line. Returns true at most once per minute.
-// Follows the same shape as artSkewWarnAllowed in nhp/core/responder so
-// the project's other "once-per-minute-then-stop" warnings share one
-// idiom.
-func relayForwardBlockLogAllowed(nowNano int64) bool {
+// emitting the Critical line. Follows the same shape as
+// artSkewWarnAllowed in nhp/core/responder so the project's other
+// "once-per-minute-then-stop" warnings share one idiom.
+//
+// Returns (admitted, suppressedCount):
+//   - admitted: true exactly when this call wins the timestamp CAS
+//     (one admit per minute). The caller emits the Critical on admit
+//     and stays silent otherwise.
+//   - suppressedCount: the number of refusals dropped since the last
+//     admit, INCLUDING this call's data when admitted (the count is
+//     incremented first and then drained on admit, so the drain's
+//     value is the count of refusals up to and including this admit).
+//     On a non-admit (false, _) the count is incremented but not
+//     drained, and the second tuple value is 0 to signal the caller that
+//     no fresh state to log.
+func relayForwardBlockLogAllowed(nowNano int64) (bool, int64) {
+	// Increment first (the count of refusals since the last beacon
+	// includes this call when admit is granted). On the suppress
+	// path the value stays in the counter; on the admit path the
+	// drain below reads it.
+	relayForwardBlockSuppressedCount.Add(1)
 	last := lastRelayForwardBlockLogNano.Load()
 	if nowNano-last < int64(time.Minute) {
-		return false
+		return false, 0
 	}
-	return lastRelayForwardBlockLogNano.CompareAndSwap(last, nowNano)
+	if !lastRelayForwardBlockLogNano.CompareAndSwap(last, nowNano) {
+		return false, 0
+	}
+	// Win: drain the count so concurrent goroutines that Add'd between
+	// the timestamp-CAS win and the drain are included in the value
+	// we report on this beacon, AND the next minute starts at 0.
+	drained := relayForwardBlockSuppressedCount.Swap(0)
+	return true, drained
 }
 
 // relayAddrFromConnKey extracts the relay's address (the
@@ -1002,9 +1036,9 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		// (the very kind of attacker this block exists to
 		// throttle) cannot drive the log volume.
 		s.metrics.recordDroppedPacket("relay_forward_blocked")
-		if relayForwardBlockLogAllowed(time.Now().UnixNano()) {
-			log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active (further messages within the same minute are suppressed — see packets_dropped_total{stage=relay_forward_blocked})",
-				realAddr, relayAddrStr)
+		if admitted, suppressedCount := relayForwardBlockLogAllowed(time.Now().UnixNano()); admitted {
+			log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active (%d further refusals since the previous beacon — see packets_dropped_total{stage=relay_forward_blocked})",
+				realAddr, relayAddrStr, suppressedCount-1)
 		}
 		return fmt.Errorf("relay forward blocked for %s", realAddr)
 	}

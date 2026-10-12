@@ -677,6 +677,94 @@ func TestRelayReplayWindow_RestartAccepted(t *testing.T) {
 	}
 }
 
+// TestRelayReplayWindow_ReplayInterleavedWithLiveTraffic pins the
+// load-bearing invariant the sliding-window fix relies on: while
+// the relay is sending live envelopes with strictly newer txids
+// and strictly newer sendTimes, a captured envelope from earlier
+// in the same handshake (or from a replayed buffer) is still
+// rejected. The earlier "sendTime > highestSendTime ⇒ clear
+// bitmap" rule cleared the window on every legitimate envelope
+// whose sendTime happened to be newer (the reviewer's trace),
+// and a captured envelope from the same connection would then
+// land at a bitmap slot that was just zeroed.
+//
+// The new rule only resets the bitmap when sendTime is newer AND
+// txid has gone backwards past the window. In a live-traffic
+// stream both txid and sendTime go forward, so neither reset
+// branch ever fires: a captured envelope at any earlier (txid,
+// sendTime) is caught by the bitmap.
+//
+// Trace under the new rule with a live stream {txid=i, sendTime=1000+i}
+// and a captured envelope at (txid=2, sendTime=1002):
+//
+//	anchor  (1, 1001) -> seed
+//	live    (2, 1002) -> slide by 1, bit 0 set
+//	replay  (2, 1002) -> pos=0, bit already set -> Duplicate
+//	live    (3, 1003) -> slide by 1, bit 0 set
+//	replay  (2, 1002) -> sendTime not newer, pos=1, bit 1 set -> Duplicate
+//	live    (4, 1004) -> slide by 1
+//	...
+//	replay  (2, 1002) -> pos=2, bit 2 set -> Duplicate
+//	...
+//
+// Under the OLD rule every live envelope cleared the bitmap, so
+// the first replay after a live envelope would land on a zeroed
+// bit and be accepted.
+func TestRelayReplayWindow_ReplayInterleavedWithLiveTraffic(t *testing.T) {
+	w := newRelayReplayWindow()
+	key := artTestPubkey(8)
+
+	// Anchor the window.
+	if ok, _ := w.MarkSeen(key, 1, 1001); !ok {
+		t.Fatal("anchor rejected")
+	}
+
+	// Walk the live stream forward; each envelope's sendTime is
+	// strictly newer than the previous one, and each txid is
+	// strictly newer. This is the exact pattern the reviewer's
+	// trace used to argue the bitmap was being cleared on every
+	// legitimate packet under the old rule.
+	for i := uint64(2); i <= 20; i++ {
+		if ok, _ := w.MarkSeen(key, i, int64(1000+i)); !ok {
+			t.Fatalf("live envelope txid=%d rejected", i)
+		}
+	}
+
+	// A captured envelope at (2, 1002) is now in the middle of
+	// the window. The bitmap must still remember the live
+	// envelope that was at that slot.
+	if ok, outcome := w.MarkSeen(key, 2, 1002); ok || outcome != replayOutcomeDuplicate {
+		t.Fatalf("interleaved replay (txid=2, sendTime=1002): ok=%v outcome=%v, want false/Duplicate — bitmap was cleared by newer sendTime on a live envelope", ok, outcome)
+	}
+
+	// Walk the stream further and confirm every captured-envelope
+	// replay still gets caught. Each live advance slides the
+	// window by 1, so the captured envelope at slot (2, 1002)
+	// remains inside the window for as long as the anchor is
+	// within relayReplayWindowSize positions of txid 2.
+	for i := uint64(21); i <= 30; i++ {
+		if ok, _ := w.MarkSeen(key, i, int64(1000+i)); !ok {
+			t.Fatalf("live envelope txid=%d rejected", i)
+		}
+		if ok, outcome := w.MarkSeen(key, 2, 1002); ok || outcome != replayOutcomeDuplicate {
+			t.Fatalf("post-advance replay (txid=%d): captured envelope (2, 1002) ok=%v outcome=%v, want false/Duplicate",
+				i, ok, outcome)
+		}
+	}
+
+	// And the original live envelopes themselves (each in turn)
+	// cannot be replayed. This is the original primitive the
+	// window was designed for, but it was masked by the
+	// clear-on-newer-sendTime behavior — re-asserting it under
+	// the new rule.
+	for i := uint64(5); i <= 10; i++ {
+		if ok, outcome := w.MarkSeen(key, i, int64(1000+i)); ok || outcome != replayOutcomeDuplicate {
+			t.Fatalf("live replay (txid=%d, sendTime=%d): ok=%v outcome=%v, want false/Duplicate",
+				i, 1000+i, ok, outcome)
+		}
+	}
+}
+
 // TestRelayReplayWindow_BurstDoesNotBlockLegitimate is the test the
 // reviewer specifically asked for: a burst of capacity + 1 distinct,
 // valid envelopes does not block the next legitimate envelope. The

@@ -127,18 +127,31 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 		return true, replayOutcomeAccepted
 	}
 
-	// Fresh sendTime: only the relay's own static key can produce
-	// an envelope whose signature is valid AND whose sendTime
-	// exceeds what we've seen — the relay's signature covers
-	// RemoteSendTime, so an attacker with a captured envelope
-	// cannot just bump the sendTime forward and re-inject. Reset
-	// the window to this envelope; the captured-envelope
-	// "fill-the-cache" attack this closes depended on sending
-	// many envelopes with FRESH txids into a state-keyed set, and
-	// the only path to fresh txids here is to either sign new
-	// envelopes (relay-only) or replay old txids through the
-	// normal path (which the bitmap then catches).
-	if sendTime > state.highestSendTime {
+	// Restart detection. A relay process that comes back with a
+	// fresh handshake gets a new (signed) RemoteSendTime; its
+	// txid counter is also fresh (Device.NextCounterIndex seeds
+	// from a random number on each new Device). The reset below
+	// is what lets a low-counter envelope from the restarted
+	// relay land in the window — without it, every legitimate
+	// post-restart envelope would be OutsideWindow until the
+	// relay sent W envelopes to push the anchor past it.
+	//
+	// The reset is unforgeable in practice (RemoteSendTime is
+	// inside the signed payload, so only the relay's static key
+	// can produce a higher sendTime), but we still gate it
+	// narrowly: the txid must also have gone backwards past the
+	// window. Without that back-of-window check, a stale
+	// captured envelope whose sendTime happens to exceed the
+	// current anchor would clear the bitmap — the signature
+	// still binds sendTime so a captured envelope cannot itself
+	// bump it, but tying the reset to a txid that is provably
+	// unrecoverable from the bitmap keeps the rule local: we
+	// only ever clear state we have already decided is
+	// unrecoverable, never state we could still catch a
+	// duplicate in.
+	if sendTime > state.highestSendTime &&
+		txid < state.highestTxid &&
+		state.highestTxid-txid >= relayReplayWindowSize {
 		for i := range state.bitmap {
 			state.bitmap[i] = 0
 		}
@@ -148,7 +161,19 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 		return true, replayOutcomeAccepted
 	}
 
-	// sendTime <= highestSendTime. Apply the sliding txid window.
+	// Track the latest signed sendTime. The signature binds
+	// sendTime, so taking max() here is just keeping the anchor
+	// in sync with the latest legitimate envelope; a stale
+	// captured envelope has the old sendTime, which is <= the
+	// current anchor and does not change anything. This branch
+	// never touches the bitmap.
+	if sendTime > state.highestSendTime {
+		state.highestSendTime = sendTime
+	}
+
+	// Apply the sliding txid window. sendTime may have advanced
+	// (above) without affecting the bitmap — every state change
+	// from here on is txid-driven.
 	if txid > state.highestTxid {
 		advance := txid - state.highestTxid
 		if advance >= relayReplayWindowSize {
@@ -212,23 +237,28 @@ func slideBitmapForward(b *[relayReplayBitmapWords]uint64, shift uint64) {
 	sb := shift % 64
 
 	var tmp [relayReplayBitmapWords]uint64
-	for j := uint(0); j < sw; j++ {
-		// tmp[j] = 0; (whole words below the shift clear)
-	}
 	if sb == 0 {
 		// Word-aligned copy. tmp[sw:] = b[:len-sw], tmp[:sw] = 0.
 		for j := sw; j < relayReplayBitmapWords; j++ {
 			tmp[j] = b[j-sw]
 		}
 	} else {
-		// Bit-shift: tmp[j] = (b[j-sw] >> sb) | (b[j-sw-1] << (64-sb)),
-		// with a zero carry for sw==0 (the high-bits come from
-		// below the bitmap's start).
+		// Bit-shift: bit at old linear position p lands at new
+		// linear position p + shift. The shift splits into
+		// 64*sw (whole words) and sb (intra-word), so old word
+		// (j-sw)'s bit t moves to new position 64j + t + sb.
+		//
+		// In the new word j:
+		//   - bits contributed by old word (j-sw) at bit
+		//     positions [sb, 64): b[j-sw] << sb
+		//   - bits contributed by old word (j-sw-1) at bit
+		//     positions [0, sb): b[j-sw-1] >> (64 - sb)
+		// The carry is zero when j == sw (no lower word exists).
 		for j := sw; j < relayReplayBitmapWords; j++ {
-			lo := b[j-sw] >> sb
+			lo := b[j-sw] << sb
 			var hi uint64
 			if j > sw {
-				hi = b[j-sw-1] << (64 - sb)
+				hi = b[j-sw-1] >> (64 - sb)
 			}
 			tmp[j] = lo | hi
 		}

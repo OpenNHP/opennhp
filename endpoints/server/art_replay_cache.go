@@ -57,11 +57,17 @@ type artReplayEntry struct {
 // evictOnFull governs what happens when the cache is at capacity and a fresh
 // key arrives. true (the legacy behavior, used for ART) evicts the oldest
 // live entry to make room, shortening the replay window for every entry
-// below it. false (used for NHP_RLY) refuses the new key instead — at relay
-// RPS a capacity-evicting cache keeps only ~5 minutes of live entries, well
-// under the 600-second acceptance window, so a captured envelope could be
-// re-accepted after eviction and reach a fresh inner connection. Rejecting
-// keeps the cache's contents at their original recency until TTL expiry.
+// below it. false (used for NHP_RLY) attempts safe eviction first: if the
+// oldest entry's sendTime is already past the staleness floor (a replay of
+// it would be rejected by validatePeer as stale, so dropping it costs no
+// protection), evict that one. Only refuse if the oldest entry is still
+// inside the acceptance window — those entries will age past the floor on
+// their own and become safely evictable, so the cache self-recovers without
+// operator action once a flood stops. The previous always-refuse policy
+// kept the cache full until TTL expiry (~16 min after a flood stops); the
+// safe-eviction policy bounds the unavailability window to the staleness
+// floor (~10 min) and lets any stale entries the attacker left behind be
+// reaped before they expire.
 type artReplayCache struct {
 	name               string
 	mu                 sync.Mutex
@@ -110,9 +116,15 @@ func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string,
 //
 // When the cache is at capacity and the key is fresh, behavior depends on
 // evictOnFull: the ART cache evicts the oldest live entry (preserving
-// throughput under burst), while the NHP_RLY cache refuses the new entry so
-// a captured-and-replayed envelope cannot be re-accepted after the live
-// entry it shadowed was evicted under pressure.
+// throughput under burst), while the NHP_RLY cache first attempts safe
+// eviction (drop the oldest entry only if it is past the staleness floor,
+// so a replay of it would already be refused by validatePeer) and only
+// refuses the new entry when no safe eviction is possible. The relay
+// path keeps the cache contents at their original recency until TTL
+// expiry; the safe-eviction refinement bounds unavailability after a flood
+// to the staleness floor (DefaultRecvStalenessFloorSeconds) by letting any
+// stale entries the attacker left behind be reaped as soon as they age
+// past the floor.
 func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64) bool {
 	if c == nil || c.maxEntries <= 0 || c.ttl <= 0 {
 		return false
@@ -161,25 +173,73 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 			}
 			c.removeOldest()
 		} else {
-			// Capacity-full but configured to reject. Refuse
-			// the new key rather than evicting a live entry —
-			// evicting would let a captured envelope be
-			// re-accepted once its shadow left the cache,
-			// reaching a fresh inner connection. The caller
-			// (dedupeRecvRLY) maps both duplicates and
-			// capacity refusals to ErrServerDuplicateTransaction
-			// so the upstream takes the same fail-closed path.
-			c.capacityRejections++
-			if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
-				warnReject = true
-				evictions = c.capacityRejections
-				c.lastWarning = now
+			// NHP_RLY cache. Try safe eviction first: if the
+			// oldest entry's sendTime is already past the
+			// staleness floor, a replay of it would be
+			// rejected as stale by validatePeer, so dropping
+			// it costs no protection. This bounds the
+			// unavailability window after a flood to the
+			// floor (~10 min) instead of the TTL (~16 min),
+			// because stale entries get reaped before their
+			// TTL expires.
+			//
+			// Only when the cache is full of entries still
+			// inside the acceptance window do we refuse —
+			// those entries are still replayable and must
+			// not be evicted. The caller (dedupeRecvRLY)
+			// maps both duplicates and capacity refusals to
+			// ErrServerDuplicateTransaction so the upstream
+			// takes the same fail-closed path.
+			if !c.evictSafelyEvictableOldest(now) {
+				c.capacityRejections++
+				if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
+					warnReject = true
+					evictions = c.capacityRejections
+					c.lastWarning = now
+				}
+				return false
 			}
-			return false
 		}
 	}
 	c.order.PushBack(artReplayEntry{key: key, expiresAt: now.Add(c.ttl)})
 	c.entries[key] = struct{}{}
+	return true
+}
+
+// evictSafelyEvictableOldest drops the oldest-by-insertion entry if a
+// replay of it would already be rejected by validatePeer's staleness
+// floor. Returns true if an entry was evicted.
+//
+// Safe eviction is the NHP_RLY cache's policy at capacity (see
+// evictOnFull field docstring): an entry is "safely evictable" when
+// its sendTime is at least DefaultRecvStalenessFloorSeconds behind
+// the current local time — i.e. validatePeer would refuse a replay
+// of it as ErrStalePacketReceived
+// (remoteSendTime < LocalInitTime - DefaultRecvStalenessFloorSeconds),
+// so dropping the entry costs no protection. sendTime is part of
+// the key, so this is O(1): peek at the head of the order list.
+//
+// Forward-stamped entries (sendTime up to ARTRecvFutureSkewSeconds
+// ahead of local time at insertion) shorten the safe-eviction window
+// by that skew — but the staleness floor is the upper bound on
+// replayability regardless of skew, so sendTime + floor is the right
+// threshold for either skew direction.
+func (c *artReplayCache) evictSafelyEvictableOldest(now time.Time) bool {
+	elem := c.order.Front()
+	if elem == nil {
+		return false
+	}
+	entry := elem.Value.(artReplayEntry)
+	// Replay is rejected when sendTime < now - floor, so the
+	// entry is safely evictable when sendTime + floor < now.
+	// Using strict "<" so an entry that is exactly at the floor
+	// (sendTime + floor == now) stays in the cache: validatePeer
+	// would still accept a replay of it.
+	if entry.key.sendTime+core.DefaultRecvStalenessFloorSeconds >= now.Unix() {
+		return false
+	}
+	delete(c.entries, entry.key)
+	c.order.Remove(elem)
 	return true
 }
 

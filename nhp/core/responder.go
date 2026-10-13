@@ -430,6 +430,14 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 // predicate here too — otherwise the new cache is left with the
 // staleness-only check and a forward-stamped replay can outlive its cache
 // entry.
+//
+// Note on NHP_RLY: NHP_RLY envelopes are stamped per-packet (the
+// initiator's createMsgAssemblerData sets mad.LocalInitTime = time.Now()
+// on every outgoing packet), not once per handshake. The cache key
+// includes the per-packet sendTime, so a relay restart with a fresh
+// counter does not collide with old entries on (pubkey, txid, sendTime)
+// alone — the cache ages stale entries out by TTL rather than by the
+// relay's wall clock moving forward.
 func futureSkewCached(deviceType int, peerType int, msgType int) bool {
 	// ART (server ← AC) and RLY (server ← relay). Defensive on
 	// peerType even though the cache lookup itself is the
@@ -643,11 +651,12 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	}
 	// Bound clock skew for every message type whose replay is rejected
 	// from a post-validation endpoint-owned replay cache (dedupeRecvART /
-	// dedupeRecvRLY). The TTL of that cache is
-	//   DefaultRecvStalenessFloorSeconds + safety margin
-	// and without this bound an envelope stamped ahead of local time by
-	// more than ARTRecvFutureSkewSeconds can outlive its own cache entry:
-	// the staleness floor only rejects packets *behind* local time, so a
+	// dedupeRecvRLY). The TTL of those caches is
+	//   DefaultRecvStalenessFloorSeconds + ARTRecvFutureSkewSeconds + safety margin
+	// (see endpoints/server/art_replay_cache.go); without this skew
+	// bound an envelope stamped ahead of local time by more than
+	// ARTRecvFutureSkewSeconds can outlive its own cache entry: the
+	// staleness floor only rejects packets *behind* local time, so a
 	// forward-stamped replay sent after the cache entry expires lands on
 	// a fresh conn, misses the cache, and goes through.
 	//
@@ -658,6 +667,17 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// NHP_RLY. Adding a new cached type means extending futureSkewCached
 	// here too, otherwise the new cache is left with the staleness-only
 	// check and inherits this exact hole.
+	//
+	// Deployment note (NHP_RLY): extending the skew check to RLY is a
+	// wire-level behavior change — a relay whose clock runs more than
+	// ARTRecvFutureSkewSeconds ahead of the server will now have every
+	// NHP_RLY envelope dropped with ErrStalePacketReceived. Operators
+	// must keep relay clocks within that bound (NTP sync to a server-
+	// visible source is the typical remedy). The TTL cache itself ages
+	// stale entries out and gives the cache a self-recovery path that
+	// does not depend on the relay's wall clock moving forward, so the
+	// only envelope lost to a slow/unsynced relay is the one that
+	// arrived stamped too far ahead.
 	if futureSkewCached(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) &&
 		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
 		msgType := HeaderTypeToString(ppd.HeaderType)

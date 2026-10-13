@@ -866,6 +866,73 @@ func TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor(t *testing.T
 	}
 }
 
+// TestRelayReplayWindow_PreRestartCaptureRejectedWithinSlackGap pins
+// the user-reported reproduction: a sub-second gap between the
+// restart-reset envelope's sendTime and the pre-restart capture's
+// sendTime. The previous regression test
+// (TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor)
+// used a 1-minute gap specifically because the 1 s slack on the
+// top-level epoch floor was letting the replay through; commit
+// 7533c92e widened the test gap rather than fix the bug. This test
+// puts the gap back at 500 ms (well inside the slack) and confirms
+// the strict check on the forward-advance branch now catches the
+// replay before it can clear the bitmap.
+//
+// Sequence under test (the user's exact reproduction):
+//
+//	pre-restart capture  (1e6,   S)        — anchor before the restart
+//	[relay process restarts; new counter reseeds to 100, sendTime = S+500ms]
+//	legit post-restart   (100,   S+500ms)  — restart reset, accept, advance epoch
+//	replay pre-restart   (1e6,   S)        — REJECT (S < epoch, advance branch's strict check)
+//
+// Under the old code the 1 s slack on the top-level floor let
+// `S >= S+500ms - 1s` through, and the forward-advance branch then
+// cleared the bitmap at the captured txid — REPLAY ACCEPTED. With
+// the strict check, the replay is rejected before any bitmap
+// mutation. Subsequent legitimate envelopes with sendTime > S+500ms
+// are unaffected, and a second replay of the same capture stays
+// rejected (the floor has not moved back to S).
+func TestRelayReplayWindow_PreRestartCaptureRejectedWithinSlackGap(t *testing.T) {
+	w := newRelayReplayWindow()
+	key := artTestPubkey(13)
+
+	// Pre-restart capture at sendTime S.
+	const S = int64(2_000_000_000)
+	if ok, _ := w.MarkSeen(key, 1_000_000, S); !ok {
+		t.Fatal("pre-restart capture rejected as anchor")
+	}
+
+	// Relay process restarts; new envelope at S + 500ms (well
+	// inside the 1 s epoch slack) and a low reseeded txid of 100.
+	const S2 = S + int64(500*time.Millisecond)
+	if ok, outcome := w.MarkSeen(key, 100, S2); !ok || outcome != replayOutcomeAccepted {
+		t.Fatalf("restart reset: ok=%v outcome=%v, want true/Accepted", ok, outcome)
+	}
+
+	// Replay the pre-restart capture. Under the old code, S >= S2-1s
+	// so the top-level floor passed and the forward-advance branch
+	// cleared the bitmap — REPLAY ACCEPTED. With the strict check
+	// on the advance branch, S < S2 so the replay is rejected
+	// before any bitmap mutation.
+	if ok, outcome := w.MarkSeen(key, 1_000_000, S); ok || outcome != replayOutcomeOutsideWindow {
+		t.Fatalf("replay after restart: ok=%v outcome=%v, want false/OutsideWindow — 1 s slack on the advance branch re-opened the replay gap", ok, outcome)
+	}
+
+	// Subsequent legitimate envelopes from the new relay process
+	// are unaffected: they have sendTime > S2 and clear the
+	// strict check.
+	if ok, _ := w.MarkSeen(key, 101, S2+int64(time.Second)); !ok {
+		t.Fatal("legitimate post-replay envelope rejected")
+	}
+
+	// A second replay of the same pre-restart capture is still
+	// rejected (the strict check is idempotent; the floor has not
+	// moved back to S).
+	if ok, outcome := w.MarkSeen(key, 1_000_000, S); ok || outcome != replayOutcomeOutsideWindow {
+		t.Fatalf("second replay: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
+	}
+}
+
 // TestRelayReplayWindow_ClockStepBackRecoversViaIdleExpiration pins
 // the recovery path the review identified as the load-bearing
 // missing invariant: a relay whose wall clock steps back into the

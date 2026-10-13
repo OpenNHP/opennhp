@@ -39,6 +39,13 @@ const relayReplayBitmapWords = relayReplayWindowSize / 64 // 128
 // enqueue jitter is microseconds — but a tight bound would turn
 // legitimate load spikes into false rejections, and the attack
 // surface is bounded by the signature on sendTime anyway.
+//
+// IMPORTANT: this slack is only applied by the top-level epoch
+// floor that gates the in-window path. The bitmap-mutating branches
+// (forward-advance, restart-reset) use a STRICT < check against
+// state.epochSendTime — no slack — so a pre-restart capture whose
+// sendTime is anywhere strictly below the current epoch cannot
+// reach the bitmap-clearing code. See MarkSeen for the branch tree.
 const relayReplayEpochSlackNanos = int64(time.Second)
 
 // relayReplayIdleTimeout bounds how long a relay's per-relay
@@ -88,6 +95,19 @@ const relayReplayIdleTimeout = (core.DefaultRecvStalenessFloorSeconds + core.ART
 // capture — clearing the bitmap and accepting the replay. The
 // epoch floor rejects those envelopes before they reach the
 // advance branch.
+//
+// The epoch anchor is the load-bearing floor for the bitmap-
+// mutating branches (forward-advance, restart-reset), which use a
+// STRICT `sendTime < epochSendTime` check. The top-level floor
+// above the in-window path uses the same epoch but with the
+// per-packet jitter slack (relayReplayEpochSlackNanos) — its job
+// is to keep the in-window case tolerant of UDP reordering, not
+// to gate the bitmap-mutating branches. Without the strict check
+// on the advance/reset branches, a 1 s window of opportunity
+// remains: a pre-restart capture at sendTime S can pass the slack-
+// bounded top-level floor when a restart envelope at sendTime
+// S+Δ (Δ < 1 s) advances the epoch, and then clear the bitmap
+// through the advance branch.
 //
 // why this invariant is load-bearing:
 //   - the Window check (highestTxid - txid < W) is what bounds how
@@ -239,20 +259,26 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 		return true, replayOutcomeAccepted
 	}
 
-	// Epoch floor. The relay's counter is reseeded at random per
-	// process, so a pre-restart capture can carry a txid that
-	// lands above the new epoch's anchor and would otherwise
-	// take the forward-advance branch on the next line below
-	// (advancing the bitmap past the new epoch and accepting the
-	// replay). Reject any envelope whose sendTime is below the
-	// current epoch's anchor (modulo the per-packet jitter slack
-	// documented on relayReplayEpochSlackNanos) before either the
-	// advance or the restart-reset branch can run. The signature
-	// on sendTime means an attacker cannot push a captured
-	// envelope above the floor by re-signing it, and they cannot
-	// forge a fresh sendTime on a different capture without the
-	// relay's static key. This is the invariant that keeps the
-	// txid-driven branches safe across a restart.
+	// Epoch floor (top-level). The relay's counter is reseeded
+	// at random per process, so a pre-restart capture can carry
+	// a txid that lands above the new epoch's anchor and would
+	// otherwise take the forward-advance branch below (advancing
+	// the bitmap past the new epoch and accepting the replay).
+	//
+	// This top-level floor covers the in-window path only. The
+	// 1 s slack (relayReplayEpochSlackNanos) is for per-packet
+	// UDP reordering: a relay can have two enqueued envelopes at
+	// almost-but-not-quite the same instant, and an attacker
+	// could try to time a replay to land in the gap. The slack
+	// does NOT belong on the bitmap-mutating branches below —
+	// a pre-restart capture at sendTime S can pass this floor
+	// when a restart envelope at sendTime S+Δ (Δ < 1 s) advances
+	// the epoch, so the forward-advance and restart-reset
+	// branches run their own STRICT check (no slack) below. The
+	// signature on sendTime means an attacker cannot push a
+	// captured envelope above the floor by re-signing it, and
+	// they cannot forge a fresh sendTime on a different capture
+	// without the relay's static key.
 	if sendTime < state.epochSendTime-relayReplayEpochSlackNanos {
 		return false, replayOutcomeOutsideWindow
 	}
@@ -283,13 +309,32 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 	// state we have already decided is unrecoverable, never
 	// state we could still catch a duplicate in.
 	//
+	// STRICT epoch check. The header above (`sendTime > state.highestSendTime`)
+	// already prevents a pre-restart capture (whose sendTime is <= the
+	// original first-envelope sendTime = epoch) from entering this branch
+	// when no other envelopes have advanced `highestSendTime` past `epoch`.
+	// But `highestSendTime` IS moved forward by every forward-advance
+	// envelope, while `epoch` is NOT. So after K post-restart envelopes,
+	// `highestSendTime = S_restart + K·Δ` while `epoch = S_restart`. A
+	// subsequent legitimate restart envelope can still pass the
+	// `sendTime > highestSendTime` gate (because `S_restart2 > S_restart + K·Δ`),
+	// and this strict check makes the invariant "this envelope is at
+	// least as new as the first one we ever saw from this relay"
+	// explicit and locally enforced. No slack here: a pre-restart
+	// capture that is strictly below the current epoch must not be
+	// allowed to clear the bitmap, regardless of how close it is to
+	// the anchor.
+	//
 	// The reset also advances epochSendTime to the new envelope's
 	// sendTime, so pre-restart captures can no longer reach the
 	// bitmap-advance path through any later envelope — the
-	// epoch floor above now rejects them.
+	// strict epoch check now rejects them at the top of this branch.
 	if sendTime > state.highestSendTime &&
 		txid < state.highestTxid &&
 		state.highestTxid-txid >= relayReplayWindowSize {
+		if sendTime < state.epochSendTime {
+			return false, replayOutcomeOutsideWindow
+		}
 		for i := range state.bitmap {
 			state.bitmap[i] = 0
 		}
@@ -318,6 +363,22 @@ func (w *relayReplayWindow) MarkSeen(pubkey []byte, txid uint64, sendTime int64)
 	// (above) without affecting the bitmap — every state change
 	// from here on is txid-driven.
 	if txid > state.highestTxid {
+		// STRICT epoch check. A pre-restart capture whose txid
+		// happens to advance the new epoch's anchor (the relay's
+		// counter is reseeded at random, so ~half of all restarts
+		// land the new counter below the old highestTxid while a
+		// captured pre-restart envelope has a HIGHER txid) must
+		// not be allowed to clear the bitmap. The top-level epoch
+		// floor above has a 1 s slack for in-window reordering; a
+		// restart envelope at sendTime S+Δ (Δ < 1 s) advances the
+		// epoch past the pre-restart capture at sendTime S, so the
+		// top-level floor accepts the replay — and without this
+		// strict check the advance branch would clear the bitmap.
+		// No slack here: a pre-restart capture that is strictly
+		// below the current epoch must not advance the window.
+		if sendTime < state.epochSendTime {
+			return false, replayOutcomeOutsideWindow
+		}
 		advance := txid - state.highestTxid
 		if advance >= relayReplayWindowSize {
 			// Whole window slides out — the new txid is so far

@@ -808,10 +808,11 @@ func TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor(t *testing.T
 	// Pre-restart: anchor the window at a high txid with sendTime
 	// S1, then advance one more tick so highestTxid is even
 	// further from any future reseed.
-	if ok, _ := w.MarkSeen(key, 1_000_000, 5_000_000_000); !ok {
+	const S1 = int64(5_000_000_000)
+	if ok, _ := w.MarkSeen(key, 1_000_000, S1); !ok {
 		t.Fatal("pre-restart anchor rejected")
 	}
-	if ok, _ := w.MarkSeen(key, 1_000_000-1, 5_000_000_000); !ok {
+	if ok, _ := w.MarkSeen(key, 1_000_000-1, S1); !ok {
 		t.Fatal("pre-restart advance rejected")
 	}
 
@@ -819,7 +820,7 @@ func TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor(t *testing.T
 	// sendTime S2; the reseeded counter happens to start at 100,
 	// which is well below the old highestTxid. This is the
 	// restart-reset path: sendTime newer, txid back past W, accept.
-	const S2 = 6_000_000_000
+	const S2 = S1 + int64(time.Minute)
 	if ok, _ := w.MarkSeen(key, 100, S2); !ok {
 		t.Fatal("post-restart reset envelope rejected")
 	}
@@ -828,34 +829,27 @@ func TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor(t *testing.T
 	// epoch floor) this would have taken the forward-advance
 	// branch: txid=1e6 is far above highestTxid=100, advance >=
 	// W, bitmap cleared, reseed at 1e6, ACCEPTED. Under the new
-	// rule the epoch floor rejects it first: S1 (5e9) is below
-	// the new epoch's anchor (S2 = 6e9) by more than the 1s slack.
-	if ok, outcome := w.MarkSeen(key, 1_000_000, 5_000_000_000); ok || outcome != replayOutcomeOutsideWindow {
+	// rule the epoch floor rejects it first: S1 is below the new
+	// epoch's anchor (S2) by a full minute, well past the 1s slack.
+	if ok, outcome := w.MarkSeen(key, 1_000_000, S1); ok || outcome != replayOutcomeOutsideWindow {
 		t.Fatalf("pre-restart capture after restart: ok=%v outcome=%v, want false/OutsideWindow — epoch floor failed to reject the replay", ok, outcome)
 	}
 
 	// Same check with a different pre-restart capture (the
 	// 1_000_000-1 envelope from before the restart). Same
 	// expected outcome.
-	if ok, outcome := w.MarkSeen(key, 1_000_000-1, 5_000_000_000); ok || outcome != replayOutcomeOutsideWindow {
+	if ok, outcome := w.MarkSeen(key, 1_000_000-1, S1); ok || outcome != replayOutcomeOutsideWindow {
 		t.Fatalf("second pre-restart capture after restart: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
 	}
 
-	// Continue the legitimate post-restart stream. This envelope
-	// is also a restart reset relative to the (now-advanced)
-	// anchor: S3 > S2, txid=101 < highestTxid=100 is false (101 >
-	// 100) — wait, that's not the back-of-window case. Let me
-	// adjust: S3 is fresh, but highestTxid advanced to 100 and
-	// 101 is just above it, so this is a normal advance. The
-	// epoch still moves because... actually it doesn't move on a
-	// normal advance (only on restart-reset). epochSendTime
-	// stays at S2. Let me retest pre-restart replays: they are
-	// still below epoch S2, so still rejected.
-	const S3 = 7_000_000_000
+	// Continue the legitimate post-restart stream. S3 is one
+	// minute past S2 — also a valid restart-reset (S3 > S2, txid
+	// goes back past W). epochSendTime moves to S3.
+	const S3 = S2 + int64(time.Minute)
 	if ok, _ := w.MarkSeen(key, 101, S3); !ok {
 		t.Fatal("legitimate post-restart advance rejected")
 	}
-	if ok, outcome := w.MarkSeen(key, 1_000_000, 5_000_000_000); ok || outcome != replayOutcomeOutsideWindow {
+	if ok, outcome := w.MarkSeen(key, 1_000_000, S1); ok || outcome != replayOutcomeOutsideWindow {
 		t.Fatalf("pre-restart capture after advance: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
 	}
 
@@ -865,8 +859,8 @@ func TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor(t *testing.T
 	// current epoch anchor; replaying (100, S2) lands at
 	// pos=highestTxid-txid=101-100=1 with bit 1 set (from the
 	// advance above), so this is Duplicate, also fine.
-	if ok, outcome := w.MarkSeen(key, 100, S2); !ok {
-		t.Fatalf("post-restart replay (100, S2): ok=%v outcome=%v, want false", ok, outcome)
+	if ok, outcome := w.MarkSeen(key, 100, S2); ok {
+		t.Fatalf("post-restart replay (100, S2): ok=%v outcome=%v, want false (replay should be caught)", ok, outcome)
 	} else if outcome != replayOutcomeDuplicate {
 		t.Fatalf("post-restart replay (100, S2): outcome=%v, want Duplicate", outcome)
 	}
@@ -903,7 +897,7 @@ func TestRelayReplayWindow_ClockStepBackRecoversViaIdleExpiration(t *testing.T) 
 	// (no idle expiration), the only way to recover would be
 	// a server restart. Confirm the recovery is gated on idle.
 	clock = clock.Add(relayReplayIdleTimeout - time.Second) // not yet idle
-	if ok, _ := w.MarkSeen(key, 50_001, pastEpochSendTime-2*int64(time.Second)); ok {
+	if ok, _ := w.MarkSeen(key, 50_001, pastEpochSendTime-2*int64(time.Minute)); ok {
 		t.Fatal("envelope with sendTime below epoch accepted before idle expiration")
 	}
 
@@ -912,16 +906,20 @@ func TestRelayReplayWindow_ClockStepBackRecoversViaIdleExpiration(t *testing.T) 
 	clock = clock.Add(2 * time.Second)
 
 	// Next legitimate envelope should be accepted as a brand-new
-	// anchor, even though its sendTime is far below the old
-	// epoch. The idle-expiration branch deletes the entry before
-	// the epoch-floor check runs, so the floor never sees the old
-	// anchor.
-	if ok, outcome := w.MarkSeen(key, 1, pastEpochSendTime-3*int64(time.Second)); !ok || outcome != replayOutcomeAccepted {
+	// anchor. The new envelope's sendTime is one minute past
+	// the pre-step-back epoch — so it is ABOVE the old anchor.
+	// The idle-expiration branch deletes the entry before the
+	// epoch-floor check runs, so the new window starts fresh
+	// at (1, futureEpochSendTime).
+	const futureEpochSendTime = pastEpochSendTime + int64(time.Minute)
+	if ok, outcome := w.MarkSeen(key, 1, futureEpochSendTime); !ok || outcome != replayOutcomeAccepted {
 		t.Fatalf("clock-step-back recovery: ok=%v outcome=%v, want true/Accepted — idle expiration did not clear the epoch", ok, outcome)
 	}
 
-	// The old pre-step-back captures are still rejected (their
-	// sendTime is below the new epoch).
+	// The pre-step-back captures are now rejected by the new
+	// window's epoch floor: their sendTime (1s after epoch) is
+	// far below the new epoch (1s+1min) - slack(1s), so the
+	// floor rejects them.
 	if ok, outcome := w.MarkSeen(key, 50_000, pastEpochSendTime); ok || outcome != replayOutcomeOutsideWindow {
 		t.Fatalf("pre-step-back capture after recovery: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
 	}

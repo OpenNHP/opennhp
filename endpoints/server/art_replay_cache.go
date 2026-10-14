@@ -11,8 +11,23 @@ import (
 )
 
 const (
+	// artReplayCacheSize is sized for the AC↔server ART channel —
+	// answer-result traffic is a few entries per agent access, so even
+	// a 10k-RPS server stays well under the 100k default.
 	artReplayCacheSize = 100_000
-	artReplayCacheTTL  = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
+	// artReplayCacheTTL pairs with validatePeer's future-skew gate:
+	// entries must outlive every envelope the staleness floor accepts,
+	// plus the future-skew bound (so a forward-stamped replay doesn't
+	// outlive its cache entry), plus a small safety margin. The NHP_RLY
+	// (relay) path no longer shares this cache — it uses a per-relay
+	// sliding window (see relay_replay_window.go) because the
+	// timestamp-keyed set was forced to evict live entries under
+	// sustained relay throughput, and a strict noEvict variant
+	// traded that for a DoS surface. Keeping the two caches' TTLs
+	// separate-by-constant in this file even when they happen to
+	// match keeps the ART cache readable without dragging relay
+	// concerns into it.
+	artReplayCacheTTL = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
 )
 
 // artReplayKey identifies one authenticated ART packet. The sender timestamp
@@ -30,9 +45,17 @@ type artReplayEntry struct {
 	expiresAt time.Time
 }
 
-// artReplayCache is a bounded, concurrency-safe TTL set. Entries are appended
-// in expiry order, so expiration and capacity eviction are O(1).
+// artReplayCache is a bounded, concurrency-safe TTL set for the
+// ART (AC→server answer-result) replay-protection path. Entries are
+// appended in expiry order, so expiration and capacity eviction are
+// O(1). On capacity pressure the cache evicts the oldest entry; the
+// ART traffic profile (a few entries per agent access) keeps live
+// eviction rare, so the window-shortening effect is absorbed by the
+// staleness check. The NHP_RLY path uses a different mechanism
+// (relay_replay_window.go) that does not have a global capacity to
+// fill and does not need eviction at all.
 type artReplayCache struct {
+	name              string
 	mu                sync.Mutex
 	capacityEvictions uint64
 	lastWarning       time.Time
@@ -44,11 +67,12 @@ type artReplayCache struct {
 }
 
 func newARTReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, time.Now)
+	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", time.Now)
 }
 
-func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, now func() time.Time) *artReplayCache {
+func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, now func() time.Time) *artReplayCache {
 	return &artReplayCache{
+		name:       name,
 		entries:    make(map[artReplayKey]struct{}),
 		order:      list.New(),
 		maxEntries: maxEntries,
@@ -78,9 +102,19 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	var evictions uint64
 	c.mu.Lock()
 	defer func() {
+		// Capture the eviction count under the lock; another
+		// goroutine can be running capacityEvictions++ while this
+		// closure formats the warning, so reading the field after
+		// Unlock would race.
+		evictions = c.capacityEvictions
 		c.mu.Unlock()
+		// "ART replay cache capacity exceeded" — the warning names the
+		// subsystem so an operator reading it knows where to look. There
+		// is no NHP_RLY variant of this log; the relay path uses a
+		// different mechanism entirely and lives in
+		// relay_replay_window.go.
 		if warn {
-			log.Warning("ART replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.maxEntries, evictions)
+			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, evictions)
 		}
 	}()
 
@@ -93,7 +127,6 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		c.capacityEvictions++
 		if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
 			warn = true
-			evictions = c.capacityEvictions
 			c.lastWarning = now
 		}
 		c.removeOldest()

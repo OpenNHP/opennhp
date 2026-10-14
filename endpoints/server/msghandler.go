@@ -23,6 +23,19 @@ import (
 var (
 	errReadConfigFailed = errors.New("ztdo config read failed")
 	errSaveConfigFailed = errors.New("ztdo config save failed")
+
+	// lastRelayForwardBlockLog rate-limits the per-packet Critical
+	// emitted by HandleRelayForward when the (relay, real-client)
+	// pair is on the relay-forward block list. The first time that
+	// path fires it is genuinely Critical — an on-path attacker is
+	// replaying captures from a real client already on the block list
+	// — but a sustained flood from the same client would otherwise
+	// emit one Critical line per refused packet, dominating the log
+	// volume an operator relies on to spot other failures. The
+	// dropped-packet counter (packetsDropped{"relay_forward_blocked"})
+	// is preserved so the actual rate is still observable via
+	// metrics; the throttle applies only to the log line.
+	lastRelayForwardBlockLog atomic.Int64
 )
 
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
@@ -65,6 +78,34 @@ func relayAddrFromConnKey(mapKey string) string {
 		return ""
 	}
 	return rest[:idx]
+}
+
+// isValidRelayConnKey reports whether mapKey is a fully-formed
+// relay-forward key of the form "relay|<relayAddr>|<realClientAddr>"
+// — both segments non-empty. The shape is what HandleRelayForward
+// constructs and what relayAddrFromConnKey parses, so a stricter
+// check at the block-map producer (AddRelayForwardBlock) keeps
+// arbitrary caller strings from sneaking into the map and either
+// silently shadowing a legitimate entry or pinning an entry that
+// can never be re-derived by HandleRelayForward's matching lookup.
+func isValidRelayConnKey(mapKey string) bool {
+	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
+		return false
+	}
+	rest := mapKey[len(relayConnKeyPrefix):]
+	// Need exactly one separator between two non-empty segments.
+	idx := strings.IndexByte(rest, relayConnKeySep[0])
+	if idx <= 0 || idx == len(rest)-1 {
+		return false
+	}
+	// No second separator — a key like "relay|a|b|c" would parse
+	// the relay segment as "a" and the client segment as "b|c"
+	// via IndexByte's first match, but that's a key shape nothing
+	// in the system constructs; refuse it.
+	if strings.IndexByte(rest[idx+1:], relayConnKeySep[0]) >= 0 {
+		return false
+	}
+	return true
 }
 
 // incRelayConnCount and decRelayConnCount maintain a per-relay counter
@@ -923,6 +964,42 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
 		relayAddrStr, realAddr, len(innerBytes))
 
+	// Per-(relay, real-client) block check. connectionRoutine's
+	// relay-aware BlockSignal branch (the one that drops the
+	// relay's UDP address from AddBlockAddr's target to honor
+	// GHSA-674q-j8fh-972c) records the penalty here on the
+	// composite mapKey so subsequent forwards from the same real
+	// client hit this gate and are dropped silently — same
+	// penalty the direct-UDP path has, scoped to "this real
+	// client behind this relay". Without this hook a misbehaving
+	// real client would land on a fresh per-client conn every
+	// time it sent, giving it ~one accepted replay/flood per
+	// three. Raked before conn lookup and the rknLimiter gate so
+	// a blocked client costs the server nothing beyond the map
+	// lookup.
+	connKeyEarly := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + realAddr.String()
+	if s.IsRelayForwardBlocked(connKeyEarly) {
+		// Use the precheck drop stage so an operator looking at
+		// the per-stage "packets_dropped_total" series sees the
+		// drop where it actually happens (relay-forward gate,
+		// not the per-conn inner path it never reaches).
+		s.metrics.recordDroppedPacket("relay_forward_blocked")
+		// Rate-limit the Critical to once per minute. The dropped-
+		// packet counter above still records every refused packet,
+		// so the rate is observable via metrics; the throttle
+		// stops a controlled flood (a client CAN fire one NHP_RLY
+		// per round-trip until the relay's anti-replay blocks it,
+		// but cannot sustain >120/min at the relay→server link)
+		// from dominating log volume and masking other failures.
+		now := time.Now().UnixNano()
+		last := lastRelayForwardBlockLog.Load()
+		if now-last >= int64(time.Minute) && lastRelayForwardBlockLog.CompareAndSwap(last, now) {
+			log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active",
+				realAddr, relayAddrStr)
+		}
+		return fmt.Errorf("relay forward blocked for %s", realAddr)
+	}
+
 	// Allocate a pool packet for the inner bytes.
 	innerPkt := s.device.AllocatePoolPacket()
 	if len(innerBytes) > len(innerPkt.Buf) {
@@ -973,7 +1050,7 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	// as "[2001:db8::1]:80", so a ':'-delimited key could not be reliably
 	// split from the right. See relayConnKeySep for the full reasoning.
 	relayAddr := ppd.ConnData.RemoteAddr
-	connKey := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + realAddr.String()
+	connKey := connKeyEarly
 	recvTime := time.Now().UnixNano()
 
 	// Three steps run under a single map-mutex critical section so that

@@ -83,7 +83,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			"Source addresses blocked after exceeding the threat threshold.").With(),
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
 			"Inbound packets discarded before becoming a decrypted message, by stage "+
-				"(replay, too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
+				"(replay, too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full, stale).", "stage"),
 		handlerDropped: reg.NewCounter("nhp_server_handler_dropped_total",
 			"Decrypted messages dropped because the handler goroutine budget "+
 				"(MaxConcurrentHandlers) was exhausted, by message type. Distinct "+
@@ -101,7 +101,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 	sm.acOperations.With("error")
 	for _, stage := range []string{
 		"too_short", "blocked", "precheck", "rate_limited", "conn_limit", // recvPacketRoutine, pre-decryption
-		"replay", "parse", "validate", "decrypt", "queue_full", // packetToMsgRoutine, via OnPacketDropped
+		"replay", "parse", "validate", "decrypt", "queue_full", "stale", // packetToMsgRoutine, via OnPacketDropped
 	} {
 		sm.packetsDropped.With(stage)
 	}

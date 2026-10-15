@@ -1307,3 +1307,47 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+func TestServerActionNameSplitTcpScans(t *testing.T) {
+	cases := map[uint8][2]string{
+		ActDropTcpSyn:     {"DROP", "TCP_SYN_SCAN"},
+		ActDropTcpStealth: {"DROP", "TCP_STEALTH_SCAN"},
+		ActDropTcpOther:   {"DROP", "TCP_OTHER"},
+	}
+	for act, want := range cases {
+		v, r := serverActionName(act)
+		if v != want[0] || r != want[1] {
+			t.Errorf("serverActionName(%d) = %s/%s, want %s/%s", act, v, r, want[0], want[1])
+		}
+	}
+	if int(ActDropTcpStealth) >= serverEventActions {
+		t.Errorf("action %d is outside the counter array of %d", ActDropTcpStealth, serverEventActions)
+	}
+}
+
+func TestTopN(t *testing.T) {
+	lessU := func(a, b uint32) bool { return a < b }
+
+	if got := topN(map[uint32]uint64{}, 5, lessU); len(got) != 0 {
+		t.Errorf("empty input: got %v", got)
+	}
+
+	m := map[uint32]uint64{1: 10, 2: 30, 3: 20, 4: 30}
+	got := topN(m, 3, lessU)
+	want := []scanEntry[uint32]{{2, 30}, {4, 30}, {3, 20}}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("entry %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+
+	if got := topN(m, 100, lessU); len(got) != len(m) {
+		t.Errorf("n larger than set: got %d entries, want %d", len(got), len(m))
+	}
+	if got := topN(m, 0, lessU); len(got) != 0 {
+		t.Errorf("n=0: got %v", got)
+	}
+}

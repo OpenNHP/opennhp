@@ -52,7 +52,13 @@ resource "aws_instance" "server" {
     # removing this - and be ready to re-associate the EIP, re-deploy, and
     # re-check that the XDP whitelist admits the new host's SSH source before
     # the filter attaches.
-    ignore_changes = [user_data]
+    # ami is ignored too: data.aws_ami is most_recent, so without this every new
+    # al2023 release plans a ForceNew replace of this host. Changing the AMI is
+    # an explicit act: `terraform apply -replace=aws_instance.<name>`, one host
+    # at a time. Replace the relay first only after pinning var.relay_private_ip
+    # (or confirming the server's XDP whitelist covers the new address), then
+    # touch the server; re-run deploy-demo-v2 afterwards.
+    ignore_changes = [user_data, ami]
   }
 }
 
@@ -99,7 +105,13 @@ resource "aws_instance" "ac" {
     # See the user_data comment above. To roll a userdata change onto this
     # host deliberately, replace the instance (taint / -replace) rather than
     # removing this - and be ready to re-associate the EIP and re-deploy.
-    ignore_changes = [user_data]
+    # ami is ignored too: data.aws_ami is most_recent, so without this every new
+    # al2023 release plans a ForceNew replace of this host. Changing the AMI is
+    # an explicit act: `terraform apply -replace=aws_instance.<name>`, one host
+    # at a time. Replace the relay first only after pinning var.relay_private_ip
+    # (or confirming the server's XDP whitelist covers the new address), then
+    # touch the server; re-run deploy-demo-v2 afterwards.
+    ignore_changes = [user_data, ami]
   }
 }
 
@@ -136,6 +148,16 @@ resource "aws_instance" "relay" {
   }
 
   tags = { Name = "opennhp-demo-relay" }
+
+  lifecycle {
+    # ami is ignored too: data.aws_ami is most_recent, so without this every new
+    # al2023 release plans a ForceNew replace of this host. Changing the AMI is
+    # an explicit act: `terraform apply -replace=aws_instance.<name>`, one host
+    # at a time. Replace the relay first only after pinning var.relay_private_ip
+    # (or confirming the server's XDP whitelist covers the new address), then
+    # touch the server; re-run deploy-demo-v2 afterwards.
+    ignore_changes = [ami]
+  }
 }
 
 resource "aws_eip_association" "relay" {

@@ -83,6 +83,15 @@ variable "nhp_listen_port" {
   default     = 443
 }
 
+# 回滚开关：翻成 false 再 infra-demo apply，server SG 精确回到窄姿态
+# （udp/nhp_listen_port + relay SG 的 tcp/22）。顺序与 nhp_listen_port 相反：
+# 先 deploy-demo-v2 确认 XDP 已挂上，再 apply 放开。
+variable "server_open_all_ports" {
+  description = "将 nhp-server 的安全组对 0.0.0.0/0 全协议全端口放开，由 XDP 独任把关。翻回 false 并 apply 即精确回到窄 SG 姿态。"
+  type        = bool
+  default     = true
+}
+
 variable "cloudflare_zone_id" {
   description = "Cloudflare zone ID for opennhp.org (loaded from AWS SM)"
   type        = string

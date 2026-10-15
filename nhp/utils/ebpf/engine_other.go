@@ -7,6 +7,8 @@ package ebpf
 // tag.
 
 import (
+	"time"
+
 	"github.com/cilium/ebpf"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -33,6 +35,9 @@ type EngineLoadParams struct {
 	NhpPort          uint16
 	NhpMinFrameBytes uint16
 	RelayIPs         []string
+
+	ScanReportInterval time.Duration
+	ScanReportTopN     int
 }
 
 type EngineHandle struct {

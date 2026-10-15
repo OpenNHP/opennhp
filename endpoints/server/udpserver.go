@@ -90,6 +90,11 @@ type UdpServer struct {
 	// is attached.
 	xdpActiveMinFrameBytes atomic.Int32
 
+	// The [NHP-SCAN] window and Top-N the attached filter was started with;
+	// same purpose as xdpActiveMinFrameBytes, zero when no filter is attached.
+	xdpActiveScanSeconds atomic.Int32
+	xdpActiveScanTopN    atomic.Int32
+
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex

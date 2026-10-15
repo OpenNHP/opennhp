@@ -101,6 +101,25 @@ resource "aws_security_group" "server" {
     security_groups = [aws_security_group.relay.id]
   }
 
+  # Everything else, from anywhere -- deliberately. The nhp-server's XDP filter
+  # (nhp/ebpf/xdp/nhp_server_xdp.c) is the ONLY inbound control on this host in
+  # this mode; the point is to let scans reach the NIC so the filter can count
+  # them ([NHP-STAT] / [NHP-SCAN]). The two rules above are a subset of this
+  # one and stay so that flipping the variable to false returns exactly to the
+  # narrow posture. Order: deploy-demo-v2 (confirm "Verify the XDP ingress
+  # filter attached" is green) BEFORE infra-demo apply -- the opposite of the
+  # knock-port rule. See terraform/demo/RUNBOOK.md "All-ports exposure mode".
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL (XDP is the only control; see CLAUDE.md)"
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

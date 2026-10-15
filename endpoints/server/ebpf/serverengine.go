@@ -54,6 +54,11 @@ type LoadParams struct {
 	// utilsebpf.EngineLoadParams.RelayIPs. A list the trie cannot hold fails the
 	// load, which the caller takes as fail-open.
 	RelayIPs []string
+
+	// ScanReportInterval and ScanReportTopN configure the [NHP-SCAN] summary
+	// (xdp.toml's ScanReportIntervalSeconds / ScanReportTopN).
+	ScanReportInterval time.Duration
+	ScanReportTopN     int
 }
 
 // EngineLoad attaches the server's XDP filter.
@@ -86,6 +91,9 @@ func EngineLoad(p LoadParams) error {
 		NhpPort:          p.NhpPort,
 		NhpMinFrameBytes: p.MinFrameBytes,
 		RelayIPs:         p.RelayIPs,
+
+		ScanReportInterval: p.ScanReportInterval,
+		ScanReportTopN:     p.ScanReportTopN,
 	})
 	if err != nil {
 		return err

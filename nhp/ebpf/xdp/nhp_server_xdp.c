@@ -165,6 +165,10 @@ volatile const __u16 nhp_min_udp_len = 240;
 #define ACT_V6_ESTABLISHED      18
 #define ACT_V6_FRAGMENT         19
 #define ACT_DROP_V6_OTHER       20
+/* Finer split of what used to be all ACT_DROP_TCP_OTHER; the verdict is the
+ * same DROP, only the class is more specific. */
+#define ACT_DROP_TCP_SYN        21 /* SYN without ACK: connect / SYN scan */
+#define ACT_DROP_TCP_STEALTH    22 /* no SYN, ACK or RST: FIN / NULL / XMAS scan */
 
 /* Source prefixes allowed to reach SSH, and allowed to reach the knock port
  * without meeting the length floor. Driven from user space by
@@ -265,7 +269,7 @@ struct {
  * headroom over the codes in use; serverEventActions in
  * nhp/utils/ebpf/engine_linux.go mirrors it, and a test fails if the two drift
  * apart. The global bucket lives in one extra slot past the end. */
-#define NHP_EVENT_ACTIONS 24
+#define NHP_EVENT_ACTIONS 32
 #define NHP_EVENT_WINDOW_NS 1000000000ULL
 #define NHP_EVENT_BURST 16
 #define NHP_EVENT_GLOBAL_BURST 8
@@ -308,6 +312,66 @@ struct {
     __type(key, __u32);
     __type(value, struct nhp_action_stat);
 } nhp_action_stats SEC(".maps");
+
+/* Per-destination-port and per-source aggregation of dropped packets, so the
+ * question "what is hitting this host, from where" has an answer finer than a
+ * verdict class. Updated for drop classes only, for every dropped packet
+ * whatever the reporting budget says (same "every packet" semantics as
+ * nhp_action_stats). LRU so a 65k-port sweep cannot exhaust the table; user
+ * space reports LRU=1 when it suspects eviction, and the exact per-class totals
+ * stay in nhp_action_stats. Per-CPU, not pinned. Telemetry only: a failed
+ * lookup or update is ignored and never influences a verdict. */
+struct nhp_scan_port_key {
+    __u8 proto;
+    __u8 _pad;
+    __u16 port; /* host byte order */
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_PERCPU_HASH);
+    __uint(max_entries, 65536);
+    __type(key, struct nhp_scan_port_key);
+    __type(value, __u64);
+} nhp_port_hits SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_PERCPU_HASH);
+    __uint(max_entries, 65536);
+    __type(key, __be32); /* IPv4 source only */
+    __type(value, __u64);
+} nhp_src_hits SEC(".maps");
+
+static __always_inline bool action_is_drop(__u8 action) {
+    return action == ACT_DROP_OTHER || (action >= ACT_DROP_TCP_SSH_OTHER && action <= ACT_DROP_V6_OTHER) ||
+           action == ACT_DROP_TCP_SYN || action == ACT_DROP_TCP_STEALTH;
+}
+
+static __always_inline void bump_hit(void *map, const void *key) {
+    __u64 *v = bpf_map_lookup_elem(map, key);
+    if (v) {
+        (*v)++;
+        return;
+    }
+    __u64 one = 1;
+    bpf_map_update_elem(map, key, &one, BPF_NOEXIST);
+}
+
+/* saddr == 0 skips the source table (IPv6 packets). */
+static __always_inline void scan_account(__u8 proto, __u16 dport_host, __be32 saddr) {
+    struct nhp_scan_port_key pk = {};
+    pk.proto = proto;
+    pk.port = dport_host;
+    bump_hit(&nhp_port_hits, &pk);
+    if (saddr)
+        bump_hit(&nhp_src_hits, &saddr);
+}
+
+/* Host-order destination port for TCP/UDP, 0 for anything else. */
+static __always_inline __u16 scan_port(__u8 proto, __be16 dst_port) {
+    if (proto == IPPROTO_TCP || proto == IPPROTO_UDP)
+        return bpf_ntohs(dst_port);
+    return 0;
+}
 
 /* Take one token from the bucket in `slot`, or report that it is empty for the
  * rest of this window. A slot the map cannot hand back is treated as having
@@ -396,6 +460,9 @@ static __always_inline void record_packet(void *ctx, __u8 action, struct iphdr *
                                           __u8 relay_hit, bool report) {
     struct nhp_action_stat *stat = count_packet(action);
 
+    if (action_is_drop(action))
+        scan_account(iph->protocol, scan_port(iph->protocol, dst_port), iph->saddr);
+
     if (!report)
         return;
 
@@ -421,6 +488,9 @@ static __always_inline void record_v6_packet(void *ctx, __u8 action, struct ipv6
                                              __u8 proto, __be16 src_port, __be16 dst_port,
                                              bool report) {
     struct nhp_action_stat *stat = count_packet(action);
+
+    if (action_is_drop(action))
+        scan_account(proto, scan_port(proto, dst_port), 0);
 
     if (!report)
         return;
@@ -753,7 +823,12 @@ int xdp_server_prog(struct xdp_md *ctx) {
             record_packet(ctx, ACT_TCP_ESTABLISHED, iph, tcp->source, tcp->dest, 0, false);
             return XDP_PASS;
         }
-        record_packet(ctx, ACT_DROP_TCP_OTHER, iph, tcp->source, tcp->dest, 0, true);
+        __u8 tcp_drop = ACT_DROP_TCP_OTHER;
+        if (tcp->syn && !tcp->ack)
+            tcp_drop = ACT_DROP_TCP_SYN;
+        else if (!tcp->syn && !tcp->ack && !tcp->rst)
+            tcp_drop = ACT_DROP_TCP_STEALTH;
+        record_packet(ctx, tcp_drop, iph, tcp->source, tcp->dest, 0, true);
         return XDP_DROP;
     }
 

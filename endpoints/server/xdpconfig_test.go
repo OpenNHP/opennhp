@@ -125,6 +125,10 @@ func TestStartXdpFilterRefusesUnlessTheFileAsksForIt(t *testing.T) {
 		{"disabled", XdpTomlConfig{Enabled: false, RelayIPs: []string{"1.2.3.4"}}},
 		{"no relay ips", XdpTomlConfig{Enabled: true}},
 		{"empty relay ips", XdpTomlConfig{Enabled: true, RelayIPs: []string{}}},
+		{"scan interval too small", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportIntervalSeconds: 5}},
+		{"scan interval too large", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportIntervalSeconds: 3601}},
+		{"scan top-n negative", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportTopN: -1}},
+		{"scan top-n too large", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportTopN: 201}},
 		{"floor out of range", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, NhpMinFrameBytes: 70000}},
 		// A list that is non-empty as strings but names nothing the kernel can
 		// hold is the same lockout as an empty one, and it is what the obvious
@@ -457,5 +461,50 @@ func TestXdpBlackHolesHttpListener(t *testing.T) {
 				t.Fatalf("xdpBlackHolesHttpListener() = %q, want conflict=%v", reason, tc.want)
 			}
 		})
+	}
+}
+
+// The [NHP-SCAN] knobs are optional in the file: absent means the defaults, and
+// the template renders them as plain integers.
+func TestXdpTomlConfigScanKnobs(t *testing.T) {
+	var conf XdpTomlConfig
+	if err := toml.Unmarshal([]byte("Enabled = true\nRelayIPs = [\"1.2.3.4\"]\n"), &conf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if conf.ScanReportIntervalSeconds != 0 || conf.ScanReportTopN != 0 {
+		t.Errorf("unset knobs = %d/%d, want 0/0 (defaults applied at start)", conf.ScanReportIntervalSeconds, conf.ScanReportTopN)
+	}
+
+	conf = XdpTomlConfig{}
+	if err := toml.Unmarshal([]byte("ScanReportIntervalSeconds = 60\nScanReportTopN = 5\n"), &conf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if conf.ScanReportIntervalSeconds != 60 || conf.ScanReportTopN != 5 {
+		t.Errorf("knobs = %d/%d, want 60/5", conf.ScanReportIntervalSeconds, conf.ScanReportTopN)
+	}
+
+	s := &UdpServer{config: &Config{ListenPort: 62206}}
+	if s.xdpScanSeconds() != DefaultScanReportIntervalSeconds || s.xdpScanTopN() != DefaultScanReportTopN {
+		t.Errorf("no filter attached: got %d/%d, want the defaults", s.xdpScanSeconds(), s.xdpScanTopN())
+	}
+}
+
+// A reload that edits the scan knobs is warned about and the whitelist still
+// applies: RelayIPs stays the only hot-reloadable field.
+func TestApplyXdpConfigDoesNotApplyScanKnobs(t *testing.T) {
+	originalExeDir := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = originalExeDir })
+
+	s := &UdpServer{config: &Config{ListenPort: 62206}}
+	s.xdpActiveScanSeconds.Store(300)
+	s.xdpActiveScanTopN.Store(20)
+
+	conf := XdpTomlConfig{Enabled: true, RelayIPs: []string{"10.0.1.0/24"}, ScanReportIntervalSeconds: 60, ScanReportTopN: 5}
+	if !s.applyXdpConfig(&conf) {
+		t.Error("applyXdpConfig refused a good whitelist because the scan knobs changed")
+	}
+	if s.xdpScanSeconds() != 300 || s.xdpScanTopN() != 20 {
+		t.Errorf("active scan knobs changed to %d/%d on reload, want 300/20", s.xdpScanSeconds(), s.xdpScanTopN())
 	}
 }

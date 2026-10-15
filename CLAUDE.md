@@ -218,8 +218,9 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > `terraform/demo/dns.tf`, and `deploy/config-templates/server/http.toml` sets
 > `EnableHttp = false` so `nhp-serverd` never binds `127.0.0.1:8443`. The
 > `deploy-server` job tears down any leftover `/etc/nginx/conf.d/server.conf`.
-> The server host is reachable only over the NHP UDP knock port (plus SSH from
-> the relay jump host); `deploy/nginx/server.conf.template` is kept for
+> The server host *serves* only the NHP UDP knock port (plus SSH from the relay
+> jump host) — the security group admits more than that, and the XDP filter drops
+> the rest (see *All-ports exposure* below); `deploy/nginx/server.conf.template` is kept for
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
 
@@ -234,6 +235,23 @@ into `server/config.toml`, `ac/server.toml`, and `relay/config.toml` via
 `deploy-demo-v2` — the order matters, because the rendered config tracks the
 applied state, never the source-default.
 
+**All-ports exposure (deliberate).** `aws_security_group.server` is opened to
+`0.0.0.0/0` on every protocol and port while `var.server_open_all_ports` is
+`true` (the default; `terraform/demo/variables.tf`). That is intentional and is
+for observation: scans must reach the NIC so the XDP filter can count them
+(`[NHP-STAT]`, `[NHP-SCAN]`). In this mode **the XDP filter is the only inbound
+control on the host** — the security group is no longer the narrower layer — and
+it is fail-open, so a host whose filter is not attached is exposed on every
+port. Order is the *reverse* of the knock-port rule: run `deploy-demo-v2` first
+and confirm `Verify the XDP ingress filter attached` is green, then
+`infra-demo apply`. Rollback is `server_open_all_ports = false` plus
+`infra-demo apply`, which returns the security group exactly to udp/knock-port +
+tcp/22 from the relay SG; recovery of an unfiltered host is still
+`aws ec2 reboot-instances`. `aws_instance.{server,ac,relay}` carry
+`ignore_changes = [ami]` so a new al2023 release never plans a replace; change
+an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
+at a time (see `terraform/demo/RUNBOOK.md`).
+
 **Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
 unprivileged on the demo host and `443 < 1024`, the unit cannot rely on
 `CAP_NET_BIND_SERVICE` — granting it would leave the daemon with a non-empty
@@ -245,11 +263,11 @@ net.ipv4.ip_unprivileged_port_start=443` to the drop-in, and writes
 `terraform/demo/userdata/server.sh` so new hosts start the same way; the two
 must stay in sync (see the note above about `ignore_changes = [user_data]`).
 Relaxing that floor widens the range any unprivileged process on the host
-may bind to, but the controls that actually limit the host's inbound
-exposure are the security group (UDP/443 + SSH from the relay's SG only,
-in `aws_security_group.server` / `.ac`) and the fact that this host runs
-a single service — the XDP filter is fail-open by design and is not the
-thing you'd rely on here. A rollback that moves the port out of the
+may bind to, but the XDP filter is what limits the host's inbound exposure
+now that `aws_security_group.server` is deliberately open to all ports (see
+*All-ports exposure* above; `aws_security_group.ac` is still narrow), together
+with the fact that this host runs a single service. The filter is fail-open by
+design, which is why the attach gate in `deploy-server` matters. A rollback that moves the port out of the
 privileged range must therefore remove `/etc/sysctl.d/99-nhp-server.conf`
 and restore the kernel default (1024); the deploy job does this
 automatically when `NHP_LISTEN_PORT >= 1024`.

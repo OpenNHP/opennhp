@@ -708,6 +708,10 @@ jobs:
           # applied from the TOML — the loader writes it into the object's
           # .rodata at startup — so it is a real knob, not documentation.
           echo "XDP_NHP_MIN_FRAME_BYTES=240" >> $GITHUB_ENV
+          # [NHP-SCAN] summary window and Top-N; defaults match
+          # endpoints/server/config.go. Startup-only knobs.
+          echo "XDP_SCAN_REPORT_SECONDS=300" >> $GITHUB_ENV
+          echo "XDP_SCAN_TOP_N=20" >> $GITHUB_ENV
 
       - name: Generate keys and render configs
         env:

@@ -1231,6 +1231,79 @@ daemon attaches the filter again. Use that window to either
 the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
 when the filter is attached and the host does have its address.
 
+### All-ports exposure mode
+
+`var.server_open_all_ports` (default `true`, `terraform/demo/variables.tf`)
+adds one ingress rule to `aws_security_group.server`: every protocol, every
+port, `0.0.0.0/0`. The udp/knock-port and tcp/22-from-relay rules stay, as a
+subset, so flipping the variable back is an in-place rule removal and nothing
+else. The purpose is observation: scans, brute force and reflection probes now
+reach the NIC, where the XDP program counts them (`[NHP-STAT]` per verdict
+class, `[NHP-SCAN]` per port and per source). The decision tree is unchanged —
+a non-whitelisted tcp/22 and every non-knock UDP port are still dropped. Read
+the results with `scripts/xdp-attack-report.sh`.
+
+- **Order is the reverse of the knock port.** Run `deploy-demo-v2` first and
+  confirm `Verify the XDP ingress filter attached` is green, then run
+  `infra-demo apply`. Both workflows share `concurrency: demo-terraform`, so
+  they cannot interleave. This is guidance, not a gate: an apply-time probe
+  cannot exist for a host Terraform has not created yet, and tying `apply` to
+  host health would make a flaky SSH hop an infrastructure failure.
+- **The real new exposure is the fail-open window.** If the filter is not
+  attached (load failed, or the address watchdog in
+  `endpoints/server/ebpf/serverengine.go` detached it after 2 minutes without a
+  routable IPv4 address), the host is reachable on every port. What listens
+  there is sshd (key-only, no passwords) and the NHP daemon's UDP port — the
+  same order of exposure as the relay's tcp/22 to `0.0.0.0/0`. There is
+  deliberately no nftables/iptables backstop: that would contradict "eBPF is
+  the only control".
+- **Rollback** is `server_open_all_ports = false` and `infra-demo apply`. The
+  security group returns exactly to udp/knock-port + tcp/22 from the relay SG.
+  Nothing on the host changes; the telemetry stays and just counts less.
+- **Recovery of an unfiltered host** is unchanged: `aws ec2 reboot-instances`,
+  then re-run the deploy.
+- **Plan check before apply.** The plan must show only `~ aws_security_group.server`
+  (plus harmless lifecycle changes). Any `must be replaced` means AMI drift or a
+  changed `description`: stop. The `description` is ForceNew and must not be
+  edited.
+- **CPU.** XDP runs in generic mode, so a packet costs an skb allocation before
+  it is dropped. A large scan burns t3 CPU credits; watch CloudWatch
+  `CPUCreditBalance`.
+- **Per-packet log budget.** The 64 MiB/day budget fills in roughly half a day
+  under constant scanning, which is expected. `[NHP-STAT]` and `[NHP-SCAN]`
+  emit a bounded number of lines per window and are unaffected. `LRU=1` on the
+  `KIND=TOTAL` line means a window overflowed the aggregation tables and the
+  Top-N is approximate; class totals always come from `[NHP-STAT]`.
+- **IPv6** only feeds the port table (the source key is 32-bit). The VPC has no
+  IPv6, so this gap is academic; `V6_OTHER` in `[NHP-STAT]` is exact.
+
+### Replacing an AMI / rebuilding an instance
+
+`data.aws_ami.amazon_linux_2023` is `most_recent = true` and `aws_instance.ami`
+is ForceNew, so without a guard every new al2023 release plans a replace of
+all three hosts on the next `apply`. The relay's private address is not pinned
+by default, so a replaced relay comes back on a new address that the server's
+live XDP whitelist does not contain — and the deploy that would fix the list
+has to SSH through that relay. With the security group wide open, the window
+between boot and the filter attaching is also an all-ports exposure.
+
+`aws_instance.server`, `.ac` and `.relay` therefore carry
+`lifecycle { ignore_changes = [ami] }` (server and ac alongside `user_data`).
+`most_recent` stays, so a first-time `apply` still picks the current AMI.
+Changing the AMI is now an explicit act, one host at a time:
+
+1. Relay first, if at all: pin `var.relay_private_ip` to its current address, or
+   confirm the server's whitelist (`etc/xdp.toml`, `RelayIPs`) covers the new
+   private address. Then `terraform apply -replace=aws_instance.relay`.
+2. Re-run `deploy-demo-v2` and confirm the whitelist check and
+   `Verify the XDP ingress filter attached` are green.
+3. Only then `-replace=aws_instance.ac`, re-deploy, and finally
+   `-replace=aws_instance.server`, re-deploy (re-associate the EIP, check the
+   whitelist admits the SSH source before the filter attaches).
+
+If the AMI had already drifted when the guard was added, the pending replace
+disappears from the plan instead of executing.
+
 ### Knock 端口怎么改
 
 `var.nhp_listen_port`（`terraform/demo/variables.tf`）是 NHP knock 端口的**唯

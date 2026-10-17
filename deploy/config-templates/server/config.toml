@@ -8,7 +8,7 @@ PrivateKeyBase64 = "${NHP_SERVER_PRIVATE_KEY}"
 DefaultCipherScheme = 0
 ListenIp = ""
 ListenPort = ${NHP_SERVER_PORT}
-Hostname = "auth-plugin.${DOMAIN}"
+Hostname = "server.${DOMAIN}"
 LogLevel = 3
 DisableAgentValidation = false
 # AllowPrivateRelaySource intentionally absent — defaults to false. The

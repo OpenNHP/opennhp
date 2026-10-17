@@ -13,6 +13,7 @@ const (
 	kindEvent = iota
 	kindStat
 	kindBudget
+	kindScan
 )
 
 // Record is one parsed log line. Fields not relevant to the kind stay zero.
@@ -31,6 +32,9 @@ type Record struct {
 
 	// stat
 	Pkts, Logged, Total uint64
+
+	// scan (NHP-SCAN, a scan-detector summary kind emitted by newer builds)
+	ScanKind string
 }
 
 var dateInName = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
@@ -103,6 +107,13 @@ func parseLine(line string) (Record, error) {
 		r.Total, e3 = strconv.ParseUint(kv["TOTAL"], 10, 64)
 		if r.Verdict == "" || r.Reason == "" || e1 != nil || e2 != nil || e3 != nil {
 			return r, fmt.Errorf("malformed STAT line")
+		}
+	case "SCAN":
+		// Periodic scan-detector summaries (KIND=TOTAL|SRC|PORT). They are
+		// diagnostics, not DROP events, so they never reach the attack totals.
+		r.Kind, r.ScanKind = kindScan, kv["KIND"]
+		if r.ScanKind == "" {
+			return r, fmt.Errorf("malformed SCAN line")
 		}
 	default:
 		return r, fmt.Errorf("unknown tag %q", tag)

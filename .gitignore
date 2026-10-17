@@ -41,6 +41,8 @@ crash.*.log
 # Generated configs (rendered by CI, contain secrets)
 deploy/configs/
 *.log
+# ...except xdplog-report's test fixtures, which are hand-written logs
+!endpoints/xdplog-report/testdata/*.log
 # demoapp runtime (local dev run from repo root)
 /data/
 # demoapp local dev: runtime DB / autogen secrets + Vite build output

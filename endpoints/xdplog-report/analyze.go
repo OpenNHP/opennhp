@@ -47,6 +47,7 @@ type Analyzer struct {
 
 	budgetDays  map[string]string // day -> clock when exhausted
 	badLines    int
+	scanLines   uint64
 	dupStats    int
 	restarts    []string
 	unknown     map[string]struct{}
@@ -109,6 +110,8 @@ func (a *Analyzer) add(rec Record, day string) {
 		if _, ok := a.budgetDays[day]; !ok {
 			a.budgetDays[day] = rec.Clock
 		}
+	case kindScan:
+		a.scanLines++
 	case kindStat:
 		key := statKey{day, rec.Clock[:5], rec.Verdict, rec.Reason}
 		if _, dup := a.seenStat[key]; dup {
@@ -121,6 +124,10 @@ func (a *Analyzer) add(rec Record, day string) {
 		ck := rec.Verdict + "/" + rec.Reason
 		if prev, ok := a.lastTotal[ck]; ok && rec.Total < prev {
 			a.restarts = append(a.restarts, fmt.Sprintf("%s (%s TOTAL %d -> %d)", ts, ck, prev, rec.Total))
+			// Every counter reset together. Drop the pre-restart baselines so a
+			// reason that was quiet across the restart does not look like a
+			// second one when it eventually reports again.
+			clear(a.lastTotal)
 		}
 		a.lastTotal[ck] = rec.Total
 
@@ -254,6 +261,7 @@ type Report struct {
 	PeakHour   string        `json:"peak_hour,omitempty"`
 
 	BadLines    int      `json:"bad_lines"`
+	ScanLines   uint64   `json:"scan_summary_lines"`
 	DupStats    int      `json:"duplicate_stat_lines"`
 	Restarts    []string `json:"restarts_detected"`
 	UnknownRsns []string `json:"unknown_reasons"`
@@ -314,7 +322,7 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 		Schema: 1, TopN: topN, Servers: sortedKeys(a.servers),
 		From: a.firstTS, To: a.lastTS,
 		BudgetExhausted: a.budgetDays, GeoEnabled: geo != nil,
-		BadLines: a.badLines, DupStats: a.dupStats,
+		BadLines: a.badLines, ScanLines: a.scanLines, DupStats: a.dupStats,
 		Restarts: a.restarts, UnknownRsns: sortedKeys(a.unknown),
 		Reasons: []ReasonRow{}, Categories: []CategoryRow{}, TopIPs: []IPRow{},
 		TopGeo: []GeoRow{}, Hourly: []Count{}, Daily: []Count{},

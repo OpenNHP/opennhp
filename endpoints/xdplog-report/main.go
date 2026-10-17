@@ -31,8 +31,9 @@ func run(args []string, stdout io.Writer) error {
 	var in multiFlag
 	fs.Var(&in, "in", "log file, glob or directory (repeatable; .gz supported)")
 	geoPath := fs.String("geo-csv", "", "optional CIDR->country CSV (cidr,country[,city]) for the region section")
+	geoMMDB := fs.String("geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	top := fs.Int("top", 10, "rows in each TOP table")
-	format := fs.String("format", "md", "md | json | csv")
+	format := fs.String("format", "md", "md | json | csv | html")
 	out := fs.String("out", "", "output file (default stdout)")
 	since := fs.String("since", "", "first day to include, YYYY-MM-DD")
 	until := fs.String("until", "", "last day to include, YYYY-MM-DD")
@@ -47,9 +48,14 @@ func run(args []string, stdout io.Writer) error {
 	if *top < 1 {
 		return fmt.Errorf("-top must be >= 1")
 	}
-	render := map[string]func(io.Writer, *Report) error{"md": renderMarkdown, "json": renderJSON, "csv": renderCSV}[*format]
+	render := map[string]func(io.Writer, *Report) error{
+		"md": renderMarkdown, "json": renderJSON, "csv": renderCSV, "html": renderHTML,
+	}[*format]
 	if render == nil {
 		return fmt.Errorf("unknown -format %q", *format)
+	}
+	if *geoPath != "" && *geoMMDB != "" {
+		return fmt.Errorf("-geo-csv and -geo-mmdb are mutually exclusive")
 	}
 
 	var geo GeoResolver
@@ -58,6 +64,14 @@ func run(args []string, stdout io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("load geo: %w", err)
 		}
+		geo = g
+	}
+	if *geoMMDB != "" {
+		g, closer, err := loadGeoMMDB(*geoMMDB)
+		if err != nil {
+			return fmt.Errorf("load geo mmdb: %w", err)
+		}
+		defer closer.Close()
 		geo = g
 	}
 

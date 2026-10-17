@@ -93,6 +93,7 @@ func renderMarkdown(w io.Writer, r *Report) error {
 
 	p("\n## Data quality\n\n")
 	p("- Unparsable lines: %d\n- Duplicate STAT lines ignored: %d\n", r.BadLines, r.DupStats)
+	p("- Scan-detector summary lines (parsed, not part of DROP totals): %d\n", r.ScanLines)
 	p("- IPv6 share of sampled DROP events: %s\n", pc(r.IPv6Share))
 	if len(r.UnknownRsns) > 0 {
 		p("- Unknown reasons (classifier out of date?): %s\n", strings.Join(r.UnknownRsns, ", "))

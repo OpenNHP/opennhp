@@ -3,10 +3,13 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/oschwald/geoip2-golang"
 )
 
 // Geo is the location of one address.
@@ -85,6 +88,36 @@ func (g *csvGeo) Lookup(a netip.Addr) (Geo, bool) {
 		}
 	}
 	return Geo{}, false
+}
+
+// mmdbGeo resolves locations from a MaxMind GeoLite2-City database. Lookups
+// are local: the database file is read from disk, never queried online.
+type mmdbGeo struct{ r *geoip2.Reader }
+
+// loadGeoMMDB opens a GeoLite2-City .mmdb file. The returned Closer must be
+// closed when lookups are done.
+func loadGeoMMDB(path string) (GeoResolver, io.Closer, error) {
+	r, err := geoip2.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &mmdbGeo{r: r}, r, nil
+}
+
+func (g *mmdbGeo) Lookup(a netip.Addr) (Geo, bool) {
+	rec, err := g.r.City(a.AsSlice())
+	if err != nil {
+		return Geo{}, false
+	}
+	country := rec.Country.IsoCode
+	if country == "" {
+		country = rec.RegisteredCountry.IsoCode
+	}
+	city := rec.City.Names["en"]
+	if country == "" && city == "" {
+		return Geo{}, false
+	}
+	return Geo{Country: country, City: city}, true
 }
 
 // isReserved reports addresses that never get a geo lookup.

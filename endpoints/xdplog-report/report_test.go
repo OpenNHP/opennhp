@@ -45,6 +45,9 @@ func TestTotalsDedupRestartBudget(t *testing.T) {
 	if r.DupStats != 1 || r.BadLines != 1 {
 		t.Errorf("dup=%d bad=%d", r.DupStats, r.BadLines)
 	}
+	if r.ScanLines != 1 {
+		t.Errorf("scan lines = %d", r.ScanLines)
+	}
 	if len(r.Restarts) != 1 { // TOTAL 1200 -> 50 on day 2
 		t.Errorf("restarts = %v", r.Restarts)
 	}
@@ -58,6 +61,25 @@ func TestTotalsDedupRestartBudget(t *testing.T) {
 		if c.Reason == "UDP_SHORT" && !c.NoDetail {
 			t.Error("UDP_SHORT should be flagged totals-only")
 		}
+	}
+}
+
+// A reason that was quiet across a restart must not be reported as a second
+// restart when its first post-restart STAT line arrives.
+func TestRestartResetsQuietCounters(t *testing.T) {
+	an := NewAnalyzer("", "")
+	for _, tc := range []struct{ day, text string }{
+		{"2026-10-01", "10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=5 LOGGED=1 TOTAL=5\n" +
+			"10:00:00 s [NHP-STAT] VERDICT=DROP REASON=UDP_OTHER WINDOW=60s PKTS=9 LOGGED=1 TOTAL=9\n"},
+		{"2026-10-02", "10:00:00 s [NHP-STAT] VERDICT=DROP REASON=UDP_OTHER WINDOW=60s PKTS=1 LOGGED=1 TOTAL=1\n" +
+			"10:01:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=1 LOGGED=1 TOTAL=1\n"},
+	} {
+		if err := an.Consume(strings.NewReader(tc.text), tc.day); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r := an.Build(10, nil, false); len(r.Restarts) != 1 {
+		t.Errorf("restarts = %v", r.Restarts)
 	}
 }
 
@@ -116,9 +138,20 @@ func TestCLIFormatsAndMask(t *testing.T) {
 	if csv := runReport(t, append(args, "-format", "csv")...); !strings.HasPrefix(csv, "section,key") {
 		t.Error("csv header missing")
 	}
+	page := runReport(t, append(args, "-format", "html")...)
+	if !strings.HasPrefix(page, "<!doctype html>") || !strings.Contains(page, "NHP Server XDP Attack Report") {
+		t.Error("html page missing")
+	}
+	if !strings.Contains(page, "WARNING") || !strings.Contains(page, "Not enabled") {
+		t.Error("html warning or geo-disabled note missing")
+	}
+	if !strings.Contains(page, "203.0.113.5") {
+		t.Error("html should not mask by default")
+	}
 }
 
-// The classifier must know every DROP reason the XDP side can emit.
+// The classifier must know every DROP reason the checked-in XDP side emits.
+// It may know more: a deployed build can lead this branch (TCP_SYN_SCAN).
 func TestClassifierMatchesEngine(t *testing.T) {
 	src, err := os.ReadFile("../../nhp/utils/ebpf/engine_linux.go")
 	if err != nil {
@@ -134,7 +167,7 @@ func TestClassifierMatchesEngine(t *testing.T) {
 			t.Errorf("reason %s missing from dropCategories", x[1])
 		}
 	}
-	if len(m) != len(dropCategories) {
-		t.Errorf("engine has %d DROP reasons, classifier %d", len(m), len(dropCategories))
+	if _, ok := dropCategories["TCP_SYN_SCAN"]; !ok {
+		t.Error("TCP_SYN_SCAN (emitted by deployed builds) missing from dropCategories")
 	}
 }

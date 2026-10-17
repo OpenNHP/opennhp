@@ -337,6 +337,12 @@ filter (XDP)*.
   sees SSH arrive from, means detaching the root volume or rebuilding the
   instance. Entries are host addresses or CIDR prefixes in an LPM trie; one
   unparsable entry fails the whole list rather than being skipped.
+- **Refusal reasons stay limited to the ones that protect SSH reachability.**
+  With `server_open_all_ports = true` the filter is the only inbound control, so
+  every new reason to refuse attaching is a way to leave all ports open. Telemetry
+  settings (`ScanReportIntervalSeconds`, `ScanReportTopN`) never decide this: an
+  out-of-range value is logged and disables only the `[NHP-SCAN]` summary
+  (`resolveScanReport`), and the filter attaches anyway.
 - **The whitelist is installed before the program is attached**, as
   `EngineLoadParams.RelayIPs`, never written afterwards. Startup therefore never
   calls `applyXdpConfig`; that path is the config watcher's, and it always has a

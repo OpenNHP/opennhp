@@ -125,10 +125,6 @@ func TestStartXdpFilterRefusesUnlessTheFileAsksForIt(t *testing.T) {
 		{"disabled", XdpTomlConfig{Enabled: false, RelayIPs: []string{"1.2.3.4"}}},
 		{"no relay ips", XdpTomlConfig{Enabled: true}},
 		{"empty relay ips", XdpTomlConfig{Enabled: true, RelayIPs: []string{}}},
-		{"scan interval too small", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportIntervalSeconds: 5}},
-		{"scan interval too large", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportIntervalSeconds: 3601}},
-		{"scan top-n negative", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportTopN: -1}},
-		{"scan top-n too large", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, ScanReportTopN: 201}},
 		{"floor out of range", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, NhpMinFrameBytes: 70000}},
 		// A list that is non-empty as strings but names nothing the kernel can
 		// hold is the same lockout as an empty one, and it is what the obvious
@@ -149,6 +145,34 @@ func TestStartXdpFilterRefusesUnlessTheFileAsksForIt(t *testing.T) {
 			conf := tc.conf
 			if s.startXdpFilter(&conf, 1) {
 				t.Error("startXdpFilter attached the filter, want a refusal")
+			}
+		})
+	}
+}
+
+// A telemetry setting out of range must not decide whether the filter attaches:
+// it only turns the [NHP-SCAN] summary off.
+func TestResolveScanReportNeverRefuses(t *testing.T) {
+	tests := []struct {
+		name        string
+		conf        XdpTomlConfig
+		wantSeconds int
+		wantTopN    int
+	}{
+		{"defaults", XdpTomlConfig{}, DefaultScanReportIntervalSeconds, DefaultScanReportTopN},
+		{"explicit", XdpTomlConfig{ScanReportIntervalSeconds: 60, ScanReportTopN: 5}, 60, 5},
+		{"interval too small", XdpTomlConfig{ScanReportIntervalSeconds: 5}, 0, DefaultScanReportTopN},
+		{"interval too large", XdpTomlConfig{ScanReportIntervalSeconds: 3601}, 0, DefaultScanReportTopN},
+		{"interval negative", XdpTomlConfig{ScanReportIntervalSeconds: -1}, 0, DefaultScanReportTopN},
+		{"top-n negative", XdpTomlConfig{ScanReportTopN: -1}, 0, DefaultScanReportTopN},
+		{"top-n too large", XdpTomlConfig{ScanReportTopN: 201}, 0, DefaultScanReportTopN},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := tc.conf
+			seconds, topN := resolveScanReport(&conf)
+			if seconds != tc.wantSeconds || topN != tc.wantTopN {
+				t.Errorf("resolveScanReport = %d/%d, want %d/%d", seconds, topN, tc.wantSeconds, tc.wantTopN)
 			}
 		})
 	}

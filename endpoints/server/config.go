@@ -784,24 +784,7 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		return false
 	}
 
-	scanSeconds := conf.ScanReportIntervalSeconds
-	if scanSeconds == 0 {
-		scanSeconds = DefaultScanReportIntervalSeconds
-	}
-	if scanSeconds < minScanReportIntervalSeconds || scanSeconds > maxScanReportIntervalSeconds {
-		log.Error("xdp config: ScanReportIntervalSeconds=%d is out of range [%d, %d]; refusing to attach the XDP ingress filter",
-			scanSeconds, minScanReportIntervalSeconds, maxScanReportIntervalSeconds)
-		return false
-	}
-	scanTopN := conf.ScanReportTopN
-	if scanTopN == 0 {
-		scanTopN = DefaultScanReportTopN
-	}
-	if scanTopN < minScanReportTopN || scanTopN > maxScanReportTopN {
-		log.Error("xdp config: ScanReportTopN=%d is out of range [%d, %d]; refusing to attach the XDP ingress filter",
-			scanTopN, minScanReportTopN, maxScanReportTopN)
-		return false
-	}
+	scanSeconds, scanTopN := resolveScanReport(conf)
 
 	listenPort := s.GetListenPort()
 	if listenPort <= 0 || listenPort > 65535 {
@@ -843,6 +826,7 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		MinFrameBytes: uint16(minBytes),
 		RelayIPs:      conf.RelayIPs,
 
+		// Zero turns the [NHP-SCAN] summary off; the filter attaches regardless.
 		ScanReportInterval: time.Duration(scanSeconds) * time.Second,
 		ScanReportTopN:     scanTopN,
 	}); err != nil {
@@ -1004,6 +988,34 @@ func (s *UdpServer) xdpMinFrameBytes() int {
 		return int(v)
 	}
 	return DefaultNhpMinFrameBytes
+}
+
+// resolveScanReport returns the [NHP-SCAN] window in seconds and the per-window
+// list length. These settings only shape telemetry, so a value outside its
+// range must never decide whether the filter attaches — with the security group
+// open to all ports the filter is the only inbound control, and a refusal here
+// would leave the host fully exposed. An out-of-range setting is logged and
+// turns off just the summary (seconds == 0); the filter still attaches.
+func resolveScanReport(conf *XdpTomlConfig) (seconds, topN int) {
+	seconds = conf.ScanReportIntervalSeconds
+	if seconds == 0 {
+		seconds = DefaultScanReportIntervalSeconds
+	}
+	topN = conf.ScanReportTopN
+	if topN == 0 {
+		topN = DefaultScanReportTopN
+	}
+	if seconds < minScanReportIntervalSeconds || seconds > maxScanReportIntervalSeconds {
+		log.Error("xdp config: ScanReportIntervalSeconds=%d is out of range [%d, %d]; the [NHP-SCAN] summary is disabled, the XDP ingress filter still attaches",
+			seconds, minScanReportIntervalSeconds, maxScanReportIntervalSeconds)
+		return 0, DefaultScanReportTopN
+	}
+	if topN < minScanReportTopN || topN > maxScanReportTopN {
+		log.Error("xdp config: ScanReportTopN=%d is out of range [%d, %d]; the [NHP-SCAN] summary is disabled, the XDP ingress filter still attaches",
+			topN, minScanReportTopN, maxScanReportTopN)
+		return 0, DefaultScanReportTopN
+	}
+	return seconds, topN
 }
 
 // xdpScanSeconds and xdpScanTopN are the [NHP-SCAN] settings the attached

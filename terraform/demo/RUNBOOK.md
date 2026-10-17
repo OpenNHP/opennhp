@@ -1289,3 +1289,23 @@ decision tree, the baseline to capture before the first deploy (including the
 check that the whitelisted address is the one the host actually sees SSH
 arrive from), the same commands to re-run afterwards, and the recovery paths
 if it does go wrong — is in **[VERIFY-server-xdp.zh-cn.md](VERIFY-server-xdp.zh-cn.md)** (Chinese).
+
+## Analysing the XDP event log (attack report)
+
+`nhp-serverd` writes `logs/nhp_server_xdp-YYYY-MM-DD.log`. Copy the files off the
+host over the existing SSH channel (through the relay jump host), then run the
+offline report tool on your workstation:
+
+```bash
+cd endpoints
+go run ./xdplog-report -in ./xdp-logs/ -top 10 -format md -out report.md
+# optional region section from your own CIDR->country CSV (cidr,country[,city]):
+go run ./xdplog-report -in ./xdp-logs/ -geo-csv ip2country.csv
+# share externally with source addresses truncated:
+go run ./xdplog-report -in ./xdp-logs/ -mask-ip -format json
+```
+
+Reading the report: attack = `[NHP-DROP]`. Packet totals are exact (summed from the
+per-minute `[NHP-STAT]` lines); source IP, port and region rankings come from the
+rate-limited per-packet lines and are samples. A budget-exhausted warning means
+rankings after that point are incomplete. The tool never touches the network.

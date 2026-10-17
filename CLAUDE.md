@@ -237,12 +237,17 @@ applied state, never the source-default.
 
 **All-ports exposure (deliberate).** `aws_security_group.server` is opened to
 `0.0.0.0/0` on every protocol and port while `var.server_open_all_ports` is
-`true` (the default; `terraform/demo/variables.tf`). That is intentional and is
+`true` (opt-in, default `false`; set it through the `infra-demo` `open_all_ports`
+input once the attach gate is green, and `infra-demo` refuses it in a plan that
+creates or replaces `aws_instance.server`). That is intentional and is
 for observation: scans must reach the NIC so the XDP filter can count them
 (`[NHP-STAT]`, `[NHP-SCAN]`). In this mode **the XDP filter is the only inbound
 control on the host** — the security group is no longer the narrower layer — and
 it is fail-open, so a host whose filter is not attached is exposed on every
-port. Order is the *reverse* of the knock-port rule: run `deploy-demo-v2` first
+port. What the filter still lets through to the host from any source in this
+mode: the knock port, SSH from the whitelist, UDP 67→68 (DHCP client), UDP
+123→123 (chronyd), non-first IPv4 fragments and ICMP frag-needed. Those are
+accepted exposure, not narrowed. Order is the *reverse* of the knock-port rule: run `deploy-demo-v2` first
 and confirm `Verify the XDP ingress filter attached` is green, then
 `infra-demo apply`. Rollback is `server_open_all_ports = false` plus
 `infra-demo apply`, which returns the security group exactly to udp/knock-port +

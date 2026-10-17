@@ -1010,6 +1010,47 @@ func TestServerActionNamesCoverTheProgramsActionCodes(t *testing.T) {
 	}
 }
 
+// action_is_drop() decides which verdicts feed the scan tables. It must name
+// exactly the codes serverActionName() reports as DROP: a range check once
+// swept in the XDP_PASS fragment/ICMPv6 codes, which put legitimate agents'
+// tail fragments into [NHP-SCAN] as scanners.
+func TestActionIsDropMatchesServerActionName(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	}
+	text := string(src)
+
+	consts := map[string]uint8{}
+	for _, m := range regexp.MustCompile(`(?m)^#define\s+(ACT_\w+)\s+(\d+)`).FindAllStringSubmatch(text, -1) {
+		code, _ := strconv.ParseUint(m[2], 10, 8)
+		consts[m[1]] = uint8(code)
+	}
+
+	fn := regexp.MustCompile(`(?s)action_is_drop\(__u8 action\)\s*\{(.*?)\n\}`).FindStringSubmatch(text)
+	if fn == nil {
+		t.Fatal("action_is_drop not found in nhp_server_xdp.c")
+	}
+	if regexp.MustCompile(`action\s*(<=|>=|<|>)`).MatchString(fn[1]) {
+		t.Error("action_is_drop uses a range comparison; list the drop codes explicitly")
+	}
+	inDrop := map[uint8]bool{}
+	for _, m := range regexp.MustCompile(`action\s*==\s*(ACT_\w+)`).FindAllStringSubmatch(fn[1], -1) {
+		code, ok := consts[m[1]]
+		if !ok {
+			t.Fatalf("action_is_drop references unknown %s", m[1])
+		}
+		inDrop[code] = true
+	}
+
+	for name, code := range consts {
+		verdict, _ := serverActionName(code)
+		if want := verdict == "DROP"; inDrop[code] != want {
+			t.Errorf("%s (%d): action_is_drop=%v, serverActionName verdict=%s", name, code, inDrop[code], verdict)
+		}
+	}
+}
+
 // The bulk classes must stay unreported.
 //
 // TCP_ESTABLISHED, UDP_ESTABLISHED and post-SYN SSH_RELAY are the verdicts

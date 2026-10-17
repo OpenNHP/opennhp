@@ -1233,7 +1233,7 @@ when the filter is attached and the host does have its address.
 
 ### All-ports exposure mode
 
-`var.server_open_all_ports` (default `true`, `terraform/demo/variables.tf`)
+`var.server_open_all_ports` (opt-in, default `false`, `terraform/demo/variables.tf`; the `infra-demo` workflow input `open_all_ports` sets it, and the workflow refuses `true` in a plan that creates or replaces `aws_instance.server`)
 adds one ingress rule to `aws_security_group.server`: every protocol, every
 port, `0.0.0.0/0`. The udp/knock-port and tcp/22-from-relay rules stay, as a
 subset, so flipping the variable back is an in-place rule removal and nothing
@@ -1243,6 +1243,14 @@ class, `[NHP-SCAN]` per port and per source). The decision tree is unchanged —
 a non-whitelisted tcp/22 and every non-knock UDP port are still dropped. Read
 the results with `scripts/xdp-attack-report.sh`.
 
+- **What stays reachable with the filter attached is more than sshd and the
+  knock port.** With the SG open, these XDP exemptions are reachable from any
+  internet source, and they are accepted exposure: UDP 67→68 reaches the
+  host's DHCP client (the source port is spoofable); UDP 123→123 reaches
+  chronyd's bound socket; non-first IPv4 fragments are always passed; ICMP
+  frag-needed is passed (anyone can lower a flow's PMTU). Narrowing options if
+  this stops being acceptable: DHCP only from the VPC DHCP server / link-local
+  range, NTP only from 169.254.169.123, or chrony `port 0`.
 - **Order is the reverse of the knock port.** Run `deploy-demo-v2` first and
   confirm `Verify the XDP ingress filter attached` is green, then run
   `infra-demo apply`. Both workflows share `concurrency: demo-terraform`, so

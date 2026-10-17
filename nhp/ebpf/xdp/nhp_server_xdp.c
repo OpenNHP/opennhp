@@ -342,8 +342,11 @@ struct {
 } nhp_src_hits SEC(".maps");
 
 static __always_inline bool action_is_drop(__u8 action) {
-    return action == ACT_DROP_OTHER || (action >= ACT_DROP_TCP_SSH_OTHER && action <= ACT_DROP_V6_OTHER) ||
-           action == ACT_DROP_TCP_SYN || action == ACT_DROP_TCP_STEALTH;
+    /* Listed one by one: 10..20 is not all drops (16..19 are XDP_PASS). */
+    return action == ACT_DROP_OTHER || action == ACT_DROP_TCP_SSH_OTHER || action == ACT_DROP_TCP_NHP ||
+           action == ACT_DROP_TCP_OTHER || action == ACT_DROP_UDP_OTHER || action == ACT_DROP_UDP_SHORT ||
+           action == ACT_DROP_NONUDP || action == ACT_DROP_V6_OTHER || action == ACT_DROP_TCP_SYN ||
+           action == ACT_DROP_TCP_STEALTH;
 }
 
 static __always_inline void bump_hit(void *map, const void *key) {

@@ -19,18 +19,19 @@ const (
 // dropCategories mirrors the DROP side of serverActionName in
 // nhp/utils/ebpf/engine_linux.go. A cross-check test reads that file and
 // requires every reason it defines to be present here. This map may have
-// entries the checked-in engine does not: TCP_SYN_SCAN is emitted by newer
-// deployments whose XDP build leads this branch.
+// entries the checked-in engine does not, for deployments whose XDP build
+// leads the branch.
 var dropCategories = map[string]Category{
-	"TCP_SSH_OTHER": CatSSH,
-	"TCP_NHP_PORT":  CatNHPTCP,
-	"TCP_OTHER":     CatTCPScan,
-	"TCP_SYN_SCAN":  CatSYNScan,
-	"UDP_OTHER":     CatUDPScan,
-	"UDP_SHORT":     CatShortUDP,
-	"NON_TCP_UDP":   CatOtherProt,
-	"V6_OTHER":      CatIPv6,
-	"OTHER":         CatOther,
+	"TCP_SSH_OTHER":    CatSSH,
+	"TCP_NHP_PORT":     CatNHPTCP,
+	"TCP_OTHER":        CatTCPScan,
+	"TCP_SYN_SCAN":     CatSYNScan,
+	"TCP_STEALTH_SCAN": CatTCPScan,
+	"UDP_OTHER":        CatUDPScan,
+	"UDP_SHORT":        CatShortUDP,
+	"NON_TCP_UDP":      CatOtherProt,
+	"V6_OTHER":         CatIPv6,
+	"OTHER":            CatOther,
 }
 
 // classify returns the category and whether the reason is known.

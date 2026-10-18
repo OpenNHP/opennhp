@@ -151,7 +151,7 @@ func TestCLIFormatsAndMask(t *testing.T) {
 }
 
 // The classifier must know every DROP reason the checked-in XDP side emits.
-// It may know more: a deployed build can lead this branch (TCP_SYN_SCAN).
+// It may know more: a deployed build can lead this branch.
 func TestClassifierMatchesEngine(t *testing.T) {
 	src, err := os.ReadFile("../../nhp/utils/ebpf/engine_linux.go")
 	if err != nil {
@@ -167,7 +167,9 @@ func TestClassifierMatchesEngine(t *testing.T) {
 			t.Errorf("reason %s missing from dropCategories", x[1])
 		}
 	}
-	if _, ok := dropCategories["TCP_SYN_SCAN"]; !ok {
-		t.Error("TCP_SYN_SCAN (emitted by deployed builds) missing from dropCategories")
+	for _, r := range []string{"TCP_SYN_SCAN", "TCP_STEALTH_SCAN"} {
+		if _, ok := dropCategories[r]; !ok {
+			t.Errorf("%s missing from dropCategories", r)
+		}
 	}
 }

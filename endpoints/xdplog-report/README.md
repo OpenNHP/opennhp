@@ -129,8 +129,7 @@ so the tests work on a fresh checkout.
 1. Add the reason to `dropCategories` in `classify.go` with a category.
 2. If the checked-in `nhp/utils/ebpf/engine_linux.go` also defines it, the
    cross-check test will confirm coverage. The classifier may know reasons the
-   checked-in engine does not: a deployed build can lead the branch (for example
-   `TCP_SYN_SCAN`).
+   checked-in engine does not: a deployed build can lead the branch.
 
 ---
 
@@ -245,5 +244,4 @@ go test ./xdplog-report/
 
 1. 在 `classify.go` 的 `dropCategories` 中加入该 reason 和对应类别。
 2. 如果当前分支的 `nhp/utils/ebpf/engine_linux.go` 也定义了它，交叉校验测试会确认
-   覆盖完整。分类器可以包含引擎尚未定义的 reason：线上部署的版本可能领先于分支
-   （例如 `TCP_SYN_SCAN`）。
+   覆盖完整。分类器可以包含引擎尚未定义的 reason：线上部署的版本可能领先于分支。

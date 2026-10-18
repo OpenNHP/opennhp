@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"math"
 	"strings"
 )
 
@@ -16,7 +17,12 @@ func renderHTML(w io.Writer, r *Report) error {
 var htmlReport = template.Must(template.New("report").Funcs(template.FuncMap{
 	"pct": pc,
 	"bar": func(f float64) template.CSS {
-		return template.CSS(fmt.Sprintf("width:%.1f%%", f*100))
+		if f < 0 || math.IsNaN(f) {
+			f = 0
+		} else if f > 1 {
+			f = 1
+		}
+		return template.CSS(fmt.Sprintf("width:%.1f%%", f*100)) //nolint:gosec // G203: the only interpolated value is a float clamped to [0,1] and formatted numerically, so no attacker-controlled text reaches the style attribute
 	},
 	"loc": func(x IPRow) string { return strings.TrimSpace(x.Country + " " + x.City) },
 	"ports": func(p []int) string {

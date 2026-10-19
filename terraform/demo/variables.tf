@@ -88,7 +88,7 @@ variable "nhp_listen_port" {
 # 或 tfvars 显式设为 true。回滚：翻回 false 再 apply，SG 精确回到窄姿态
 # （udp/nhp_listen_port + relay SG 的 tcp/22）。
 variable "server_open_all_ports" {
-  description = "将 nhp-server 的安全组对 0.0.0.0/0 全协议全端口放开，由 XDP 独任把关。翻回 false 并 apply 即精确回到窄 SG 姿态。"
+  description = "将 nhp-server 的安全组对 0.0.0.0/0 放开 tcp(除 22)/udp/icmp 全端口，由 XDP 独任把关；tcp/22 始终只对 relay SG 开放。翻回 false 并 apply 即精确回到窄 SG 姿态。"
   type        = bool
   default     = false
 }

@@ -570,7 +570,7 @@ sudo nmap -Pn -n -sU -p ${NHP_PORT} $SERVER_PUB        | tee -a before-from-inte
 ping -c3 $SERVER_PUB                                   | tee -a before-from-internet.txt
 ```
 
-> **SG 全开（`server_open_all_ports = true`）时，本节要做成全端口**，且放开前后各做一次：
+> **SG 全开（`server_open_all_ports = true`）时，本节要做成全端口（tcp/22 除外，它始终只对 relay SG 开放）**，且放开前后各做一次：
 >
 > ```bash
 > nmap -Pn -n -p- --max-retries 1 $SERVER_PUB   | tee before-allports.txt   # 放开前
@@ -940,8 +940,11 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    才失联。凡是动 `nhp_server_xdp.c` 的改动，除了 §4.6 / §4.6b 的探测，还要
    在改完的**一小时后**再回来看一眼主机是否还在（`ip -4 addr`、敲一次门）。
 9. **SG 全开后 fail-open 的代价** —— `server_open_all_ports = true` 时 XDP 是这台主机唯一的入站
-   控制。XDP 没挂上（加载失败、或地址看门狗在 2 分钟无可路由 IPv4 后主动 detach）就是
-   全端口裸奔，残余面是 sshd（仅密钥）与 NHP 的 UDP 端口。止损靠 `deploy-server` 的
+   控制。XDP 没挂上就是
+   除 tcp/22 外的全端口裸奔——不只是新建/替换实例：每次 `deploy-demo-v2`（停再起 daemon）、
+   部署失败、加载失败、重启、崩溃、`systemctl restart`、以及地址看门狗在 2 分钟无可路由
+   IPv4 后主动 detach，都会开这个窗口（XDP link 未 pin）。tcp/22 在 SG 层只对 relay SG
+   开放，不依赖 XDP；残余面是 chronyd、SSM/cloud-init agent 与 NHP 的 UDP 端口。止损靠 `deploy-server` 的
    `Verify the XDP ingress filter attached`（所以要先 deploy 再放开）与一个词的回滚：
    `server_open_all_ports = false` + `infra-demo apply`；主机失联则 `aws ec2 reboot-instances`。
    generic 模式的 XDP 在 skb 分配之后才丢包，体量扫描会消耗 t3 的 CPU credit，注意

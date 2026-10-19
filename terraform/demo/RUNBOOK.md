@@ -1234,10 +1234,13 @@ when the filter is attached and the host does have its address.
 ### All-ports exposure mode
 
 `var.server_open_all_ports` (opt-in, default `false`, `terraform/demo/variables.tf`; the `infra-demo` workflow input `open_all_ports` sets it, and the workflow refuses `true` in a plan that creates or replaces `aws_instance.server`)
-adds one ingress rule to `aws_security_group.server`: every protocol, every
-port, `0.0.0.0/0`. The udp/knock-port and tcp/22-from-relay rules stay, as a
-subset, so flipping the variable back is an in-place rule removal and nothing
-else. The purpose is observation: scans, brute force and reflection probes now
+adds ingress rules to `aws_security_group.server` for `0.0.0.0/0`: tcp 0-21 and
+23-65535, udp 0-65535 and icmp. **tcp/22 is deliberately excluded** (an SG rule
+cannot express "all except 22", hence the split tcp ranges) and stays
+restricted to the relay SG, so sshd never depends on a fail-open filter. Other
+IP protocols are not opened. The udp/knock-port and tcp/22-from-relay rules
+stay, so flipping the variable back is an in-place rule removal and nothing
+else. Scans of tcp/22 do not reach the NIC in this mode and are not counted. The purpose is observation: scans, brute force and reflection probes now
 reach the NIC, where the XDP program counts them (`[NHP-STAT]` per verdict
 class, `[NHP-SCAN]` per port and per source). The decision tree is unchanged —
 a non-whitelisted tcp/22 and every non-knock UDP port are still dropped. Read
@@ -1257,14 +1260,25 @@ the results with `scripts/xdp-attack-report.sh`.
   they cannot interleave. This is guidance, not a gate: an apply-time probe
   cannot exist for a host Terraform has not created yet, and tying `apply` to
   host health would make a flaky SSH hop an infrastructure failure.
-- **The real new exposure is the fail-open window.** If the filter is not
-  attached (load failed, or the address watchdog in
-  `endpoints/server/ebpf/serverengine.go` detached it after 2 minutes without a
-  routable IPv4 address), the host is reachable on every port. What listens
-  there is sshd (key-only, no passwords) and the NHP daemon's UDP port — the
-  same order of exposure as the relay's tcp/22 to `0.0.0.0/0`. There is
+- **The real new exposure is the fail-open window, and it recurs.** The XDP
+  link is held by the process (the program is pinned, the link is not), so the
+  filter is detached whenever `nhp-serverd` is not running or has not attached:
+  every `deploy-demo-v2` run (`deploy-server` stops and restarts the daemon), a
+  failed deploy (e.g. the glibc mismatch that left the daemon down), a
+  fail-open load (an `xdp.toml` refusal, a verifier or kernel error after an AMI
+  change — the `Verify the XDP ingress filter attached` gate turns the run red
+  but does not close the SG), any reboot or stop/start (DHCP comes up before
+  the filter), a crash, and `systemctl restart`. The address watchdog in
+  `endpoints/server/ebpf/serverengine.go` also detaches after 2 minutes without
+  a routable IPv4 address. In each window the host is reachable from the
+  internet on every udp port, every tcp port except 22, and icmp: whatever
+  listens there (chronyd, the NHP daemon's UDP port, SSM/cloud-init agents).
+  tcp/22 is not in that set, because it is not opened at the SG layer. There is
   deliberately no nftables/iptables backstop: that would contradict "eBPF is
-  the only control".
+  the only control". Nothing in `deploy-demo-v2` narrows the SG before stopping
+  the daemon; if that residual exposure stops being acceptable, either narrow
+  the SG around deploys or pin the XDP link (which contradicts the
+  "detach on error" invariant and needs its own decision).
 - **Rollback** is `server_open_all_ports = false` and `infra-demo apply`. The
   security group returns exactly to udp/knock-port + tcp/22 from the relay SG.
   Nothing on the host changes; the telemetry stays and just counts less.

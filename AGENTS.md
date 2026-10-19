@@ -236,15 +236,23 @@ matters, because the rendered config tracks the applied state, never the
 source-default.
 
 **All-ports exposure (deliberate).** `aws_security_group.server` is opened to
-`0.0.0.0/0` on every protocol and port while `var.server_open_all_ports` is
-`true` (opt-in, default `false`; set it through the `infra-demo` `open_all_ports`
+`0.0.0.0/0` on every tcp port **except 22**, every udp port and icmp while
+`var.server_open_all_ports` is `true` (opt-in, default `false`; set it through the `infra-demo` `open_all_ports`
 input once the attach gate is green, and `infra-demo` refuses it in a plan that
 creates or replaces `aws_instance.server`). That is intentional and is
 for observation: scans must reach the NIC so the XDP filter can count them
 (`[NHP-STAT]`, `[NHP-SCAN]`). In this mode **the XDP filter is the only inbound
-control on the host** — the security group is no longer the narrower layer — and
-it is fail-open, so a host whose filter is not attached is exposed on every
-port. What the filter still lets through to the host from any source in this
+control on everything but tcp/22** — the security group is no longer the
+narrower layer — and it is fail-open and its link is not pinned, so the filter
+is detached on *every* `deploy-demo-v2` run (the daemon is stopped and
+restarted), failed deploy, crash, `systemctl restart`, reboot and failed load,
+not only on a new or replaced instance. During each of those windows the host
+is exposed to the internet on every udp port, every tcp port except 22, and
+icmp: chronyd, the SSM/cloud-init agents and anything else listening. **tcp/22
+is deliberately carved out of the open range** and stays restricted to the relay
+SG at the security-group layer, so sshd never depends on a fail-open filter;
+the cost is that tcp/22 scans never reach the NIC and are not counted. Other IP
+protocols (GRE, ESP, ...) are not opened. What the filter still lets through to the host from any source in this
 mode: the knock port, SSH from the whitelist, UDP 67→68 (DHCP client), UDP
 123→123 (chronyd), non-first IPv4 fragments and ICMP frag-needed. Those are
 accepted exposure, not narrowed. Order is the *reverse* of the knock-port rule: run `deploy-demo-v2` first

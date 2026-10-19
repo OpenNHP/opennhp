@@ -101,21 +101,68 @@ resource "aws_security_group" "server" {
     security_groups = [aws_security_group.relay.id]
   }
 
-  # Everything else, from anywhere -- deliberately. The nhp-server's XDP filter
-  # (nhp/ebpf/xdp/nhp_server_xdp.c) is the ONLY inbound control on this host in
-  # this mode; the point is to let scans reach the NIC so the filter can count
-  # them ([NHP-STAT] / [NHP-SCAN]). The two rules above are a subset of this
-  # one and stay so that flipping the variable to false returns exactly to the
-  # narrow posture. Order: deploy-demo-v2 (confirm "Verify the XDP ingress
-  # filter attached" is green) BEFORE infra-demo apply -- the opposite of the
-  # knock-port rule. See terraform/demo/RUNBOOK.md "All-ports exposure mode".
+  # Everything else, from anywhere -- deliberately, EXCEPT tcp/22. The
+  # nhp-server's XDP filter (nhp/ebpf/xdp/nhp_server_xdp.c) is the ONLY inbound
+  # control on the rest of this host in this mode; the point is to let scans
+  # reach the NIC so the filter can count them ([NHP-STAT] / [NHP-SCAN]).
+  #
+  # The filter is fail-open and its link is not pinned, so it is detached on
+  # every deploy, crash, restart, reboot and failed load. sshd is the
+  # highest-value surface on the host, so its reachability must never depend on
+  # the filter: tcp/22 stays restricted to the relay SG at this layer and is
+  # deliberately carved out of the open range below. Consequence: scans of
+  # tcp/22 no longer reach the NIC and are not counted.
+  #
+  # An SG rule cannot say "all except 22", so the range is spelled out per
+  # protocol: tcp 0-21 and 23-65535, all udp, all icmp. Other IP protocols
+  # (GRE, ESP, ...) are no longer reachable, which is narrower than before.
+  # Whatever else is listening (chronyd, SSM/cloud-init agents) is still
+  # exposed while the filter is detached; see terraform/demo/RUNBOOK.md
+  # "All-ports exposure mode". The two rules above are a subset of this one
+  # (the knock port) or independent of it (ssh), so flipping the variable to
+  # false returns exactly to the narrow posture. Order: deploy-demo-v2 (confirm
+  # "Verify the XDP ingress filter attached" is green) BEFORE infra-demo apply
+  # -- the opposite of the knock-port rule.
   dynamic "ingress" {
     for_each = var.server_open_all_ports ? [1] : []
     content {
-      description = "ALL (XDP is the only control; see CLAUDE.md)"
+      description = "ALL tcp except 22 (0-21)"
       from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
+      to_port     = 21
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL tcp except 22 (23-65535)"
+      from_port   = 23
+      to_port     = 65535
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL udp (XDP is the only control; see CLAUDE.md)"
+      from_port   = 0
+      to_port     = 65535
+      protocol    = "udp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL icmp (XDP is the only control; see CLAUDE.md)"
+      from_port   = -1
+      to_port     = -1
+      protocol    = "icmp"
       cidr_blocks = ["0.0.0.0/0"]
     }
   }

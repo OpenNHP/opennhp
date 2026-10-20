@@ -67,8 +67,9 @@ RelayIPs = [${RELAY_IPS_TOML}]
 # the security group rule for udp/<port> is rendered from the same variable,
 # so configuration cannot run ahead of the security group.
 
-# [NHP-SCAN] 汇总窗口与 Top-N。启动时读一次，改了要重启 nhp-serverd。
-# 每窗口日志行数恒为 2*TopN + 1，与被攻击强度无关。
+# [NHP-SCAN] summary window (seconds) and Top-N. Read once at startup;
+# changing them takes a restart of nhp-serverd. The number of log lines per
+# window is always 2*TopN + 1, regardless of attack volume.
 ScanReportIntervalSeconds = ${XDP_SCAN_REPORT_SECONDS}
 ScanReportTopN = ${XDP_SCAN_TOP_N}
 

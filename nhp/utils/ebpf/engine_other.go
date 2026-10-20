@@ -38,6 +38,8 @@ type EngineLoadParams struct {
 
 	ScanReportInterval time.Duration
 	ScanReportTopN     int
+
+	DisableEventLog bool
 }
 
 type EngineHandle struct {

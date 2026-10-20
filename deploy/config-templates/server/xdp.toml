@@ -71,3 +71,8 @@ RelayIPs = [${RELAY_IPS_TOML}]
 # 每窗口日志行数恒为 2*TopN + 1，与被攻击强度无关。
 ScanReportIntervalSeconds = ${XDP_SCAN_REPORT_SECONDS}
 ScanReportTopN = ${XDP_SCAN_TOP_N}
+
+# Per-packet event log. true (the default when absent) keeps it; false stops
+# only that log. [NHP-STAT] / [NHP-SCAN] summaries and the filter itself are
+# unaffected. Read once at startup; changing it takes a restart.
+EventLogEnabled = ${XDP_EVENT_LOG_ENABLED}

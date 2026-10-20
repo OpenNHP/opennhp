@@ -59,6 +59,10 @@ type LoadParams struct {
 	// (xdp.toml's ScanReportIntervalSeconds / ScanReportTopN).
 	ScanReportInterval time.Duration
 	ScanReportTopN     int
+
+	// DisableEventLog turns off the per-packet event log (xdp.toml's
+	// EventLogEnabled = false). The summaries keep running.
+	DisableEventLog bool
 }
 
 // EngineLoad attaches the server's XDP filter.
@@ -94,6 +98,7 @@ func EngineLoad(p LoadParams) error {
 
 		ScanReportInterval: p.ScanReportInterval,
 		ScanReportTopN:     p.ScanReportTopN,
+		DisableEventLog:    p.DisableEventLog,
 	})
 	if err != nil {
 		return err

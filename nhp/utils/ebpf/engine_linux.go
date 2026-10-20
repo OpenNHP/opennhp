@@ -112,6 +112,11 @@ type EngineLoadParams struct {
 	// each window lists. Zero values disable the report.
 	ScanReportInterval time.Duration
 	ScanReportTopN     int
+
+	// DisableEventLog turns off the per-packet event log (VariantServer only).
+	// The zero value keeps it on. The [NHP-STAT] and [NHP-SCAN] summaries are
+	// unaffected, and so is the filter's verdict.
+	DisableEventLog bool
 }
 
 // Names of the .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that
@@ -736,7 +741,11 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	h.ServerLogger.SetFlags(stdlog.Lmsgprefix)
 
 	serverStop = make(chan struct{})
-	if perfReader != nil {
+	if perfReader != nil && params.DisableEventLog {
+		// Nobody reads the ring, so release it; the program keeps counting
+		// and the summaries keep running.
+		perfReader.Close()
+	} else if perfReader != nil {
 		go readServerEvents(perfReader, serverStop, params.ComponentId, h.ServerLogger)
 	}
 	if objs.ActionStats != nil {

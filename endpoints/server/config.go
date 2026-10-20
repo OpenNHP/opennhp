@@ -231,6 +231,11 @@ type XdpTomlConfig struct {
 	// defaults below. Read once at startup, like NhpMinFrameBytes.
 	ScanReportIntervalSeconds int
 	ScanReportTopN            int
+	// EventLogEnabled controls the per-packet event log. Absent means true.
+	// False stops only that log: [NHP-STAT] and [NHP-SCAN] still run and the
+	// filter still attaches and enforces. Read once at startup, like
+	// NhpMinFrameBytes.
+	EventLogEnabled *bool
 }
 
 // DefaultNhpMinFrameBytes mirrors the nhp_min_udp_len default in
@@ -829,6 +834,8 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		// Zero turns the [NHP-SCAN] summary off; the filter attaches regardless.
 		ScanReportInterval: time.Duration(scanSeconds) * time.Second,
 		ScanReportTopN:     scanTopN,
+
+		DisableEventLog: conf.EventLogEnabled != nil && !*conf.EventLogEnabled,
 	}); err != nil {
 		log.Warning("server eBPF engine load failed, fail-open (no XDP ingress filter): %v", err)
 		return false

@@ -712,6 +712,7 @@ jobs:
           # endpoints/server/config.go. Startup-only knobs.
           echo "XDP_SCAN_REPORT_SECONDS=300" >> $GITHUB_ENV
           echo "XDP_SCAN_TOP_N=20" >> $GITHUB_ENV
+          echo "XDP_EVENT_LOG_ENABLED=true" >> $GITHUB_ENV
 
       - name: Generate keys and render configs
         env:

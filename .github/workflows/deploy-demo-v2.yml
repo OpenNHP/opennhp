@@ -1727,9 +1727,24 @@ jobs:
           # string: it would otherwise land in the server's process table and
           # in any sshd debug log for the life of the connection.
           # ASCII only in the marker: sshd parses this file as bytes.
+          #
+          # Options: `restrict,command=...` is narrower than the explicit
+          # no-port-forwarding/no-X11/no-agent/no-pty list. `restrict` enables
+          # ALL restrictions (including ones OpenSSH adds in future releases
+          # such as no-user-rc), and a kept-explicit list silently misses
+          # them. OpenSSH 7.0+ supports `restrict`, and the demo AMI
+          # (al2023) ships OpenSSH 9.x. Pin the source with from= to the
+          # relay's private IP — the collector is the only legitimate user
+          # of this key, and a leaked key from any other host would still
+          # be refused at the line.
+          RELAY_PRIV='${{ needs.configure.outputs.relay_private_ip }}'
+          if [ -z "$RELAY_PRIV" ] || [ "$RELAY_PRIV" = "null" ]; then
+            echo "ERROR: relay_private_ip missing from configure outputs; cannot pin authorized_keys source" >&2
+            exit 1
+          fi
           cat > /tmp/stats_ak_entry <<EOF
           # stats.opennhp.org collector - managed by deploy-server; rotates with opennhp/demo
-          command="$REMOTE_DIR/etc/nhp-xdplog-export.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $STATS_PUB
+          from="$RELAY_PRIV",restrict,command="$REMOTE_DIR/etc/nhp-xdplog-export.sh" $STATS_PUB
           EOF
           scp /tmp/stats_ak_entry nhp-server:/tmp/stats_ak_entry
 
@@ -1773,7 +1788,7 @@ jobs:
           # Break-glass proof: this connection used the deploy key that the
           # step above rewrote a file containing. If it still authenticates,
           # CI has not been locked out.
-          ssh nhp-server 'echo "  deploy key still authenticates; $(grep -c "^command=" ~/.ssh/authorized_keys || true) forced-command line(s)"'
+          ssh nhp-server 'echo "  deploy key still authenticates; $(grep -cE "^[^#].*,(restrict|command=)" ~/.ssh/authorized_keys || true) restricted-key line(s)"'
 
       - name: Cleanup
         if: always()
@@ -3543,8 +3558,13 @@ jobs:
           printf '%s' "$STATS_PRIV" > ~/.ssh/stats_collector_key
           chmod 600 ~/.ssh/stats_collector_key
           # Same file goes onto the relay below; masking it here keeps it out
-          # of any later debug output on the runner too.
-          echo "::add-mask::$STATS_PRIV"
+          # of any later debug output on the runner too. ::add-mask:: only
+          # applies to a single line, so mask the ed25519 key line by line:
+          # masking the whole key as one string leaves the base64 body
+          # printed raw in the public Actions log.
+          while IFS= read -r line; do
+            [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+          done <<< "$STATS_PRIV"
 
       - name: Download build + configs
         uses: actions/download-artifact@v7

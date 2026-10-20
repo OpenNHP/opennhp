@@ -311,9 +311,15 @@ else
   STATS_COLLECTOR_SSH_PUBLIC_KEY="$EXISTING_STATS_COLLECTOR_PUB"
 fi
 rm -rf "$STATS_COLLECTOR_KEYGEN_DIR"
-# Mask the private key at its source so any future echo (debug, key summary)
-# never leaks it to the public Actions log.
-echo "::add-mask::$STATS_COLLECTOR_SSH_PRIVATE_KEY"
+# Mask the private key line-by-line at its source. ::add-mask:: only
+# applies to a single line, and an OpenSSH ed25519 key spans four or more
+# base64 body lines plus a trailing comment; masking the whole key as
+# one string redacts only the BEGIN line and prints the body lines raw
+# into the public Actions log. Mirror the line-by-line pattern used by
+# deploy-demo-v2.yml for STEALTH_CA_KEY / demo_nhp_key.
+while IFS= read -r line; do
+  [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+done <<< "$STATS_COLLECTOR_SSH_PRIVATE_KEY"
 
 echo ""
 echo "--- Key summary ---"

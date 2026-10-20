@@ -6,8 +6,13 @@
 # job in .github/workflows/deploy-demo-v2.yml; wired into a stats-collector
 # public key entry in /home/ec2-user/.ssh/authorized_keys as:
 #
-#   command="/home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh",no-port-forwarding,\
-#     no-X11-forwarding,no-agent-forwarding,no-pty <pubkey> stats-opennhp-collector
+#   from="<relay private IP>",restrict,\
+#     command="/home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh" <pubkey> stats-opennhp-collector
+#
+# `restrict` enables every sshd restriction OpenSSH knows about (no-port-
+# forwarding, no-X11-forwarding, no-agent-forwarding, no-pty, no-user-rc,
+# ... and any future flags), so a leaked key from anywhere but the relay
+# is useless at the line.
 #
 # Allowed commands:
 #   list

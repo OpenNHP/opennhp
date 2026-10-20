@@ -144,7 +144,11 @@ fi
 # ---- main loop: one source at a time ---------------------------------------
 any_pulled=0
 any_failed=0
-while read -r name user host log_dir; do
+while read -r name user host log_dir || [ -n "$name" ]; do
+  # `|| [ -n "$name" ]` so a final line without a trailing newline still
+  # parses: read returns non-zero on EOF-without-newline, and a hand-edited
+  # sources.conf can easily be saved that way. Without this guard the
+  # loop silently drops its last entry on every deploy.
   case "$name" in ''|\#*) continue ;; esac
   if [ -z "$user" ] || [ -z "$host" ] || [ -z "$log_dir" ]; then
     log "error" "bad sources.conf entry for '$name' (want: name user host log_dir)"
@@ -219,6 +223,7 @@ while read -r name user host log_dir; do
     if ! ssh "${SSH_OPTS[@]}" "$user@$host" "get $date" </dev/null >"$tmp" 2>>"$LOG_FILE"; then
       log "error" "$name/$date: ssh get failed"
       rm -f "$tmp"
+      any_failed=1
       continue
     fi
     # Reject empty files and files that do not end in a newline (which would
@@ -226,6 +231,7 @@ while read -r name user host log_dir; do
     if [ ! -s "$tmp" ]; then
       log "error" "$name/$date: empty get, dropping"
       rm -f "$tmp"
+      any_failed=1
       continue
     fi
     last_byte=$(tail -c1 "$tmp" | od -An -c | tr -d ' ')
@@ -238,6 +244,7 @@ while read -r name user host log_dir; do
       if [ ! -s "$tmp" ]; then
         log "error" "$name/$date: only partial content, dropping"
         rm -f "$tmp"
+        any_failed=1
         continue
       fi
     fi
@@ -247,6 +254,7 @@ while read -r name user host log_dir; do
     if ! gzip -n -c "$tmp" >"$gztmp"; then
       log "error" "$name/$date: gzip failed"
       rm -f "$tmp" "$gztmp"
+      any_failed=1
       continue
     fi
     chmod 0640 "$gztmp"

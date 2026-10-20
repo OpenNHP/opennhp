@@ -549,7 +549,7 @@ func summaryFromStateWithOpts(in siteInput, st SiteDayState, today, outDir strin
 // summaryFromPage reads a SiteDaySummary directly from an on-disk detail
 // page JSON. Used for PageOnly inputs: the raw log is gone (typically
 // pruned by the collector's RETENTION_DAYS) but the day has already been
-// analysed and published, so the index can keep showing it without a raw
+// analyzed and published, so the index can keep showing it without a raw
 // rebuild.
 func summaryFromPage(in siteInput, today, outDir string) (SiteDaySummary, error) {
 	sum := SiteDaySummary{

@@ -554,12 +554,12 @@ func TestSiteKeepsOrphanDetailPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(srcOut, orphanDay+".json"), ob, 0o644); err != nil {
+	if err = os.WriteFile(filepath.Join(srcOut, orphanDay+".json"), ob, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// day-2 is a normal raw input that gets rebuilt into a page.
-	if err := os.WriteFile(filepath.Join(srcLogs, "nhp_server_xdp-"+freshDay+".log"),
+	if err = os.WriteFile(filepath.Join(srcLogs, "nhp_server_xdp-"+freshDay+".log"),
 		[]byte("10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=5 LOGGED=1 TOTAL=5\n"),
 		0o644); err != nil {
 		t.Fatal(err)
@@ -606,7 +606,7 @@ func TestSiteKeepsOrphanDetailPage(t *testing.T) {
 	}
 }
 
-// TestSiteDropsUnreadableOrphanPage guards the last-resort behaviour: if
+// TestSiteDropsUnreadableOrphanPage guards the last-resort behavior: if
 // a day has neither a raw log under -logs nor a parseable detail page
 // under d/<src>/, the index must skip it rather than emit a zeroed row
 // that would read as "no attacks".

@@ -22,12 +22,18 @@ import (
 type SiteOptions struct {
 	LogsDir string
 	OutDir  string
-	TopN    int
-	GeoMMDB string
-	GeoCSV  string
-	MaskIP  bool
-	Force   bool
-	Today   string // YYYY-MM-DD (UTC), supplied by the caller
+	// StatePath is the incremental-build state file. It defaults to
+	// <OutDir>/state.json, but -state lets a caller keep it OUT of the
+	// directory nginx serves: the state records the absolute path of every
+	// raw cache file, which is host layout an anonymous visitor has no
+	// business reading. Point it somewhere private.
+	StatePath string
+	TopN      int
+	GeoMMDB   string
+	GeoCSV    string
+	MaskIP    bool
+	Force     bool
+	Today     string // YYYY-MM-DD (UTC), supplied by the caller
 }
 
 // SiteDaySummary is one row of the site's index. Field names are part of the
@@ -79,6 +85,7 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	fs.StringVar(&opts.LogsDir, "logs", "", "directory of <source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]")
 	fs.StringVar(&opts.OutDir, "out", "", "web root directory (created if missing)")
+	fs.StringVar(&opts.StatePath, "state", "", "incremental-build state file (default <out>/state.json; keep it out of the web root)")
 	fs.IntVar(&opts.TopN, "top", opts.TopN, "rows in each TOP table")
 	fs.StringVar(&opts.GeoCSV, "geo-csv", "", "optional CIDR->country CSV for the region section")
 	fs.StringVar(&opts.GeoMMDB, "geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
@@ -103,6 +110,12 @@ func runSite(args []string, stdout io.Writer) error {
 	if err := os.MkdirAll(opts.OutDir, 0o755); err != nil {
 		return fmt.Errorf("create -out: %w", err)
 	}
+	if opts.StatePath == "" {
+		opts.StatePath = filepath.Join(opts.OutDir, "state.json")
+	}
+	if err := os.MkdirAll(filepath.Dir(opts.StatePath), 0o755); err != nil {
+		return fmt.Errorf("create -state dir: %w", err)
+	}
 
 	var geo GeoResolver
 	if opts.GeoCSV != "" {
@@ -121,7 +134,7 @@ func runSite(args []string, stdout io.Writer) error {
 		geo = g
 	}
 
-	state, err := loadSiteState(filepath.Join(opts.OutDir, "state.json"))
+	state, err := loadSiteState(opts.StatePath)
 	if err != nil {
 		return fmt.Errorf("load state: %w", err)
 	}
@@ -152,7 +165,7 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 
 	if dirty {
-		if err := saveSiteState(filepath.Join(opts.OutDir, "state.json"), state); err != nil {
+		if err := saveSiteState(opts.StatePath, state); err != nil {
 			return fmt.Errorf("save state: %w", err)
 		}
 		if err := renderIndex(opts, summaries); err != nil {
@@ -163,7 +176,7 @@ func runSite(args []string, stdout io.Writer) error {
 		// differ, the file was edited by hand; rewrite it from our in-memory
 		// view so the next run starts clean.
 		if !state.equal(loadedSnapshot) {
-			if err := saveSiteState(filepath.Join(opts.OutDir, "state.json"), state); err != nil {
+			if err := saveSiteState(opts.StatePath, state); err != nil {
 				return fmt.Errorf("save state: %w", err)
 			}
 		}
@@ -279,7 +292,10 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 		return SiteDaySummary{}, false, err
 	}
 	rep := an.Build(opts.TopN, geo, opts.MaskIP)
-	rep.BackLink = "../index.html"
+	// Detail pages live at <out>/d/<source>/<day>.html, so the index is two
+	// levels up. A single ".." would resolve to <out>/d/index.html, which
+	// does not exist.
+	rep.BackLink = "../../index.html"
 	rep.IsSiteDetail = true
 
 	dayDir := filepath.Join(opts.OutDir, "d", in.Source)

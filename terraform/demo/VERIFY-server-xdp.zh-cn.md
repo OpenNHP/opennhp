@@ -982,6 +982,18 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    # 含 command="/home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh" 与
    # no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty，
    # 公钥字符串与 `opennhp/demo` 中 `stats_collector_ssh_public_key` 字段一致。
+   #
+   # 三条必须同时成立：
+   #  a) 路径是 ~/.ssh/authorized_keys（sshd 真正读的那一个），
+   #     不是 ~/nhp-server/.ssh/authorized_keys；
+   #  b) 描述性 # 标记单独占一行（在 key 行的上一行）。若 # 出现在行首，
+   #     sshd 会把整行当注释，这个 key 就永远不会被授权；
+   #  c) 匹配行数恰好为 1：轮换后旧 key 必须已被替换掉，而不是并存。
+   grep -c 'stats.opennhp.org-collector' ~/.ssh/authorized_keys   # == 1
+   # deploy 公钥行必须原样存在（XDP 无 break-glass，CI 不能被锁在门外）：
+   grep -c "$(cut -d' ' -f2 <<<"$(aws secretsmanager get-secret-value \
+     --secret-id opennhp/demo --region us-west-2 --query SecretString \
+     --output text | jq -r .ssh_deploy_public_key)")" ~/.ssh/authorized_keys   # == 1
    ```
 
 3. **relay 端 collector 一切就绪**：
@@ -991,7 +1003,17 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    sudo systemctl status xdpstats.timer --no-pager    # active, waiting
    sudo systemctl list-timers xdpstats.timer          # 列出下一次触发时间
    sudo -u ec2-user /home/ec2-user/xdpstats/xdpstats-collect.sh -v   # 一次手动跑
-   ls /home/ec2-user/xdpstats/web/                    # 含 index.html/index.json/d/server/<day>.html
+   ls /var/www/stats/                                 # 含 index.html/index.json/d/server/<day>.html
+   # 权限三连（任一不对 nginx 就会 403 或泄露未脱敏日志）：
+   stat -c '%a %U %n' /home/ec2-user /home/ec2-user/xdpstats \
+                              /home/ec2-user/xdpstats/raw /var/www/stats
+   #   /home/ec2-user            0700  ec2-user   （AL2023 默认，nginx 不可穿越）
+   #   .../xdpstats/raw          0700  ec2-user   （唯一存未脱敏 IP 的目录）
+   #   /var/www/stats            0755  ec2-user   （web root，nginx 可读）
+   # state.json 必须在 web root 之外，且对外 404：
+   test -f /home/ec2-user/xdpstats/state.json && echo "state 位置正确"
+   test ! -f /var/www/stats/state.json && echo "state 未泄漏到 web root"
+   curl -fsS -o /dev/null -w '%{http_code}\n' https://stats.opennhp.org/state.json   # 404
    ```
 
 4. **公网可达 + 内容正确**：

@@ -432,26 +432,44 @@ window: 14 days, see *nhp-server eBPF/XDP ingress filter* above).
   has. Same 0600 mode, same `[NHP-DROP]` / `[NHP-STAT]` / `[NHP-SCAN]` lines.
 - **Server (exporter)**: `deploy/scripts/nhp-xdplog-export.sh` is the SSH
   *forced command* attached to a dedicated ed25519 public key in
-  `~ec2-user/.ssh/authorized_keys`. It accepts only `list` (print
-  date/size/mtime) and `get <YYYY-MM-DD>` (stream one log to stdout);
+  `/home/ec2-user/.ssh/authorized_keys` (the path sshd reads — not
+  `~/nhp-server/.ssh/...`, which nothing looks at). It accepts only `list`
+  (print date/size/mtime) and `get <YYYY-MM-DD>` (stream one log to stdout);
   anything else (shell, scp, sftp, paths with `/`, dates that don't match
   `^\d{4}-\d{2}-\d{2}$`) is rejected at the script. The matching private key
   is `stats_collector_ssh_private_key` in `opennp/demo`; the public half is
   installed by `deploy-server` with
   `command=".../nhp-xdplog-export.sh",no-port-forwarding,no-X11-forwarding,
-  no-agent-forwarding,no-pty`.
+  no-agent-forwarding,no-pty`. The descriptive `#` marker sits on its OWN
+  line above the entry, because sshd reads any line *starting* with `#` as a
+  comment and would otherwise never authorize the key.
 - **Relay (collector)**: a systemd timer (`deploy/scripts/xdpstats.timer`,
   `OnCalendar=*-*-* 00:20:00 UTC`, `Persistent=true`) runs
-  `xdpstats-collect.sh`, which calls `ssh ... list` then `ssh ... get <date>`
-  per day, gzip-stores them under
+  `xdpstats-collect.sh`, which calls `ssh -i ~/.ssh/stats_collector_key -o
+  IdentitiesOnly=yes ... list` then `... get <date>` per day, gzip-stores
+  them under
   `/home/ec2-user/xdpstats/raw/server/nhp_server_xdp-<date>.log.gz`, then
-  invokes `xdplog-report site`.
+  invokes `xdplog-report site`. Host-key checking is
+  `StrictHostKeyChecking=yes` against a known_hosts seeded from
+  `ssh_host_keys` by `deploy-xdpstats` — never TOFU, because the collector is
+  a timer with nobody to answer a prompt.
 - **Site**: `endpoints/xdplog-report` has a `site` subcommand that emits
   `index.html` + `index.json` plus one `<day>.html` / `<day>.json` per day
-  under `/home/ec2-user/xdpstats/web/`. nginx serves that directory at
+  under `/var/www/stats/`. nginx serves that directory at
   `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
   `relay.*` / `agent.*` / `reg.*` / `demo.*` (SAN expanded by
   `bootstrap-tls.sh`).
+
+**Three directories, three permission stories.** `/home/ec2-user` is mode
+0700 on AL2023 and nginx workers run as `nginx`, so the web root is
+`/var/www/stats` (0755) and NOT under `$HOME`; `raw/` stays 0700 under
+`$HOME` because it is the only place full, unmasked source IPs exist on the
+relay; and `state.json` is written outside the web root via
+`xdplog-report site -state`, because it records the absolute path of every
+raw cache file. `deploy/nginx/stats.conf.template` also refuses
+`location = /state.json` as a second line of defence, and repeats the
+security headers inside every `location` — nginx only inherits `add_header`
+from an enclosing block when the inner block declares none of its own.
 
 **What's deliberately NOT changed**
 

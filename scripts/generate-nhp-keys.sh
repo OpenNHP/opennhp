@@ -284,11 +284,25 @@ echo "::add-mask::$DEMOAPP_SESSION_KEY"
 # Passphrase-less key — the relay host is the only consumer and the file
 # lives at 0600 /home/ec2-user/.ssh/stats_collector_key. Force-rotate only
 # on explicit --regenerate.
-STATS_COLLECTOR_KEYGEN_OUT=$(mktemp -t stats_collector_keygen.XXXXXX)
-trap 'rm -f "$STATS_COLLECTOR_KEYGEN_OUT"' EXIT
+#
+# The key comment is the tag deploy-server greps for when it replaces the
+# managed authorized_keys line, so it must stay hyphenated and space-free:
+# a tag containing a space would have to survive a round trip through a
+# remote shell command.
+#
+# ssh-keygen REFUSES to write over an existing file and prompts
+# "Overwrite (y/n)?" instead. On an Actions runner stdin is not a TTY, so the
+# prompt reads EOF and ssh-keygen exits non-zero, which under `set -e` would
+# take down `configure` and with it every deploy job. Hence mktemp -d (a
+# directory that is guaranteed empty) rather than mktemp (a file that already
+# exists). Cleanup is explicit instead of a trap: this script has no EXIT trap
+# today, and adding one here would silently replace any trap a later edit
+# installs.
+STATS_COLLECTOR_KEYGEN_DIR=$(mktemp -d -t stats_collector_keygen.XXXXXX)
+STATS_COLLECTOR_KEYGEN_OUT="$STATS_COLLECTOR_KEYGEN_DIR/collector_key"
 if [[ "$REGENERATE" == "true" || -z "$EXISTING_STATS_COLLECTOR_PRIV" || -z "$EXISTING_STATS_COLLECTOR_PUB" ]]; then
   echo "  Generating new stats collector ed25519 keypair..." >&2
-  ssh-keygen -t ed25519 -N "" -C "stats.opennhp.org collector" -f "$STATS_COLLECTOR_KEYGEN_OUT" >/dev/null
+  ssh-keygen -t ed25519 -N "" -C "stats.opennhp.org-collector" -f "$STATS_COLLECTOR_KEYGEN_OUT" >/dev/null
   STATS_COLLECTOR_SSH_PRIVATE_KEY=$(cat "$STATS_COLLECTOR_KEYGEN_OUT")
   STATS_COLLECTOR_SSH_PUBLIC_KEY=$(cat "$STATS_COLLECTOR_KEYGEN_OUT.pub")
 else
@@ -296,6 +310,7 @@ else
   STATS_COLLECTOR_SSH_PRIVATE_KEY="$EXISTING_STATS_COLLECTOR_PRIV"
   STATS_COLLECTOR_SSH_PUBLIC_KEY="$EXISTING_STATS_COLLECTOR_PUB"
 fi
+rm -rf "$STATS_COLLECTOR_KEYGEN_DIR"
 # Mask the private key at its source so any future echo (debug, key summary)
 # never leaks it to the public Actions log.
 echo "::add-mask::$STATS_COLLECTOR_SSH_PRIVATE_KEY"

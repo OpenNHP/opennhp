@@ -334,5 +334,74 @@ func TestSiteGeoCSVPassesThrough(t *testing.T) {
 	}
 }
 
+// TestSiteBackLinkResolves asserts the "back to index" href on a detail page
+// actually lands on the generated index.html. Detail pages are written to
+// <out>/d/<source>/<day>.html, so the correct relative path is two levels up;
+// "../../index.html" resolving to an existing file is the whole assertion.
+// A plain link-presence check would not have caught the earlier single-".."
+// value, which resolves to <out>/d/index.html — a 404 in production.
+func TestSiteBackLinkResolves(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	page := filepath.Join(out, "d", "server", "2026-10-01.html")
+	b, err := os.ReadFile(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := backlinkRe.FindStringSubmatch(string(b))
+	if m == nil {
+		t.Fatalf("%s has no back-to-index link", page)
+	}
+	target := filepath.Clean(filepath.Join(filepath.Dir(page), m[1]))
+	want := filepath.Join(out, "index.html")
+	if target != want {
+		t.Errorf("back link resolves to %s, want %s", target, want)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("back link target does not exist: %v", err)
+	}
+}
+
+var backlinkRe = regexp.MustCompile(`href="(\.\./[^"]*index\.html)"`)
+
+// TestSiteStateOutsideWebRoot asserts -state keeps the incremental-build state
+// out of the directory nginx publishes. state.json records the absolute path
+// of every raw cache file, which is host layout an anonymous visitor has no
+// business reading, so the relay deploy points -state at a private directory
+// and the default only stays inside -out for local/CI use.
+func TestSiteStateOutsideWebRoot(t *testing.T) {
+	logs, out := stageTestdata(t)
+	stateDir := filepath.Join(filepath.Dir(out), "state")
+	statePath := filepath.Join(stateDir, "state.json")
+	runSiteCmd(t, logs, out, "-state", statePath)
+
+	if _, err := os.Stat(statePath); err != nil {
+		t.Fatalf("-state file not written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "state.json")); !os.IsNotExist(err) {
+		t.Errorf("state.json leaked into the web root (err=%v)", err)
+	}
+	// The pages themselves must still be complete: the state is what makes
+	// the second run a no-op.
+	for _, day := range []string{"2026-10-01", "2026-10-02"} {
+		if _, err := os.Stat(filepath.Join(out, "d", "server", day+".html")); err != nil {
+			t.Errorf("%s missing: %v", day, err)
+		}
+	}
+	before, err := os.Stat(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runSiteCmd(t, logs, out, "-state", statePath)
+	after, err := os.Stat(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.ModTime().UnixNano() != after.ModTime().UnixNano() {
+		t.Error("second run with -state should be a no-op; state.json outside -out still works")
+	}
+}
+
 // netip sanity so we can reference netip in case future tests use it
 var _ = netip.MustParseAddr("203.0.113.5")

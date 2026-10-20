@@ -37,15 +37,50 @@
 set -euo pipefail
 
 # ---- paths -----------------------------------------------------------------
+# Three roots, deliberately in three places:
+#
+#   RAW_DIR  — the unmasked log cache (full source IPs). 0700, under $HOME,
+#              and NOT reachable from the web root. This is the only copy of
+#              unmasked data on the relay, so it is the thing the web root's
+#              permissions must never expose.
+#   WEB_DIR  — the published site. Lives under /var/www, not $HOME: on
+#              AL2023 /home/ec2-user is mode 0700 and nginx workers run as
+#              nginx, so a root under $HOME returns 403 to every request.
+#   STATE    — the incremental-build state. Kept out of WEB_DIR on purpose:
+#              state.json records the absolute path of every raw cache file,
+#              which is host layout an anonymous visitor has no business
+#              reading.
 XDPSTATS_DIR="/home/ec2-user/xdpstats"
 RAW_DIR="$XDPSTATS_DIR/raw"
-WEB_DIR="$XDPSTATS_DIR/web"
+WEB_DIR="/var/www/stats"
+STATE_FILE="$XDPSTATS_DIR/state.json"
 SOURCES_CONF="$XDPSTATS_DIR/sources.conf"
 LOG_FILE="$XDPSTATS_DIR/collect.log"
 LOCK_FILE="$RAW_DIR/.lock"
 RETENTION_DAYS=90
 SITE_BIN="/usr/local/bin/xdplog-report"
-SITE_ARGS=("-top" "20")
+SITE_ARGS=("-top" "20" "-state" "$STATE_FILE")
+
+# Identity used for every pull. It is a dedicated ed25519 key whose matching
+# public key sits on the server behind the nhp-xdplog-export.sh forced
+# command; it is NOT the deploy key, and it grants nothing else.
+SSH_IDENTITY="/home/ec2-user/.ssh/stats_collector_key"
+KNOWN_HOSTS="/home/ec2-user/.ssh/known_hosts"
+SSH_OPTS=(
+  -i "$SSH_IDENTITY"
+  # Without IdentitiesOnly, ssh offers every identity in the agent and every
+  # default key file first; the server would then see a rejected public-key
+  # attempt before the collector's key, and with MaxAuthTries set low a
+  # future extra key file in $HOME would lock the collector out.
+  -o IdentitiesOnly=yes
+  # No prompting: this runs from a timer. Trust comes from the pre-seeded
+  # ssh_host_keys blob installed by deploy-xdpstats, never from TOFU, and a
+  # changed server host key must be a visible failure, not a silent accept.
+  -o StrictHostKeyChecking=yes
+  -o UserKnownHostsFile="$KNOWN_HOSTS"
+  -o BatchMode=yes
+  -o ConnectTimeout=15
+)
 TODAY="$(date -u +%Y-%m-%d)"
 
 # ---- flags ------------------------------------------------------------------
@@ -69,9 +104,18 @@ log() {
 vlog() { [ "$VERBOSE" -eq 1 ] && log "debug" "$*"; log "info" "$*"; }
 
 mkdir -p "$RAW_DIR" "$WEB_DIR"
+chmod 0700 "$RAW_DIR"
 touch "$LOG_FILE"
 
 # flock returns the fd on the lock path; if another run holds it, exit cleanly.
+# Check for the binary first: without this, a missing flock is reported by
+# the shell as "command not found", `! flock` turns that into "lock is held",
+# and the run exits 0 having done nothing at all — a timer that looks green
+# and never collects.
+if ! command -v flock >/dev/null 2>&1; then
+  log "error" "flock(1) not found (util-linux); refusing to run unlocked"
+  exit 1
+fi
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
   log "info" "another collect run is in progress; exiting"
@@ -83,23 +127,49 @@ if [ ! -r "$SOURCES_CONF" ]; then
   exit 1
 fi
 
+# Both files are installed by deploy-xdpstats on the same host as this
+# script. Fail loudly rather than falling back: a missing identity means
+# every pull is refused, and a missing known_hosts under
+# StrictHostKeyChecking=yes means the same with a much more confusing error.
+if [ ! -r "$SSH_IDENTITY" ]; then
+  log "error" "collector SSH key missing or unreadable: $SSH_IDENTITY"
+  exit 1
+fi
+if [ ! -r "$KNOWN_HOSTS" ]; then
+  log "error" "known_hosts missing or unreadable: $KNOWN_HOSTS"
+  log "error" "refusing to trust the server host key on first use"
+  exit 1
+fi
+
 # ---- main loop: one source at a time ---------------------------------------
 any_pulled=0
+any_failed=0
 while read -r name user host log_dir; do
   case "$name" in ''|\#*) continue ;; esac
   if [ -z "$user" ] || [ -z "$host" ] || [ -z "$log_dir" ]; then
     log "error" "bad sources.conf entry for '$name' (want: name user host log_dir)"
+    any_failed=1
     continue
   fi
 
   src_raw="$RAW_DIR/$name"
   mkdir -p "$src_raw"
+  chmod 0700 "$src_raw"
 
   # list: TSV lines "date<TAB>size<TAB>mtime".
   # The forced command on the server is the only thing the key can run;
   # shell, scp, sftp, agent forwarding are all blocked at authorized_keys.
-  list_out=$(ssh -o BatchMode=yes "$user@$host" list 2>>"$LOG_FILE") || {
+  #
+  # </dev/null is load-bearing, not decoration. This loop reads its source
+  # list from a here-string on stdin, and ssh inherits that fd and drains it
+  # before running the remote command: without the redirect the FIRST day is
+  # pulled and every later line of `list` is silently swallowed, so a
+  # 14-day retention window yields exactly one day's page and no error
+  # anywhere. The outer `while read ... done <"$SOURCES_CONF"` has the same
+  # hazard, which is why the redirect appears on both.
+  list_out=$(ssh "${SSH_OPTS[@]}" "$user@$host" list </dev/null 2>>"$LOG_FILE") || {
     log "error" "$name: ssh list failed (see $LOG_FILE)"
+    any_failed=1
     continue
   }
   vlog "$name: list returned $(echo "$list_out" | wc -l) day(s)"
@@ -113,8 +183,11 @@ while read -r name user host log_dir; do
   while IFS=$'\t' read -r date size mtime; do
     case "$date" in ''|[!0-9]*) continue ;; esac
     cache="$src_raw/nhp_server_xdp-${date}.log.gz"
+    # Sidecar recording the (size, mtime) the server reported for this day
+    # at the moment we pulled it.
+    meta="$cache.meta"
     need_pull=0
-    if [ ! -f "$cache" ]; then
+    if [ ! -f "$cache" ] || [ ! -f "$meta" ]; then
       need_pull=1
       reason="missing"
     elif [ "$date" = "$TODAY" ]; then
@@ -123,13 +196,16 @@ while read -r name user host log_dir; do
       need_pull=1
       reason="today"
     else
-      # Compare only size; the daemon's rotation-by-date writes to the new
-      # file once a day, so a non-today file should not change size unless
-      # somebody manually touched it.
-      cached_size=$(stat -c %s "$cache" 2>/dev/null || echo 0)
-      if [ "$size" -gt "$cached_size" ]; then
+      # Compare against what the server reported when we last pulled, NOT
+      # against the size of the local .gz: the remote figure is the
+      # uncompressed log and the local one is gzip, so "remote > local" is
+      # true for essentially every real log and would re-pull the whole
+      # 14-day retention window every night, forever.
+      cached_size=$(cut -f1 <"$meta" 2>/dev/null || echo "")
+      cached_mtime=$(cut -f2 <"$meta" 2>/dev/null || echo "")
+      if [ "$cached_size" != "$size" ] || [ "$cached_mtime" != "$mtime" ]; then
         need_pull=1
-        reason="size $cached_size->$size"
+        reason="remote ${size}/${mtime} vs cached ${cached_size:-?}/${cached_mtime:-?}"
       fi
     fi
 
@@ -140,7 +216,7 @@ while read -r name user host log_dir; do
 
     vlog "$name/$date: pulling ($reason, ${size} bytes)"
     tmp=$(mktemp -p "$src_raw" "tmp-nhp_server_xdp-${date}-XXXXXX.log")
-    if ! ssh -o BatchMode=yes "$user@$host" "get $date" >"$tmp" 2>>"$LOG_FILE"; then
+    if ! ssh "${SSH_OPTS[@]}" "$user@$host" "get $date" </dev/null >"$tmp" 2>>"$LOG_FILE"; then
       log "error" "$name/$date: ssh get failed"
       rm -f "$tmp"
       continue
@@ -175,6 +251,12 @@ while read -r name user host log_dir; do
     fi
     chmod 0640 "$gztmp"
     mv "$gztmp" "$cache"
+    # Record what the server reported for this day BEFORE considering the
+    # pull complete. If the process dies between the rename and here, the
+    # next run sees a cache with no sidecar and re-pulls, which is right.
+    printf '%s\t%s\n' "$size" "$mtime" >"${meta}.tmp.$$"
+    chmod 0640 "${meta}.tmp.$$"
+    mv "${meta}.tmp.$$" "$meta"
     rm -f "$tmp"
     any_pulled=1
   done <<<"$list_out"
@@ -199,6 +281,10 @@ fi
 # ---- prune old raw cache ----------------------------------------------------
 # Keep at most RETENTION_DAYS days of compressed logs; we use mtime because
 # gzip preserves it. -mindepth 1 keeps the .lock and any future siblings.
+# Sidecars go with their log and are not counted: a day is one file, and the
+# reported number is days, not deletions.
+find "$RAW_DIR" -mindepth 1 -maxdepth 2 -type f -name '*.log.gz.meta' \
+  -mtime "+${RETENTION_DAYS}" -delete >/dev/null
 pruned=$(find "$RAW_DIR" -mindepth 1 -maxdepth 2 -type f -name '*.log.gz' \
   -mtime "+${RETENTION_DAYS}" -delete -print | wc -l)
 if [ "$pruned" -gt 0 ]; then
@@ -209,5 +295,16 @@ if [ "$any_pulled" -eq 1 ]; then
   log "info" "complete: pulled at least one day, site rewritten"
 else
   log "info" "complete: no new days; idempotent path"
+fi
+
+# A source that could not be listed means the cache is now older than the
+# server's, and the site above has just been rebuilt from it and would look
+# perfectly healthy. Exit non-zero so `systemctl status xdpstats` and the
+# deploy summary go red: a collector that has quietly stopped reaching the
+# server is exactly the failure nobody notices until the data is gone. The
+# server keeps only 14 days of logs, so silence is not recoverable later.
+if [ "$any_failed" -eq 1 ]; then
+  log "error" "one or more sources failed; the published site may be stale"
+  exit 1
 fi
 exit 0

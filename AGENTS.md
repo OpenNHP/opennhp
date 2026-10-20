@@ -328,20 +328,31 @@ external resources, fully offline-built from the same
   has. Same 0600 mode, same `[NHP-DROP]` / `[NHP-STAT]` / `[NHP-SCAN]` lines.
 - **Server (exporter)**: `deploy/scripts/nhp-xdplog-export.sh` is the SSH
   *forced command* attached to the `stats_collector_ssh_public_key` entry in
-  `~ec2-user/.ssh/authorized_keys`. It accepts only `list` and
-  `get <YYYY-MM-DD>`; anything else (shell, scp, sftp, paths with `/`,
-  malformed dates) is rejected at the script.
+  `/home/ec2-user/.ssh/authorized_keys` (the path sshd reads, not
+  `~/nhp-server/.ssh/...`). It accepts only `list` and `get <YYYY-MM-DD>`;
+  anything else (shell, scp, sftp, paths with `/`, malformed dates) is
+  rejected at the script. The `#` marker goes on its own line above the entry
+  — sshd treats a line *starting* with `#` as a comment.
 - **Relay (collector)**: a systemd timer (`deploy/scripts/xdpstats.timer`,
   `OnCalendar=*-*-* 00:20:00 UTC`, `Persistent=true`) runs
-  `xdpstats-collect.sh`, which calls `ssh ... list` then `ssh ... get <date>`
-  per day, gzip-stores them under
+  `xdpstats-collect.sh`, which calls `ssh -i ~/.ssh/stats_collector_key -o
+  IdentitiesOnly=yes ... list` then `... get <date>` per day, gzip-stores
+  them under
   `/home/ec2-user/xdpstats/raw/server/nhp_server_xdp-<date>.log.gz`, then
-  invokes `xdplog-report site`.
+  invokes `xdplog-report site`. Host keys are verified against a known_hosts
+  seeded from `ssh_host_keys`; never TOFU.
 - **Site**: `endpoints/xdplog-report` has a `site` subcommand that emits
   `index.html` + `index.json` plus one `<day>.html` / `<day>.json` per day
-  under `/home/ec2-user/xdpstats/web/`. nginx serves that directory at
+  under `/var/www/stats/`. nginx serves that directory at
   `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
   `relay.*` / `agent.*` / `reg.*` / `demo.*`.
+
+**Three directories, three permission stories.** The web root is
+`/var/www/stats` (0755), not under `$HOME`: `/home/ec2-user` is 0700 on
+AL2023 and nginx runs as `nginx`. `raw/` stays 0700 under `$HOME` — it is
+the only place full, unmasked source IPs exist on the relay. `state.json` is
+written outside the web root via `-state`, and the vhost refuses
+`/state.json` as a second line of defence.
 
 **What's deliberately NOT changed**
 

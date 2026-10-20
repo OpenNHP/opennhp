@@ -122,9 +122,10 @@ collector could not fetch are skipped silently.
 
 ```bash
 go run ./xdplog-report site \
-  -logs /home/ec2-user/xdpstats/raw \
-  -out  /home/ec2-user/xdpstats/web \
-  -top  20
+  -logs  /home/ec2-user/xdpstats/raw \
+  -out   /var/www/stats \
+  -state /home/ec2-user/xdpstats/state.json \
+  -top   20
 ```
 
 Layout under `-logs`:
@@ -143,10 +144,16 @@ Layout under `-out`:
 <out>/
   index.html
   index.json
-  state.json                # incremental state, internal
   d/server/2026-10-15.html  # one per day
   d/server/2026-10-15.json
 ```
+
+`state.json` (the incremental build state) goes wherever `-state` says and
+**not** into `-out` by default on the demo deployment. It records the
+absolute path of every input file, which is host layout an anonymous visitor
+to a public site has no business reading; the deploy passes a private path
+and the nginx vhost refuses `/state.json` as a second line of defence.
+Delete it to force a full rebuild (or pass `-force`).
 
 `index.json` is a JSON array of summaries, sorted by day descending:
 
@@ -195,6 +202,7 @@ fingerprint, e.g. after updating `classify.go`.
 | --- | --- | --- |
 | `-logs` | required | Directory of `<source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]`. The collector script stages logs into this layout. |
 | `-out` | required | Web root directory. Created if missing. Existing files are kept unless rewritten. |
+| `-state` | `<out>/state.json` | Incremental-build state. Point it OUT of the web root on a public site: it records the absolute path of every input file. |
 | `-top` | `20` | Rows in each TOP table on the per-day pages. |
 | `-geo-csv` | empty | Optional `cidr,country[,city]` CSV. Mutually exclusive with `-geo-mmdb`. |
 | `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb`. |
@@ -326,9 +334,10 @@ GeoLite2 的使用受 MaxMind 许可证约束。私有、回环、链路本地�
 
 ```bash
 go run ./xdplog-report site \
-  -logs /home/ec2-user/xdpstats/raw \
-  -out  /home/ec2-user/xdpstats/web \
-  -top  20
+  -logs  /home/ec2-user/xdpstats/raw \
+  -out   /var/www/stats \
+  -state /home/ec2-user/xdpstats/state.json \
+  -top   20
 ```
 
 `-logs` 目录布局：
@@ -347,10 +356,14 @@ go run ./xdplog-report site \
 <out>/
   index.html
   index.json
-  state.json                # 内部增量状态
   d/server/2026-10-15.html  # 每天一个
   d/server/2026-10-15.json
 ```
+
+`state.json`（内部增量状态）写到 `-state` 指定的位置。demo 部署把它放在
+`-out` 之外：它记录了每个输入文件的绝对路径，属于主机布局，不该出现在公开站点上；
+部署脚本传入私有路径，nginx vhost 另外再用 `location = /state.json { return 404; }`
+挡一道。删除该文件（或加 `-force`）即可触发全量重算。
 
 `index.json` 是一个按日期倒序排列的摘要数组：
 
@@ -394,6 +407,7 @@ go run ./xdplog-report site \
 | --- | --- | --- |
 | `-logs` | 必填 | 形如 `<source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]` 的目录，采集脚本负责布局。 |
 | `-out` | 必填 | 站点根目录，不存在则创建；未被重写的文件保留不动。 |
+| `-state` | `<out>/state.json` | 增量构建状态。公开站点请把它指到 web root 之外：它记录了每个输入文件的绝对路径。 |
 | `-top` | `20` | 每天详情页 TOP 表的行数。 |
 | `-geo-csv` | 空 | 可选的 `cidr,country[,city]` CSV。与 `-geo-mmdb` 互斥。 |
 | `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`。 |

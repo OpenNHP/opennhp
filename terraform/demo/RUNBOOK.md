@@ -1425,9 +1425,10 @@ nhp-serverd
    └─ xdpstats-collect.sh
         ├─ ssh ec2-user@nhp-server list    (forced: deploy/scripts/nhp-xdplog-export.sh)
         ├─ ssh ec2-user@nhp-server get <date>  (same forced command)
-        ├─ gzip -> /home/ec2-user/xdpstats/raw/server/*.log.gz  (90-day retention)
+        ├─ gzip -> /home/ec2-user/xdpstats/raw/server/*.log.gz  (0700, 90-day retention)
         └─ xdplog-report site
-             └─ /home/ec2-user/xdpstats/web/{index.html,index.json,d/server/<day>.{html,json}}
+             ├─ /var/www/stats/{index.html,index.json,d/server/<day>.{html,json}}
+             └─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
                                                 │
                           nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/
 ```
@@ -1469,8 +1470,9 @@ no firewall, capability, or `xdp.toml` change.
   cd endpoints && go build -o /tmp/xdplog-report ./xdplog-report && \
     sudo install -m 0755 /tmp/xdplog-report /usr/local/bin/xdplog-report
   sudo -u ec2-user /usr/local/bin/xdplog-report site \
-    -logs /home/ec2-user/xdpstats/raw \
-    -out  /home/ec2-user/xdpstats/web \
+    -logs  /home/ec2-user/xdpstats/raw \
+    -out   /var/www/stats \
+    -state /home/ec2-user/xdpstats/state.json \
     -force
   ```
 
@@ -1484,13 +1486,16 @@ no firewall, capability, or `xdp.toml` change.
     --server-private-ip "$SERVER_PRIVATE_IP" \
     --ac-private-ip   "$AC_PRIVATE_IP" \
     --domain opennhp.org
-  # 2. Re-run deploy-demo-v2 with confirm=deploy. deploy-server appends the
-  #    new public key to authorized_keys (the old line stays until you
-  #    remove it manually; the deploy job is idempotent and will not touch
-  #    deploy public-key rows). deploy-xdpstats installs the new private
-  #    key at /home/ec2-user/.ssh/stats_collector_key.
-  # 3. After the deploy, manually remove the stale public-key line from
-  #    nhp-server's authorized_keys.
+  # 2. Re-run deploy-demo-v2 with confirm=deploy. deploy-server REPLACES
+  #    the managed line in /home/ec2-user/.ssh/authorized_keys: it greps out
+  #    every line carrying the key comment `stats.opennhp.org-collector`
+  #    (the tag is stable across rotations, the key material is not) and
+  #    appends the current one, so a rotation cannot leave the old key
+  #    behind. Deploy public-key rows are never touched.
+  #    deploy-xdpstats installs the new private key at
+  #    /home/ec2-user/.ssh/stats_collector_key.
+  # 3. Verify exactly one collector line remains:
+  #      ssh nhp-server 'grep -c stats.opennhp.org-collector ~/.ssh/authorized_keys'
   ```
 
 - **Add a new source** (AC, etc. — currently only `server` is wired):

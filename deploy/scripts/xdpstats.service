@@ -36,11 +36,14 @@ TimeoutStopSec=60
 
 # The collector reads the stats-collector SSH key (installed at
 # /home/ec2-user/.ssh/stats_collector_key by deploy-xdpstats) and writes
-# into /home/ec2-user/xdpstats/{raw,web}. systemd's ProtectSystem=full
-# leaves /home writable because it is the user's home, and ReadWritePaths
-# narrows the writable surface to just the XDPSTATS directory.
+# into /home/ec2-user/xdpstats/{raw,state.json} and /var/www/stats.
+# systemd's ProtectSystem=full leaves /home and /var writable, and
+# ReadWritePaths narrows that to exactly those three places. /var/www/stats
+# has to be listed explicitly: the published site lives outside $HOME
+# because /home/ec2-user is mode 0700 and nginx workers run as nginx.
 ReadWritePaths=/home/ec2-user/xdpstats
 ReadWritePaths=/home/ec2-user/.ssh
+ReadWritePaths=/var/www/stats
 
 NoNewPrivileges=true
 ProtectSystem=full

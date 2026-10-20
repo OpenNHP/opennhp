@@ -3556,7 +3556,7 @@ jobs:
             echo "ERROR: ssh_deploy_private_key missing from opennhp/demo" >&2
             exit 1
           fi
-          printf '%s' "$DEPLOY_PRIV" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_PRIV" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
           # Without this file every later ssh in this job fails host-key
@@ -3589,8 +3589,15 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$CF_TOKEN"
+          # %s\n, not %s: every value in this step comes out of $( ... ),
+          # which strips trailing newlines. A heredoc BODY needs its
+          # terminator to start a line of its own, so without the newline
+          # `echo "EOF"` lands on the end of the token and the runner
+          # rejects the whole file command with
+          # "Invalid value. Matching delimiter not found 'EOF'" — which
+          # loses every output this step produced, cf_token included.
           echo "cf_token<<EOF" >> $GITHUB_OUTPUT
-          printf '%s' "$CF_TOKEN" >> $GITHUB_OUTPUT
+          printf '%s\n' "$CF_TOKEN" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
           STATS_PRIV=$(aws secretsmanager get-secret-value \
@@ -3621,16 +3628,38 @@ jobs:
           # public key ends in the comment set by generate-nhp-keys.sh. A
           # plain string compare therefore fails on a perfectly good pair.
           PRIV_TMP=$(mktemp)
-          printf '%s' "$STATS_PRIV" > "$PRIV_TMP"
+          printf '%s\n' "$STATS_PRIV" > "$PRIV_TMP"
           chmod 600 "$PRIV_TMP"
-          PRIV_FP=$(ssh-keygen -y -f "$PRIV_TMP" 2>/dev/null | awk '{print $1" "$2}')
+          # Same newline rule as the $GITHUB_OUTPUT body above, and here it
+          # is load-bearing rather than cosmetic: ssh-keygen refuses an
+          # OpenSSH private key whose final line is unterminated ("invalid
+          # format", exit 255). $STATS_PRIV lost that newline to $( ) in
+          # the fetch above, so the file must get it back.
+          #
+          # The check is written out rather than left to `set -e` because
+          # pipefail turns ssh-keygen's 255 into the step's exit status and
+          # the step then dies with no message at all — which is exactly
+          # how this one failed: an opaque "exit code 255" that pointed at
+          # nothing. stderr is captured (not dropped) so the real reason is
+          # on the record.
+          KEYGEN_OUT=""
+          if ! KEYGEN_OUT=$(ssh-keygen -y -f "$PRIV_TMP" 2>&1); then
+            echo "ERROR: ssh-keygen could not parse stats_collector_ssh_private_key" >&2
+            printf '       %s\n' "$KEYGEN_OUT" >&2
+            echo "       An unterminated final line, a truncated body and a" >&2
+            echo "       passphrase-protected key all look like this. Re-run" >&2
+            echo "       scripts/generate-nhp-keys.sh to repair opennhp/demo." >&2
+            rm -f "$PRIV_TMP"
+            exit 1
+          fi
           rm -f "$PRIV_TMP"
+          PRIV_FP=$(printf '%s\n' "$KEYGEN_OUT" | awk '{print $1" "$2}')
           PUB_FP=$(printf '%s' "$STATS_PUB" | awk '{print $1" "$2}')
           if [ -z "$PRIV_FP" ] || [ "$PRIV_FP" != "$PUB_FP" ]; then
             echo "ERROR: stats_collector public key does not match the private key in opennhp/demo" >&2
             exit 1
           fi
-          printf '%s' "$STATS_PRIV" > ~/.ssh/stats_collector_key
+          printf '%s\n' "$STATS_PRIV" > ~/.ssh/stats_collector_key
           chmod 600 ~/.ssh/stats_collector_key
           # Same file goes onto the relay below; masking it here keeps it out
           # of any later debug output on the runner too. ::add-mask:: only

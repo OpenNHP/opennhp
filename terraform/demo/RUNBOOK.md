@@ -1441,6 +1441,33 @@ separators. The relay reaches nhp-server through the existing
 relay→server SSH path (already in the XDP whitelist and security group);
 no firewall, capability, or `xdp.toml` change.
 
+### Deploy order: `infra-demo apply` comes first
+
+The `stats.opennhp.org` A record is `cloudflare_record.stats` in
+`terraform/demo/dns.tf`. `deploy-demo-v2` never applies Terraform — the
+`configure` job only reads the state — so on a state where that record has
+never been applied the hostname is NXDOMAIN for the whole run. Cert issuance
+does **not** notice: certbot's DNS-01 challenge writes a TXT record through
+the Cloudflare API and never looks up the A record, so the vhost, the
+collector and the timer would all install cleanly and the run would only go
+red at the final `curl https://stats.opennhp.org/`.
+
+So `deploy-xdpstats` refuses before it touches the relay: the first step is a
+preflight that resolves `stats.opennhp.org` against `1.1.1.1` and requires
+exactly one A record equal to `aws_eip.relay.public_ip`. Missing, absent, or
+pointing somewhere else ⇒ red run with the relay untouched and the message
+naming `infra-demo` with `action=apply`. It retries for up to a minute so a
+deploy started right after an apply is not defeated by resolver caching.
+
+Correct order for a release that includes the stats site:
+
+```
+infra-demo (action=apply)   →   deploy-demo-v2 (confirm=deploy)
+```
+
+After the first apply, subsequent deploys need no Terraform run — the record
+is in the state and DNS outlives it.
+
 ### Manual recovery / debugging
 
 - **Pull didn't happen today / status is "failed":**

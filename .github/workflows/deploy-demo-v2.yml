@@ -3451,6 +3451,12 @@ jobs:
   #     falls back to the nhp-server's auth (or is denied). It also needs
   #     nhp-xdplog-export.sh installed there; deploy-server handles that
   #     too.
+  #   - This job needs an infra-demo apply to have happened FIRST: the
+  #     stats.opennhp.org A record is cloudflare_record.stats in
+  #     terraform/demo/dns.tf, and this workflow never applies Terraform
+  #     (configure only reads the state). The preflight below is what
+  #     turns "forgot to apply" into a red run before anything is
+  #     installed on the relay, instead of a red curl at the very end.
   # ─────────────────────────────────────────────────────────────
   deploy-xdpstats:
     needs: [configure, deploy-relay, deploy-jsagent, deploy-demoapp, deploy-server]
@@ -3465,6 +3471,75 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Preflight — stats.opennhp.org must already resolve to the relay
+        # The A record is Terraform-managed (cloudflare_record.stats) and
+        # nothing in this workflow applies Terraform, so a deploy run
+        # against a state where that record has never been applied gets
+        # NXDOMAIN on stats.opennhp.org for the whole run. Cert issuance
+        # still succeeds — certbot's DNS-01 challenge writes a TXT record
+        # through the Cloudflare API and never looks up the A record — so
+        # the failure would surface only at the last step's curl, after
+        # the vhost, the collector and the timer were already installed.
+        #
+        # Gate it here instead: this is the first step of the job, so a
+        # missing record leaves the relay untouched and the message says
+        # what to run. A record pointing at some other address is just as
+        # broken as a missing one (a replaced relay whose DNS was not
+        # refreshed installs a site nobody can reach) and is refused the
+        # same way.
+        #
+        # The relay has a single EIP, so exactly one A record is expected,
+        # and it has to be the address Terraform reports for
+        # aws_eip.relay — the same one every other deploy-* job used.
+        run: |
+          set -euo pipefail
+
+          command -v dig >/dev/null || sudo apt-get install -y --no-install-recommends dnsutils
+
+          STATS_FQDN='${{ env.DOMAIN_STATS }}'
+          RELAY_IP='${{ needs.configure.outputs.relay_public_ip }}'
+          if ! printf '%s' "$RELAY_IP" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "[!] relay_public_ip from Terraform is not an IPv4 address: '$RELAY_IP'" >&2
+            echo "    That is the address stats.opennhp.org must point at;" >&2
+            echo "    refusing to compare against it." >&2
+            exit 1
+          fi
+
+          RESOLVED=""
+          # A record created moments earlier by infra-demo can still be
+          # negative-cached at the resolver, so retry briefly instead of
+          # failing a deploy that is merely racing DNS propagation. Bounded:
+          # 6 x 10s, then this is a real "apply was never run".
+          for attempt in 1 2 3 4 5 6; do
+            RESOLVED=$(dig +short "$STATS_FQDN" @1.1.1.1 \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
+            [ -n "$RESOLVED" ] && break
+            echo "attempt $attempt: no A record for $STATS_FQDN yet"
+            [ "$attempt" -lt 6 ] && sleep 10
+          done
+          RESOLVED=$(printf '%s\n' "$RESOLVED" | sort -u)
+
+          if [ -z "$RESOLVED" ]; then
+            echo "[!] DNS resolution returned no records for $STATS_FQDN" >&2
+            echo "    The record is cloudflare_record.stats in terraform/demo/dns.tf." >&2
+            echo "    Run the infra-demo workflow with action=apply first (this" >&2
+            echo "    workflow only reads Terraform state, it never applies), then" >&2
+            echo "    re-run this deploy. Nothing was changed on the relay." >&2
+            exit 1
+          fi
+
+          COUNT=$(printf '%s\n' "$RESOLVED" | wc -l)
+          if [ "$COUNT" -ne 1 ] || [ "$RESOLVED" != "$RELAY_IP" ]; then
+            echo "[!] $STATS_FQDN resolves to:" >&2
+            printf '      %s\n' $RESOLVED >&2
+            echo "    but the relay's public IP (aws_eip.relay) is $RELAY_IP." >&2
+            echo "    Run infra-demo with action=apply to create or correct" >&2
+            echo "    cloudflare_record.stats, then re-run this deploy." >&2
+            exit 1
+          fi
+
+          echo "stats.opennhp.org resolves to the relay ($RELAY_IP): DNS is in place."
 
       - name: Fetch SSH credentials, CF token, and stats collector keypair
         id: fetch_secrets

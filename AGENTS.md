@@ -366,6 +366,16 @@ written outside the web root via `-state`, and the vhost refuses
   `deploy-server` appends the stats collector public key to `authorized_keys`
   BEFORE `deploy-xdpstats` runs.
 
+**Deploy order: `infra-demo apply` first.** The `stats.opennhp.org` A record
+is `cloudflare_record.stats` in `terraform/demo/dns.tf`, and `deploy-demo-v2`
+only reads Terraform state, so the release that introduces the site has to be
+`infra-demo action=apply` → `deploy-demo-v2 confirm=deploy`.
+`deploy-xdpstats`'s first step requires `stats.opennhp.org` to resolve to
+exactly one A record equal to `aws_eip.relay.public_ip`, so a forgotten apply
+fails before the relay is touched. DNS-01 cert issuance would not catch it:
+it writes a TXT record through the Cloudflare API and never looks up the A
+record.
+
 **Default public behaviour**
 
 - Source IPs are masked: IPv4 truncated to `a.b.c.x`, IPv6 to the first 48 bits.

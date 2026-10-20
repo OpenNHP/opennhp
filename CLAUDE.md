@@ -486,6 +486,17 @@ from an enclosing block when the inner block declares none of its own.
   `authorized_keys` BEFORE `deploy-xdpstats` runs (first collector SSH would
   otherwise hit an unknown public-key fallback).
 
+**Deploy order: `infra-demo apply` first.** The `stats.opennhp.org` A record
+is `cloudflare_record.stats` in `terraform/demo/dns.tf`, and `deploy-demo-v2`
+never applies Terraform (`configure` only reads the state) — so the release
+that introduces the site has to be `infra-demo action=apply` →
+`deploy-demo-v2 confirm=deploy`. `deploy-xdpstats`'s first step is a preflight
+that requires `stats.opennhp.org` to resolve to exactly one A record equal to
+`aws_eip.relay.public_ip`, so a forgotten apply is a red run before the relay
+is touched rather than a red curl after the vhost, collector and timer are
+installed. DNS-01 cert issuance cannot be relied on to catch it: it writes a
+TXT record through the Cloudflare API and never looks up the A record.
+
 **Default public behaviour**
 
 - Source IPs are masked: IPv4 truncated to `a.b.c.x`, IPv6 to the first 48 bits.

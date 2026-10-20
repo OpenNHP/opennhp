@@ -368,6 +368,12 @@ export XDP_ENABLED="${XDP_ENABLED:-true}"
 # nhp/ebpf/xdp/nhp_server_xdp.c. The daemon writes this value into the object's
 # .rodata at startup, so it is applied rather than merely recorded.
 export XDP_NHP_MIN_FRAME_BYTES="${XDP_NHP_MIN_FRAME_BYTES:-240}"
+# [NHP-SCAN] window (seconds) and Top-N; keep in sync with
+# DefaultScanReportIntervalSeconds / DefaultScanReportTopN in
+# endpoints/server/config.go. Read once at startup.
+export XDP_SCAN_REPORT_SECONDS="${XDP_SCAN_REPORT_SECONDS:-300}"
+export XDP_SCAN_TOP_N="${XDP_SCAN_TOP_N:-20}"
+export XDP_EVENT_LOG_ENABLED="${XDP_EVENT_LOG_ENABLED:-true}"
 # NHP knock 端口。单一真源是 terraform/demo 的 var.nhp_listen_port，由 configure
 # job 从 `terraform output -raw nhp_listen_port` 读出后传进来；这个脚本在没有
 # `var.nhp_listen_port` 输出的状态上不会跑 configure，所以「未设置」一定意味着

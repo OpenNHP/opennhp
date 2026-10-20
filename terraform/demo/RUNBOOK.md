@@ -1231,6 +1231,101 @@ daemon attaches the filter again. Use that window to either
 the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
 when the filter is attached and the host does have its address.
 
+### All-ports exposure mode
+
+`var.server_open_all_ports` (opt-in, default `false`, `terraform/demo/variables.tf`; the `infra-demo` workflow input `open_all_ports` sets it, and the workflow refuses `true` in a plan that creates or replaces `aws_instance.server`)
+adds ingress rules to `aws_security_group.server` for `0.0.0.0/0`: tcp 0-21 and
+23-65535, udp 0-65535 and icmp. **tcp/22 is deliberately excluded** (an SG rule
+cannot express "all except 22", hence the split tcp ranges) and stays
+restricted to the relay SG, so sshd never depends on a fail-open filter. Other
+IP protocols are not opened. The udp/knock-port and tcp/22-from-relay rules
+stay, so flipping the variable back is an in-place rule removal and nothing
+else. Scans of tcp/22 do not reach the NIC in this mode and are not counted. The purpose is observation: scans, brute force and reflection probes now
+reach the NIC, where the XDP program counts them (`[NHP-STAT]` per verdict
+class, `[NHP-SCAN]` per port and per source). The decision tree is unchanged —
+a non-whitelisted tcp/22 and every non-knock UDP port are still dropped. Read
+the results with `scripts/xdp-attack-report.sh`.
+
+- **What stays reachable with the filter attached is more than sshd and the
+  knock port.** With the SG open, these XDP exemptions are reachable from any
+  internet source, and they are accepted exposure: UDP 67→68 reaches the
+  host's DHCP client (the source port is spoofable); UDP 123→123 reaches
+  chronyd's bound socket; non-first IPv4 fragments are always passed; ICMP
+  frag-needed is passed (anyone can lower a flow's PMTU). Narrowing options if
+  this stops being acceptable: DHCP only from the VPC DHCP server / link-local
+  range, NTP only from 169.254.169.123, or chrony `port 0`.
+- **Order is the reverse of the knock port.** Run `deploy-demo-v2` first and
+  confirm `Verify the XDP ingress filter attached` is green, then run
+  `infra-demo apply`. Both workflows share `concurrency: demo-terraform`, so
+  they cannot interleave. This is guidance, not a gate: an apply-time probe
+  cannot exist for a host Terraform has not created yet, and tying `apply` to
+  host health would make a flaky SSH hop an infrastructure failure.
+- **The real new exposure is the fail-open window, and it recurs.** The XDP
+  link is held by the process (the program is pinned, the link is not), so the
+  filter is detached whenever `nhp-serverd` is not running or has not attached:
+  every `deploy-demo-v2` run (`deploy-server` stops and restarts the daemon), a
+  failed deploy (e.g. the glibc mismatch that left the daemon down), a
+  fail-open load (an `xdp.toml` refusal, a verifier or kernel error after an AMI
+  change — the `Verify the XDP ingress filter attached` gate turns the run red
+  but does not close the SG), any reboot or stop/start (DHCP comes up before
+  the filter), a crash, and `systemctl restart`. The address watchdog in
+  `endpoints/server/ebpf/serverengine.go` also detaches after 2 minutes without
+  a routable IPv4 address. In each window the host is reachable from the
+  internet on every udp port, every tcp port except 22, and icmp: whatever
+  listens there (chronyd, the NHP daemon's UDP port, SSM/cloud-init agents).
+  tcp/22 is not in that set, because it is not opened at the SG layer. There is
+  deliberately no nftables/iptables backstop: that would contradict "eBPF is
+  the only control". Nothing in `deploy-demo-v2` narrows the SG before stopping
+  the daemon; if that residual exposure stops being acceptable, either narrow
+  the SG around deploys or pin the XDP link (which contradicts the
+  "detach on error" invariant and needs its own decision).
+- **Rollback** is `server_open_all_ports = false` and `infra-demo apply`. The
+  security group returns exactly to udp/knock-port + tcp/22 from the relay SG.
+  Nothing on the host changes; the telemetry stays and just counts less.
+- **Recovery of an unfiltered host** is unchanged: `aws ec2 reboot-instances`,
+  then re-run the deploy.
+- **Plan check before apply.** The plan must show only `~ aws_security_group.server`
+  (plus harmless lifecycle changes). Any `must be replaced` means AMI drift or a
+  changed `description`: stop. The `description` is ForceNew and must not be
+  edited.
+- **CPU.** XDP runs in generic mode, so a packet costs an skb allocation before
+  it is dropped. A large scan burns t3 CPU credits; watch CloudWatch
+  `CPUCreditBalance`.
+- **Per-packet log budget.** The 64 MiB/day budget fills in roughly half a day
+  under constant scanning, which is expected. `[NHP-STAT]` and `[NHP-SCAN]`
+  emit a bounded number of lines per window and are unaffected. `LRU=1` on the
+  `KIND=TOTAL` line means a window overflowed the aggregation tables and the
+  Top-N is approximate; class totals always come from `[NHP-STAT]`.
+- **IPv6** only feeds the port table (the source key is 32-bit). The VPC has no
+  IPv6, so this gap is academic; `V6_OTHER` in `[NHP-STAT]` is exact.
+
+### Replacing an AMI / rebuilding an instance
+
+`data.aws_ami.amazon_linux_2023` is `most_recent = true` and `aws_instance.ami`
+is ForceNew, so without a guard every new al2023 release plans a replace of
+all three hosts on the next `apply`. The relay's private address is not pinned
+by default, so a replaced relay comes back on a new address that the server's
+live XDP whitelist does not contain — and the deploy that would fix the list
+has to SSH through that relay. With the security group wide open, the window
+between boot and the filter attaching is also an all-ports exposure.
+
+`aws_instance.server`, `.ac` and `.relay` therefore carry
+`lifecycle { ignore_changes = [ami] }` (server and ac alongside `user_data`).
+`most_recent` stays, so a first-time `apply` still picks the current AMI.
+Changing the AMI is now an explicit act, one host at a time:
+
+1. Relay first, if at all: pin `var.relay_private_ip` to its current address, or
+   confirm the server's whitelist (`etc/xdp.toml`, `RelayIPs`) covers the new
+   private address. Then `terraform apply -replace=aws_instance.relay`.
+2. Re-run `deploy-demo-v2` and confirm the whitelist check and
+   `Verify the XDP ingress filter attached` are green.
+3. Only then `-replace=aws_instance.ac`, re-deploy, and finally
+   `-replace=aws_instance.server`, re-deploy (re-associate the EIP, check the
+   whitelist admits the SSH source before the filter attaches).
+
+If the AMI had already drifted when the guard was added, the pending replace
+disappears from the plan instead of executing.
+
 ### Knock 端口怎么改
 
 `var.nhp_listen_port`（`terraform/demo/variables.tf`）是 NHP knock 端口的**唯
@@ -1289,3 +1384,23 @@ decision tree, the baseline to capture before the first deploy (including the
 check that the whitelisted address is the one the host actually sees SSH
 arrive from), the same commands to re-run afterwards, and the recovery paths
 if it does go wrong — is in **[VERIFY-server-xdp.zh-cn.md](VERIFY-server-xdp.zh-cn.md)** (Chinese).
+
+## Analysing the XDP event log (attack report)
+
+`nhp-serverd` writes `logs/nhp_server_xdp-YYYY-MM-DD.log`. Copy the files off the
+host over the existing SSH channel (through the relay jump host), then run the
+offline report tool on your workstation:
+
+```bash
+cd endpoints
+go run ./xdplog-report -in ./xdp-logs/ -top 10 -format md -out report.md
+# optional region section from your own CIDR->country CSV (cidr,country[,city]):
+go run ./xdplog-report -in ./xdp-logs/ -geo-csv ip2country.csv
+# share externally with source addresses truncated:
+go run ./xdplog-report -in ./xdp-logs/ -mask-ip -format json
+```
+
+Reading the report: attack = `[NHP-DROP]`. Packet totals are exact (summed from the
+per-minute `[NHP-STAT]` lines); source IP, port and region rankings come from the
+rate-limited per-packet lines and are samples. A budget-exhausted warning means
+rankings after that point are incomplete. The tool never touches the network.

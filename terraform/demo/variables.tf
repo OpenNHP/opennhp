@@ -83,6 +83,16 @@ variable "nhp_listen_port" {
   default     = 443
 }
 
+# 默认 false：新建/替换的主机在 XDP 挂上之前不能处于全开状态。确认 XDP 已挂上
+# （deploy-demo-v2 的 attach gate 为绿）后，用 infra-demo 的 open_all_ports 输入
+# 或 tfvars 显式设为 true。回滚：翻回 false 再 apply，SG 精确回到窄姿态
+# （udp/nhp_listen_port + relay SG 的 tcp/22）。
+variable "server_open_all_ports" {
+  description = "将 nhp-server 的安全组对 0.0.0.0/0 放开 tcp(除 22)/udp/icmp 全端口，由 XDP 独任把关；tcp/22 始终只对 relay SG 开放。翻回 false 并 apply 即精确回到窄 SG 姿态。"
+  type        = bool
+  default     = false
+}
+
 variable "cloudflare_zone_id" {
   description = "Cloudflare zone ID for opennhp.org (loaded from AWS SM)"
   type        = string

@@ -46,7 +46,9 @@
 | TCP/22，src ∉ 白名单 | DROP | `TCP_SSH_OTHER` | 是（限速） |
 | TCP/${NHP_PORT} | DROP | `TCP_NHP_PORT` | 是（限速） |
 | TCP 其它端口，本机有**非 LISTEN** 的 socket | PASS | `TCP_ESTABLISHED` | **否，只计数** |
-| TCP 其它端口 | DROP | `TCP_OTHER` | 是（限速） |
+| TCP 其它端口，`SYN` 且无 `ACK` | DROP | `TCP_SYN_SCAN` | 是（限速） |
+| TCP 其它端口，无 `SYN`/`ACK`/`RST`（FIN / NULL / XMAS） | DROP | `TCP_STEALTH_SCAN` | 是（限速） |
+| TCP 其它端口（其余：backscatter、ACK 扫描、散落 RST） | DROP | `TCP_OTHER` | 是（限速） |
 | UDP/${NHP_PORT}，src ∈ 白名单 | PASS（跳过长度校验） | `NHP_RELAY` | 是（限速） |
 | UDP/${NHP_PORT}，长度 ≥ 240 | PASS | `NHP_DEFAULT` | 是（限速） |
 | UDP/${NHP_PORT}，长度 < 240 | DROP | `UDP_SHORT` | 是（限速） |
@@ -568,7 +570,20 @@ sudo nmap -Pn -n -sU -p ${NHP_PORT} $SERVER_PUB        | tee -a before-from-inte
 ping -c3 $SERVER_PUB                                   | tee -a before-from-internet.txt
 ```
 
-> 公网视角在部署前后**基本不会变**，这是预期的：安全组早就只放行 UDP/${NHP_PORT}（22 只对
+> **SG 全开（`server_open_all_ports = true`）时，本节要做成全端口（tcp/22 除外，它始终只对 relay SG 开放）**，且放开前后各做一次：
+>
+> ```bash
+> nmap -Pn -n -p- --max-retries 1 $SERVER_PUB   | tee before-allports.txt   # 放开前
+> sudo nmap -Pn -n -sU --top-ports 200 $SERVER_PUB | tee -a before-allports.txt
+> # infra-demo apply 放开之后，同样的命令输出到 after-allports.txt
+> ```
+>
+> 期望：放开前是 closed/filtered 混合（SG 在 AWS 层静默丢弃，nmap 报 filtered）；放开后
+> **全部 filtered（超时）**，没有任何 closed（RST）—— 出现 closed 说明某个端口的包穿过
+> XDP 到了内核，XDP 没挡住（或根本没挂上）。顺序：先 `deploy-demo-v2`（确认 XDP 挂上），
+> 再 `infra-demo apply`，与 knock 端口的顺序相反。
+>
+> 以下说明针对窄 SG 时的情形：公网视角在部署前后**基本不会变**，这是预期的：安全组早就只放行 UDP/${NHP_PORT}（22 只对
 > relay 安全组开）。XDP 的增量在于 VPC 内侧、以及公网上那些能穿过安全组的
 > UDP/${NHP_PORT} 噪声包（`nmap -sU` 的空包会从「进 user space」变成「内核丢弃」，外部看
 > 都是 `open|filtered`，只能在 §4.3 的事件日志里看出差别）。
@@ -676,6 +691,24 @@ grep -E 'SSH_RELAY|NHP_RELAY' $LOG | tail -5
 # 日志占用（保留策略：>14 天或总量 >256 MiB 从最旧删起，当天的不删）
 du -sh $(dirname $LOG) && ls -lt $(dirname $LOG)/nhp_server_xdp-*.log | head
 ```
+
+**`[NHP-SCAN]`（端口 / 源聚合）读法**
+
+```bash
+grep NHP-SCAN $LOG | tail -50
+# KIND=PORT  PROTO=TCP DPT=23 PKTS=1842   本窗口丢弃包数 Top-N 的目的端口（PROTO 非 TCP/UDP 时 DPT=0，协议分布由此得出）
+# KIND=SRC   SRC=203.0.113.9 PKTS=5120    本窗口 Top-N 的 IPv4 源
+# KIND=TOTAL UNIQ_SRC=.. UNIQ_PORT=.. PKTS=.. LRU=0|1
+```
+
+- 每个窗口（默认 300s，`xdp.toml` 的 `ScanReportIntervalSeconds`）至多 `2*TopN+1` 行，
+  与攻击强度无关；`TopN` 默认 20，两者都是启动时读取，改了要重启。
+- 只统计**被丢弃**的包，且每包都计（不受逐包日志限速影响）；窗口读完即清零。
+- **`LRU=1`**：本窗口里 `nhp_port_hits` / `nhp_src_hits`（各 65536 项的 LRU 表）接近写满，
+  冷门端口 / 源可能已被淘汰，Top-N 是近似值。**各判决类别的总量始终以 `[NHP-STAT]` 为准**，
+  `KIND=TOTAL` 的 `PKTS` 只在 `LRU=0` 时可与 `[NHP-STAT]` 的丢弃类之和对账。
+- IPv6 只进端口表（源 key 只有 32 位）；VPC 无 v6，v6 总量看 `[NHP-STAT]` 的 `V6_OTHER`。
+- 汇总：`scripts/xdp-attack-report.sh`。
 
 > **抓不到包是正常的**：generic XDP 在 AF_PACKET tap 之前执行，被丢弃的包
 > `tcpdump` 看不到（实测 `tcpdump -ni <iface> 'tcp port 443 or icmp'` 为 0 包，
@@ -906,3 +939,13 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
 8. **这类故障会延迟暴露，部署当时的绿灯不算数** —— DHCP 那次是部署后约一个租期
    才失联。凡是动 `nhp_server_xdp.c` 的改动，除了 §4.6 / §4.6b 的探测，还要
    在改完的**一小时后**再回来看一眼主机是否还在（`ip -4 addr`、敲一次门）。
+9. **SG 全开后 fail-open 的代价** —— `server_open_all_ports = true` 时 XDP 是这台主机唯一的入站
+   控制。XDP 没挂上就是
+   除 tcp/22 外的全端口裸奔——不只是新建/替换实例：每次 `deploy-demo-v2`（停再起 daemon）、
+   部署失败、加载失败、重启、崩溃、`systemctl restart`、以及地址看门狗在 2 分钟无可路由
+   IPv4 后主动 detach，都会开这个窗口（XDP link 未 pin）。tcp/22 在 SG 层只对 relay SG
+   开放，不依赖 XDP；残余面是 chronyd、SSM/cloud-init agent 与 NHP 的 UDP 端口。止损靠 `deploy-server` 的
+   `Verify the XDP ingress filter attached`（所以要先 deploy 再放开）与一个词的回滚：
+   `server_open_all_ports = false` + `infra-demo apply`；主机失联则 `aws ec2 reboot-instances`。
+   generic 模式的 XDP 在 skb 分配之后才丢包，体量扫描会消耗 t3 的 CPU credit，注意
+   CloudWatch `CPUCreditBalance`。

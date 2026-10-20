@@ -150,6 +150,34 @@ func TestStartXdpFilterRefusesUnlessTheFileAsksForIt(t *testing.T) {
 	}
 }
 
+// A telemetry setting out of range must not decide whether the filter attaches:
+// it only turns the [NHP-SCAN] summary off.
+func TestResolveScanReportNeverRefuses(t *testing.T) {
+	tests := []struct {
+		name        string
+		conf        XdpTomlConfig
+		wantSeconds int
+		wantTopN    int
+	}{
+		{"defaults", XdpTomlConfig{}, DefaultScanReportIntervalSeconds, DefaultScanReportTopN},
+		{"explicit", XdpTomlConfig{ScanReportIntervalSeconds: 60, ScanReportTopN: 5}, 60, 5},
+		{"interval too small", XdpTomlConfig{ScanReportIntervalSeconds: 5}, 0, DefaultScanReportTopN},
+		{"interval too large", XdpTomlConfig{ScanReportIntervalSeconds: 3601}, 0, DefaultScanReportTopN},
+		{"interval negative", XdpTomlConfig{ScanReportIntervalSeconds: -1}, 0, DefaultScanReportTopN},
+		{"top-n negative", XdpTomlConfig{ScanReportTopN: -1}, 0, DefaultScanReportTopN},
+		{"top-n too large", XdpTomlConfig{ScanReportTopN: 201}, 0, DefaultScanReportTopN},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := tc.conf
+			seconds, topN := resolveScanReport(&conf)
+			if seconds != tc.wantSeconds || topN != tc.wantTopN {
+				t.Errorf("resolveScanReport = %d/%d, want %d/%d", seconds, topN, tc.wantSeconds, tc.wantTopN)
+			}
+		})
+	}
+}
+
 // The filter drops every inbound TCP flow it was not told about, so attaching
 // it in front of one of the daemon's own listeners would silently take that
 // service off the air. Loopback binds are not reachable through the filtered
@@ -457,5 +485,50 @@ func TestXdpBlackHolesHttpListener(t *testing.T) {
 				t.Fatalf("xdpBlackHolesHttpListener() = %q, want conflict=%v", reason, tc.want)
 			}
 		})
+	}
+}
+
+// The [NHP-SCAN] knobs are optional in the file: absent means the defaults, and
+// the template renders them as plain integers.
+func TestXdpTomlConfigScanKnobs(t *testing.T) {
+	var conf XdpTomlConfig
+	if err := toml.Unmarshal([]byte("Enabled = true\nRelayIPs = [\"1.2.3.4\"]\n"), &conf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if conf.ScanReportIntervalSeconds != 0 || conf.ScanReportTopN != 0 {
+		t.Errorf("unset knobs = %d/%d, want 0/0 (defaults applied at start)", conf.ScanReportIntervalSeconds, conf.ScanReportTopN)
+	}
+
+	conf = XdpTomlConfig{}
+	if err := toml.Unmarshal([]byte("ScanReportIntervalSeconds = 60\nScanReportTopN = 5\n"), &conf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if conf.ScanReportIntervalSeconds != 60 || conf.ScanReportTopN != 5 {
+		t.Errorf("knobs = %d/%d, want 60/5", conf.ScanReportIntervalSeconds, conf.ScanReportTopN)
+	}
+
+	s := &UdpServer{config: &Config{ListenPort: 62206}}
+	if s.xdpScanSeconds() != DefaultScanReportIntervalSeconds || s.xdpScanTopN() != DefaultScanReportTopN {
+		t.Errorf("no filter attached: got %d/%d, want the defaults", s.xdpScanSeconds(), s.xdpScanTopN())
+	}
+}
+
+// A reload that edits the scan knobs is warned about and the whitelist still
+// applies: RelayIPs stays the only hot-reloadable field.
+func TestApplyXdpConfigDoesNotApplyScanKnobs(t *testing.T) {
+	originalExeDir := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = originalExeDir })
+
+	s := &UdpServer{config: &Config{ListenPort: 62206}}
+	s.xdpActiveScanSeconds.Store(300)
+	s.xdpActiveScanTopN.Store(20)
+
+	conf := XdpTomlConfig{Enabled: true, RelayIPs: []string{"10.0.1.0/24"}, ScanReportIntervalSeconds: 60, ScanReportTopN: 5}
+	if !s.applyXdpConfig(&conf) {
+		t.Error("applyXdpConfig refused a good whitelist because the scan knobs changed")
+	}
+	if s.xdpScanSeconds() != 300 || s.xdpScanTopN() != 20 {
+		t.Errorf("active scan knobs changed to %d/%d on reload, want 300/20", s.xdpScanSeconds(), s.xdpScanTopN())
 	}
 }

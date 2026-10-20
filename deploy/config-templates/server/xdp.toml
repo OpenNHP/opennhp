@@ -14,7 +14,8 @@
 # black-holing them silently.
 #
 # RelayIPs is the only hot-reloadable field: it is re-read whenever this file
-# changes. Enabled and NhpMinFrameBytes are read once, at startup.
+# changes. Enabled, NhpMinFrameBytes and the ScanReport* knobs are read once, at
+# startup.
 #
 # RelayIPs is rendered from the RELAY_IPS environment variable (a comma-
 # separated list, quoted into a TOML array by scripts/generate-nhp-keys.sh).
@@ -55,8 +56,9 @@ NhpMinFrameBytes = ${XDP_NHP_MIN_FRAME_BYTES}
 # it a new address, and a whitelist naming only the old one drops SSH from the
 # new relay — which is the only path CI has for pushing a corrected whitelist.
 # The subnet prefix covers the replacement, at the cost of admitting every other
-# instance in that subnet to tcp/22 here; the security group is still the
-# narrower control. Pin the address and this entry goes away.
+# instance in that subnet to tcp/22 here. With server_open_all_ports = true (opt-in) this
+# list is the only control on tcp/22; with it false the security group is the
+# narrower one. Pin the address and this entry goes away.
 RelayIPs = [${RELAY_IPS_TOML}]
 
 # The knock port itself is not configured here — the daemon takes it from its
@@ -64,3 +66,14 @@ RelayIPs = [${RELAY_IPS_TOML}]
 # single source of truth for that port is terraform/demo's var.nhp_listen_port;
 # the security group rule for udp/<port> is rendered from the same variable,
 # so configuration cannot run ahead of the security group.
+
+# [NHP-SCAN] summary window (seconds) and Top-N. Read once at startup;
+# changing them takes a restart of nhp-serverd. The number of log lines per
+# window is always 2*TopN + 1, regardless of attack volume.
+ScanReportIntervalSeconds = ${XDP_SCAN_REPORT_SECONDS}
+ScanReportTopN = ${XDP_SCAN_TOP_N}
+
+# Per-packet event log. true (the default when absent) keeps it; false stops
+# only that log. [NHP-STAT] / [NHP-SCAN] summaries and the filter itself are
+# unaffected. Read once at startup; changing it takes a restart.
+EventLogEnabled = ${XDP_EVENT_LOG_ENABLED}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
@@ -225,12 +226,32 @@ type XdpTomlConfig struct {
 	// NhpMinFrameBytes is the UDP length floor on the knock port. Zero uses
 	// DefaultNhpMinFrameBytes.
 	NhpMinFrameBytes int
+	// ScanReportIntervalSeconds is the [NHP-SCAN] summary window and
+	// ScanReportTopN how many ports and sources each window lists. Zero uses the
+	// defaults below. Read once at startup, like NhpMinFrameBytes.
+	ScanReportIntervalSeconds int
+	ScanReportTopN            int
+	// EventLogEnabled controls the per-packet event log. Absent means true.
+	// False stops only that log: [NHP-STAT] and [NHP-SCAN] still run and the
+	// filter still attaches and enforces. Read once at startup, like
+	// NhpMinFrameBytes.
+	EventLogEnabled *bool
 }
 
 // DefaultNhpMinFrameBytes mirrors the nhp_min_udp_len default in
 // nhp/ebpf/xdp/nhp_server_xdp.c: the 240-byte NHP_KPL header of the curve
 // cipher suite, the shortest datagram that can be a knock.
 const DefaultNhpMinFrameBytes = 240
+
+// Defaults and accepted ranges for the [NHP-SCAN] knobs.
+const (
+	DefaultScanReportIntervalSeconds = 300
+	DefaultScanReportTopN            = 20
+	minScanReportIntervalSeconds     = 10
+	maxScanReportIntervalSeconds     = 3600
+	minScanReportTopN                = 1
+	maxScanReportTopN                = 200
+)
 
 // MetricsConfig configures the observability endpoint exposed by nhp-server.
 //
@@ -768,6 +789,8 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		return false
 	}
 
+	scanSeconds, scanTopN := resolveScanReport(conf)
+
 	listenPort := s.GetListenPort()
 	if listenPort <= 0 || listenPort > 65535 {
 		log.Error("xdp config: cannot filter for UDP listen port %d; refusing to attach the XDP ingress filter", listenPort)
@@ -807,11 +830,19 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		NhpPort:       uint16(listenPort),
 		MinFrameBytes: uint16(minBytes),
 		RelayIPs:      conf.RelayIPs,
+
+		// Zero turns the [NHP-SCAN] summary off; the filter attaches regardless.
+		ScanReportInterval: time.Duration(scanSeconds) * time.Second,
+		ScanReportTopN:     scanTopN,
+
+		DisableEventLog: conf.EventLogEnabled != nil && !*conf.EventLogEnabled,
 	}); err != nil {
 		log.Warning("server eBPF engine load failed, fail-open (no XDP ingress filter): %v", err)
 		return false
 	}
 	s.xdpActiveMinFrameBytes.Store(int32(minBytes))
+	s.xdpActiveScanSeconds.Store(int32(scanSeconds))
+	s.xdpActiveScanTopN.Store(int32(scanTopN))
 	log.Info("server XDP engine loaded: filtering udp/%d with a %d-byte floor, SSH from %v", listenPort, minBytes, conf.RelayIPs)
 	return true
 }
@@ -926,6 +957,14 @@ func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) bool {
 		log.Warning("xdp config: NhpMinFrameBytes=%d is not applied — the attached program is enforcing %d bytes; restart nhp-serverd to change it",
 			conf.NhpMinFrameBytes, s.xdpMinFrameBytes())
 	}
+	if v := conf.ScanReportIntervalSeconds; v != 0 && v != s.xdpScanSeconds() {
+		log.Warning("xdp config: ScanReportIntervalSeconds=%d is not applied — the attached filter reports every %ds; restart nhp-serverd to change it",
+			v, s.xdpScanSeconds())
+	}
+	if v := conf.ScanReportTopN; v != 0 && v != s.xdpScanTopN() {
+		log.Warning("xdp config: ScanReportTopN=%d is not applied — the attached filter lists the top %d; restart nhp-serverd to change it",
+			v, s.xdpScanTopN())
+	}
 
 	// See the same guard in startXdpFilter: a whitelist the kernel would end up
 	// holding no prefix for closes tcp/22 for every source. Here it is a
@@ -956,6 +995,50 @@ func (s *UdpServer) xdpMinFrameBytes() int {
 		return int(v)
 	}
 	return DefaultNhpMinFrameBytes
+}
+
+// resolveScanReport returns the [NHP-SCAN] window in seconds and the per-window
+// list length. These settings only shape telemetry, so a value outside its
+// range must never decide whether the filter attaches — with the security group
+// open to all ports the filter is the only inbound control, and a refusal here
+// would leave the host fully exposed. An out-of-range setting is logged and
+// turns off just the summary (seconds == 0); the filter still attaches.
+func resolveScanReport(conf *XdpTomlConfig) (seconds, topN int) {
+	seconds = conf.ScanReportIntervalSeconds
+	if seconds == 0 {
+		seconds = DefaultScanReportIntervalSeconds
+	}
+	topN = conf.ScanReportTopN
+	if topN == 0 {
+		topN = DefaultScanReportTopN
+	}
+	if seconds < minScanReportIntervalSeconds || seconds > maxScanReportIntervalSeconds {
+		log.Error("xdp config: ScanReportIntervalSeconds=%d is out of range [%d, %d]; the [NHP-SCAN] summary is disabled, the XDP ingress filter still attaches",
+			seconds, minScanReportIntervalSeconds, maxScanReportIntervalSeconds)
+		return 0, DefaultScanReportTopN
+	}
+	if topN < minScanReportTopN || topN > maxScanReportTopN {
+		log.Error("xdp config: ScanReportTopN=%d is out of range [%d, %d]; the [NHP-SCAN] summary is disabled, the XDP ingress filter still attaches",
+			topN, minScanReportTopN, maxScanReportTopN)
+		return 0, DefaultScanReportTopN
+	}
+	return seconds, topN
+}
+
+// xdpScanSeconds and xdpScanTopN are the [NHP-SCAN] settings the attached
+// program was started with.
+func (s *UdpServer) xdpScanSeconds() int {
+	if v := s.xdpActiveScanSeconds.Load(); v != 0 {
+		return int(v)
+	}
+	return DefaultScanReportIntervalSeconds
+}
+
+func (s *UdpServer) xdpScanTopN() int {
+	if v := s.xdpActiveScanTopN.Load(); v != 0 {
+		return int(v)
+	}
+	return DefaultScanReportTopN
 }
 
 func (s *UdpServer) loadResources() error {

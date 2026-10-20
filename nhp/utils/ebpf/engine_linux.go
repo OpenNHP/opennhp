@@ -106,6 +106,17 @@ type EngineLoadParams struct {
 	// write a moment ago. Passed in here, a failure happens before the attach
 	// and unwinds to fail-open like every other pre-attach error.
 	RelayIPs []string
+
+	// ScanReportInterval and ScanReportTopN drive the [NHP-SCAN] summary
+	// (VariantServer only): the window length and how many ports / sources
+	// each window lists. Zero values disable the report.
+	ScanReportInterval time.Duration
+	ScanReportTopN     int
+
+	// DisableEventLog turns off the per-packet event log (VariantServer only).
+	// The zero value keeps it on. The [NHP-STAT] and [NHP-SCAN] summaries are
+	// unaffected, and so is the filter's verdict.
+	DisableEventLog bool
 }
 
 // Names of the .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that
@@ -193,6 +204,10 @@ type serverBpfObjects struct {
 	// Per-action packet counters, the complete accounting the rate-limited
 	// event stream is a sample of. See reportServerStats.
 	ActionStats *ebpf.Map `ebpf:"nhp_action_stats"`
+	// Dropped-packet aggregation by destination port and by IPv4 source. See
+	// reportServerScan.
+	PortHits *ebpf.Map `ebpf:"nhp_port_hits"`
+	SrcHits  *ebpf.Map `ebpf:"nhp_src_hits"`
 }
 
 // Config slots in the `nhp_config` map. Keep in sync with the enum in
@@ -726,11 +741,19 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	h.ServerLogger.SetFlags(stdlog.Lmsgprefix)
 
 	serverStop = make(chan struct{})
-	if perfReader != nil {
+	if perfReader != nil && params.DisableEventLog {
+		// Nobody reads the ring, so release it; the program keeps counting
+		// and the summaries keep running.
+		perfReader.Close()
+	} else if perfReader != nil {
 		go readServerEvents(perfReader, serverStop, params.ComponentId, h.ServerLogger)
 	}
 	if objs.ActionStats != nil {
 		go reportServerStats(objs.ActionStats, serverStop, params.ComponentId, h.ServerLogger)
+	}
+	if objs.PortHits != nil && objs.SrcHits != nil && params.ScanReportInterval > 0 && params.ScanReportTopN > 0 {
+		go reportServerScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
+			serverStop, params.ComponentId, h.ServerLogger)
 	}
 	go pruneServerEventLogs(logDir, serverStop)
 
@@ -798,13 +821,15 @@ const (
 	ActV6Established   uint8 = 18
 	ActV6Fragment      uint8 = 19
 	ActDropV6Other     uint8 = 20
+	ActDropTcpSyn      uint8 = 21
+	ActDropTcpStealth  uint8 = 22
 	// serverEventByteSize is sizeof(struct nhp_event_t), which is packed: 25
 	// bytes of IPv4-shaped event plus the address family and the two 16-byte
 	// IPv6 addresses the v6 branch reports in.
 	serverEventByteSize = 58
 	// serverEventActions mirrors NHP_EVENT_ACTIONS, the size of the
 	// per-action counter and rate-limit arrays.
-	serverEventActions = 24
+	serverEventActions = 32
 )
 
 // Address families in the event's `family` field. Not syscall.AF_*: the C side
@@ -848,6 +873,10 @@ func serverActionName(action uint8) (verdict, reason string) {
 		return "DROP", "TCP_NHP_PORT"
 	case ActDropTcpOther:
 		return "DROP", "TCP_OTHER"
+	case ActDropTcpSyn:
+		return "DROP", "TCP_SYN_SCAN"
+	case ActDropTcpStealth:
+		return "DROP", "TCP_STEALTH_SCAN"
 	case ActDropUdpOther:
 		return "DROP", "UDP_OTHER"
 	case ActDropUdpShort:

@@ -108,10 +108,16 @@ h2{margin:32px 0 10px;font-size:18px;border-bottom:1px solid var(--line);padding
 header p{margin:0}
 ul{margin:8px 0 16px;padding-left:22px}
 code{font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--chip);padding:1px 5px;border-radius:4px}
+.tablewrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;margin:6px 0 22px;font-variant-numeric:tabular-nums}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--chip);white-space:nowrap}
 td.num,th.num{text-align:right}
+/* Day, top category and peak hour are single tokens a reader scans down the
+   column; letting them break mid-value (2026-10-<wbr>19) made every row two
+   lines tall. nowrap pushes the width onto the table instead, and the wrapper
+   scrolls when the sum exceeds the viewport. */
+td.nowrap{white-space:nowrap}
 .muted{color:var(--muted)}
 .tag{display:inline-block;font-size:11.5px;padding:1px 6px;border-radius:8px;margin-right:3px;background:var(--chip);color:var(--muted)}
 .tag-warn{background:var(--warn-bg);color:var(--warn-fg)}
@@ -139,21 +145,23 @@ tcp/22 scans never reach the host's NIC and are not counted. During deploys or r
 </p>
 
 <h2>Daily index</h2>
+<div class="tablewrap">
 <table>
 <thead><tr><th>Day (UTC)</th><th>Source</th><th class="num">DROP packets (exact)</th><th class="num">Share</th><th class="num">Unique sources</th><th>Top category</th><th>Peak hour</th><th>Flags</th></tr></thead>
 <tbody>
 {{range $s := .Summaries}}<tr>
-<td><a href="{{dayLink $s}}">{{$s.Day}}</a></td>
+<td class="nowrap"><a href="{{dayLink $s}}">{{$s.Day}}</a></td>
 <td>{{$s.Source}}</td>
 <td class="num">{{$s.DropPkts}}</td>
 <td class="num">{{pct $s.DropShare}}</td>
 <td class="num">{{$s.UniqueIPs}}</td>
-<td>{{$s.TopCategory}}</td>
-<td>{{$s.PeakHour}}</td>
+<td class="nowrap">{{$s.TopCategory}}</td>
+<td class="nowrap">{{$s.PeakHour}}</td>
 <td>{{if flags $s}}{{range flags $s}}<span class="tag {{.Class}}">{{.Label}}</span>{{end}}{{else}}<span class="muted">&mdash;</span>{{end}}</td>
 </tr>{{end}}
 </tbody>
 </table>
+</div>
 
 <footer>
 Generated offline by <code>endpoints/xdplog-report site</code>. Each row links to a per-day report built from the day's <code>nhp_server_xdp-YYYY-MM-DD.log</code> file pulled from the relay cron.

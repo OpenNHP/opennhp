@@ -249,7 +249,15 @@ while read -r name user host log_dir || [ -n "$name" ]; do
       fi
     fi
     # Atomic gzip replace: write to <file>.tmp and rename. Use gzip -n so the
-    # output is deterministic across rebuilds (no mtime embedded).
+    # output is deterministic across rebuilds (no mtime embedded in the gzip
+    # header). gzip itself does NOT preserve the source file's mtime on the
+    # .gz file system entry: it sets the .gz's mtime to "now". If we let
+    # that stand, find -mtime (the retention check below) measures from the
+    # pull time, not the log date — and a -force re-pull pushes every
+    # affected day's clock forward by however long the deploy took. Pin
+    # the .gz's mtime to the source log's mtime (epoch seconds, reported
+    # by `list`) so retention always counts from the day the log actually
+    # ends.
     gztmp="${cache}.tmp.$$"
     if ! gzip -n -c "$tmp" >"$gztmp"; then
       log "error" "$name/$date: gzip failed"
@@ -258,12 +266,27 @@ while read -r name user host log_dir || [ -n "$name" ]; do
       continue
     fi
     chmod 0640 "$gztmp"
+    if ! touch -d "@$mtime" "$gztmp"; then
+      log "error" "$name/$date: touch -d @${mtime} on gzipped cache failed"
+      rm -f "$tmp" "$gztmp"
+      any_failed=1
+      continue
+    fi
     mv "$gztmp" "$cache"
     # Record what the server reported for this day BEFORE considering the
     # pull complete. If the process dies between the rename and here, the
     # next run sees a cache with no sidecar and re-pulls, which is right.
     printf '%s\t%s\n' "$size" "$mtime" >"${meta}.tmp.$$"
     chmod 0640 "${meta}.tmp.$$"
+    # Match the .gz's mtime so the sidecar and its cache file age together
+    # under find -mtime (otherwise the meta gets pruned first and we end up
+    # re-pulling for no reason).
+    if ! touch -d "@$mtime" "${meta}.tmp.$$"; then
+      log "error" "$name/$date: touch -d @${mtime} on cache meta failed"
+      rm -f "$tmp" "${meta}.tmp.$$"
+      any_failed=1
+      continue
+    fi
     mv "${meta}.tmp.$$" "$meta"
     rm -f "$tmp"
     any_pulled=1
@@ -288,9 +311,12 @@ fi
 
 # ---- prune old raw cache ----------------------------------------------------
 # Keep at most RETENTION_DAYS days of compressed logs; we use mtime because
-# gzip preserves it. -mindepth 1 keeps the .lock and any future siblings.
-# Sidecars go with their log and are not counted: a day is one file, and the
-# reported number is days, not deletions.
+# the pull path pins each .gz's mtime to the source log's mtime (see the
+# note above the gzip step). That makes the retention clock count from the
+# log date, not the pull time, and keeps -force rebuilds from pushing
+# every affected day forward. -mindepth 1 keeps the .lock and any future
+# siblings. Sidecars go with their log and are not counted: a day is one
+# file, and the reported number is days, not deletions.
 find "$RAW_DIR" -mindepth 1 -maxdepth 2 -type f -name '*.log.gz.meta' \
   -mtime "+${RETENTION_DAYS}" -delete >/dev/null
 pruned=$(find "$RAW_DIR" -mindepth 1 -maxdepth 2 -type f -name '*.log.gz' \

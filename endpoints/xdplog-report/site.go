@@ -143,11 +143,22 @@ func runSite(args []string, stdout io.Writer) error {
 	// no-op (no mtime churn on index/state).
 	loadedSnapshot := state.snapshot()
 
-	inputs, err := collectSiteInputs(opts.LogsDir)
+	inputs, err := collectSiteInputs(opts.LogsDir, opts.OutDir)
 	if err != nil {
 		return err
 	}
-	if len(inputs) == 0 {
+	// A site that consists entirely of page-only entries (raw cache all
+	// pruned past RETENTION_DAYS) is still a valid site: rebuild the index
+	// from the already-published detail pages. Bail only when there is
+	// truly nothing to publish.
+	hasRaw := false
+	for _, in := range inputs {
+		if !in.PageOnly {
+			hasRaw = true
+			break
+		}
+	}
+	if !hasRaw {
 		return fmt.Errorf("no nhp_server_xdp-YYYY-MM-DD.log[.gz] files under %s", opts.LogsDir)
 	}
 
@@ -156,6 +167,14 @@ func runSite(args []string, stdout io.Writer) error {
 	for _, in := range inputs {
 		summary, wasDirty, err := processSiteDay(opts, geo, in, state)
 		if err != nil {
+			if in.PageOnly {
+				// A page-only entry with an unreadable page is a true
+				// orphan: drop it from the index rather than fail the
+				// whole run. The state.json entry, if any, is left in
+				// place; a future -force rebuild will reconcile.
+				fmt.Fprintf(stdout, "site: dropping orphan %s/%s: %v\n", in.Source, in.Day, err)
+				continue
+			}
 			return fmt.Errorf("%s/%s: %w", in.Source, in.Day, err)
 		}
 		summaries = append(summaries, summary)
@@ -201,56 +220,58 @@ func ternary(cond bool, a, b string) string {
 	return b
 }
 
-// siteInput is one (source, day, file) tuple discovered on disk.
+// siteInput is one (source, day, file) tuple discovered on disk. PageOnly
+// is true when there is no raw log under -logs (typically because the
+// collector pruned it past RETENTION_DAYS) but an existing detail page
+// under <out>/d/<src>/<day>.json is still published — those entries keep
+// the index showing history without needing a raw rebuild.
 type siteInput struct {
-	Source string
-	Day    string
-	Path   string
+	Source   string
+	Day      string
+	Path     string
+	PageOnly bool
 }
 
 // collectSiteInputs walks <logs>/<source>/ and yields nhp_server_xdp-YYYY-MM-DD.log
 // and *.log.gz entries. evaluate/audit files (anything else matching nhp_server_xdp-)
 // and files with malformed dates are ignored. The input directory is expected to
 // be already filtered to whatever the collector chose to pull.
-func collectSiteInputs(logsDir string) ([]siteInput, error) {
-	st, err := os.Stat(logsDir)
-	if err != nil {
-		return nil, fmt.Errorf("-logs: %w", err)
-	}
-	if !st.IsDir() {
-		return nil, fmt.Errorf("-logs %s is not a directory", logsDir)
-	}
-	sources, err := os.ReadDir(logsDir)
-	if err != nil {
-		return nil, err
-	}
-	dateRe := regexp.MustCompile(`^nhp_server_xdp-(\d{4}-\d{2}-\d{2})\.log(?:\.gz)?$`)
-	var out []siteInput
-	for _, s := range sources {
-		if !s.IsDir() {
-			continue
-		}
-		sourceName := s.Name()
-		sourceDir := filepath.Join(logsDir, sourceName)
-		entries, err := os.ReadDir(sourceDir)
-		if err != nil {
+//
+// In addition, it walks <out>/d/<source>/<day>.json for detail pages that
+// have no matching raw input — these become PageOnly entries. The result is
+// the union of the two sets; if a day exists both ways the raw input wins
+// (and a subsequent rebuild will overwrite the page).
+func collectSiteInputs(logsDir, outDir string) ([]siteInput, error) {
+	rawByKey := map[string]siteInput{}
+	pageOnlyByKey := map[string]siteInput{}
+
+	if logsDir != "" {
+		if err := collectRawInputs(logsDir, rawByKey); err != nil {
 			return nil, err
 		}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			name := e.Name()
-			m := dateRe.FindStringSubmatch(name)
-			if m == nil {
-				continue
-			}
-			out = append(out, siteInput{
-				Source: sourceName,
-				Day:    m[1],
-				Path:   filepath.Join(sourceDir, name),
-			})
+	}
+	if outDir != "" {
+		if err := collectPageOnlyInputs(outDir, pageOnlyByKey); err != nil {
+			return nil, err
 		}
+	}
+
+	// Anything that already has a raw input takes precedence — the rebuild
+	// path will overwrite the page and the index will reflect the latest
+	// analysis. PageOnly is reserved for days whose raw log has been pruned
+	// (or never pulled).
+	for k := range rawByKey {
+		delete(pageOnlyByKey, k)
+	}
+
+	// Always include page-only entries; raw entries that lack a page are
+	// still processed and rebuild the page from the raw log.
+	out := make([]siteInput, 0, len(rawByKey)+len(pageOnlyByKey))
+	for _, v := range rawByKey {
+		out = append(out, v)
+	}
+	for _, v := range pageOnlyByKey {
+		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Source != out[j].Source {
@@ -264,11 +285,123 @@ func collectSiteInputs(logsDir string) ([]siteInput, error) {
 	return out, nil
 }
 
+// collectRawInputs walks <logs>/<source>/ for raw nhp_server_xdp-*.log[.gz]
+// files and writes them into dst keyed by "<source>/<day>".
+func collectRawInputs(logsDir string, dst map[string]siteInput) error {
+	st, err := os.Stat(logsDir)
+	if err != nil {
+		return fmt.Errorf("-logs: %w", err)
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("-logs %s is not a directory", logsDir)
+	}
+	sources, err := os.ReadDir(logsDir)
+	if err != nil {
+		return err
+	}
+	dateRe := regexp.MustCompile(`^nhp_server_xdp-(\d{4}-\d{2}-\d{2})\.log(?:\.gz)?$`)
+	for _, s := range sources {
+		if !s.IsDir() {
+			continue
+		}
+		sourceName := s.Name()
+		sourceDir := filepath.Join(logsDir, sourceName)
+		entries, err := os.ReadDir(sourceDir)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			m := dateRe.FindStringSubmatch(name)
+			if m == nil {
+				continue
+			}
+			key := sourceName + "/" + m[1]
+			dst[key] = siteInput{
+				Source: sourceName,
+				Day:    m[1],
+				Path:   filepath.Join(sourceDir, name),
+			}
+		}
+	}
+	return nil
+}
+
+// collectPageOnlyInputs walks <out>/d/<source>/<day>.json and yields entries
+// for days that have no raw input. dst is keyed by "<source>/<day>".
+//
+// A missing <out>/d directory is not an error: the first run of a fresh
+// deploy has nothing to discover and the index will be built entirely from
+// raw inputs as before.
+func collectPageOnlyInputs(outDir string, dst map[string]siteInput) error {
+	dRoot := filepath.Join(outDir, "d")
+	if _, err := os.Stat(dRoot); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	sources, err := os.ReadDir(dRoot)
+	if err != nil {
+		return err
+	}
+	dateRe := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\.json$`)
+	for _, s := range sources {
+		if !s.IsDir() {
+			continue
+		}
+		sourceName := s.Name()
+		sourceDir := filepath.Join(dRoot, sourceName)
+		entries, err := os.ReadDir(sourceDir)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			m := dateRe.FindStringSubmatch(e.Name())
+			if m == nil {
+				continue
+			}
+			day := m[1]
+			key := sourceName + "/" + day
+			dst[key] = siteInput{
+				Source:   sourceName,
+				Day:      day,
+				Path:     filepath.Join(sourceDir, e.Name()),
+				PageOnly: true,
+			}
+		}
+	}
+	return nil
+}
+
 // processSiteDay analyzes one (source, day) pair, writes its JSON/HTML if the
 // input changed (or opts.Force), updates state in place, and returns the
 // summary for the index. The bool reports whether this day was rebuilt so
 // the caller can decide whether the index and state.json need to be rewritten.
+//
+// For a PageOnly input (no raw log under -logs, only an existing detail page
+// under <out>/d/<src>/<day>.json, typically because the collector pruned a
+// raw cache older than RETENTION_DAYS), nothing is rebuilt: the summary is
+// read straight from the on-disk page so the index keeps showing history.
 func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *SiteState) (SiteDaySummary, bool, error) {
+	if in.PageOnly {
+		sum, err := summaryFromPage(in, opts.Today, opts.OutDir)
+		if err != nil {
+			// Page-only with no readable page is a true orphan: drop it
+			// from the index rather than emit zeros that look like "no
+			// attacks". The state entry, if any, is left in place; the
+			// next raw rebuild (e.g. -force) will reconcile.
+			return SiteDaySummary{}, false, err
+		}
+		return sum, false, nil
+	}
+
 	fi, err := os.Stat(in.Path)
 	if err != nil {
 		return SiteDaySummary{}, false, err
@@ -284,7 +417,18 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 		prev.Size == fi.Size() &&
 		prev.MTime == fi.ModTime().Unix()
 	if unchanged {
-		return summaryFromStateWithOpts(in, prev, opts.Today, opts.OutDir), false, nil
+		sum, err := summaryFromStateWithOpts(in, prev, opts.Today, opts.OutDir)
+		if err == nil {
+			return sum, false, nil
+		}
+		// state.json says "built" but the on-disk page is missing or
+		// unreadable. Falling through here rebuilds the page from the
+		// still-present raw input. Without this, a day whose page has been
+		// lost (cleared web root, partial first run, -out change) would be
+		// published as 0 DROP packets with a link to a 404 — the public
+		// site would look like "no attacks" exactly when the data is
+		// unavailable, which is the warning the index note already tries
+		// to head off.
 	}
 
 	an := NewAnalyzer(in.Day, in.Day)
@@ -369,7 +513,13 @@ func summaryFromReport(in siteInput, rep *Report, today string) SiteDaySummary {
 // day's inputs are unchanged. The numeric totals come from the previously
 // written JSON file (which is the source of truth on disk); we re-read it
 // because state.json deliberately does not mirror report numbers.
-func summaryFromStateWithOpts(in siteInput, st SiteDayState, today, outDir string) SiteDaySummary {
+//
+// Returns an error when the JSON is missing or unparseable. The caller is
+// expected to react by treating the day as dirty and rebuilding from the
+// raw input — emitting a zero summary would publish 0 DROP packets with a
+// link to a 404 page, which on a public "attack stats" site reads as "no
+// attacks" right when the data is unavailable.
+func summaryFromStateWithOpts(in siteInput, st SiteDayState, today, outDir string) (SiteDaySummary, error) {
 	sum := SiteDaySummary{
 		Source:  in.Source,
 		Day:     in.Day,
@@ -378,11 +528,11 @@ func summaryFromStateWithOpts(in siteInput, st SiteDayState, today, outDir strin
 	path := filepath.Join(outDir, "d", in.Source, in.Day+".json")
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return sum
+		return SiteDaySummary{}, fmt.Errorf("%s: %w", path, err)
 	}
 	var rep Report
 	if err := json.Unmarshal(b, &rep); err != nil {
-		return sum
+		return SiteDaySummary{}, fmt.Errorf("%s: %w", path, err)
 	}
 	sum.DropPkts = rep.DropPkts
 	sum.PassPkts = rep.PassPkts
@@ -393,7 +543,38 @@ func summaryFromStateWithOpts(in siteInput, st SiteDayState, today, outDir strin
 	sum.BudgetExhausted = len(rep.BudgetExhausted) > 0
 	sum.UnknownReasons = len(rep.UnknownRsns) > 0
 	sum.TopCategory = topCategoryOf(&rep)
-	return sum
+	return sum, nil
+}
+
+// summaryFromPage reads a SiteDaySummary directly from an on-disk detail
+// page JSON. Used for PageOnly inputs: the raw log is gone (typically
+// pruned by the collector's RETENTION_DAYS) but the day has already been
+// analysed and published, so the index can keep showing it without a raw
+// rebuild.
+func summaryFromPage(in siteInput, today, outDir string) (SiteDaySummary, error) {
+	sum := SiteDaySummary{
+		Source:  in.Source,
+		Day:     in.Day,
+		Partial: in.Day >= today,
+	}
+	b, err := os.ReadFile(in.Path)
+	if err != nil {
+		return SiteDaySummary{}, fmt.Errorf("%s: %w", in.Path, err)
+	}
+	var rep Report
+	if err := json.Unmarshal(b, &rep); err != nil {
+		return SiteDaySummary{}, fmt.Errorf("%s: %w", in.Path, err)
+	}
+	sum.DropPkts = rep.DropPkts
+	sum.PassPkts = rep.PassPkts
+	sum.DropShare = rep.DropShare
+	sum.UniqueIPs = rep.UniqueIPs
+	sum.PeakHour = rep.PeakHour
+	sum.RestartsDetected = len(rep.Restarts)
+	sum.BudgetExhausted = len(rep.BudgetExhausted) > 0
+	sum.UnknownReasons = len(rep.UnknownRsns) > 0
+	sum.TopCategory = topCategoryOf(&rep)
+	return sum, nil
 }
 
 // topCategoryOf returns the leading category from a freshly built Report.

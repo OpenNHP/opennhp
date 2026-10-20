@@ -464,3 +464,204 @@ func TestSiteStateOutsideWebRoot(t *testing.T) {
 
 // netip sanity so we can reference netip in case future tests use it
 var _ = netip.MustParseAddr("203.0.113.5")
+
+// TestSiteRebuildsWhenPageMissingButStateSaysBuilt covers the public-site
+// failure mode where state.json recorded a day as "built" but the detail
+// page on disk has gone missing — a cleared web root, a -out change, or a
+// half-finished first run. Without the dirty-on-missing-page branch, the
+// index published 0 DROP packets with a link to a 404, and "no attacks" was
+// the wrong answer on a public "attack stats" site. The day must be
+// rebuilt from the still-present raw input.
+func TestSiteRebuildsWhenPageMissingButStateSaysBuilt(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	day := "2026-10-01"
+	htmlPath := filepath.Join(out, "d", "server", day+".html")
+	jsonPath := filepath.Join(out, "d", "server", day+".json")
+	if err := os.Remove(htmlPath); err != nil {
+		t.Fatalf("remove html: %v", err)
+	}
+	if err := os.Remove(jsonPath); err != nil {
+		t.Fatalf("remove json: %v", err)
+	}
+
+	runSiteCmd(t, logs, out)
+
+	if _, err := os.Stat(htmlPath); err != nil {
+		t.Errorf("day page was not rebuilt: %v", err)
+	}
+	if _, err := os.Stat(jsonPath); err != nil {
+		t.Errorf("day json was not rebuilt: %v", err)
+	}
+
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err = json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range idx {
+		if s.Day != day {
+			continue
+		}
+		if s.DropPkts == 0 {
+			t.Errorf("index row for %s published 0 DROP packets after rebuild; expected a non-zero count", day)
+		}
+		return
+	}
+	t.Fatalf("day %s missing from index", day)
+}
+
+// TestSiteKeepsOrphanDetailPage covers the second failure mode: the
+// collector prunes a raw cache older than RETENTION_DAYS but the detail
+// page under d/<src>/<day>.{html,json} is still published. The next
+// incremental rebuild must not drop the day from the index — it must
+// fall back to the on-disk page so the public history keeps growing.
+//
+// We simulate the prune by leaving only the day-2 raw input and
+// pre-creating a day-1 detail page. The index must list both.
+func TestSiteKeepsOrphanDetailPage(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	srcLogs := filepath.Join(logs, "server")
+	srcOut := filepath.Join(out, "d", "server")
+	if err := os.MkdirAll(srcLogs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(srcOut, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// day-1 raw log is GONE (pruned by the collector), but a detail page
+	// already lives on disk.
+	const orphanDay = "2026-10-01"
+	const freshDay = "2026-10-02"
+	if err := os.WriteFile(filepath.Join(srcOut, orphanDay+".html"),
+		[]byte("<!doctype html><html><body>orphan</body></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	orphanRep := Report{
+		Schema:    1,
+		DropPkts:  1234,
+		PassPkts:  42,
+		UniqueIPs: 7,
+	}
+	ob, err := json.Marshal(&orphanRep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcOut, orphanDay+".json"), ob, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// day-2 is a normal raw input that gets rebuilt into a page.
+	if err := os.WriteFile(filepath.Join(srcLogs, "nhp_server_xdp-"+freshDay+".log"),
+		[]byte("10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=5 LOGGED=1 TOTAL=5\n"),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runSiteCmd(t, logs, out)
+
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err = json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	var gotOrphan *SiteDaySummary
+	var gotFresh *SiteDaySummary
+	for i := range idx {
+		switch idx[i].Day {
+		case orphanDay:
+			gotOrphan = &idx[i]
+		case freshDay:
+			gotFresh = &idx[i]
+		}
+	}
+	if gotOrphan == nil {
+		t.Fatalf("orphan day %s missing from index after raw prune", orphanDay)
+	}
+	if gotOrphan.DropPkts != 1234 || gotOrphan.PassPkts != 42 || gotOrphan.UniqueIPs != 7 {
+		t.Errorf("orphan day summary = %+v; want DropPkts=1234 PassPkts=42 UniqueIPs=7", gotOrphan)
+	}
+	if gotFresh == nil {
+		t.Fatalf("fresh day %s missing from index", freshDay)
+	}
+
+	// The orphan detail page's pre-built HTML must be left alone — the
+	// raw log is gone, so there is nothing to rebuild from.
+	html, err := os.ReadFile(filepath.Join(srcOut, orphanDay+".html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), "orphan") {
+		t.Error("orphan page HTML was rewritten; expected the page to be preserved verbatim")
+	}
+}
+
+// TestSiteDropsUnreadableOrphanPage guards the last-resort behaviour: if
+// a day has neither a raw log under -logs nor a parseable detail page
+// under d/<src>/, the index must skip it rather than emit a zeroed row
+// that would read as "no attacks".
+func TestSiteDropsUnreadableOrphanPage(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	srcLogs := filepath.Join(logs, "server")
+	srcOut := filepath.Join(out, "d", "server")
+	if err := os.MkdirAll(srcLogs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(srcOut, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unparseable orphan page (e.g. a half-written first run).
+	const badDay = "2026-10-01"
+	if err := os.WriteFile(filepath.Join(srcOut, badDay+".html"), []byte("garbage"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcOut, badDay+".json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A healthy raw input so the bail-out at "no raw inputs" still kicks in.
+	const goodDay = "2026-10-02"
+	if err := os.WriteFile(filepath.Join(srcLogs, "nhp_server_xdp-"+goodDay+".log"),
+		[]byte("10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=5 LOGGED=1 TOTAL=5\n"),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runSiteCmd(t, logs, out)
+
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err = json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range idx {
+		if s.Day == badDay {
+			t.Errorf("unparseable orphan %s leaked into index: %+v", badDay, s)
+		}
+	}
+	found := false
+	for _, s := range idx {
+		if s.Day == goodDay {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("healthy day %s missing from index", goodDay)
+	}
+}

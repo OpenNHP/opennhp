@@ -115,25 +115,36 @@ func drainMap[K comparable](m *ebpf.Map, add func(k K, hits uint64)) (count int)
 	return len(seen)
 }
 
-// drainMapBatch returns ok=false only when batching is unsupported and nothing
-// has been handed to add.
+// drainMapBatch returns ok=false only when the first batch call fails with
+// nothing delivered to add, so the caller can fall back to the iterator.
+//
+// For per-CPU maps cilium/ebpf wants the values as one flat slice of
+// len(keys)*PossibleCPU() elements, one run of nCPU counters per key, not a
+// slice of slices. A wrong shape is only detected after the kernel has already
+// deleted the batch, so the shape has to be right rather than retried.
 func drainMapBatch[K comparable](m *ebpf.Map, add func(k K, hits uint64)) (count int, ok bool) {
+	nCPU, err := ebpf.PossibleCPU()
+	if err != nil {
+		log.Warning("scan stats: cannot determine possible CPUs, using iterator: %v", err)
+		return 0, false
+	}
 	var (
 		cursor ebpf.MapBatchCursor
 		keys   = make([]K, scanBatchSize)
-		vals   = make([][]uint64, scanBatchSize)
+		vals   = make([]uint64, scanBatchSize*nCPU)
 		first  = true
 	)
 	for {
 		n, err := m.BatchLookupAndDelete(&cursor, keys, vals, nil)
 		if first && n == 0 && err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
-			if errors.Is(err, ebpf.ErrNotSupported) {
-				return 0, false
-			}
+			// Any failure of the first call, not only ErrNotSupported: the
+			// iterator is the safe path and a silent empty window is not.
+			log.Warning("scan stats: batch drain failed, using iterator: %v", err)
+			return 0, false
 		}
 		first = false
 		for i := 0; i < n; i++ {
-			add(keys[i], sumPerCPU(vals[i]))
+			add(keys[i], sumPerCPU(vals[i*nCPU:(i+1)*nCPU]))
 		}
 		count += n
 		if err == nil {

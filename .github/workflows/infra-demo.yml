@@ -257,6 +257,43 @@ jobs:
             exit 1
           fi
 
+      # The refusal above only looks at the plan. Opening every port is safe
+      # only while the filter is really attached on the existing host, because
+      # the filter is fail-open. Ask the kernel on the host itself, over the
+      # same relay jump the deploy uses, before the SG is widened.
+      - name: Require an attached XDP filter before opening all ports
+        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm' && github.event.inputs.open_all_ports == 'true'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          RELAY_IP=$(terraform output -raw relay_public_ip)
+          SERVER_PRIV=$(terraform output -raw server_private_ip)
+
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+          KEY_TMP=$(mktemp)
+          KNOWN_TMP=$(mktemp)
+          trap 'rm -f "$KEY_TMP" "$KNOWN_TMP"' EXIT
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > "$KEY_TMP"
+          chmod 600 "$KEY_TMP"
+          echo "$SECRETS" | jq -r '.ssh_host_keys // empty' > "$KNOWN_TMP"
+          if [ ! -s "$KNOWN_TMP" ]; then
+            echo "::error::ssh_host_keys missing from opennhp/demo; cannot verify the XDP filter, refusing to open all ports."
+            exit 1
+          fi
+
+          if ! ssh -i "$KEY_TMP" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile="$KNOWN_TMP" \
+                -o ProxyCommand="ssh -i $KEY_TMP -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_TMP -W %h:%p ec2-user@$RELAY_IP" \
+                ec2-user@"$SERVER_PRIV" "ip -details link show | grep -q xdpgeneric"; then
+            echo "::error::No XDP program attached on nhp-server (or the host is unreachable). Refusing to open all ports."
+            echo "Run deploy-demo-v2, confirm 'Verify the XDP ingress filter attached' is green, then re-run." >&2
+            exit 1
+          fi
+          echo "XDP filter is attached on nhp-server; proceeding."
+
       - name: Terraform Apply
         if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm'
         working-directory: ${{ env.TF_WORKING_DIR }}

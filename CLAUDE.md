@@ -255,7 +255,7 @@ the cost is that tcp/22 scans never reach the NIC and are not counted. Other IP
 protocols (GRE, ESP, ...) are not opened. What the filter still lets through to the host from any source in this
 mode: the knock port, SSH from the whitelist, UDP 67→68 (DHCP client), UDP
 123→123 (chronyd), non-first IPv4 fragments and ICMP frag-needed. Those are
-accepted exposure, not narrowed. Order is the *reverse* of the knock-port rule: run `deploy-demo-v2` first
+accepted exposure, not narrowed. `infra-demo` also SSHes to the existing server through the relay before an `apply` with `open_all_ports` and refuses unless an XDP program is attached (`Require an attached XDP filter before opening all ports`); it is a point-in-time check, so the windows above remain accepted exposure. Order is the *reverse* of the knock-port rule: run `deploy-demo-v2` first
 and confirm `Verify the XDP ingress filter attached` is green, then
 `infra-demo apply`. Rollback is `server_open_all_ports = false` plus
 `infra-demo apply`, which returns the security group exactly to udp/knock-port +

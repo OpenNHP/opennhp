@@ -1,0 +1,78 @@
+# nginx vhost for stats.opennhp.org: the public, read-only daily stats
+# site for the nhp-server XDP ingress filter.
+#
+# Shares the relay host and the single relay.opennhp.org Let's Encrypt
+# cert (SAN expanded by bootstrap-tls.sh to cover stats.opennhp.org).
+# Serves a static directory written by `endpoints/xdplog-report site`
+# under the /home/ec2-user/xdpstats/web root.
+
+# HTTP -> HTTPS redirect. The site is informational but the source IPs
+# (truncated server-side via xdplog-report's -mask-ip default) are still
+# useful to a passive observer on a coffee-shop wifi, and the operator
+# identity is the relay host: don't let a downgrade attack sit on port 80.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN_STATS};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN_STATS};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_RELAY}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_RELAY}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # HSTS: the site is purely informational but the data is real-world
+    # attack telemetry from the relay host, and any future interactive
+    # feature would inherit the cached trust. 1-year, includeSubDomains.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # The site is a static dir under ec2-user. Set the web root and serve
+    # only the generated day pages; raw logs and state.json stay in a
+    # sibling directory the xdpstats user owns but nginx never reaches.
+    root  /home/ec2-user/xdpstats/web;
+    index index.html;
+
+    # Hardening: the site has no scripts and no remote styles, so the only
+    # inline style attribute is the bar width the renderer emits (which is
+    # a numeric interpolation). default-src 'none' blocks scripts, frames,
+    # and any future XHR. style-src 'unsafe-inline' keeps the existing
+    # inline <style> block working without a nonce rewrite.
+    add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Default: only GET / HEAD; the site has no form, no API, no POST.
+    limit_except GET HEAD { deny all; }
+
+    # Hide directory listings. The site is a flat tree; missing files
+    # should 404 cleanly without exposing the layout.
+    autoindex off;
+
+    # Per-day detail pages.
+    location /d/ {
+        try_files $uri $uri/ =404;
+    }
+
+    # index.json: machine-readable summary list. Cache-control is short so
+    # a fresh deploy's data is visible within an hour without us needing
+    # to bust caches by hand.
+    location = /index.json {
+        add_header Cache-Control "public, max-age=300" always;
+        try_files $uri =404;
+    }
+
+    # index.html: same as above. The browser hits it first.
+    location = / {
+        add_header Cache-Control "public, max-age=300" always;
+        try_files /index.html =404;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

@@ -113,6 +113,94 @@ database; note that GeoLite2 is subject to MaxMind's license. Private, loopback,
 link-local, multicast and unspecified addresses are never looked up. Without a
 geo source the region section says "Not enabled" and no lookups happen.
 
+### `site` subcommand: a public daily stats site
+
+`xdplog-report site` builds a multi-day static site for `stats.opennhp.org`
+(or any nginx-served directory). It scans a directory of pulled logs,
+analyses each day, and writes a per-day HTML page plus an index. Days the
+collector could not fetch are skipped silently.
+
+```bash
+go run ./xdplog-report site \
+  -logs /home/ec2-user/xdpstats/raw \
+  -out  /home/ec2-user/xdpstats/web \
+  -top  20
+```
+
+Layout under `-logs`:
+
+```
+<logs>/
+  server/
+    nhp_server_xdp-2026-10-15.log
+    nhp_server_xdp-2026-10-16.log.gz
+    ...
+```
+
+Layout under `-out`:
+
+```
+<out>/
+  index.html
+  index.json
+  state.json                # incremental state, internal
+  d/server/2026-10-15.html  # one per day
+  d/server/2026-10-15.json
+```
+
+`index.json` is a JSON array of summaries, sorted by day descending:
+
+```json
+[
+  {
+    "source": "server",
+    "day": "2026-10-16",
+    "partial": false,
+    "drop_pkts": 1204,
+    "pass_pkts": 18,
+    "drop_share": 0.9853,
+    "unique_attack_ips": 6,
+    "peak_hour": "2026-10-16 18:04:00",
+    "restarts_detected": 0,
+    "budget_exhausted": false,
+    "unknown_reasons": false,
+    "top_category": "TCP scan / probe"
+  }
+]
+```
+
+The per-day JSON files reuse the single-file `Report` (`schema: 1`), so the
+existing `xdplog-report -in <one day>.json -format html` path can regenerate a
+page from any archived day.
+
+Dates are UTC (server log rotation uses `time.Now()` in UTC by default). Day
+files written today are marked `partial: true` in the index; they are still
+published and re-analysed on every run.
+
+**Masking**: `-mask-ip` defaults to **`true`** in `site` mode (different from
+the single-file CLI). Public-facing pages truncate source IPv4 to `a.b.c.x`
+and IPv6 to the first 48 bits. The `-mask-ip=false` knob is there for local
+debugging, not for production.
+
+**Idempotency**: each (source, day) pair is fingerprinted by `size + mtime`.
+Unchanged days are not re-analysed and not re-written. Index/state files are
+only rewritten when at least one day was rebuilt.
+
+**`:-force`**: pass `-force` to rebuild every day regardless of the
+fingerprint, e.g. after updating `classify.go`.
+
+### Site subcommand flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-logs` | required | Directory of `<source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]`. The collector script stages logs into this layout. |
+| `-out` | required | Web root directory. Created if missing. Existing files are kept unless rewritten. |
+| `-top` | `20` | Rows in each TOP table on the per-day pages. |
+| `-geo-csv` | empty | Optional `cidr,country[,city]` CSV. Mutually exclusive with `-geo-mmdb`. |
+| `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb`. |
+| `-mask-ip` | **`true`** | Truncate source addresses for the public site. Different default than the single-file CLI. |
+| `-force` | `false` | Rebuild every day even if inputs are unchanged. |
+
 ### Tests
 
 ```bash
@@ -229,6 +317,88 @@ go build -o bin/xdplog-report ./xdplog-report
 两种地理数据源都是本地文件。`-geo-mmdb` 接受 MaxMind GeoLite2-City 数据库；
 GeoLite2 的使用受 MaxMind 许可证约束。私有、回环、链路本地、组播和未指定地址不会
 做归属查询。不提供地理数据源时，地区部分显示 “Not enabled”，且不会做任何查询。
+
+### `site` 子命令：每日攻击统计静态站
+
+`xdplog-report site` 把多天的日志一次性渲染成可由 nginx 直接托管的静态站点
+（`stats.opennhp.org` 或任意目录）。它扫描已拉取的日志目录，逐天分析，
+写出每天一个 HTML 详情页加一个总首页。无法取到日期的文件会被静默忽略。
+
+```bash
+go run ./xdplog-report site \
+  -logs /home/ec2-user/xdpstats/raw \
+  -out  /home/ec2-user/xdpstats/web \
+  -top  20
+```
+
+`-logs` 目录布局：
+
+```
+<logs>/
+  server/
+    nhp_server_xdp-2026-10-15.log
+    nhp_server_xdp-2026-10-16.log.gz
+    ...
+```
+
+`-out` 目录布局：
+
+```
+<out>/
+  index.html
+  index.json
+  state.json                # 内部增量状态
+  d/server/2026-10-15.html  # 每天一个
+  d/server/2026-10-15.json
+```
+
+`index.json` 是一个按日期倒序排列的摘要数组：
+
+```json
+[
+  {
+    "source": "server",
+    "day": "2026-10-16",
+    "partial": false,
+    "drop_pkts": 1204,
+    "pass_pkts": 18,
+    "drop_share": 0.9853,
+    "unique_attack_ips": 6,
+    "peak_hour": "2026-10-16 18:04:00",
+    "restarts_detected": 0,
+    "budget_exhausted": false,
+    "unknown_reasons": false,
+    "top_category": "TCP scan / probe"
+  }
+]
+```
+
+每天的 JSON 文件复用了单文件 `Report`（`schema: 1`），因此已有的
+`xdplog-report -in <某天>.json -format html` 路径可以从任何归档的日期重新生成页面。
+
+日期是 UTC（server 日志轮转默认用 `time.Now()` UTC）。当天还在写的日志在首页标记为
+`partial: true`，仍然会被发布并在每次运行时重新分析。
+
+**脱敏**：`-mask-ip` 在 `site` 模式下**默认 `true`**（与单文件 CLI 不同）。
+源 IPv4 截断为 `a.b.c.x`，IPv6 保留前 48 位。`-mask-ip=false` 仅供本地排查，生产
+不要关。
+
+**幂等性**：每个 (source, day) 用 `size + mtime` 做指纹。未变化的天不会重新分析、
+不会重新写。首页和 state.json 只在至少有一天被重建时才重写。
+
+**强制重算**：分类器（`classify.go`）升级后，可用 `-force` 重算所有日期。
+
+### site 子命令参数
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `-logs` | 必填 | 形如 `<source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]` 的目录，采集脚本负责布局。 |
+| `-out` | 必填 | 站点根目录，不存在则创建；未被重写的文件保留不动。 |
+| `-top` | `20` | 每天详情页 TOP 表的行数。 |
+| `-geo-csv` | 空 | 可选的 `cidr,country[,city]` CSV。与 `-geo-mmdb` 互斥。 |
+| `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`。 |
+| `-mask-ip` | **`true`** | 对外站点做 IP 截断；默认值与单文件 CLI 不同。 |
+| `-force` | `false` | 即便输入未变化也强制重算每一天。 |
 
 ### 测试
 

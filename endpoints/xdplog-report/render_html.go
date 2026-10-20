@@ -81,6 +81,7 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <header>
 <h1>NHP Server XDP Attack Report</h1>
 <p class="muted">{{join .Servers ", "}} &middot; {{.From}} &ndash; {{.To}}</p>
+{{if .IsSiteDetail}}<p><a href="{{.BackLink}}">&larr; Back to index</a></p>{{end}}
 </header>
 {{if .BudgetExhausted}}
 <div class="warn"><strong>WARNING:</strong> the per-packet event budget was exhausted ({{join (budgetDays .BudgetExhausted) ", "}}). Per-packet lines after that point are missing, so source/port/geo rankings are incomplete. Exact totals are unaffected.</div>

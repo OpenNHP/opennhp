@@ -1,0 +1,50 @@
+# systemd unit for the XDP attack stats collector.
+#
+# Installed on the RELAY host by the deploy-xdpstats job in
+# .github/workflows/deploy-demo-v2.yml, alongside nhp-relayd.
+# Installed to /etc/systemd/system/xdpstats.service.
+#
+# Runs xdpstats-collect.sh as ec2-user: pulls nhp_server_xdp-YYYY-MM-DD.log
+# files from nhp-server via SSH (forced command) and rebuilds the
+# stats.opennhp.org static site. Triggered by xdpstats.timer
+# (OnCalendar=*-*-* 00:20:00 UTC, Persistent=true) plus manual
+# `systemctl start xdpstats.service`. The script protects itself with a
+# non-blocking flock, so an overlapping timer + manual start is a no-op.
+
+[Unit]
+Description=XDP attack stats collector (stats.opennhp.org)
+Documentation=https://stats.opennhp.org
+After=network-online.target nhp-relayd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/xdpstats
+
+# The collector writes its own log to /home/ec2-user/xdpstats/collect.log;
+# stdout/stderr are captured by journald for `journalctl -u xdpstats` on
+# failure. -v enables verbose output, including the per-file skip/pull
+# decisions that the systemd status only shows the summary of.
+ExecStart=/home/ec2-user/xdpstats/xdpstats-collect.sh -v
+
+# Slight grace so the script can finish gzipping and renaming even on the
+# last minute of the timer window. The timer is hourly-bounded by the
+# host's clock; this just avoids SIGTERM mid-write.
+TimeoutStopSec=60
+
+# The collector reads the stats-collector SSH key (installed at
+# /home/ec2-user/.ssh/stats_collector_key by deploy-xdpstats) and writes
+# into /home/ec2-user/xdpstats/{raw,web}. systemd's ProtectSystem=full
+# leaves /home writable because it is the user's home, and ReadWritePaths
+# narrows the writable surface to just the XDPSTATS directory.
+ReadWritePaths=/home/ec2-user/xdpstats
+ReadWritePaths=/home/ec2-user/.ssh
+
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

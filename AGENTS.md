@@ -292,6 +292,9 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `nhp_relay_private_key` / `_public_key` | same | relay `config.toml`; peer table on server |
 | `nhp_agent_private_key` / `_public_key` | same | native nhp-agent clients; `agent.toml` on server |
 | `nhp_jsagent_private_key` / `_public_key` | same | cluster 1 `endpoints/js-agent/` demo identity (rendered into `config.json` `clusters[0]` at deploy time); trusted by server cluster 1 only |
+| `nhp_jsagent_sm2_public_key` | same (derived via `--both`) | SM2 peer entry in `server/agent.toml`; lets cluster 1 js-agent knock in gmsm mode |
+| `demoapp_key_envelope_key` | `scripts/generate-nhp-keys.sh` (idempotent; generated via `openssl rand -base64 32` on first run) | demoapp `config.toml` `KeyEnvelopeKey`; AES-256 master that wraps each user's NHP private key at rest |
+| `demoapp_session_key` | same | demoapp `config.toml` `SessionKey`; signs the session cookie |
 | `cloudflare_api_token` | manually provisioned once | Terraform + certbot DNS-01 (`Zone:DNS:Edit` + `Zone:Zone:Read`) |
 | `cloudflare_zone_id` | same | Terraform DNS records for `opennhp.org` |
 | `stealth_ca_cert` | `infra-demo` workflow (from GitHub Secrets `STEALTH_CA_CERT`) | `tls_locally_signed_cert.demo_nhp` |
@@ -299,13 +302,74 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `ssh_deploy_private_key` | manually bootstrapped (see `terraform/demo/RUNBOOK.md`); never enters Terraform state | CI SSH into EC2 hosts |
 | `ssh_deploy_public_key` | derived in CI via `ssh-keygen -y` and passed as `TF_VAR_deploy_public_key` | `aws_key_pair.deploy` → `ec2-user` authorized keys |
 | `ssh_host_keys` | `infra-demo` workflow on `apply` | CI `known_hosts` for strict host key checking |
+| `stats_collector_ssh_private_key` | `scripts/generate-nhp-keys.sh` (idempotent; ed25519 via `ssh-keygen -t ed25519 -N ""`) | relay host's `~/.ssh/stats_collector_key` (installed by `deploy-xdpstats`); used by `xdpstats-collect.sh` to pull from nhp-server |
+| `stats_collector_ssh_public_key` | same | nhp-server's `~ec2-user/.ssh/authorized_keys` (appended by `deploy-server` with `command=…/nhp-xdplog-export.sh`,no-*); verified to match the private half before install |
 
 > Cluster 2 has been decommissioned. The corresponding fields
 > (`nhp_jsagent2_*`, `nhp_server2_*`, `nhp_ac2_*`) used to be listed here
-> but the deploy pipeline no longer reads or writes these keys, no
-> Terraform resources reference them, and no config templates render
-> them. Legacy values may still be present in `opennhp/demo` for
-> backwards compatibility; safe to delete if desired.
+> alongside `nhp_jsagent_sm2_public_key`. Legacy values may still be
+> present in `opennhp/demo` for backwards compatibility but the
+> deploy pipeline no longer reads or writes these keys, no Terraform
+> resources reference them, and no config templates render them. Safe
+> to delete from `opennhp/demo` if desired (does not affect any
+> running cluster 1 host); the deploy script tolerates the field being
+> absent.
+
+#### XDP attack stats site (stats.opennhp.org)
+
+Daily summaries of the nhp-server XDP ingress filter's `[NHP-DROP]` events are
+published at `https://stats.opennhp.org/`. Static HTML + JSON, no scripts, no
+external resources, fully offline-built from the same
+`logs/nhp_server_xdp-YYYY-MM-DD.log` files the daemon writes.
+
+**Data flow**
+
+- **Server (writer)**: `nhp-serverd` keeps writing the daily log as it always
+  has. Same 0600 mode, same `[NHP-DROP]` / `[NHP-STAT]` / `[NHP-SCAN]` lines.
+- **Server (exporter)**: `deploy/scripts/nhp-xdplog-export.sh` is the SSH
+  *forced command* attached to the `stats_collector_ssh_public_key` entry in
+  `~ec2-user/.ssh/authorized_keys`. It accepts only `list` and
+  `get <YYYY-MM-DD>`; anything else (shell, scp, sftp, paths with `/`,
+  malformed dates) is rejected at the script.
+- **Relay (collector)**: a systemd timer (`deploy/scripts/xdpstats.timer`,
+  `OnCalendar=*-*-* 00:20:00 UTC`, `Persistent=true`) runs
+  `xdpstats-collect.sh`, which calls `ssh ... list` then `ssh ... get <date>`
+  per day, gzip-stores them under
+  `/home/ec2-user/xdpstats/raw/server/nhp_server_xdp-<date>.log.gz`, then
+  invokes `xdplog-report site`.
+- **Site**: `endpoints/xdplog-report` has a `site` subcommand that emits
+  `index.html` + `index.json` plus one `<day>.html` / `<day>.json` per day
+  under `/home/ec2-user/xdpstats/web/`. nginx serves that directory at
+  `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
+  `relay.*` / `agent.*` / `reg.*` / `demo.*`.
+
+**What's deliberately NOT changed**
+
+- `xdp.toml`: untouched. Relay addresses were already in the SSH whitelist
+  before the stats site existed.
+- The XDP filter, capability grants, `aws_security_group.server`, and the
+  `aws_instance.server` lifecycle are all untouched. The collector is read-only.
+- `deploy-demo-v2` job order. `deploy-xdpstats` chains AFTER `deploy-demoapp`
+  so certbot's `deploy-relay → deploy-jsagent → deploy-demoapp → deploy-xdpstats`
+  serialisation keeps the relay host's exclusive certbot lock sequential.
+  `deploy-server` appends the stats collector public key to `authorized_keys`
+  BEFORE `deploy-xdpstats` runs.
+
+**Default public behaviour**
+
+- Source IPs are masked: IPv4 truncated to `a.b.c.x`, IPv6 to the first 48 bits.
+  `site` mode of `xdplog-report` defaults `-mask-ip` to `true` (different from
+  the single-file CLI, which defaults `false`). The raw log cache on the relay
+  keeps full IPs for `-force` rebuilds; it is not under the nginx vhost.
+- No login, no rate limit, no geo-restriction. The site is a deliberately
+  public read-only summary of attack telemetry.
+- Detail pages add a `← Back to index` link; the homepage lists every day with
+  partial / budget / restart / unknown flags inline.
+- `tcp/22` scans never reach the host's NIC and are not in the totals; the
+  filter being detached across deploys/reboots is shown as missing minutes,
+  not as zero attacks. RUNBOOK.md § "XDP attack stats site" has the full
+  recovery flow including key rotation via `opennhp/demo` and a forced rebuild
+  via `xdplog-report site -force`.
 
 ### Key-generation flow
 

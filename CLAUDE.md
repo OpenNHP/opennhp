@@ -417,6 +417,87 @@ Verification procedure (netns rehearsal, pre-deploy baseline, the same commands
 after the deploy, recovery paths):
 `terraform/demo/VERIFY-server-xdp.zh-cn.md`.
 
+#### XDP attack stats site (stats.opennhp.org)
+
+Daily summaries of the nhp-server XDP ingress filter's `[NHP-DROP]` events are
+published at `https://stats.opennhp.org/`. Static HTML + JSON, no scripts, no
+external resources, fully offline-built from the same `logs/nhp_server_xdp-YYYY-MM-DD.log`
+files the daemon writes (and the daemon's per-packet retention is the only
+window: 14 days, see *nhp-server eBPF/XDP ingress filter* above).
+
+**Data flow**
+
+- **Server (writer)**: `nhp-serverd` keeps writing the daily log to
+  `/home/ec2-user/nhp-server/logs/nhp_server_xdp-YYYY-MM-DD.log` as it always
+  has. Same 0600 mode, same `[NHP-DROP]` / `[NHP-STAT]` / `[NHP-SCAN]` lines.
+- **Server (exporter)**: `deploy/scripts/nhp-xdplog-export.sh` is the SSH
+  *forced command* attached to a dedicated ed25519 public key in
+  `~ec2-user/.ssh/authorized_keys`. It accepts only `list` (print
+  date/size/mtime) and `get <YYYY-MM-DD>` (stream one log to stdout);
+  anything else (shell, scp, sftp, paths with `/`, dates that don't match
+  `^\d{4}-\d{2}-\d{2}$`) is rejected at the script. The matching private key
+  is `stats_collector_ssh_private_key` in `opennp/demo`; the public half is
+  installed by `deploy-server` with
+  `command=".../nhp-xdplog-export.sh",no-port-forwarding,no-X11-forwarding,
+  no-agent-forwarding,no-pty`.
+- **Relay (collector)**: a systemd timer (`deploy/scripts/xdpstats.timer`,
+  `OnCalendar=*-*-* 00:20:00 UTC`, `Persistent=true`) runs
+  `xdpstats-collect.sh`, which calls `ssh ... list` then `ssh ... get <date>`
+  per day, gzip-stores them under
+  `/home/ec2-user/xdpstats/raw/server/nhp_server_xdp-<date>.log.gz`, then
+  invokes `xdplog-report site`.
+- **Site**: `endpoints/xdplog-report` has a `site` subcommand that emits
+  `index.html` + `index.json` plus one `<day>.html` / `<day>.json` per day
+  under `/home/ec2-user/xdpstats/web/`. nginx serves that directory at
+  `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
+  `relay.*` / `agent.*` / `reg.*` / `demo.*` (SAN expanded by
+  `bootstrap-tls.sh`).
+
+**What's deliberately NOT changed**
+
+- `xdp.toml`: not touched. The relay's addresses were already in the SSH
+  whitelist when `server_open_all_ports = false` was the default; opening all
+  ports added an internet-wide observation surface but did not relax that
+  list. Collector SSH rides in on the same path the deploy job uses.
+- The XDP filter, capability grants, `aws_security_group.server`, and the
+  `aws_instance.server` lifecycle are all untouched. The collector is read-only.
+- `deploy-demo-v2` job order. `deploy-xdpstats` chains AFTER `deploy-demoapp`
+  so certbot's `deploy-relay → deploy-jsagent → deploy-demoapp → deploy-xdpstats`
+  serialisation keeps the relay host's exclusive certbot lock sequential.
+  `deploy-server` appends the stats collector public key to
+  `authorized_keys` BEFORE `deploy-xdpstats` runs (first collector SSH would
+  otherwise hit an unknown public-key fallback).
+
+**Default public behaviour**
+
+- Source IPs are masked: IPv4 truncated to `a.b.c.x`, IPv6 to the first 48 bits.
+  `site` mode of `xdplog-report` defaults `-mask-ip` to `true` (different from
+  the single-file CLI, which defaults `false`). The raw log cache on the relay
+  keeps full IPs for `-force` rebuilds and post-classifier retroanalysis; it is
+  not under the nginx vhost.
+- No login, no rate limit, no geo-restriction. The site is a deliberately
+  public read-only summary of attack telemetry.
+- Detail pages add a `← Back to index` link; the homepage lists every day with
+  partial / budget / restart / unknown flags inline.
+- `tcp/22` scans never reach the host's NIC and are not in the totals; the
+  filter being detached across deploys/reboots is shown as missing minutes, not
+  as zero attacks (a missing minute is not the same as "no attack in that
+  minute").
+
+**Adding the AC later.** AC writes per-flow accept/deny files in a shape
+`parse.go` does not currently parse. Adding it means (1) a parser extension
+in `endpoints/xdplog-report/parse.go`, (2) a new SSH keypair +
+`authorized_keys` line on the AC host, (3) a second `<name> <user> <host>
+<log_dir>` line in `sources.conf`. The site already routes by `<source>`,
+so no `xdplog-report` change is needed once the parser and keypair exist.
+
+**Manual backfill.** If `xdpstats.timer` missed a window longer than the
+daemon's 14-day retention, the missing days are unrecoverable; the next
+deploy should add a one-shot run of `xdplogs-collect.sh -v` after the gap is
+known. RUNBOOK.md § "XDP attack stats site" has the full recovery flow
+including key rotation via `opennhp/demo` and a forced rebuild via
+`xdplog-report site -force`.
+
 ### `opennhp/demo` schema
 
 The secret is JSON; fields are added idempotently by scripts and workflows.
@@ -440,6 +521,8 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `ssh_deploy_private_key` | manually bootstrapped (see `terraform/demo/RUNBOOK.md`); never enters Terraform state | CI SSH into EC2 hosts |
 | `ssh_deploy_public_key` | derived in CI via `ssh-keygen -y` and passed as `TF_VAR_deploy_public_key` | `aws_key_pair.deploy` → `ec2-user` authorized keys |
 | `ssh_host_keys` | `infra-demo` workflow on `apply` | CI `known_hosts` for strict host key checking |
+| `stats_collector_ssh_private_key` | `scripts/generate-nhp-keys.sh` (idempotent; ed25519 via `ssh-keygen -t ed25519 -N ""`) | relay host's `~/.ssh/stats_collector_key` (installed by `deploy-xdpstats`); used by `xdpstats-collect.sh` to pull from nhp-server |
+| `stats_collector_ssh_public_key` | same | nhp-server's `~ec2-user/.ssh/authorized_keys` (appended by `deploy-server` with `command=…/nhp-xdplog-export.sh`,no-*); verified to match the private half before install |
 
 > Cluster 2 has been decommissioned. The corresponding fields
 > (`nhp_jsagent2_*`, `nhp_server2_*`, `nhp_ac2_*`) used to be listed here

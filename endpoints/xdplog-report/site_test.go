@@ -98,7 +98,7 @@ func TestSiteIndexOrderDesc(t *testing.T) {
 		t.Fatal(err)
 	}
 	var idx []SiteDaySummary
-	if err := json.Unmarshal(b, &idx); err != nil {
+	if err = json.Unmarshal(b, &idx); err != nil {
 		t.Fatal(err)
 	}
 	if len(idx) != 2 {
@@ -246,7 +246,7 @@ func TestSiteIgnoreInvalidFilename(t *testing.T) {
 		t.Fatal(err)
 	}
 	var idx []SiteDaySummary
-	if err := json.Unmarshal(b, &idx); err != nil {
+	if err = json.Unmarshal(b, &idx); err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]bool{}
@@ -288,7 +288,7 @@ func TestSitePartialFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 	var idx []SiteDaySummary
-	if err := json.Unmarshal(b, &idx); err != nil {
+	if err = json.Unmarshal(b, &idx); err != nil {
 		t.Fatal(err)
 	}
 	sort.Slice(idx, func(i, j int) bool { return idx[i].Day < idx[j].Day })
@@ -309,6 +309,65 @@ func TestSitePartialFlag(t *testing.T) {
 		if s.Day != today && s.Partial {
 			t.Errorf("historical day %s marked partial", s.Day)
 		}
+	}
+
+	// The index page renders the chip itself; the template emits the markup so
+	// nothing needs an unsafe template.HTML conversion.
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), `<span class="tag tag-warn">partial</span>`) {
+		t.Errorf("index.html is missing the partial chip for %s", today)
+	}
+}
+
+// TestFlagsFor pins the Flags column: chip order, the classes that drive the
+// colors, and the empty case that renders as an em dash placeholder.
+func TestFlagsFor(t *testing.T) {
+	tests := []struct {
+		name string
+		sum  SiteDaySummary
+		want []siteFlag
+	}{
+		{
+			name: "none",
+			sum:  SiteDaySummary{},
+			want: nil,
+		},
+		{
+			name: "all in display order",
+			sum: SiteDaySummary{
+				UnknownReasons:   true,
+				RestartsDetected: 2,
+				BudgetExhausted:  true,
+				Partial:          true,
+			},
+			want: []siteFlag{
+				{Label: "partial", Class: "tag-warn"},
+				{Label: "budget", Class: "tag-warn"},
+				{Label: "restart", Class: "tag-info"},
+				{Label: "unknown", Class: "tag-info"},
+			},
+		},
+		{
+			name: "warnings only",
+			sum:  SiteDaySummary{Partial: true},
+			want: []siteFlag{{Label: "partial", Class: "tag-warn"}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := flagsFor(tc.sum)
+			if len(got) != len(tc.want) {
+				t.Fatalf("flagsFor = %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("flag[%d] = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
 	}
 }
 

@@ -407,7 +407,7 @@ func topCategoryOf(rep *Report) string {
 }
 
 // openAndConsume opens the (possibly gzipped) log and feeds it to the
-// Analyzer. It centralises the .gz suffix check that main.go also does.
+// Analyzer. It centralizes the .gz suffix check that main.go also does.
 func openAndConsume(an *Analyzer, path, day string) error {
 	fh, err := os.Open(path)
 	if err != nil {
@@ -485,7 +485,7 @@ func writeFileAtomic(path string, b []byte, mode fs.FileMode) error {
 }
 
 // loadSiteState reads state.json from path. Missing file is not an error:
-// the state is initialised empty. A corrupt file is reported and aborts the
+// the state is initialized empty. A corrupt file is reported and aborts the
 // run to avoid silently rewriting away an inconsistent state.
 func loadSiteState(path string) (*SiteState, error) {
 	st := &SiteState{

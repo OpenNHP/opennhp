@@ -56,6 +56,33 @@ func writeIndexHTML(outDir string, data indexPageData) error {
 	return writeFileAtomic(outDir+"/index.html", []byte(sb.String()), 0o644)
 }
 
+// siteFlag is one status chip in the index table's Flags column. The label
+// and class are plain data; the template emits the markup so html/template
+// escapes them in place. No raw template.HTML is ever built here.
+type siteFlag struct {
+	Label string
+	Class string
+}
+
+// flagsFor returns the chips for one day's summary, in display order. An empty
+// result renders as an em dash placeholder in the template.
+func flagsFor(s SiteDaySummary) []siteFlag {
+	var out []siteFlag
+	if s.Partial {
+		out = append(out, siteFlag{Label: "partial", Class: "tag-warn"})
+	}
+	if s.BudgetExhausted {
+		out = append(out, siteFlag{Label: "budget", Class: "tag-warn"})
+	}
+	if s.RestartsDetected > 0 {
+		out = append(out, siteFlag{Label: "restart", Class: "tag-info"})
+	}
+	if s.UnknownReasons {
+		out = append(out, siteFlag{Label: "unknown", Class: "tag-info"})
+	}
+	return out
+}
+
 // htmlIndex is the index page template. There are no scripts and no external
 // resources. The visual language mirrors the per-day detail page so visitors
 // see the same nav and styling on both.
@@ -64,25 +91,7 @@ var htmlIndex = template.Must(template.New("htmlIndex").Funcs(template.FuncMap{
 	"dayLink": func(s SiteDaySummary) string {
 		return "d/" + s.Source + "/" + s.Day + ".html"
 	},
-	"flag": func(s SiteDaySummary) template.HTML {
-		var tags []string
-		if s.Partial {
-			tags = append(tags, `<span class="tag tag-warn">partial</span>`)
-		}
-		if s.BudgetExhausted {
-			tags = append(tags, `<span class="tag tag-warn">budget</span>`)
-		}
-		if s.RestartsDetected > 0 {
-			tags = append(tags, `<span class="tag tag-info">restart</span>`)
-		}
-		if s.UnknownReasons {
-			tags = append(tags, `<span class="tag tag-info">unknown</span>`)
-		}
-		if len(tags) == 0 {
-			return `<span class="muted">&mdash;</span>`
-		}
-		return template.HTML(strings.Join(tags, " "))
-	},
+	"flags": flagsFor,
 }).Parse(`<!doctype html>
 <html lang="en">
 <head>
@@ -141,7 +150,7 @@ tcp/22 scans never reach the host's NIC and are not counted. During deploys or r
 <td class="num">{{$s.UniqueIPs}}</td>
 <td>{{$s.TopCategory}}</td>
 <td>{{$s.PeakHour}}</td>
-<td>{{flag $s}}</td>
+<td>{{if flags $s}}{{range flags $s}}<span class="tag {{.Class}}">{{.Label}}</span>{{end}}{{else}}<span class="muted">&mdash;</span>{{end}}</td>
 </tr>{{end}}
 </tbody>
 </table>

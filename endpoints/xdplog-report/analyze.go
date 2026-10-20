@@ -266,6 +266,11 @@ type Report struct {
 	Restarts    []string `json:"restarts_detected"`
 	UnknownRsns []string `json:"unknown_reasons"`
 	IPv6Share   float64  `json:"ipv6_event_share"`
+
+	// Navigation hints for the static site. Not part of the JSON schema:
+	// the on-disk day report is the same Report either way.
+	BackLink     string `json:"-"`
+	IsSiteDetail bool   `json:"-"`
 }
 
 func ratio(n, d uint64) float64 {

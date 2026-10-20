@@ -26,7 +26,12 @@ func main() {
 	}
 }
 
+// run is the CLI entry. When args[0] is "site", it dispatches to runSite;
+// otherwise it parses the original single-file report flags.
 func run(args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == "site" {
+		return runSite(args[1:], stdout)
+	}
 	fs := flag.NewFlagSet("xdplog-report", flag.ContinueOnError)
 	var in multiFlag
 	fs.Var(&in, "in", "log file, glob or directory (repeatable; .gz supported)")

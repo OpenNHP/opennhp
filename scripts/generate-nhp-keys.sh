@@ -121,6 +121,15 @@ EXISTING_SERVER_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server_sm2_public_k
 # failed"). Generate with openssl on first run; reuse on subsequent.
 EXISTING_DEMOAPP_KEY_ENVELOPE_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_key_envelope_key // empty')
 EXISTING_DEMOAPP_SESSION_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_session_key // empty')
+# stats.opennhp.org collector SSH keypair. The relay uses this private key
+# to pull nhp_server_xdp-YYYY-MM-DD.log files from nhp-server's
+# nhp-xdplog-export.sh forced-command script. Server-side, the matching
+# public key is appended to /home/ec2-user/.ssh/authorized_keys by the
+# deploy-server job with command=".../nhp-xdplog-export.sh",no-agent/...,
+# so the private key is read-only on a single read path: list or get <date>.
+# Ed25519 is preferred over RSA for the small line and fast verification.
+EXISTING_STATS_COLLECTOR_PRIV=$(echo "$SECRETS_JSON" | jq -r '.stats_collector_ssh_private_key // empty')
+EXISTING_STATS_COLLECTOR_PUB=$(echo "$SECRETS_JSON" | jq -r '.stats_collector_ssh_public_key // empty')
 
 # --- Generate or reuse keys ---
 generate_keys() {
@@ -270,6 +279,48 @@ fi
 echo "::add-mask::$DEMOAPP_KEY_ENVELOPE_KEY"
 echo "::add-mask::$DEMOAPP_SESSION_KEY"
 
+# stats collector SSH keypair (ed25519). Idempotent: reuse the existing pair
+# from AWS SM if both halves are present, otherwise generate a fresh one.
+# Passphrase-less key — the relay host is the only consumer and the file
+# lives at 0600 /home/ec2-user/.ssh/stats_collector_key. Force-rotate only
+# on explicit --regenerate.
+#
+# The key comment is the tag deploy-server greps for when it replaces the
+# managed authorized_keys line, so it must stay hyphenated and space-free:
+# a tag containing a space would have to survive a round trip through a
+# remote shell command.
+#
+# ssh-keygen REFUSES to write over an existing file and prompts
+# "Overwrite (y/n)?" instead. On an Actions runner stdin is not a TTY, so the
+# prompt reads EOF and ssh-keygen exits non-zero, which under `set -e` would
+# take down `configure` and with it every deploy job. Hence mktemp -d (a
+# directory that is guaranteed empty) rather than mktemp (a file that already
+# exists). Cleanup is explicit instead of a trap: this script has no EXIT trap
+# today, and adding one here would silently replace any trap a later edit
+# installs.
+STATS_COLLECTOR_KEYGEN_DIR=$(mktemp -d -t stats_collector_keygen.XXXXXX)
+STATS_COLLECTOR_KEYGEN_OUT="$STATS_COLLECTOR_KEYGEN_DIR/collector_key"
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_STATS_COLLECTOR_PRIV" || -z "$EXISTING_STATS_COLLECTOR_PUB" ]]; then
+  echo "  Generating new stats collector ed25519 keypair..." >&2
+  ssh-keygen -t ed25519 -N "" -C "stats.opennhp.org-collector" -f "$STATS_COLLECTOR_KEYGEN_OUT" >/dev/null
+  STATS_COLLECTOR_SSH_PRIVATE_KEY=$(cat "$STATS_COLLECTOR_KEYGEN_OUT")
+  STATS_COLLECTOR_SSH_PUBLIC_KEY=$(cat "$STATS_COLLECTOR_KEYGEN_OUT.pub")
+else
+  echo "  Reusing existing stats collector SSH keypair from AWS SM" >&2
+  STATS_COLLECTOR_SSH_PRIVATE_KEY="$EXISTING_STATS_COLLECTOR_PRIV"
+  STATS_COLLECTOR_SSH_PUBLIC_KEY="$EXISTING_STATS_COLLECTOR_PUB"
+fi
+rm -rf "$STATS_COLLECTOR_KEYGEN_DIR"
+# Mask the private key line-by-line at its source. ::add-mask:: only
+# applies to a single line, and an OpenSSH ed25519 key spans four or more
+# base64 body lines plus a trailing comment; masking the whole key as
+# one string redacts only the BEGIN line and prints the body lines raw
+# into the public Actions log. Mirror the line-by-line pattern used by
+# deploy-demo-v2.yml for STEALTH_CA_KEY / demo_nhp_key.
+while IFS= read -r line; do
+  [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+done <<< "$STATS_COLLECTOR_SSH_PRIVATE_KEY"
+
 echo ""
 echo "--- Key summary ---"
 echo "  Server public key (Curve25519): ${NHP_SERVER_PUBLIC_KEY:0:20}..."
@@ -305,6 +356,8 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg jsp "$NHP_JSAGENT_SM2_PUBLIC_KEY" \
   --arg dek "$DEMOAPP_KEY_ENVELOPE_KEY" \
   --arg dsk "$DEMOAPP_SESSION_KEY" \
+  --arg scp "$STATS_COLLECTOR_SSH_PRIVATE_KEY" \
+  --arg scq "$STATS_COLLECTOR_SSH_PUBLIC_KEY" \
   '. + {
     nhp_server_private_key: $sk,
     nhp_server_public_key: $sp,
@@ -319,7 +372,9 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
     nhp_jsagent_public_key: $jp,
     nhp_jsagent_sm2_public_key: $jsp,
     demoapp_key_envelope_key: $dek,
-    demoapp_session_key: $dsk
+    demoapp_session_key: $dsk,
+    stats_collector_ssh_private_key: $scp,
+    stats_collector_ssh_public_key: $scq
   }')
 
 aws secretsmanager put-secret-value \

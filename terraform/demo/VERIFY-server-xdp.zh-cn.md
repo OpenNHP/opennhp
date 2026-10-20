@@ -692,6 +692,13 @@ grep -E 'SSH_RELAY|NHP_RELAY' $LOG | tail -5
 du -sh $(dirname $LOG) && ls -lt $(dirname $LOG)/nhp_server_xdp-*.log | head
 ```
 
+> relay 上的 `xdpstats.timer` 每天 00:20 UTC 拉取 `nhp_server_xdp-*.log`
+> 主日志重建 `stats.opennhp.org`；`nhp_server_xdp-evaluate-*.log` 与
+> `nhp_server_xdp-audit-*.log` 不在采集范围内，由 server 端强制命令脚本
+> (`nhp-xdplog-export.sh`) 直接拒收。`xdpstats-collect.sh -v` 可手触发一次
+> 拉取；`xdplog-report site -force` 可重算全部天。详细恢复路径见
+> `terraform/demo/RUNBOOK.md` § "XDP attack stats site"。
+
 **`[NHP-SCAN]`（端口 / 源聚合）读法**
 
 ```bash
@@ -949,3 +956,80 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    `server_open_all_ports = false` + `infra-demo apply`；主机失联则 `aws ec2 reboot-instances`。
    generic 模式的 XDP 在 skb 分配之后才丢包，体量扫描会消耗 t3 的 CPU credit，注意
    CloudWatch `CPUCreditBalance`。
+
+## X. `xdpstats` 部署后的端到端校验
+
+部署 `stats.opennhp.org`（deploy-xdpstats job）后追加这几条验证，**每次**
+重新部署都过一遍：
+
+1. **server 端强制命令脚本已安装并签名（指纹比对）**：
+
+   ```bash
+   ssh nhp-server
+   ls -l /home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh   # 0755, root:root
+   sudo /home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh     # 应当 64 退出，stderr "no command given"
+   sudo SSH_ORIGINAL_COMMAND=list /home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh | head -3
+   sudo SSH_ORIGINAL_COMMAND='get ../etc/passwd' /home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh   # 65 退出
+   sudo SSH_ORIGINAL_COMMAND='get 2026-1-1'   /home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh   # 65 退出
+   ```
+
+2. **`authorized_keys` 完整且未改 deploy 公钥行**：
+
+   ```bash
+   ssh nhp-server 'cat /home/ec2-user/.ssh/authorized_keys'
+   # 至少两行：第一行是 deploy 公钥（terraform demo userdata 注入），保持不动；
+   # 第二行以 "# stats.opennhp.org collector (managed by deploy-server)" 开头，
+   # 含 command="/home/ec2-user/nhp-server/etc/nhp-xdplog-export.sh" 与
+   # no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty，
+   # 公钥字符串与 `opennhp/demo` 中 `stats_collector_ssh_public_key` 字段一致。
+   #
+   # 三条必须同时成立：
+   #  a) 路径是 ~/.ssh/authorized_keys（sshd 真正读的那一个），
+   #     不是 ~/nhp-server/.ssh/authorized_keys；
+   #  b) 描述性 # 标记单独占一行（在 key 行的上一行）。若 # 出现在行首，
+   #     sshd 会把整行当注释，这个 key 就永远不会被授权；
+   #  c) 匹配行数恰好为 1：轮换后旧 key 必须已被替换掉，而不是并存。
+   grep -c 'stats.opennhp.org-collector' ~/.ssh/authorized_keys   # == 1
+   # deploy 公钥行必须原样存在（XDP 无 break-glass，CI 不能被锁在门外）：
+   grep -c "$(cut -d' ' -f2 <<<"$(aws secretsmanager get-secret-value \
+     --secret-id opennhp/demo --region us-west-2 --query SecretString \
+     --output text | jq -r .ssh_deploy_public_key)")" ~/.ssh/authorized_keys   # == 1
+   ```
+
+3. **relay 端 collector 一切就绪**：
+
+   ```bash
+   ssh relay-jump
+   sudo systemctl status xdpstats.timer --no-pager    # active, waiting
+   sudo systemctl list-timers xdpstats.timer          # 列出下一次触发时间
+   sudo -u ec2-user /home/ec2-user/xdpstats/xdpstats-collect.sh -v   # 一次手动跑
+   ls /var/www/stats/                                 # 含 index.html/index.json/d/server/<day>.html
+   # 权限三连（任一不对 nginx 就会 403 或泄露未脱敏日志）：
+   stat -c '%a %U %n' /home/ec2-user /home/ec2-user/xdpstats \
+                              /home/ec2-user/xdpstats/raw /var/www/stats
+   #   /home/ec2-user            0700  ec2-user   （AL2023 默认，nginx 不可穿越）
+   #   .../xdpstats/raw          0700  ec2-user   （唯一存未脱敏 IP 的目录）
+   #   /var/www/stats            0755  ec2-user   （web root，nginx 可读）
+   # state.json 必须在 web root 之外，且对外 404：
+   test -f /home/ec2-user/xdpstats/state.json && echo "state 位置正确"
+   test ! -f /var/www/stats/state.json && echo "state 未泄漏到 web root"
+   curl -fsS -o /dev/null -w '%{http_code}\n' https://stats.opennhp.org/state.json   # 404
+   ```
+
+4. **公网可达 + 内容正确**：
+
+   ```bash
+   curl -fsS https://stats.opennhp.org/ | head -20                       # 含 <title>
+   curl -fsS https://stats.opennhp.org/index.json | jq '.[0] | keys'    # 含 source/day/drop_pkts
+   openssl s_client -connect stats.opennhp.org:443 -servername stats.opennhp.org \
+     </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName  # DNS:stats.opennhp.org
+   ```
+
+5. **XDP 不变量回归（既有的部署后校验，原样跑）**：
+
+   - `Verify the XDP ingress filter attached` 步骤仍为绿；
+   - `CapAmb==0 & CapPrm/CapEff v & ~BPF == 0` 步骤仍为绿；
+   - §4.4 的 DHCP 探测仍为绿。
+
+以上 1–5 全绿才视为 `deploy-xdpstats` 完工。任意一条退化按
+`RUNBOOK.md` § "XDP attack stats site" 排查。

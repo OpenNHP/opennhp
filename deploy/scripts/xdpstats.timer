@@ -1,0 +1,29 @@
+# systemd timer for the XDP attack stats collector.
+#
+# Installed on the RELAY host by deploy-xdpstats. Paired with
+# xdpstats.service. OnCalendar fires once per day at 00:20:00 UTC; the
+# 00:20 is one full hour after the UTC day rollover so a slow nhp-serverd
+# cannot leave the previous-day log half-written when we read it.
+#
+# Persistent=true means: if the host was off / the timer missed a window
+# (e.g. between 00:20 and 00:20 the next time the unit was running), the
+# service is run once on next boot to catch up. nhp-server only retains
+# ~14 days of logs (nhp/utils/ebpf/engine_linux.go:serverLogRetentionDays);
+# a missed run longer than that drops data permanently. RUNBOOK.md covers
+# the manual recovery path.
+#
+# Dates are UTC. The collector's XDPSTATS_TODAY hook (env var) defaults
+# to `date -u`, so a manual run with `systemctl start xdpstats.service`
+# behaves the same as a timer-triggered one.
+
+[Unit]
+Description=Run XDP attack stats collector (stats.opennhp.org)
+Documentation=https://stats.opennhp.org
+
+[Timer]
+OnCalendar=*-*-* 00:20:00 UTC
+Persistent=true
+Unit=xdpstats.service
+
+[Install]
+WantedBy=timers.target

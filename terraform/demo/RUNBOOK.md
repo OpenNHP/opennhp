@@ -1404,3 +1404,143 @@ Reading the report: attack = `[NHP-DROP]`. Packet totals are exact (summed from 
 per-minute `[NHP-STAT]` lines); source IP, port and region rankings come from the
 rate-limited per-packet lines and are samples. A budget-exhausted warning means
 rankings after that point are incomplete. The tool never touches the network.
+
+## XDP attack stats site (stats.opennhp.org)
+
+`https://stats.opennhp.org/` is a public, read-only site built nightly from
+the same `nhp_server_xdp-YYYY-MM-DD.log` files the daemon writes on
+nhp-server. Days the collector could not pull are skipped silently; today is
+marked `partial`. Source IPs on the public pages are masked (`a.b.c.x` /
+IPv6 /48). Raw logs (unmasked) live on the relay host at
+`/home/ec2-user/xdpstats/raw/` for retroactive re-runs after a classifier
+update.
+
+### Daily flow at a glance
+
+```
+nhp-serverd
+   └─ writes logs/nhp_server_xdp-YYYY-MM-DD.log  (0600, ec2-user)
+
+[relay cron] xdpstats.timer  (OnCalendar=*-*-* 00:20:00 UTC, Persistent=true)
+   └─ xdpstats-collect.sh
+        ├─ ssh ec2-user@nhp-server list    (forced: deploy/scripts/nhp-xdplog-export.sh)
+        ├─ ssh ec2-user@nhp-server get <date>  (same forced command)
+        ├─ gzip -> /home/ec2-user/xdpstats/raw/server/*.log.gz  (0700, 90-day retention)
+        └─ xdplog-report site
+             ├─ /var/www/stats/{index.html,index.json,d/server/<day>.{html,json}}
+             └─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
+                                                │
+                          nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/
+```
+
+The collector's SSH keypair (`stats_collector_ssh_*` in `opennhp/demo`) only
+runs the export script on the server side; shell, scp, sftp, and any other
+command are refused by `authorized_keys`. The forced-command script itself
+further restricts `get` to a strict `^\d{4}-\d{2}-\d{2}$` date with no path
+separators. The relay reaches nhp-server through the existing
+relay→server SSH path (already in the XDP whitelist and security group);
+no firewall, capability, or `xdp.toml` change.
+
+### Deploy order: `infra-demo apply` comes first
+
+The `stats.opennhp.org` A record is `cloudflare_record.stats` in
+`terraform/demo/dns.tf`. `deploy-demo-v2` never applies Terraform — the
+`configure` job only reads the state — so on a state where that record has
+never been applied the hostname is NXDOMAIN for the whole run. Cert issuance
+does **not** notice: certbot's DNS-01 challenge writes a TXT record through
+the Cloudflare API and never looks up the A record, so the vhost, the
+collector and the timer would all install cleanly and the run would only go
+red at the final `curl https://stats.opennhp.org/`.
+
+So `deploy-xdpstats` refuses before it touches the relay: the first step is a
+preflight that resolves `stats.opennhp.org` against `1.1.1.1` and requires
+exactly one A record equal to `aws_eip.relay.public_ip`. Missing, absent, or
+pointing somewhere else ⇒ red run with the relay untouched and the message
+naming `infra-demo` with `action=apply`. It retries for up to a minute so a
+deploy started right after an apply is not defeated by resolver caching.
+
+Correct order for a release that includes the stats site:
+
+```
+infra-demo (action=apply)   →   deploy-demo-v2 (confirm=deploy)
+```
+
+After the first apply, subsequent deploys need no Terraform run — the record
+is in the state and DNS outlives it.
+
+### Manual recovery / debugging
+
+- **Pull didn't happen today / status is "failed":**
+  ```bash
+  ssh relay-jump
+  sudo journalctl -u xdpstats -n 100 --no-pager
+  sudo systemctl start xdpstats.service   # one-shot, idempotent
+  tail -200 /home/ec2-user/xdpstats/collect.log
+  ```
+  Most failures are an expired `opennhp/demo` entry (`stats_collector_ssh_*`),
+  the server host being down, or a recent deploy that left an older
+  `nhp-xdplog-export.sh`. The unit logs the SSH banner verbatim.
+
+- **Backfill a missing day** (must be inside the daemon's
+  `serverLogRetentionDays = 14`, nhp/utils/ebpf/engine_linux.go:1126):
+  ```bash
+  ssh relay-jump
+  /home/ec2-user/xdpstats/xdpstats-collect.sh -v
+  ```
+  The script's `list` + per-day `get` loop fetches whatever is newer than the
+  local cache.
+
+- **Force a full rebuild** after editing `endpoints/xdplog-report/classify.go`
+  (so a new DROP reason or category applies retroactively):
+  ```bash
+  ssh relay-jump
+  cd endpoints && go build -o /tmp/xdplog-report ./xdplog-report && \
+    sudo install -m 0755 /tmp/xdplog-report /usr/local/bin/xdplog-report
+  sudo -u ec2-user /usr/local/bin/xdplog-report site \
+    -logs  /home/ec2-user/xdpstats/raw \
+    -out   /var/www/stats \
+    -state /home/ec2-user/xdpstats/state.json \
+    -force
+  ```
+
+- **Rotate the collector keypair** (e.g. compromised relay host):
+  ```bash
+  # 1. Re-generate the pair in opennhp/demo; the script is idempotent so a
+  #    second invocation just rotates the missing half:
+  ./scripts/generate-nhp-keys.sh --binary-dir ./release \
+    --template-dir ./deploy/config-templates \
+    --output-dir ./deploy/configs \
+    --server-private-ip "$SERVER_PRIVATE_IP" \
+    --ac-private-ip   "$AC_PRIVATE_IP" \
+    --domain opennhp.org
+  # 2. Re-run deploy-demo-v2 with confirm=deploy. deploy-server REPLACES
+  #    the managed line in /home/ec2-user/.ssh/authorized_keys: it greps out
+  #    every line carrying the key comment `stats.opennhp.org-collector`
+  #    (the tag is stable across rotations, the key material is not) and
+  #    appends the current one, so a rotation cannot leave the old key
+  #    behind. Deploy public-key rows are never touched.
+  #    deploy-xdpstats installs the new private key at
+  #    /home/ec2-user/.ssh/stats_collector_key.
+  # 3. Verify exactly one collector line remains:
+  #      ssh nhp-server 'grep -c stats.opennhp.org-collector ~/.ssh/authorized_keys'
+  ```
+
+- **Add a new source** (AC, etc. — currently only `server` is wired):
+  1. Extend `endpoints/xdplog-report/parse.go` (or split into a separate
+     sub-package) to understand the new log's line shape.
+  2. Provision a new SSH keypair the same way as `stats_collector_ssh_*` and
+     wire it into the new host's `authorized_keys` via `deploy-ac` (or a new
+     sibling job).
+  3. Add a `<name> <ssh_user> <host> <log_dir>` line to
+     `deploy/config-templates/xdpstats/sources.conf` and re-run
+     `deploy-demo-v2`.
+
+### Things the site deliberately does NOT do
+
+- No login / no auth wall / no geo-restriction: the data is mask-anonymized
+  attack telemetry by design (see CLAUDE.md "XDP attack stats site").
+- No exposure of the server's private IP: detail pages only show the
+  `Hostname` from the daemon's `config.toml`.
+- No GeoIP enabled by default. `xdplog-report site -geo-mmdb /path/to/GeoLite2-City.mmdb`
+  turns it on locally for debugging only; the systemd unit does not enable it
+  unless a file is mounted at the documented location.

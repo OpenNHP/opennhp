@@ -18,6 +18,7 @@ package ebpf
 
 import (
 	"encoding/binary"
+	"errors"
 	"sort"
 	"time"
 
@@ -80,27 +81,87 @@ func sumPerCPU(v []uint64) uint64 {
 	return t
 }
 
+// scanBatchSize is the number of entries fetched per BatchLookupAndDelete call.
+const scanBatchSize = 1024
+
+// scanIterator is the subset of *ebpf.MapIterator used by the fallback drain.
+type scanIterator interface {
+	Next(keyOut, valueOut any) bool
+	Err() error
+}
+
 // drainMap empties m and hands every (key, per-CPU sum) to add, returning how
-// many entries it held. A counter incremented between
-// the read and the delete is lost; the figures here are a ranking, not the
-// accounting.
-func drainMap[K any](m *ebpf.Map, add func(k K, hits uint64)) (count int) {
+// many distinct entries it held.
+//
+// The batch path reads and clears in one kernel pass, so no increment is lost
+// between a read and a delete and an LRU eviction cannot restart the walk. Maps
+// or kernels without batch support fall back to the iterator.
+func drainMap[K comparable](m *ebpf.Map, add func(k K, hits uint64)) (count int) {
+	n, ok := drainMapBatch(m, add)
+	if ok {
+		return n
+	}
+	// Nothing was delivered on the unsupported path, so add has not been called.
+	it := m.Iterate()
+	seen, err := drainIter[K](it, add)
+	if err != nil {
+		log.Warning("scan stats: map iteration aborted after %d entries: %v", len(seen), err)
+	}
+	// Delete after iterating: deleting under the iterator restarts it.
+	for k := range seen {
+		k := k
+		_ = m.Delete(&k)
+	}
+	return len(seen)
+}
+
+// drainMapBatch returns ok=false only when batching is unsupported and nothing
+// has been handed to add.
+func drainMapBatch[K comparable](m *ebpf.Map, add func(k K, hits uint64)) (count int, ok bool) {
+	var (
+		cursor ebpf.MapBatchCursor
+		keys   = make([]K, scanBatchSize)
+		vals   = make([][]uint64, scanBatchSize)
+		first  = true
+	)
+	for {
+		n, err := m.BatchLookupAndDelete(&cursor, keys, vals, nil)
+		if first && n == 0 && err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
+			if errors.Is(err, ebpf.ErrNotSupported) {
+				return 0, false
+			}
+		}
+		first = false
+		for i := 0; i < n; i++ {
+			add(keys[i], sumPerCPU(vals[i]))
+		}
+		count += n
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, ebpf.ErrKeyNotExist) {
+			log.Warning("scan stats: batch drain stopped after %d entries: %v", count, err)
+		}
+		return count, true
+	}
+}
+
+// drainIter walks it once. Values are assigned, not accumulated, and keys are
+// de-duplicated: if an LRU eviction restarts the walk, a key seen again simply
+// overwrites its earlier figure instead of being counted twice.
+func drainIter[K comparable](it scanIterator, add func(k K, hits uint64)) (map[K]uint64, error) {
 	var (
 		key  K
 		vals []uint64
-		keys []K
+		seen = make(map[K]uint64)
 	)
-	it := m.Iterate()
 	for it.Next(&key, &vals) {
-		add(key, sumPerCPU(vals))
-		keys = append(keys, key)
-		count++
+		seen[key] = sumPerCPU(vals)
 	}
-	// Delete after iterating: deleting under the iterator restarts it.
-	for i := range keys {
-		_ = m.Delete(&keys[i])
+	for k, v := range seen {
+		add(k, v)
 	}
-	return count
+	return seen, it.Err()
 }
 
 func drainPortHits(m *ebpf.Map) (map[scanPortKey]uint64, bool) {

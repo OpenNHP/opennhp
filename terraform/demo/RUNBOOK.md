@@ -1427,7 +1427,7 @@ nhp-serverd
         ├─ ssh ec2-user@nhp-server get <date>  (same forced command)
         ├─ gzip -> /home/ec2-user/xdpstats/raw/server/*.log.gz  (0700, 90-day retention)
         └─ xdplog-report site
-             ├─ /var/www/stats/{index.html,index.json,d/server/<day>.{html,json}}
+             ├─ /var/www/stats/{index.html,index.json,countup.js,d/server/<day>.{html,json}}
              └─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
                                                 │
                           nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/

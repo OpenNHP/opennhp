@@ -318,9 +318,14 @@ run (triggered by the `deploy-demo-v2` workflow).
 #### XDP attack stats site (stats.opennhp.org)
 
 Daily summaries of the nhp-server XDP ingress filter's `[NHP-DROP]` events are
-published at `https://stats.opennhp.org/`. Static HTML + JSON, no scripts, no
-external resources, fully offline-built from the same
-`logs/nhp_server_xdp-YYYY-MM-DD.log` files the daemon writes.
+published at `https://stats.opennhp.org/`. Static HTML + JSON, no third-party
+resources, fully offline-built from the same
+`logs/nhp_server_xdp-YYYY-MM-DD.log` files the daemon writes. The homepage
+leads with a hero total of all-time blocked packets (plus a `Since` date) that
+`countup.js` counts up; that script is generated into the web root by
+`xdplog-report site`, loaded same-origin, and is the only one the CSP permits
+(`script-src 'self'`). It is progressive enhancement — the number is already
+in the HTML for readers without JS, without that CSP, or with reduced motion.
 
 **Data flow**
 

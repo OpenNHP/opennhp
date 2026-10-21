@@ -144,9 +144,26 @@ Layout under `-out`:
 <out>/
   index.html
   index.json
+  countup.js                # self-hosted homepage counter (see below)
   d/server/2026-10-15.html  # one per day
   d/server/2026-10-15.json
 ```
+
+The homepage is titled **Invisible Server, Visible Attacks** and opens with a
+hero line: the all-time **total attack packets blocked**, summed over every
+row of `index.json`, with a `Since MM-DD-YYYY` line naming the earliest day
+still published. Both are derived from the index, not stored: an index reader
+can reproduce the number by summing `drop_pkts`. A day whose raw log has
+already aged out of the collector's cache still counts as long as its
+`d/<source>/<day>.json` is on disk.
+
+The hero number animates (2.5s count-up, thousands separators) using
+`countup.js`, written next to `index.html` and loaded with a plain
+`<script src="countup.js" defer>`. It is progressive enhancement: the span
+already contains the real formatted total, so with JavaScript off, blocked by
+a stricter older CSP, or under `prefers-reduced-motion`, the number reads as
+static text. The site loads no third-party resource — the nginx vhost's CSP is
+`script-src 'self'`, and countup.js is the only script it allows.
 
 `state.json` (the incremental build state) goes wherever `-state` says and
 **not** into `-out` by default on the demo deployment. It records the
@@ -178,7 +195,10 @@ Delete it to force a full rebuild (or pass `-force`).
 
 The per-day JSON files reuse the single-file `Report` (`schema: 1`), so the
 existing `xdplog-report -in <one day>.json -format html` path can regenerate a
-page from any archived day.
+page from any archived day. Each page is titled **Daily Attack Report:**
+followed by the day (or the day range, for a multi-day CLI report), and opens
+with a sentence built from that day's own exact counters — packets dropped,
+unique attack sources, and the DROP share of all inbound traffic.
 
 Dates are UTC (server log rotation uses `time.Now()` in UTC by default). Day
 files written today are marked `partial: true` in the index; they are still
@@ -356,9 +376,23 @@ go run ./xdplog-report site \
 <out>/
   index.html
   index.json
+  countup.js                # 自托管首页计数动画（见下）
   d/server/2026-10-15.html  # 每天一个
   d/server/2026-10-15.json
 ```
+
+首页标题为 **Invisible Server, Visible Attacks**，副标题下方是一个大号 hero 数字：
+**Total attack packets blocked**（累计被丢弃的包数，等于 `index.json` 全部行
+`drop_pkts` 之和），其下一行小字 `Since MM-DD-YYYY` 标出目前仍在线的最早一天。
+两者都从索引现算、不落盘：任何人拿到 `index.json` 都能把 `drop_pkts` 加总复现这个数字。
+某个日期的原始日志即使已被采集脚本按保留期清掉，只要 `d/<source>/<day>.json`
+还在，就仍然计入总数。
+
+这个数字会用 `countup.js`（写在 `index.html` 旁边，页面用
+`<script src="countup.js" defer>` 加载）做 2.5 秒千分位滚动。它是渐进增强：
+span 初始内容就是真实总数，因此禁用 JS、被更严格的旧 CSP 拦截、或系统开启
+「减少动态效果」时，数字照常以静态文本显示。站点不加载任何第三方资源，
+nginx vhost 的 CSP 为 `script-src 'self'`，countup.js 是它唯一允许的脚本。
 
 `state.json`（内部增量状态）写到 `-state` 指定的位置。demo 部署把它放在
 `-out` 之外：它记录了每个输入文件的绝对路径，属于主机布局，不该出现在公开站点上；
@@ -388,6 +422,9 @@ go run ./xdplog-report site \
 
 每天的 JSON 文件复用了单文件 `Report`（`schema: 1`），因此已有的
 `xdplog-report -in <某天>.json -format html` 路径可以从任何归档的日期重新生成页面。
+每页标题为 **Daily Attack Report:** 加日期（CLI 跨多天时显示日期区间），副标题
+是一句由当天精确计数拼成的句子：被丢弃的包数、唯一攻击源数量，以及 DROP 占全部
+入站流量的比例。
 
 日期是 UTC（server 日志轮转默认用 `time.Now()` UTC）。当天还在写的日志在首页标记为
 `partial: true`，仍然会被发布并在每次运行时重新分析。

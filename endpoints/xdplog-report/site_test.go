@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -49,11 +50,13 @@ func runSiteCmd(t *testing.T, logs, out string, extraArgs ...string) {
 }
 
 // indexAndPages enumerates the files that the site subcommand owns: the
-// index, state, and every detail page under d/<source>/<day>.{html,json}.
+// index, the counter script, state, and every detail page under
+// d/<source>/<day>.{html,json}.
 func indexAndPages(out string) []string {
 	files := []string{
 		filepath.Join(out, "index.html"),
 		filepath.Join(out, "index.json"),
+		filepath.Join(out, "countup.js"),
 		filepath.Join(out, "state.json"),
 	}
 	_ = filepath.Walk(out, func(p string, info os.FileInfo, err error) error {
@@ -87,6 +90,61 @@ func TestSiteGeneratesDays(t *testing.T) {
 			t.Errorf("%s missing: %v", f, err)
 		}
 	}
+}
+
+// TestSiteDetailTitleAndSubtitle covers the per-day page's headline: the
+// "Daily Attack Report: <day>" title and the sentence under it. The numbers in
+// that sentence are asserted against the day's own JSON, so prose and the
+// Overview cards below it can never disagree.
+func TestSiteDetailTitleAndSubtitle(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	const day = "2026-10-01"
+	jb, err := os.ReadFile(filepath.Join(out, "d", "server", day+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	if err = json.Unmarshal(jb, &rep); err != nil {
+		t.Fatal(err)
+	}
+	pb, err := os.ReadFile(filepath.Join(out, "d", "server", day+".html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(pb)
+
+	// The site publishes one day per page, so the title names that one day —
+	// Report.From/To carry timestamps and must not leak into it.
+	if !strings.Contains(page, "<title>Daily Attack Report: "+day+"</title>") {
+		t.Errorf("detail page title is not the day-scoped headline:\n%s", firstLines(page, 8))
+	}
+	if !strings.Contains(page, "<h1>Daily Attack Report: "+day+"</h1>") {
+		t.Errorf("detail page h1 is not the day-scoped headline:\n%s", firstLines(page, 12))
+	}
+	want := fmt.Sprintf("%s hostile packets from %s sources were silently dropped",
+		groupThousands(rep.DropPkts), group(rep.UniqueIPs))
+	if !strings.Contains(page, want) {
+		t.Errorf("detail subtitle missing %q:\n%s", want, firstLines(page, 12))
+	}
+	if want := "That&rsquo;s " + pc(rep.DropShare) + " of all inbound traffic"; !strings.Contains(page, want) {
+		t.Errorf("detail subtitle missing %q", want)
+	}
+	// The old third line still carries the full timestamp range, which the
+	// title deliberately drops.
+	if !strings.Contains(page, rep.From+" &ndash; "+rep.To) {
+		t.Error("detail page lost its servers/timescale line")
+	}
+}
+
+// firstLines returns the first n lines of s, for test failure messages.
+func firstLines(s string, n int) string {
+	lines := strings.SplitN(s, "\n", n+1)
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func TestSiteIndexOrderDesc(t *testing.T) {
@@ -604,6 +662,24 @@ func TestSiteKeepsOrphanDetailPage(t *testing.T) {
 	if !strings.Contains(string(html), "orphan") {
 		t.Error("orphan page HTML was rewritten; expected the page to be preserved verbatim")
 	}
+
+	// The homepage counter is the sum over the index, so the aged-out day
+	// still counts: the visitor's lifetime total is 1234 + 5, and the
+	// earliest day — which only the orphan page knows — is the "Since" date.
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := heroRe.FindStringSubmatch(string(page))
+	if m == nil {
+		t.Fatalf("index.html has no #total-attacks counter")
+	}
+	if m[1] != "1239" || m[2] != "1,239" {
+		t.Errorf("hero total = %s / %q, want 1239 / \"1,239\" (orphan day must still count)", m[1], m[2])
+	}
+	if !strings.Contains(string(page), "Since 10-01-2026") {
+		t.Error("Since line does not come from the oldest day, which here is the orphan")
+	}
 }
 
 // TestSiteDropsUnreadableOrphanPage guards the last-resort behavior: if
@@ -663,5 +739,158 @@ func TestSiteDropsUnreadableOrphanPage(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("healthy day %s missing from index", goodDay)
+	}
+}
+
+// heroRe captures the homepage counter's raw data-total and its rendered
+// fallback text. The text is what a visitor with JavaScript disabled, an
+// older CSP, or prefers-reduced-motion sees, so it has to be the real total,
+// not a zero waiting for the animation.
+var heroRe = regexp.MustCompile(`id="total-attacks" data-total="(\d+)">([^<]*)</span>`)
+
+// indexTotalFromJSON sums the published index contract. index.html's hero is
+// asserted against this so a visitor's number stays reproducible from the
+// machine-readable file.
+func indexTotalFromJSON(t *testing.T, out string) uint64 {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	var total uint64
+	for _, s := range idx {
+		total += s.DropPkts
+	}
+	return total
+}
+
+// TestSiteIndexTotalAndSince covers the homepage hero: the all-time DROP
+// packet total, the "Since" line, and the self-hosted counter that animates
+// it.
+func TestSiteIndexTotalAndSince(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := indexTotalFromJSON(t, out)
+	if want != 1750 {
+		t.Fatalf("fixture total changed: index.json sums to %d, want 1750", want)
+	}
+	if got, formatted := groupThousands(want), "1,750"; got != formatted {
+		t.Fatalf("groupThousands(%d) = %q, want %q", want, got, formatted)
+	}
+
+	m := heroRe.FindStringSubmatch(string(page))
+	if m == nil {
+		t.Fatalf("index.html has no #total-attacks counter:\n%s", page)
+	}
+	if m[1] != "1750" {
+		t.Errorf("data-total = %s, want 1750", m[1])
+	}
+	if m[2] != "1,750" {
+		t.Errorf("static fallback text = %q, want %q", m[2], "1,750")
+	}
+	if !strings.Contains(string(page), "Since 10-01-2026") {
+		t.Error("index.html is missing the earliest-day \"Since\" line")
+	}
+	if !strings.Contains(string(page), `src="countup.js"`) {
+		t.Error("index.html does not load the self-hosted counter")
+	}
+	if !strings.Contains(string(page), siteTitle) {
+		t.Errorf("index.html is missing the site title %q", siteTitle)
+	}
+	if _, err := os.Stat(filepath.Join(out, "countup.js")); err != nil {
+		t.Errorf("countup.js not written: %v", err)
+	}
+
+	// The site's whole point is that nothing is fetched from off-host. The
+	// counter is the one script, and it must be ours, not a CDN's.
+	for _, name := range []string{"index.html", "countup.js"} {
+		b, err := os.ReadFile(filepath.Join(out, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, scheme := range []string{"http://", "https://"} {
+			if strings.Contains(string(b), scheme) {
+				t.Errorf("%s references %s; the site must stay self-contained", name, scheme)
+			}
+		}
+	}
+}
+
+// TestSiteIndexNoHeroWhenEmpty asserts the hero is suppressed rather than
+// rendered with a zero total and a bogus "Since" date. renderIndex is called
+// directly because the CLI refuses to publish a site with no inputs at all,
+// so this state is only reachable from a caller with no rows to hand.
+func TestSiteIndexNoHeroWhenEmpty(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "web")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil); err != nil {
+		t.Fatal(err)
+	}
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if heroRe.Match(page) {
+		t.Error("index.html rendered a hero counter for an empty site")
+	}
+}
+
+// TestGroupThousands pins the display formatter. Zero and sub-thousand values
+// carry no separator, and every other value groups from the right.
+func TestGroupThousands(t *testing.T) {
+	for _, tc := range []struct {
+		in   uint64
+		want string
+	}{
+		{0, "0"},
+		{7, "7"},
+		{999, "999"},
+		{1000, "1,000"},
+		{12345, "12,345"},
+		{1234567, "1,234,567"},
+		{1000000000, "1,000,000,000"},
+	} {
+		if got := groupThousands(tc.in); got != tc.want {
+			t.Errorf("groupThousands(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	// The template funcs see int and uint64 depending on the Report field.
+	if got := group(uint64(1234567)); got != "1,234,567" {
+		t.Errorf("group(uint64) = %q", got)
+	}
+	if got := group(3); got != "3" {
+		t.Errorf("group(int) = %q", got)
+	}
+	if got := group(int64(1234567)); got != "1,234,567" {
+		t.Errorf("group(int64) = %q", got)
+	}
+	if got := group(1234567); got != "1,234,567" {
+		t.Errorf("group(int) large = %q", got)
+	}
+}
+
+// TestFormatSince pins the "Since" date format, including the fallback for a
+// day string the parser does not recognize.
+func TestFormatSince(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"2026-10-16", "10-16-2026"},
+		{"2026-01-01", "01-01-2026"},
+		{"", ""},
+		{"not-a-date", "not-a-date"},
+	} {
+		if got := formatSince(tc.in); got != tc.want {
+			t.Errorf("formatSince(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }

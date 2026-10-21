@@ -42,11 +42,14 @@ server {
     root  ${STATS_WEB_ROOT};
     index index.html;
 
-    # Hardening: the site has no scripts and no remote styles, so the only
-    # inline style attribute is the bar width the renderer emits (which is
-    # a numeric interpolation). default-src 'none' blocks scripts, frames,
-    # and any future XHR. style-src 'unsafe-inline' keeps the existing
-    # inline <style> block working without a nonce rewrite.
+    # Hardening: the site loads no third-party resources and only one
+    # script of its own — countup.js, the homepage counter animation written
+    # by `xdplog-report site` into the web root — hence script-src 'self'
+    # rather than a CDN host. The only inline style attribute is the bar
+    # width the renderer emits (which is a numeric interpolation).
+    # default-src 'none' still blocks frames and any future XHR.
+    # style-src 'unsafe-inline' keeps the existing inline <style> block
+    # working without a nonce rewrite.
     #
     # NOTE ON add_header INHERITANCE: nginx only inherits add_header from an
     # enclosing level when the nested level declares none of its own. Any
@@ -55,7 +58,7 @@ server {
     # HSTS and no nosniff. That is why they are repeated rather than
     # hoisted, and why a new location must copy them.
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options "nosniff" always;
 
     # Hide directory listings. The site is a flat tree; missing files
@@ -73,7 +76,7 @@ server {
     location /d/ {
         limit_except GET HEAD { deny all; }
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri $uri/ =404;
     }
@@ -86,7 +89,7 @@ server {
         limit_except GET HEAD { deny all; }
         add_header Cache-Control "public, max-age=300" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri =404;
     }
@@ -96,7 +99,7 @@ server {
         limit_except GET HEAD { deny all; }
         add_header Cache-Control "public, max-age=300" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files /index.html =404;
     }
@@ -104,7 +107,7 @@ server {
     location / {
         limit_except GET HEAD { deny all; }
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri $uri/ =404;
     }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"time"
 )
 
 // renderHTML writes a standalone report page: no scripts, no external assets,
@@ -14,8 +15,39 @@ func renderHTML(w io.Writer, r *Report) error {
 	return htmlReport.Execute(w, r)
 }
 
+// reportRange renders the day span a report covers, for the page title.
+// Report.From/To carry a full timestamp; a title wants the date alone, and
+// every page the site publishes is single-day. A multi-day report (the CLI's
+// `-format html` over several logs) shows the range. An empty result means
+// the report has no timestamps at all, and the title drops the colon rather
+// than trailing it.
+func reportRange(from, to string) string {
+	first, last := dayOf(from), dayOf(to)
+	if first == "" {
+		return ""
+	}
+	if last == "" || last == first {
+		return first
+	}
+	return first + " – " + last
+}
+
+// dayOf returns the YYYY-MM-DD prefix of an "YYYY-MM-DD HH:MM:SS" timestamp,
+// passing through anything that is not long enough to hold one.
+func dayOf(ts string) string {
+	if len(ts) < len("2006-01-02") {
+		return ""
+	}
+	if _, err := time.Parse("2006-01-02", ts[:len("2006-01-02")]); err != nil {
+		return ""
+	}
+	return ts[:len("2006-01-02")]
+}
+
 var htmlReport = template.Must(template.New("report").Funcs(template.FuncMap{
-	"pct": pc,
+	"pct":         pc,
+	"group":       group,
+	"reportRange": reportRange,
 	"bar": func(f float64) template.CSS {
 		if f < 0 || math.IsNaN(f) {
 			f = 0
@@ -48,7 +80,7 @@ var htmlReport = template.Must(template.New("report").Funcs(template.FuncMap{
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NHP Server XDP Attack Report</title>
+{{$range := reportRange .From .To}}<title>Daily Attack Report{{if $range}}: {{$range}}{{end}}</title>
 <style>
 :root{--fg:#1f2328;--muted:#656d76;--line:#d0d7de;--chip:#f6f8fa;--accent:#cf222e;--accent2:#0969da}
 *{box-sizing:border-box}
@@ -79,7 +111,8 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <body>
 <main>
 <header>
-<h1>NHP Server XDP Attack Report</h1>
+{{$range := reportRange .From .To}}<h1>Daily Attack Report{{if $range}}: {{$range}}{{end}}</h1>
+<p class="muted">{{group .DropPkts}} hostile packets from {{group .UniqueIPs}} sources were silently dropped before reaching our OpenNHP-protected server. That&rsquo;s {{pct .DropShare}} of all inbound traffic.</p>
 <p class="muted">{{join .Servers ", "}} &middot; {{.From}} &ndash; {{.To}}</p>
 {{if .IsSiteDetail}}<p><a href="{{.BackLink}}">&larr; Back to index</a></p>{{end}}
 </header>

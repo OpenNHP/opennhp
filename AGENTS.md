@@ -332,11 +332,27 @@ in the HTML for readers without JS, without that CSP, or with reduced motion.
 detail page, no index row, and no share of the total. The XDP filter was
 attached after that log was written, so the earlier record is partial and
 counting it would understate the totals by an unquantifiable amount. A `-since`
-that excludes every discovered day is refused instead of published, so a typo
-cannot blank a populated index; `-since ""` publishes everything, for local
-debugging. **The homepage's Source column renders `server` as `nhp-server`**
-(`sourceLabel` in `render_index.go`) while `index.json` keeps the raw directory
-name — `source` is a published field and renaming it breaks existing parsers.
+that excludes every discovered day is refused **before anything is deleted**, so
+a typo can neither blank a populated index nor leave a site of dead links;
+`-since ""` publishes everything, for local debugging. A site that already
+served a day below the floor is migrated by `unpublishDay` (`site.go`): the next
+run deletes that day's `d/<source>/<day>.{html,json}`, drops its `state.json`
+entry and re-renders the index — a page left in the web root is still reachable
+at its old URL, so unlinked is not unpublished. That deletion is the only thing
+the subcommand removes; raw logs and the collector cache are never touched, and
+a page it cannot delete fails the run after the index is written. **The
+homepage's Source column renders `server` as `nhp-server`** (`sourceLabel` in
+`render_index.go`) while `index.json` keeps the raw directory name — `source`
+is a published field and renaming it breaks existing parsers.
+
+**Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
+that produced each day page, so bumping that constant in `site.go` re-renders
+every published day on the next run instead of only the days whose raw log
+happened to change that week. Days whose raw log the collector already pruned
+are re-rendered from their published `d/<source>/<day>.json`
+(`rerenderPageOnlyDay`) — the HTML is a pure function of it — but their numbers
+are never recomputed. A markup change therefore needs neither `-force` nor a
+hand-deleted `state.json`.
 
 **`totalnumber.js`** publishes the same total as one JavaScript constant,
 `NHP_TOTAL_ATTACK_BLOCKED`, for another site to embed with

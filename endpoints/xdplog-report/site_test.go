@@ -668,14 +668,22 @@ func TestSiteKeepsOrphanDetailPage(t *testing.T) {
 		t.Fatalf("fresh day %s missing from index", freshDay)
 	}
 
-	// The orphan detail page's pre-built HTML must be left alone — the
-	// raw log is gone, so there is nothing to rebuild from.
+	// The orphan day cannot be re-analyzed — the raw log is gone — but its
+	// HTML is a pure function of the JSON beside it, so it adopts the
+	// current template with its own numbers intact. That is what keeps a
+	// title change from leaving the oldest pages on markup nobody runs.
 	html, err := os.ReadFile(filepath.Join(srcOut, orphanDay+".html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(html), "orphan") {
-		t.Error("orphan page HTML was rewritten; expected the page to be preserved verbatim")
+	if strings.Contains(string(html), "orphan") {
+		t.Error("orphan page HTML still the hand-written fixture; expected a re-render")
+	}
+	if !strings.Contains(string(html), "Daily Attack Report") {
+		t.Error("orphan page HTML was not re-rendered with the current template")
+	}
+	if !strings.Contains(string(html), "1,234 hostile packets from 7 sources") {
+		t.Errorf("orphan page lost its own numbers:\n%s", string(html))
 	}
 
 	// The homepage counter is the sum over the index, so the aged-out day
@@ -1040,6 +1048,9 @@ func TestSinceFloor(t *testing.T) {
 // outcome a misconfigured floor must never produce.
 func TestSinceFloorEmpty(t *testing.T) {
 	logs, out := stageTestdata(t)
+	// Publish both fixture days first, so the refusal below has a populated
+	// site to protect.
+	runSiteCmd(t, logs, out, "-since", "")
 	var buf bytes.Buffer
 	err := run([]string{"site", "-logs", logs, "-out", out, "-top", "20", "-since", "2099-01-01"}, &buf)
 	if err == nil {
@@ -1047,6 +1058,14 @@ func TestSinceFloorEmpty(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "-since") {
 		t.Errorf("error should name the offending flag: %v", err)
+	}
+	// The refusal has to come before the unpublish pass: a floor that
+	// excludes everything must not delete every detail page on its way to
+	// the same empty index.
+	for _, day := range []string{siteDay1, siteDay2} {
+		if _, statErr := os.Stat(filepath.Join(out, "d", "server", day+".html")); statErr != nil {
+			t.Errorf("%s page removed by a refused run: %v", day, statErr)
+		}
 	}
 }
 
@@ -1127,5 +1146,227 @@ func TestIndexJSONIsArrayNotNull(t *testing.T) {
 	}
 	if got := strings.TrimSpace(string(b)); got != "[]" {
 		t.Errorf("empty index.json = %q, want %q", got, "[]")
+	}
+}
+
+// writeDropLog stages a minimal single-day log with an exact DROP count. Used
+// where the fixture content is irrelevant and only the day's presence and
+// totals matter.
+func writeDropLog(t *testing.T, logs, source, day string, pkts int) {
+	t.Helper()
+	dir := filepath.Join(logs, source)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := fmt.Sprintf("10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=%d LOGGED=1 TOTAL=%d\n", pkts, pkts)
+	if err := os.WriteFile(filepath.Join(dir, "nhp_server_xdp-"+day+".log"), []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// readSiteState loads <out>/state.json, which is where the tests keep it
+// because runSiteCmd passes no -state.
+func readSiteState(t *testing.T, out string) SiteState {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st SiteState
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+// setStateRender rewrites every day entry's render version. Version 0 stands
+// in for a state.json written by a binary that did not record the field: the
+// key is simply absent and decodes to zero.
+func setStateRender(t *testing.T, out string, v int) {
+	t.Helper()
+	st := readSiteState(t, out)
+	for src, days := range st.Days {
+		for day, d := range days {
+			d.Render = v
+			st.Days[src][day] = d
+		}
+	}
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = append(b, '\n')
+	if err := os.WriteFile(filepath.Join(out, "state.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// indexHasDay reports whether the published index still lists day.
+func indexHasDay(t *testing.T, out, day string) bool {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range idx {
+		if s.Day == day {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSiteUnpublishesPreFloorPages covers the migration the floor implies on a
+// site that is already serving the day. stats.opennhp.org published days
+// before 2026-10-16 before the floor existed, and merely skipping them leaves
+// their detail pages reachable at their old URLs — unlinked, but still public
+// and still carrying the partial record the floor exists to withhold. The run
+// has to take them back down.
+func TestSiteUnpublishesPreFloorPages(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+
+	const preFloor = "2026-10-15"
+	writeDropLog(t, logs, "server", preFloor, 7)
+	writeDropLog(t, logs, "server", siteDay1, 5)
+	writeDropLog(t, logs, "server", siteDay2, 5)
+
+	// Before the floor existed the day published like any other.
+	runSiteCmd(t, logs, out, "-since", "")
+	preHTML := filepath.Join(out, "d", "server", preFloor+".html")
+	preJSON := filepath.Join(out, "d", "server", preFloor+".json")
+	for _, p := range []string{preHTML, preJSON} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("fixture failed to publish %s: %v", p, err)
+		}
+	}
+
+	// The deploy that introduces the floor runs with the default.
+	runSiteCmd(t, logs, out)
+
+	for _, p := range []string{preHTML, preJSON} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s survived the -since floor (stat err = %v)", p, err)
+		}
+	}
+	if indexHasDay(t, out, preFloor) {
+		t.Errorf("pre-floor day %s is still indexed", preFloor)
+	}
+	// 2 days x 5 packets. The unpublished day would have made it 17.
+	if got := indexTotalFromJSON(t, out); got != 10 {
+		t.Errorf("total = %d, want 10 (pre-floor day must not be counted)", got)
+	}
+	if _, ok := readSiteState(t, out).Days["server"][preFloor]; ok {
+		t.Errorf("state.json still carries a fingerprint for the unpublished day %s", preFloor)
+	}
+
+	// Every later run must stay a no-op: the page is already gone, and an
+	// absent file is not an error.
+	runSiteCmd(t, logs, out)
+	if _, err := os.Stat(preHTML); !os.IsNotExist(err) {
+		t.Errorf("%s came back on the second run (stat err = %v)", preHTML, err)
+	}
+}
+
+// TestSiteRenderVersionRebuildsUnchangedDay covers the deploy-time half of the
+// same story. A markup-only change moves siteRenderVersion, and the input
+// fingerprint does not move with it — so without the version in state.json a
+// title change would reach only the days whose logs happen to change that
+// week, and every other published page would keep the old title forever.
+func TestSiteRenderVersionRebuildsUnchangedDay(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	day1 := filepath.Join(out, "d", "server", siteDay1+".html")
+	day2 := filepath.Join(out, "d", "server", siteDay2+".html")
+	before1, err := os.Stat(day1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before2, err := os.Stat(day2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No input changed. This is the state an earlier binary leaves behind:
+	// matching fingerprints, no render version recorded.
+	setStateRender(t, out, 0)
+	runSiteCmd(t, logs, out)
+
+	after1, err := os.Stat(day1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after2, err := os.Stat(day2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after1.ModTime().UnixNano() == before1.ModTime().UnixNano() {
+		t.Error("day 1 page was not rebuilt after the template version moved")
+	}
+	if after2.ModTime().UnixNano() == before2.ModTime().UnixNano() {
+		t.Error("day 2 page was not rebuilt after the template version moved")
+	}
+
+	b, err := os.ReadFile(day1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "Daily Attack Report") {
+		t.Errorf("rebuilt day page is not on the current template:\n%s", string(b))
+	}
+	if got := readSiteState(t, out).Days["server"][siteDay1].Render; got != siteRenderVersion {
+		t.Errorf("state render version = %d, want %d", got, siteRenderVersion)
+	}
+}
+
+// TestSitePageOnlyDayRerendersOnce covers the days whose raw log the collector
+// already pruned. They cannot be re-analyzed, but their HTML is a pure
+// function of the published JSON beside them, so the template still reaches
+// them — once, and then the state keeps every later run quiet.
+func TestSitePageOnlyDayRerendersOnce(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	dayHTML := filepath.Join(out, "d", "server", siteDay2+".html")
+	if err := os.Remove(filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log")); err != nil {
+		t.Fatalf("prune the raw log: %v", err)
+	}
+	setStateRender(t, out, 0)
+
+	runSiteCmd(t, logs, out)
+
+	first, err := os.Stat(dayHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(dayHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "Daily Attack Report") {
+		t.Errorf("page-only day was not re-rendered with the current template:\n%s", string(b))
+	}
+	// Its numbers still come from the JSON, not from a rebuilt-from-nothing
+	// zero row.
+	if !indexHasDay(t, out, siteDay2) {
+		t.Error("page-only day dropped out of the index")
+	}
+	if idx := readSiteState(t, out); idx.Days["server"][siteDay2].Render != siteRenderVersion {
+		t.Error("state did not record the render version for the page-only day")
+	}
+
+	runSiteCmd(t, logs, out)
+	second, err := os.Stat(dayHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ModTime().UnixNano() != first.ModTime().UnixNano() {
+		t.Error("page-only day was re-rendered again on an unchanged run")
 	}
 }

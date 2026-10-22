@@ -167,6 +167,31 @@ other `YYYY-MM-DD` to move the floor. A `-since` that would exclude every
 discovered day is refused rather than published, so a typo can never blank a
 populated index.
 
+"Not published" is enforced, not just skipped. A site that already served a
+day below the floor — as stats.opennhp.org did before the floor existed —
+has that day's `d/<source>/<day>.{html,json}` **deleted** on the next run, and
+its `state.json` entry dropped. Nothing links to those pages any more, but a
+file left in the web root is still reachable at its old URL and in search
+caches, which is exactly what the floor is meant to prevent. Deleting them
+also marks the index dirty, so the row leaves `index.json` and the hero total
+in the same run. This is the only thing the site subcommand deletes; the raw
+logs and the collector cache are never touched. A run that cannot remove a
+page still writes the index and state, then fails, so the leftover page is
+loud rather than silent.
+
+### Template changes reach published pages
+
+`state.json` records, per day, the `siteRenderVersion` that produced its page.
+Bumping that constant in `site.go` re-renders every already-published day on
+the next run, so editing `render_html.go` (a new title, a new subtitle) does
+not need an operator to pass `-force` or delete `state.json` — without it, only
+the days whose raw log happens to change that week would ever be rewritten.
+
+Days whose raw log the collector has already pruned cannot be re-analyzed,
+but their HTML is a pure function of the `d/<source>/<day>.json` published
+beside them, so a version bump re-renders those too, from that JSON. Their
+numbers are never recomputed.
+
 `index.html`'s Source column renders `server` as **nhp-server**, so the column
 names the product instead of repeating a generic noun. `index.json` keeps the
 raw directory name in `source` — that field is part of the published contract
@@ -243,26 +268,28 @@ the single-file CLI). Public-facing pages truncate source IPv4 to `a.b.c.x`
 and IPv6 to the first 48 bits. The `-mask-ip=false` knob is there for local
 debugging, not for production.
 
-**Idempotency**: each (source, day) pair is fingerprinted by `size + mtime`.
-Unchanged days are not re-analysed and not re-written. Index/state files are
-only rewritten when at least one day was rebuilt.
+**Idempotency**: each (source, day) pair is fingerprinted by `size + mtime`
+plus the render version. Unchanged days are not re-analysed and not
+re-written. Index/state files are only rewritten when at least one day was
+rebuilt or a page was unpublished.
 
 **`:-force`**: pass `-force` to rebuild every day regardless of the
-fingerprint, e.g. after updating `classify.go`.
+fingerprint, e.g. after updating `classify.go`. A change to `render_html.go`
+does not need it — bump `siteRenderVersion` instead.
 
 ### Site subcommand flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `-logs` | required | Directory of `<source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]`. The collector script stages logs into this layout. |
-| `-out` | required | Web root directory. Created if missing. Existing files are kept unless rewritten. |
+| `-out` | required | Web root directory. Created if missing. Existing files are kept unless rewritten, except the detail pages of days the `-since` floor excludes, which are deleted (see above). |
 | `-state` | `<out>/state.json` | Incremental-build state. Point it OUT of the web root on a public site: it records the absolute path of every input file. |
 | `-top` | `20` | Rows in each TOP table on the per-day pages. |
 | `-geo-csv` | empty | Optional `cidr,country[,city]` CSV. Mutually exclusive with `-geo-mmdb`. |
 | `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb`. |
 | `-mask-ip` | **`true`** | Truncate source addresses for the public site. Different default than the single-file CLI. |
-| `-since` | `2026-10-16` | Earliest `YYYY-MM-DD` day to publish. Older days are neither rendered nor counted. Empty publishes everything. |
-| `-force` | `false` | Rebuild every day even if inputs are unchanged. |
+| `-since` | `2026-10-16` | Earliest `YYYY-MM-DD` day to publish. Older days are neither rendered nor counted, and any detail page already published for one is deleted. Empty publishes everything. |
+| `-force` | `false` | Rebuild every day even if inputs are unchanged. Not needed to push a template change out: bumping `siteRenderVersion` does that. |
 
 ### Tests
 
@@ -429,6 +456,25 @@ go run ./xdplog-report site \
 也可以传其它 `YYYY-MM-DD` 调整起点。如果某个 `-since` 会把所有天都排除掉，命令会直接报错
 而不是发布一个空索引 —— 打错一个日期不该把已经有数据的首页清空。
 
+"不发布"是强制的，不只是跳过。对已经发布过 floor 之前那几天的站点（stats.opennhp.org 在
+加入 floor 之前就是这样），下一次运行会把该天的 `d/<source>/<day>.{html,json}` **删掉**，
+并清掉 `state.json` 里的对应条目。这些页面虽然已经没有任何链接指向，但留在 web 根目录里仍然
+可以通过旧 URL（以及搜索引擎缓存）访问，而这正是 floor 要避免的。删除同样会把索引标记为
+dirty，因此该行会在同一次运行里从 `index.json` 和首页总数中消失。这也是 `site` 子命令唯一
+的删除行为：原始日志和采集缓存一律不动。某个页面删不掉时，索引和状态照常写完，但整次运行
+仍然返回失败 —— 残留页面必须是有声音的，而不是悄无声息。
+
+### 模板改动会覆盖已发布的页面
+
+`state.json` 会为每一天记录生成该页面的 `siteRenderVersion`。在 `site.go` 里把这个常量 +1，
+下一次运行就会重渲染所有已发布的日子，所以改 `render_html.go`（换标题、加副标题）不需要
+运维去加 `-force` 或删 `state.json`：不加的话，只有当周原始日志恰好发生变化的那几天才会被
+重写，其余页面会永远停留在旧标题上。
+
+原始日志已被采集脚本清掉的日子无法重新分析，但它们的 HTML 是同目录下
+`d/<source>/<day>.json` 的纯函数，所以版本号 +1 时同样会基于该 JSON 重渲染，数值则一律不
+重新计算。
+
 首页表格的 Source 列把 `server` 显示成 **nhp-server**，让这一列说明产品名而不是重复一个
 泛称。`index.json` 的 `source` 字段保持目录原名 —— 它属于已发布的契约，已有解析代码依赖
 这个值。
@@ -482,24 +528,25 @@ CORS 头 —— 受引用方自己的 CSP 约束。
 源 IPv4 截断为 `a.b.c.x`，IPv6 保留前 48 位。`-mask-ip=false` 仅供本地排查，生产
 不要关。
 
-**幂等性**：每个 (source, day) 用 `size + mtime` 做指纹。未变化的天不会重新分析、
-不会重新写。首页和 state.json 只在至少有一天被重建时才重写。
+**幂等性**：每个 (source, day) 用 `size + mtime` + 渲染版本号做指纹。未变化的天不会重新
+分析、不会重新写。首页和 state.json 只在至少有一天被重建、或某个页面被取消发布时才重写。
 
-**强制重算**：分类器（`classify.go`）升级后，可用 `-force` 重算所有日期。
+**强制重算**：分类器（`classify.go`）升级后，可用 `-force` 重算所有日期。改
+`render_html.go` 则不需要它 —— 把 `siteRenderVersion` +1 即可。
 
 ### site 子命令参数
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `-logs` | 必填 | 形如 `<source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]` 的目录，采集脚本负责布局。 |
-| `-out` | 必填 | 站点根目录，不存在则创建；未被重写的文件保留不动。 |
+| `-out` | 必填 | 站点根目录，不存在则创建；未被重写的文件保留不动，只有被 `-since` 排除的那些天的详情页会被删除（见上文）。 |
 | `-state` | `<out>/state.json` | 增量构建状态。公开站点请把它指到 web root 之外：它记录了每个输入文件的绝对路径。 |
 | `-top` | `20` | 每天详情页 TOP 表的行数。 |
 | `-geo-csv` | 空 | 可选的 `cidr,country[,city]` CSV。与 `-geo-mmdb` 互斥。 |
 | `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`。 |
 | `-mask-ip` | **`true`** | 对外站点做 IP 截断；默认值与单文件 CLI 不同。 |
-| `-since` | `2026-10-16` | 最早发布的 `YYYY-MM-DD` 日期。更早的天既不渲染也不计入总数；传空则全部发布。 |
-| `-force` | `false` | 即便输入未变化也强制重算每一天。 |
+| `-since` | `2026-10-16` | 最早发布的 `YYYY-MM-DD` 日期。更早的天既不渲染也不计入总数，已经为这些天发布过的详情页会被删除；传空则全部发布。 |
+| `-force` | `false` | 即便输入未变化也强制重算每一天。推送模板改动不需要它：`siteRenderVersion` +1 即可。 |
 
 ### 测试
 

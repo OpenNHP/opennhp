@@ -1450,7 +1450,26 @@ up the default automatically; to move the floor, change `defaultSiteSince` in
 `endpoints/xdplog-report/site.go` (a rebuild) rather than editing the relay.
 A `-since` that would exclude every discovered day is **refused** rather than
 published, so a typo fails the timer loudly instead of blanking the public
-site. Pre-floor detail pages already on disk are left in place, just unlinked.
+site. The refusal happens before anything is deleted, so that same typo cannot
+turn the site into a list of dead links either.
+
+**Unpublishing is real.** The site was already serving pre-floor days before
+the floor existed, so the first run with the floor **deletes** their
+`/var/www/stats/d/server/<day>.{html,json}` and drops their `state.json`
+entries (`unpublishDay` in `site.go`). Nothing links to them any more, but a
+file left in the web root is still reachable at its old URL and in search
+caches — unlinked is not unpublished. Removing them also marks the index dirty,
+so the row leaves `index.json` and the hero total in the same run. If a file
+cannot be removed the run still writes the index and state and then fails, so
+the leftover shows up in the timer journal instead of quietly. Raw logs and the
+collector's raw cache are never touched.
+
+**Template changes reach old pages.** Each day page records the
+`siteRenderVersion` that rendered it in `state.json`, so bumping that constant
+in `site.go` re-renders every published day on the next run — no `-force`, no
+deleting state.json. Days whose raw log the collector already pruned are
+re-rendered from their published `<day>.json` without recomputing any numbers.
+Expect one full page rewrite in the first run after a template change.
 
 `totalnumber.js` in the web root carries the same all-time total as one
 JavaScript constant, `NHP_TOTAL_ATTACK_BLOCKED`, for other sites to embed via

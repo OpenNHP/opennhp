@@ -1019,7 +1019,7 @@ func TestSinceFloor(t *testing.T) {
 	}
 	// No page for it either — the floor is a publishing decision, not a
 	// rendering filter over an otherwise published day.
-	if _, err := os.Stat(filepath.Join(out, "d", "server", "2026-10-15.html")); !os.IsNotExist(err) {
+	if _, statErr := os.Stat(filepath.Join(out, "d", "server", "2026-10-15.html")); !os.IsNotExist(statErr) {
 		t.Error("pre-floor day produced a detail page")
 	}
 	// 2 days x 5 packets. The excluded day would have made it 15.

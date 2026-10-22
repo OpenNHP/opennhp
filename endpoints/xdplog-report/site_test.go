@@ -771,6 +771,54 @@ func TestSiteDropsUnreadableOrphanPage(t *testing.T) {
 // not a zero waiting for the animation.
 var heroRe = regexp.MustCompile(`id="total-attacks" data-total="(\d+)">([^<]*)</span>`)
 
+// absoluteURLRe matches every absolute URL in a published file.
+var absoluteURLRe = regexp.MustCompile(`https?://[^"'[:space:]>]+`)
+
+// scriptSrcRe matches the src of every <script> tag — the one construct the
+// CSP allows and the only way an injected script would run. canonical and
+// og:* URLs are deliberately not matched: a crawler reads those, a browser
+// does not fetch them.
+var scriptSrcRe = regexp.MustCompile(`(?i)<script[^>]*\ssrc="([^"]+)"`)
+
+// externalStyleRe matches a stylesheet link. The site styles itself with a
+// single inline <style>, and the CSP grants style-src 'unsafe-inline' with no
+// host, so any such link would be blocked anyway.
+var externalStyleRe = regexp.MustCompile(`(?i)<link[^>]*\srel="?stylesheet"?`)
+
+// readArtifact reads one published file, failing the test if it is missing.
+func readArtifact(t *testing.T, out, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, name))
+	if err != nil {
+		t.Fatalf("%s not written: %v", name, err)
+	}
+	return b
+}
+
+// assertSelfContained fails if b references any host other than the site's own
+// origin. A page whose only absolute URLs are its own is still offline-buildable
+// and still has nothing to go and fetch; a CDN would break both the CSP and the
+// promise, and an attacker who could inject one would get a beacon for free.
+func assertSelfContained(t *testing.T, name string, b []byte) {
+	t.Helper()
+	if err := selfContainedError(string(b)); err != nil {
+		t.Errorf("%s: %v", name, err)
+	}
+}
+
+// selfContainedError returns the first absolute URL in s that is not the site's
+// own origin, or nil. Split out from the t.Errorf so the rule can be tested on
+// both sides of the line — including the lookalike host, which a plain
+// "does it contain https://" check would wave through.
+func selfContainedError(s string) error {
+	for _, u := range absoluteURLRe.FindAllString(s, -1) {
+		if !strings.HasPrefix(u, siteURL) {
+			return fmt.Errorf("references %s; the site must stay self-contained", u)
+		}
+	}
+	return nil
+}
+
 // indexTotalFromJSON sums the published index contract. index.html's hero is
 // asserted against this so a visitor's number stays reproducible from the
 // machine-readable file.
@@ -826,6 +874,9 @@ func TestSiteIndexTotalAndSince(t *testing.T) {
 	if !strings.Contains(string(page), `src="countup.js"`) {
 		t.Error("index.html does not load the self-hosted counter")
 	}
+	if !strings.Contains(string(page), `src="./totalnumber.js"`) {
+		t.Error("index.html does not load the exported total")
+	}
 	if !strings.Contains(string(page), siteTitle) {
 		t.Errorf("index.html is missing the site title %q", siteTitle)
 	}
@@ -833,18 +884,94 @@ func TestSiteIndexTotalAndSince(t *testing.T) {
 		t.Errorf("countup.js not written: %v", err)
 	}
 
-	// The site's whole point is that nothing is fetched from off-host. The
-	// counter is the one script, and it must be ours, not a CDN's.
+	// The site's whole point is that nothing is fetched from off-host. Both
+	// scripts are ours, not a CDN's, and the canonical/og URLs that do name an
+	// origin name ours.
 	for _, name := range []string{"index.html", "countup.js"} {
-		b, err := os.ReadFile(filepath.Join(out, name))
-		if err != nil {
-			t.Fatal(err)
+		assertSelfContained(t, name, readArtifact(t, out, name))
+	}
+	// countup.js runs on every page view and has no metadata reason to know
+	// the site's name, so it may not contain an absolute URL at all. Same for
+	// totalnumber.js, which other sites embed by URL.
+	for _, name := range []string{"countup.js", "totalnumber.js"} {
+		if b := readArtifact(t, out, name); absoluteURLRe.Match(b) {
+			t.Errorf("%s contains an absolute URL:\n%s", name, b)
 		}
-		for _, scheme := range []string{"http://", "https://"} {
-			if strings.Contains(string(b), scheme) {
-				t.Errorf("%s references %s; the site must stay self-contained", name, scheme)
+	}
+	// Everything the browser is told to fetch has to be a relative path, so it
+	// resolves against whatever origin serves the page.
+	for _, ref := range scriptSrcRe.FindAllStringSubmatch(string(page), -1) {
+		if strings.Contains(ref[1], "://") {
+			t.Errorf("index.html makes the browser fetch the absolute URL %q", ref[1])
+		}
+	}
+	if externalStyleRe.Match(page) {
+		t.Error("index.html links an external stylesheet; the site styles itself inline")
+	}
+}
+
+// TestAssertSelfContained pins the guard itself. A self-containment check that
+// cannot fail is not a check, and this one has to allow our own origin in
+// metadata while still refusing a CDN — so exercise both sides of the line
+// rather than only the side the real output happens to fall on.
+func TestAssertSelfContained(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		page    string
+		wantErr bool
+	}{
+		{"own origin in canonical", `<link rel="canonical" href="https://stats.opennhp.org/">`, false},
+		{"own origin as og:image", `<meta property="og:image" content="` + siteOGImage + `">`, false},
+		{"no absolute URL at all", `<script src="countup.js" defer></script>`, false},
+		{"cdn script", `<script src="https://cdn.jsdelivr.net/npm/countup.js"></script>`, true},
+		{"third-party analytics", `<img src="http://tracker.example/pixel.gif">`, true},
+		{"lookalike host", `<link rel="canonical" href="https://stats.opennhp.org.evil.test/">`, true},
+		{"http downgrade", `<link rel="canonical" href="http://stats.opennhp.org/">`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := selfContainedError(tc.page)
+			if gotErr := err != nil; gotErr != tc.wantErr {
+				t.Errorf("selfContainedError(%s) error = %v, want error: %v", tc.page, err, tc.wantErr)
 			}
+		})
+	}
+}
+
+// TestSiteIndexHeadMetadata pins the <head> copy: the <title> search engines
+// and chat previews show, the description, and the Open Graph / Twitter card
+// tags. It also pins that the <title> is deliberately NOT the <h1>: a tab has
+// room to say what the site is about, the heading above the fold does not, and
+// collapsing them would lose one of the two.
+func TestSiteIndexHeadMetadata(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := string(page)
+	if i := strings.Index(head, "</head>"); i >= 0 {
+		head = head[:i]
+	}
+
+	for _, want := range []string{
+		"<title>" + siteDocumentTitle + "</title>",
+		`<meta name="description" content="` + siteDescription + `">`,
+		`<link rel="canonical" href="` + siteURL + `">`,
+		`<meta property="og:title" content="` + siteTitle + `">`,
+		`<meta property="og:description" content="` + siteOGDescription + `">`,
+		`<meta property="og:url" content="` + siteURL + `">`,
+		`<meta property="og:type" content="website">`,
+		`<meta property="og:image" content="` + siteOGImage + `">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+	} {
+		if !strings.Contains(head, want) {
+			t.Errorf("index.html <head> is missing:\n  %s", want)
 		}
+	}
+	if strings.Contains(head, "<title>"+siteTitle+"</title>") {
+		t.Error("the <title> collapsed back onto the <h1> slogan")
 	}
 }
 

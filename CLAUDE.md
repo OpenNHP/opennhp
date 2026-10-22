@@ -426,9 +426,26 @@ files the daemon writes (and the daemon's per-packet retention is the only
 window: 14 days, see *nhp-server eBPF/XDP ingress filter* above). The homepage
 leads with a hero total of all-time blocked packets (plus a `Since` date) that
 `countup.js` counts up; that script is generated into the web root by
-`xdplog-report site`, loaded same-origin, and is the only one the CSP permits
-(`script-src 'self'`). It is progressive enhancement — the number is already
-in the HTML for readers without JS, without that CSP, or with reduced motion.
+`xdplog-report site`, loaded same-origin, and is one of the two the CSP permits
+(`script-src 'self'`, the other being `totalnumber.js`, which the homepage also
+loads so it can quote its own `NHP_TOTAL_ATTACK_BLOCKED`). It is progressive
+enhancement — the number is already in the HTML for readers without JS, without
+that CSP, or with reduced motion.
+
+**One documented exception to self-containment.** The homepage `<head>` carries a
+meta description, a canonical URL and the Open Graph / Twitter card tags
+(`og:title` / `og:description` / `og:url` / `og:type` / `og:image`, plus
+`twitter:card`), so a search result or a chat link renders with a real
+description. Those tag values are absolute URLs, which is what
+`assertSelfContained` (`site_test.go`) has to allow for: it fails on any
+absolute URL that is **not** `siteURL` rather than on absolute URLs at all, and
+it separately rejects any `<script src>` that is not a relative path. A crawler
+reads those tags, the browser never fetches them, so they do not make the page
+depend on anything off-host. The `<title>` is deliberately not the `<h1>`:
+`siteDocumentTitle` ("Zero Trust in Action: Live Attacks on OpenNHP Servers")
+is what a tab and a search result show, `siteTitle` ("Invisible Server, Visible
+Attacks") is the heading and `og:title`. `og:image` points at `/og.png` in the
+web root, which has to exist there for social previews to render anything.
 
 **Publishing floor.** `xdplog-report site` publishes nothing before `-since`
 (default `2026-10-16`, `defaultSiteSince` in `site.go`): those days get no

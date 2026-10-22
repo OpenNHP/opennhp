@@ -9,14 +9,48 @@ import (
 	"strings"
 )
 
-// siteTitle is the heading on the site's index page (both <title> and <h1>).
+// siteTitle is the site's headline: the index page's <h1> and its og:title.
+// The browser tab gets siteDocumentTitle instead — see there.
 const siteTitle = "Invisible Server, Visible Attacks"
+
+// siteDocumentTitle is the <title>: what a search result, a bookmark or a chat
+// preview shows. It is deliberately not siteTitle, because the two answer
+// different questions — a tab and a search snippet have room to say what the
+// site is *about*, the heading above the fold does not.
+const siteDocumentTitle = "Zero Trust in Action: Live Attacks on OpenNHP Servers"
+
+// siteURL is the site's public origin, used only by the canonical, og:url and
+// og:image tags. Those name the page to a crawler; the browser never fetches
+// them, so an absolute URL in the head does not make the page reach off-host.
+const siteURL = "https://stats.opennhp.org/"
+
+// The description tag and its Open Graph twin. The on-page intro paragraph
+// says "server" and this copy says "servers": one page reports one host
+// today, and search and social copy is written for the whole deployment.
+const (
+	siteDescription   = "Real attack data from servers hidden by OpenNHP. Daily stats on port scans, SYN floods and probes silently dropped before they could connect."
+	siteOGDescription = "Every scan and probe that hit our OpenNHP-protected servers, silently dropped before it could connect. Updated daily."
+)
+
+// siteOGImage is the preview image social platforms show when the homepage is
+// shared. It lives in the web root like every other static asset, and this
+// constant is the one place that says so — note the file itself is not
+// generated here and has to be deployed alongside the HTML.
+const siteOGImage = siteURL + "og.png"
 
 // indexPageData is the template input for the site's index.html.
 type indexPageData struct {
 	Summaries []SiteDaySummary
 	Masked    bool
 	SiteTitle string
+	// DocTitle is the <title>, which is not SiteTitle; Descr and OGDescr are
+	// the meta description and its Open Graph twin, SiteURL their canonical
+	// origin and OGImage the social preview. All are static copy.
+	DocTitle string
+	Descr    string
+	OGDescr  string
+	SiteURL  string
+	OGImage  string
 	// TotalRaw is the un-formatted all-time DROP packet count, used as the
 	// counter's data-total attribute; TotalDropPkts is the same number with
 	// thousands separators, used as the counter's static fallback text.
@@ -28,10 +62,12 @@ type indexPageData struct {
 }
 
 // renderIndex writes index.html, index.json, countup.js and totalnumber.js
-// under opts.OutDir. The HTML pulls in no third-party resources — the one
-// script it references is a same-origin file this function writes — and the
-// JSON is the same data in machine-friendly form. Rows are sorted by day
-// descending (most recent first), then by source name for ties.
+// under opts.OutDir. The HTML pulls in no third-party resources — the two
+// scripts it references are same-origin files this function writes, and the
+// absolute URLs in its head are metadata a crawler reads, not subresources a
+// browser fetches — and the JSON is the same data in machine-friendly form.
+// Rows are sorted by day descending (most recent first), then by source name
+// for ties.
 func renderIndex(opts *SiteOptions, summaries []SiteDaySummary) error {
 	ordered := append([]SiteDaySummary(nil), summaries...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -69,6 +105,11 @@ func renderIndex(opts *SiteOptions, summaries []SiteDaySummary) error {
 		Summaries:     ordered,
 		Masked:        opts.MaskIP,
 		SiteTitle:     siteTitle,
+		DocTitle:      siteDocumentTitle,
+		Descr:         siteDescription,
+		OGDescr:       siteOGDescription,
+		SiteURL:       siteURL,
+		OGImage:       siteOGImage,
 		TotalRaw:      total,
 		TotalDropPkts: groupThousands(total),
 		SinceDay:      since,
@@ -287,11 +328,15 @@ func flagsFor(s SiteDaySummary) []siteFlag {
 	return out
 }
 
-// htmlIndex is the index page template. It references no third-party
-// resource; the only script is the self-hosted homepage counter (countup.js),
-// which the nginx vhost allows via `script-src 'self'`. The visual language
-// mirrors the per-day detail page so visitors see the same nav and styling on
-// both.
+// htmlIndex is the index page template. It loads no third-party resource: the
+// only subresources are the two same-origin scripts this generator writes —
+// countup.js, the hero counter, and totalnumber.js, whose NHP_TOTAL_ATTACK_BLOCKED
+// binding the homepage loads for itself, so a reader (or another script on the
+// page) can quote the same total the hero shows — and the nginx vhost allows
+// them via `script-src 'self'`. The absolute URLs in <head> are canonical/og
+// metadata naming the page's own origin; a crawler reads them, the browser
+// never fetches them. The visual language mirrors the per-day detail page so
+// visitors see the same nav and styling on both.
 var htmlIndex = template.Must(template.New("htmlIndex").Funcs(template.FuncMap{
 	"pct": pc,
 	"dayLink": func(s SiteDaySummary) string {
@@ -304,8 +349,17 @@ var htmlIndex = template.Must(template.New("htmlIndex").Funcs(template.FuncMap{
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.SiteTitle}}</title>
+<title>{{.DocTitle}}</title>
+<meta name="description" content="{{.Descr}}">
+<link rel="canonical" href="{{.SiteURL}}">
+<meta property="og:title" content="{{.SiteTitle}}">
+<meta property="og:description" content="{{.OGDescr}}">
+<meta property="og:url" content="{{.SiteURL}}">
+<meta property="og:type" content="website">
+<meta property="og:image" content="{{.OGImage}}">
+<meta name="twitter:card" content="summary_large_image">
 <script src="countup.js" defer></script>
+<script src="./totalnumber.js" defer></script>
 <style>
 :root{--fg:#1f2328;--muted:#656d76;--line:#d0d7de;--chip:#f6f8fa;--accent:#cf222e;--accent2:#0969da;--warn-bg:#fff8e1;--warn-fg:#7c5e16;--info-bg:#ddf4ff;--info-fg:#0969da}
 *{box-sizing:border-box}

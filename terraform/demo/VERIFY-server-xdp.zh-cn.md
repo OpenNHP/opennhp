@@ -1025,6 +1025,12 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    curl -fsS https://stats.opennhp.org/ | grep -o 'data-total="[0-9]*"'  # 累计 DROP 包数
    curl -fsS https://stats.opennhp.org/ | grep -o 'Since [0-9-]*'         # 最早一天
    curl -fsSI https://stats.opennhp.org/countup.js | head -1             # 200，自托管脚本
+   curl -fsSI https://stats.opennhp.org/totalnumber.js | head -1         # 200，导出的总数
+   # <head> 的 SEO / 社交标签（绝对 URL 只能是 stats.opennhp.org 自己的）：
+   curl -fsS https://stats.opennhp.org/ | grep -o '<title>[^<]*</title>'
+   curl -fsS https://stats.opennhp.org/ | grep -c 'og:\(title\|description\|url\|type\|image\)'
+   # og:image 指向的预览图必须真实存在，否则社交分享没有图：
+   curl -fsSI https://stats.opennhp.org/og.png | head -1                 # 200
    openssl s_client -connect stats.opennhp.org:443 -servername stats.opennhp.org \
      </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName  # DNS:stats.opennhp.org
    ```

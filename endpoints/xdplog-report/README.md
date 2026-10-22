@@ -150,13 +150,28 @@ Layout under `-out`:
   d/server/2026-10-16.json
 ```
 
-The homepage is titled **Invisible Server, Visible Attacks** and opens with a
+The homepage's `<h1>` is **Invisible Server, Visible Attacks** and it opens with a
 hero line: the all-time **total attack packets blocked**, summed over every
 row of `index.json`, with a `Since YYYY-MM-DD` line naming the earliest day
 still published. Both are derived from the index, not stored: an index reader
 can reproduce the number by summing `drop_pkts`. A day whose raw log has
 already aged out of the collector's cache still counts as long as its
 `d/<source>/<day>.json` is on disk.
+
+The `<title>` is a different string — **Zero Trust in Action: Live Attacks on
+OpenNHP Servers** — because a browser tab, a search result and a chat preview
+have room to say what the site is *about*, while the heading above the fold
+does not. The same `<head>` carries a meta description, a canonical URL and the
+Open Graph / Twitter card tags (`og:title` repeats the `<h1>`). Those tag values
+are the only absolute URLs in the output, and they are the one documented
+exception to the site's self-containment: a crawler reads them, the browser
+never fetches them, so they point at `https://stats.opennhp.org/` — our own
+origin — rather than at a third party. The two scripts the page loads are
+`countup.js` and `totalnumber.js`, both same-origin and both written here, so
+the homepage can quote its own total as `NHP_TOTAL_ATTACK_BLOCKED`. Nothing may
+load off-host; `assertSelfContained` in `site_test.go` fails the build if it
+does. `og:image` points at `/og.png`, which has to exist in the web root for
+social previews to render anything.
 
 Days before `-since` (**default `2026-10-16`**) are not published at all: no
 detail page, no index row, and no contribution to the total. The XDP filter
@@ -444,11 +459,22 @@ go run ./xdplog-report site \
   d/server/2026-10-16.json
 ```
 
-首页标题是 **Invisible Server, Visible Attacks**，标题下方先给出一个 hero 大数字：
+首页的 `<h1>` 是 **Invisible Server, Visible Attacks**，标题下方先给出一个 hero 大数字：
 **累计被拦截的攻击数据包数**，等于 `index.json` 所有行的 `drop_pkts` 之和；再下一行小字
 `Since YYYY-MM-DD` 标出统计起点（最早发布的那一天）。两者都是从索引现算的，不是另外存的：
 读者对 `drop_pkts` 求和就能复现这个数字。某天的原始日志即使已经过期滚出采集缓存，只要
 `d/<source>/<day>.json` 还在磁盘上就仍然计入。
+
+`<title>` 用的则是另一句 —— **Zero Trust in Action: Live Attacks on OpenNHP
+Servers**。浏览器标签页、搜索结果和聊天预览有空间说清这个站"是关于什么的"，而首屏大标题
+没有；两处各司其职。同一个 `<head>` 里还有 description、canonical，以及 Open Graph /
+Twitter 卡片标签（`og:title` 重复 `<h1>` 的那句）。这些标签里的绝对 URL 是全站唯一一处
+"不自包含"，而且是写进文档的例外项：爬虫会读它们，浏览器不会去取，所以它们指向的是
+`https://stats.opennhp.org/` 这个**自己的**源站，而不是任何第三方。页面加载的两个脚本
+`countup.js` 和 `totalnumber.js` 都是同源、都在这里生成，所以首页自己也能用
+`NHP_TOTAL_ATTACK_BLOCKED` 引用同一个总数。任何东西都不允许从站外加载 —— 一旦有，
+`site_test.go` 里的 `assertSelfContained` 会让构建失败。`og:image` 指向 `/og.png`，
+这个文件必须真实存在于 web 根目录，社交预览才有图可显示。
 
 `-since`（**默认 `2026-10-16`**）之前的数据完全不发布：不生成详情页、不进索引、也不计入
 总数。XDP 过滤器是这些日志写完之后才挂到 demo 主机上的，所以那几天的记录并不完整；把它们

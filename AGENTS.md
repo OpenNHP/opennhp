@@ -327,6 +327,27 @@ leads with a hero total of all-time blocked packets (plus a `Since` date) that
 (`script-src 'self'`). It is progressive enhancement — the number is already
 in the HTML for readers without JS, without that CSP, or with reduced motion.
 
+**Publishing floor.** `xdplog-report site` publishes nothing before `-since`
+(default `2026-10-16`, `defaultSiteSince` in `site.go`): those days get no
+detail page, no index row, and no share of the total. The XDP filter was
+attached after that log was written, so the earlier record is partial and
+counting it would understate the totals by an unquantifiable amount. A `-since`
+that excludes every discovered day is refused instead of published, so a typo
+cannot blank a populated index; `-since ""` publishes everything, for local
+debugging. **The homepage's Source column renders `server` as `nhp-server`**
+(`sourceLabel` in `render_index.go`) while `index.json` keeps the raw directory
+name — `source` is a published field and renaming it breaks existing parsers.
+
+**`totalnumber.js`** publishes the same total as one JavaScript constant,
+`NHP_TOTAL_ATTACK_BLOCKED`, for another site to embed with
+`<script src="https://stats.opennhp.org/totalnumber.js">`. It is generated
+into the web root beside `index.html` and served from its own nginx location
+(short `Cache-Control`, no CORS header — a classic script needs none, and the
+*importing* page's CSP governs it). It is written even on an empty site, as
+`0`, so an embedding page never gets a 404 and a dangling reference. It is a
+sibling of `index.json`, not a replacement: `index.json` stays authoritative
+and the total stays reproducible by summing `drop_pkts`.
+
 **Data flow**
 
 - **Server (writer)**: `nhp-serverd` keeps writing the daily log as it always

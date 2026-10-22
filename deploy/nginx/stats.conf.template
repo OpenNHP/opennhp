@@ -94,6 +94,20 @@ server {
         try_files $uri =404;
     }
 
+    # totalnumber.js: the same all-time total as one JavaScript constant,
+    # for another site to embed with <script src="https://stats.opennhp.org/
+    # totalnumber.js">. It is a plain classic script, so no CORS header is
+    # needed for that to work — the importing page's own CSP governs it.
+    # Same short cache-control as index.json, same repeated headers.
+    location = /totalnumber.js {
+        limit_except GET HEAD { deny all; }
+        add_header Cache-Control "public, max-age=300" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
     # index.html: same as above. The browser hits it first.
     location = / {
         limit_except GET HEAD { deny all; }

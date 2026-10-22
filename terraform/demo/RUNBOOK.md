@@ -1427,7 +1427,7 @@ nhp-serverd
         ├─ ssh ec2-user@nhp-server get <date>  (same forced command)
         ├─ gzip -> /home/ec2-user/xdpstats/raw/server/*.log.gz  (0700, 90-day retention)
         └─ xdplog-report site
-             ├─ /var/www/stats/{index.html,index.json,countup.js,d/server/<day>.{html,json}}
+             ├─ /var/www/stats/{index.html,index.json,countup.js,totalnumber.js,d/server/<day>.{html,json}}
              └─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
                                                 │
                           nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/
@@ -1440,6 +1440,23 @@ further restricts `get` to a strict `^\d{4}-\d{2}-\d{2}$` date with no path
 separators. The relay reaches nhp-server through the existing
 relay→server SSH path (already in the XDP whitelist and security group);
 no firewall, capability, or `xdp.toml` change.
+
+**Publishing floor.** `xdplog-report site` publishes nothing before `-since`
+(default `2026-10-16`): no detail page, no index row, and no share of the
+all-time total. The XDP filter was attached after those logs were written, so
+that record is partial and counting it would understate the totals by an
+amount nobody can audit. The collector passes no `-since`, so the deploy picks
+up the default automatically; to move the floor, change `defaultSiteSince` in
+`endpoints/xdplog-report/site.go` (a rebuild) rather than editing the relay.
+A `-since` that would exclude every discovered day is **refused** rather than
+published, so a typo fails the timer loudly instead of blanking the public
+site. Pre-floor detail pages already on disk are left in place, just unlinked.
+
+`totalnumber.js` in the web root carries the same all-time total as one
+JavaScript constant, `NHP_TOTAL_ATTACK_BLOCKED`, for other sites to embed via
+`<script src="https://stats.opennhp.org/totalnumber.js">`. It has its own
+nginx location with a short `Cache-Control`; no CORS header, because a classic
+script does not need one and the importing page's own CSP governs it.
 
 ### Deploy order: `infra-demo apply` comes first
 

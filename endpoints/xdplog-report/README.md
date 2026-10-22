@@ -145,17 +145,32 @@ Layout under `-out`:
   index.html
   index.json
   countup.js                # self-hosted homepage counter (see below)
-  d/server/2026-10-15.html  # one per day
-  d/server/2026-10-15.json
+  totalnumber.js            # the total as one JS constant (see below)
+  d/server/2026-10-16.html  # one per day
+  d/server/2026-10-16.json
 ```
 
 The homepage is titled **Invisible Server, Visible Attacks** and opens with a
 hero line: the all-time **total attack packets blocked**, summed over every
-row of `index.json`, with a `Since MM-DD-YYYY` line naming the earliest day
+row of `index.json`, with a `Since YYYY-MM-DD` line naming the earliest day
 still published. Both are derived from the index, not stored: an index reader
 can reproduce the number by summing `drop_pkts`. A day whose raw log has
 already aged out of the collector's cache still counts as long as its
 `d/<source>/<day>.json` is on disk.
+
+Days before `-since` (**default `2026-10-16`**) are not published at all: no
+detail page, no index row, and no contribution to the total. The XDP filter
+was attached to the demo host after those logs were written, so they are a
+partial record; counting them would understate the totals by an amount nobody
+can audit. Pass `-since ""` to publish everything (local debugging), or any
+other `YYYY-MM-DD` to move the floor. A `-since` that would exclude every
+discovered day is refused rather than published, so a typo can never blank a
+populated index.
+
+`index.html`'s Source column renders `server` as **nhp-server**, so the column
+names the product instead of repeating a generic noun. `index.json` keeps the
+raw directory name in `source` — that field is part of the published contract
+and anyone already parsing it depends on the value.
 
 The hero number animates (2.5s count-up, thousands separators) using
 `countup.js`, written next to `index.html` and loaded with a plain
@@ -164,6 +179,25 @@ already contains the real formatted total, so with JavaScript off, blocked by
 a stricter older CSP, or under `prefers-reduced-motion`, the number reads as
 static text. The site loads no third-party resource — the nginx vhost's CSP is
 `script-src 'self'`, and countup.js is the only script it allows.
+
+### `totalnumber.js`: embedding the total on another site
+
+`totalnumber.js` publishes the same all-time total as a single JavaScript
+constant, for a page elsewhere that wants the headline figure and nothing
+else:
+
+```html
+<script src="https://stats.opennhp.org/totalnumber.js"></script>
+<script>console.log(NHP_TOTAL_ATTACK_BLOCKED);</script>
+```
+
+It is a sibling of `index.json`, not a replacement: `index.json` stays
+authoritative (one row per day, total reproducible by summing `drop_pkts`),
+while this file is the one-number answer. The value is a pure function of the
+summaries, so a rebuild with no new data rewrites a byte-identical file. On an
+empty site it is still written, exporting `0` with no counting-start comment,
+so an embedding page never gets a 404 and a dangling reference. As a classic
+script it needs no CORS header — the *importing* page's CSP governs it.
 
 `state.json` (the incremental build state) goes wherever `-state` says and
 **not** into `-out` by default on the demo deployment. It records the
@@ -227,6 +261,7 @@ fingerprint, e.g. after updating `classify.go`.
 | `-geo-csv` | empty | Optional `cidr,country[,city]` CSV. Mutually exclusive with `-geo-mmdb`. |
 | `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb`. |
 | `-mask-ip` | **`true`** | Truncate source addresses for the public site. Different default than the single-file CLI. |
+| `-since` | `2026-10-16` | Earliest `YYYY-MM-DD` day to publish. Older days are neither rendered nor counted. Empty publishes everything. |
 | `-force` | `false` | Rebuild every day even if inputs are unchanged. |
 
 ### Tests
@@ -377,9 +412,39 @@ go run ./xdplog-report site \
   index.html
   index.json
   countup.js
-  d/server/2026-10-15.html  # 每天一个
-  d/server/2026-10-15.json
+  totalnumber.js          # 累计总数，导出为一个 JS 常量
+  d/server/2026-10-16.html  # 每天一个
+  d/server/2026-10-16.json
 ```
+
+首页标题是 **Invisible Server, Visible Attacks**，标题下方先给出一个 hero 大数字：
+**累计被拦截的攻击数据包数**，等于 `index.json` 所有行的 `drop_pkts` 之和；再下一行小字
+`Since YYYY-MM-DD` 标出统计起点（最早发布的那一天）。两者都是从索引现算的，不是另外存的：
+读者对 `drop_pkts` 求和就能复现这个数字。某天的原始日志即使已经过期滚出采集缓存，只要
+`d/<source>/<day>.json` 还在磁盘上就仍然计入。
+
+`-since`（**默认 `2026-10-16`**）之前的数据完全不发布：不生成详情页、不进索引、也不计入
+总数。XDP 过滤器是这些日志写完之后才挂到 demo 主机上的，所以那几天的记录并不完整；把它们
+算进去会让总数偏小，而且偏了多少没人能复核。传 `-since ""` 可以全部发布（本地调试用），
+也可以传其它 `YYYY-MM-DD` 调整起点。如果某个 `-since` 会把所有天都排除掉，命令会直接报错
+而不是发布一个空索引 —— 打错一个日期不该把已经有数据的首页清空。
+
+首页表格的 Source 列把 `server` 显示成 **nhp-server**，让这一列说明产品名而不是重复一个
+泛称。`index.json` 的 `source` 字段保持目录原名 —— 它属于已发布的契约，已有解析代码依赖
+这个值。
+
+`totalnumber.js` 把同一个累计总数导出成一个 JavaScript 常量，供别的站点直接引用：
+
+```html
+<script src="https://stats.opennhp.org/totalnumber.js"></script>
+<script>console.log(NHP_TOTAL_ATTACK_BLOCKED);</script>
+```
+
+它是 `index.json` 的补充而不是替代：`index.json` 依然是权威数据（每天一行，总数可通过对
+`drop_pkts` 求和复现），这个文件只回答"总数是多少"这一个问题。内容是 summaries 的纯函数，
+所以没有新数据时重跑会写出逐字节相同的文件。站点为空时它照样生成，导出 `0` 且不带统计起点
+注释，引用方不会拿到 404 然后留下一个悬空引用。它是普通 classic script，跨站引用不需要
+CORS 头 —— 受引用方自己的 CSP 约束。
 
 `state.json`（内部增量状态）写到 `-state` 指定的位置。demo 部署把它放在
 `-out` 之外：它记录了每个输入文件的绝对路径，属于主机布局，不该出现在公开站点上；
@@ -433,6 +498,7 @@ go run ./xdplog-report site \
 | `-geo-csv` | 空 | 可选的 `cidr,country[,city]` CSV。与 `-geo-mmdb` 互斥。 |
 | `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`。 |
 | `-mask-ip` | **`true`** | 对外站点做 IP 截断；默认值与单文件 CLI 不同。 |
+| `-since` | `2026-10-16` | 最早发布的 `YYYY-MM-DD` 日期。更早的天既不渲染也不计入总数；传空则全部发布。 |
 | `-force` | `false` | 即便输入未变化也强制重算每一天。 |
 
 ### 测试

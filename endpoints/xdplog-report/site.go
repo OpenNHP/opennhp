@@ -34,7 +34,21 @@ type SiteOptions struct {
 	MaskIP    bool
 	Force     bool
 	Today     string // YYYY-MM-DD (UTC), supplied by the caller
+	// Since is the earliest day (YYYY-MM-DD) the site publishes. Days older
+	// than this are neither rendered nor counted in the homepage total; see
+	// defaultSiteSince. Empty disables the floor.
+	Since string
 }
+
+// defaultSiteSince is the first day the public site counts.
+//
+// The XDP filter was attached to the demo host later than the logs that were
+// already sitting in its log directory, so everything before this date is a
+// partial record: counting it would understate the totals and, worse, make
+// the all-time hero number quietly wrong by an amount nobody can audit. The
+// floor is a publishing decision, not a data-availability one — the detail
+// pages for older days are simply not part of this site.
+const defaultSiteSince = "2026-10-16"
 
 // SiteDaySummary is one row of the site's index. Field names are part of the
 // published index.json contract; do not rename without a schema bump.
@@ -82,6 +96,7 @@ func runSite(args []string, stdout io.Writer) error {
 		TopN:   20,
 		MaskIP: true,
 		Today:  today,
+		Since:  defaultSiteSince,
 	}
 	fs.StringVar(&opts.LogsDir, "logs", "", "directory of <source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]")
 	fs.StringVar(&opts.OutDir, "out", "", "web root directory (created if missing)")
@@ -91,6 +106,7 @@ func runSite(args []string, stdout io.Writer) error {
 	fs.StringVar(&opts.GeoMMDB, "geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	fs.BoolVar(&opts.MaskIP, "mask-ip", opts.MaskIP, "truncate source IPs in the public site (default true)")
 	fs.BoolVar(&opts.Force, "force", false, "rebuild every day even if inputs are unchanged")
+	fs.StringVar(&opts.Since, "since", opts.Since, "earliest YYYY-MM-DD day to publish (default "+defaultSiteSince+"; empty publishes all days)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -102,6 +118,11 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	if opts.TopN < 1 {
 		return fmt.Errorf("-top must be >= 1")
+	}
+	if opts.Since != "" {
+		if _, err := time.Parse("2006-01-02", opts.Since); err != nil {
+			return fmt.Errorf("-since must be YYYY-MM-DD: %q", opts.Since)
+		}
 	}
 	if opts.GeoCSV != "" && opts.GeoMMDB != "" {
 		return fmt.Errorf("-geo-csv and -geo-mmdb are mutually exclusive")
@@ -164,7 +185,14 @@ func runSite(args []string, stdout io.Writer) error {
 
 	var summaries []SiteDaySummary
 	dirty := false
+	var skippedPreSince int
 	for _, in := range inputs {
+		if !opts.publishesDay(in.Day) {
+			// Below the -since floor: not analyzed, not written, and not in
+			// the index, so it cannot reach the homepage total either.
+			skippedPreSince++
+			continue
+		}
 		summary, wasDirty, err := processSiteDay(opts, geo, in, state)
 		if err != nil {
 			if in.PageOnly {
@@ -181,6 +209,18 @@ func runSite(args []string, stdout io.Writer) error {
 		if wasDirty {
 			dirty = true
 		}
+	}
+
+	// Every discovered day fell below the -since floor. Rendering that would
+	// overwrite a populated index with an empty one, so refuse instead: this
+	// is a misconfigured -since, not a site that has nothing to say. The
+	// daily cron turns this into a failed unit and a loud log line rather than
+	// a blank public stats page.
+	if len(summaries) == 0 && len(inputs) > 0 {
+		return fmt.Errorf("no day on or after -since %s among %d discovered input(s); refusing to publish an empty index", opts.Since, len(inputs))
+	}
+	if skippedPreSince > 0 {
+		fmt.Fprintf(stdout, "site: %d day(s) before -since %s not published\n", skippedPreSince, opts.Since)
 	}
 
 	if dirty {
@@ -218,6 +258,24 @@ func ternary(cond bool, a, b string) string {
 		return a
 	}
 	return b
+}
+
+// publishesDay reports whether day falls on or after the -since floor. An
+// empty floor publishes everything, which is what local debug runs want.
+//
+// A day this cannot parse is published rather than dropped: -since is already
+// validated at the flag boundary, so a malformed day reaching here is a
+// collector bug worth surfacing in the index rather than one worth hiding.
+// Well-formed days compare as plain strings because both sides are
+// zero-padded YYYY-MM-DD, which sorts identically to the dates themselves.
+func (o *SiteOptions) publishesDay(day string) bool {
+	if o.Since == "" {
+		return true
+	}
+	if _, err := time.Parse("2006-01-02", day); err != nil {
+		return true
+	}
+	return day >= o.Since
 }
 
 // siteInput is one (source, day, file) tuple discovered on disk. PageOnly

@@ -301,7 +301,11 @@ fi
 if [ -x "$SITE_BIN" ]; then
   log "info" "running xdplog-report site"
   if ! "$SITE_BIN" site -logs "$RAW_DIR" -out "$WEB_DIR" "${SITE_ARGS[@]}" >>"$LOG_FILE" 2>&1; then
-    log "error" "xdplog-report site failed; old web content kept"
+    # A failed site run is not always a no-op: it publishes the index and the
+    # state first and reports afterwards when the only thing that went wrong is
+    # a page it could not write or a pre-floor page it could not delete, so the
+    # log is the place that says which of the two happened.
+    log "error" "xdplog-report site failed; see $LOG_FILE for what was published"
     exit 1
   fi
 else

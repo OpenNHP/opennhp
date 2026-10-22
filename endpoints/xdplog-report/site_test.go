@@ -765,6 +765,152 @@ func TestSiteDropsUnreadableOrphanPage(t *testing.T) {
 	}
 }
 
+// TestSiteKeepsPageOnlyDayWhenRerenderFails covers the page-only error the
+// orphan rule must not swallow: the day's JSON is perfectly readable, but its
+// HTML cannot be written — an EACCES, an ENOSPC, a failed rename. The record is
+// intact, so the day keeps its index row and its share of the hero total and
+// the run fails loudly afterwards. Treating this as an orphan is what made the
+// published total quietly fall whenever the web root was briefly unwritable,
+// and jump back on the next good run with nothing having flagged the gap.
+func TestSiteKeepsPageOnlyDayWhenRerenderFails(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+	wantTotal := indexTotalFromJSON(t, out)
+
+	// Age the day out of the collector cache and roll the state's render
+	// version back, so its page is due a re-render.
+	if err := os.Remove(filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log")); err != nil {
+		t.Fatalf("prune the raw log: %v", err)
+	}
+	setStateRender(t, out, 0)
+
+	// Put a directory where the page goes: writeFileAtomic renames a sibling
+	// temp file over the path, and that rename never succeeds onto a
+	// directory. Preferred over chmod because it still fails when the suite
+	// runs as root.
+	pagePath := filepath.Join(out, "d", "server", siteDay2+".html")
+	if err := os.Remove(pagePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(pagePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pagePath, "blocker"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	err := run([]string{"site", "-logs", logs, "-out", out, "-top", "20"}, &buf)
+	if err == nil {
+		t.Fatal("expected the failed re-render to fail the run")
+	}
+	if !strings.Contains(err.Error(), siteDay2) {
+		t.Errorf("error should name the day whose page could not be written: %v", err)
+	}
+	if !indexHasDay(t, out, siteDay2) {
+		t.Errorf("page-only day %s dropped out of the index because its HTML could not be re-rendered", siteDay2)
+	}
+	if got := indexTotalFromJSON(t, out); got != wantTotal {
+		t.Errorf("published total = %d, want %d; a write failure must not shrink it", got, wantTotal)
+	}
+	page := readArtifact(t, out, "index.html")
+	if m := heroRe.FindStringSubmatch(string(page)); m == nil {
+		t.Error("index.html has no #total-attacks counter")
+	} else if m[2] != groupThousands(wantTotal) {
+		t.Errorf("hero total = %q, want %q", m[2], groupThousands(wantTotal))
+	}
+	// The state must not claim a re-render that never happened, or the next
+	// run would skip the retry.
+	if got := readSiteState(t, out).Days["server"][siteDay2].Render; got == siteRenderVersion {
+		t.Error("state recorded a successful re-render that never happened")
+	}
+
+	// Clear the obstruction. The next run re-renders the day it kept, and the
+	// total does not move.
+	if err := os.RemoveAll(pagePath); err != nil {
+		t.Fatal(err)
+	}
+	runSiteCmd(t, logs, out)
+	if b := readArtifact(t, filepath.Join(out, "d", "server"), siteDay2+".html"); !strings.Contains(string(b), "Daily Attack Report") {
+		t.Errorf("page-only day was not re-rendered once the path was writable:\n%s", b)
+	}
+	if got := indexTotalFromJSON(t, out); got != wantTotal {
+		t.Errorf("published total after recovery = %d, want %d", got, wantTotal)
+	}
+}
+
+// TestFailedRunLeavesPreFloorPagesPublished is the ordering half of the -since
+// floor: a pre-floor page comes down only after every publishable day has
+// succeeded, never while the loop is still working. A raw log that cannot be
+// analyzed must not cost the site what it is already serving — the index on
+// disk still links those pages and still counts them in the hero total, so
+// deleting them on the way out would leave dead links and a total that no
+// longer matches the files behind it.
+func TestFailedRunLeavesPreFloorPagesPublished(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+
+	const preFloor = "2026-10-15"
+	writeDropLog(t, logs, "server", preFloor, 7)
+	writeDropLog(t, logs, "server", siteDay1, 5)
+	runSiteCmd(t, logs, out, "-since", "") // the site as it looked before the floor
+
+	preHTML := filepath.Join(out, "d", "server", preFloor+".html")
+	preJSON := filepath.Join(out, "d", "server", preFloor+".json")
+	for _, p := range []string{preHTML, preJSON} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("fixture failed to publish %s: %v", p, err)
+		}
+	}
+	wantTotal := indexTotalFromJSON(t, out)
+
+	// A .gz that is not gzip: undiscoverable by content, unreadable by the
+	// analyzer. Its day is on and after the floor, so the run reaches it.
+	badPath := filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log.gz")
+	if err := os.WriteFile(badPath, []byte("this is not a gzip stream\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	err := run([]string{"site", "-logs", logs, "-out", out, "-top", "20"}, &buf)
+	if err == nil {
+		t.Fatal("expected the unreadable log to fail the run")
+	}
+	if !strings.Contains(err.Error(), siteDay2) {
+		t.Errorf("error should name the day that failed: %v", err)
+	}
+	for _, p := range []string{preHTML, preJSON} {
+		if _, statErr := os.Stat(p); statErr != nil {
+			t.Errorf("failed run deleted the pre-floor page %s: %v", p, statErr)
+		}
+	}
+	if !indexHasDay(t, out, preFloor) {
+		t.Error("pre-floor day left the index while its page is still being served")
+	}
+	if got := indexTotalFromJSON(t, out); got != wantTotal {
+		t.Errorf("published total = %d, want %d; a failed run must leave the site as it was", got, wantTotal)
+	}
+	if !strings.Contains(string(readArtifact(t, out, "index.html")), `href="d/server/`+preFloor+`.html"`) {
+		t.Error("index no longer links the pre-floor day whose page is still published")
+	}
+
+	// The floor still applies on the next good run: with the unreadable log
+	// gone, the pre-floor day comes down and the index stops linking it.
+	if err := os.Remove(badPath); err != nil {
+		t.Fatal(err)
+	}
+	runSiteCmd(t, logs, out)
+	for _, p := range []string{preHTML, preJSON} {
+		if _, statErr := os.Stat(p); !os.IsNotExist(statErr) {
+			t.Errorf("%s survived the -since floor (stat err = %v)", p, statErr)
+		}
+	}
+	if indexHasDay(t, out, preFloor) {
+		t.Error("pre-floor day is still indexed after a successful run")
+	}
+}
+
 // heroRe captures the homepage counter's raw data-total and its rendered
 // fallback text. The text is what a visitor with JavaScript disabled, an
 // older CSP, or prefers-reduced-motion sees, so it has to be the real total,

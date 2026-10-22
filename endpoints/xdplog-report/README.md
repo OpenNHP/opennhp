@@ -194,6 +194,14 @@ logs and the collector cache are never touched. A run that cannot remove a
 page still writes the index and state, then fails, so the leftover page is
 loud rather than silent.
 
+Those deletions happen only once every publishable day has been processed
+successfully, and immediately before the index that stops linking them is
+written — which is written before `state.json`, so a run that gives up on any
+other day (a log it cannot analyze, an index it refuses to blank) leaves the
+site it was serving exactly as it found it, links and hero total unchanged,
+rather than removing pages the live index still points at. The next successful
+run then does the deletions.
+
 ### Template changes reach published pages
 
 `state.json` records, per day, the `siteRenderVersion` that produced its page.
@@ -206,6 +214,13 @@ Days whose raw log the collector has already pruned cannot be re-analyzed,
 but their HTML is a pure function of the `d/<source>/<day>.json` published
 beside them, so a version bump re-renders those too, from that JSON. Their
 numbers are never recomputed.
+
+A pruned day whose published JSON has gone missing or stopped parsing drops
+out of the index — there is nothing left to publish — but one whose JSON is
+fine and whose *page* cannot be written keeps its row and its share of the
+total, and the run fails instead. Losing a day to a transient `EACCES` or
+`ENOSPC` on the web root would make `NHP_TOTAL_ATTACK_BLOCKED` fall and then
+recover on the next good run, which reads as an attack surge nobody had.
 
 `index.html`'s Source column renders `server` as **nhp-server**, so the column
 names the product instead of repeating a generic noun. `index.json` keeps the

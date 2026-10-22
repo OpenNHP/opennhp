@@ -460,10 +460,15 @@ run deletes that day's `d/<source>/<day>.{html,json}`, drops its `state.json`
 entry and re-renders the index — a page left in the web root is still reachable
 at its old URL, so unlinked is not unpublished. That deletion is the only thing
 the subcommand removes; raw logs and the collector cache are never touched, and
-a page it cannot delete fails the run after the index is written. **The
-homepage's Source column renders `server` as `nhp-server`** (`sourceLabel` in
-`render_index.go`) while `index.json` keeps the raw directory name — `source`
-is a published field and renaming it breaks existing parsers.
+a page it cannot delete fails the run after the index is written. The deletions
+run only once every publishable day has succeeded and immediately before that
+index is written, and the index is written before `state.json`: any run that
+gives up — an unreadable log, an empty index it refuses to publish — leaves the
+site it was serving intact, links and total unchanged, instead of removing pages
+the old index still points at. **The homepage's Source column renders `server`
+as `nhp-server`** (`sourceLabel` in `render_index.go`) while `index.json` keeps
+the raw directory name — `source` is a published field and renaming it breaks
+existing parsers.
 
 **Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
 that produced each day page, so bumping that constant in `site.go` re-renders
@@ -472,7 +477,12 @@ happened to change that week. Days whose raw log the collector already pruned
 are re-rendered from their published `d/<source>/<day>.json`
 (`rerenderPageOnlyDay`) — the HTML is a pure function of it — but their numbers
 are never recomputed. A markup change therefore needs neither `-force` nor a
-hand-deleted `state.json`.
+hand-deleted `state.json`. A page-only day whose *record* is unreadable drops
+out of the index (`errUnreadablePage`), because there is nothing left to
+publish; one whose record reads fine but whose page cannot be **written** keeps
+its row and its share of the total, and only the run fails — otherwise a
+transient EACCES or ENOSPC on the web root would silently shrink
+`NHP_TOTAL_ATTACK_BLOCKED` and put it back on the next good run.
 
 **`totalnumber.js`** publishes the same total as one JavaScript constant,
 `NHP_TOTAL_ATTACK_BLOCKED`, for another site to embed with

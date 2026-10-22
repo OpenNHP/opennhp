@@ -109,7 +109,9 @@ const siteStateSchema = 1
 // runSite parses flags, scans the input directory, and rebuilds the static
 // site. It is read-only on its inputs — the raw logs and the collector cache —
 // and the only files it removes are the pre-floor detail pages under -out that
-// it published itself.
+// it published itself. Those are deleted only after every publishable day has
+// succeeded and immediately before the index that stops linking them is
+// written, so a run that gives up leaves the site it was serving intact.
 func runSite(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("xdplog-report site", flag.ContinueOnError)
 	today := time.Now().UTC().Format("2006-01-02")
@@ -207,11 +209,11 @@ func runSite(args []string, stdout io.Writer) error {
 		return fmt.Errorf("no nhp_server_xdp-YYYY-MM-DD.log[.gz] files under %s", opts.LogsDir)
 	}
 
-	// Refuse a misconfigured -since before touching anything. The loop below
-	// deletes pre-floor detail pages, and the case this guards is exactly the
-	// one where that would delete all of them: publishing an empty index
-	// would blank the public stats page, and unpublishing every day on the
-	// way there would leave a site of dead links instead. The daily cron
+	// Refuse a misconfigured -since before touching anything. The unpublish
+	// pass below deletes pre-floor detail pages, and the case this guards is
+	// exactly the one where that would delete all of them: publishing an empty
+	// index would blank the public stats page, and unpublishing every day on
+	// the way there would leave a site of dead links instead. The daily cron
 	// turns this into a failed unit and a loud log line rather than either.
 	publishable := 0
 	for _, in := range inputs {
@@ -225,45 +227,44 @@ func runSite(args []string, stdout io.Writer) error {
 
 	var summaries []SiteDaySummary
 	dirty := false
-	var skippedPreSince int
-	var removedPreSince int
-	var unpublishErr error
+	var pageRenderErr error
+	// Days below the -since floor, collected here and deleted only once every
+	// publishable day has been processed successfully. Deleting them inline
+	// instead meant that an exit between there and the index write — a raw log
+	// that cannot be analyzed, the empty-index refusal — left the pages already
+	// removed while the index on disk still linked them and still counted them
+	// in the hero total: a site of dead links until some later run rebuilt the
+	// index.
+	var preFloor []siteInput
 	for _, in := range inputs {
 		if !opts.publishesDay(in.Day) {
-			// Below the -since floor: not analyzed, not written, and not in
-			// the index, so it cannot reach the homepage total either. A site
-			// that published the day before the floor existed still has to
-			// take it back down — see unpublishDay.
-			n, err := unpublishDay(opts, state, in)
-			if err != nil {
-				// Collected rather than returned: one unremovable page must
-				// not cost the site the index and state written below. The
-				// run still reports failure, because a pre-floor page left
-				// reachable is exactly what the floor exists to prevent.
-				unpublishErr = errors.Join(unpublishErr, err)
-			}
-			if n > 0 {
-				// Taking a published day down changes what the index says,
-				// so the index has to be rewritten even though no day page
-				// was rebuilt. Without this the row for the day we just
-				// unpublished would stay in index.json and in the hero
-				// total until some other input happened to change.
-				dirty = true
-			}
-			skippedPreSince++
-			removedPreSince += n
+			// Below the floor: not analyzed, not written, and not in the
+			// index, so it cannot reach the homepage total either. A site that
+			// published the day before the floor existed still has to take it
+			// back down — see unpublishDay, and the ordering note on preFloor.
+			preFloor = append(preFloor, in)
 			continue
 		}
 		summary, wasDirty, err := processSiteDay(opts, geo, in, state)
-		if err != nil {
-			if in.PageOnly {
-				// A page-only entry with an unreadable page is a true
-				// orphan: drop it from the index rather than fail the
-				// whole run. The state.json entry, if any, is left in
-				// place; a future -force rebuild will reconcile.
-				fmt.Fprintf(stdout, "site: dropping orphan %s/%s: %v\n", in.Source, in.Day, err)
-				continue
-			}
+		switch {
+		case err == nil:
+		case in.PageOnly && errors.Is(err, errUnreadablePage):
+			// A page-only entry whose published JSON cannot be read is a true
+			// orphan: drop it from the index rather than fail the whole run.
+			// The state.json entry, if any, is left in place; a future -force
+			// rebuild will reconcile.
+			fmt.Fprintf(stdout, "site: dropping orphan %s/%s: %v\n", in.Source, in.Day, err)
+			continue
+		case in.PageOnly:
+			// A page-only day whose record read fine but whose HTML could not
+			// be written — an EACCES, an ENOSPC, a failed rename. The day's
+			// numbers are still exactly right, so it stays in the index and in
+			// the hero total and the run reports failure at the end; dropping
+			// it here would silently shrink the public total every time the
+			// web root was briefly unwritable, and the next good run would
+			// put it back without anything having flagged the gap.
+			pageRenderErr = errors.Join(pageRenderErr, fmt.Errorf("%s/%s: %w", in.Source, in.Day, err))
+		default:
 			return fmt.Errorf("%s/%s: %w", in.Source, in.Day, err)
 		}
 		summaries = append(summaries, summary)
@@ -272,23 +273,54 @@ func runSite(args []string, stdout io.Writer) error {
 		}
 	}
 
-	// Every day that survived the floor dropped out as an unreadable
-	// orphan. Rendering that would overwrite a populated index with an empty
-	// one, so refuse instead. A genuinely empty site (-logs holds nothing at
-	// all) still publishes an empty index, as it always has.
+	// Every day that survived the floor dropped out as an unreadable orphan.
+	// Rendering that would overwrite a populated index with an empty one, so
+	// refuse instead. A genuinely empty site (-logs holds nothing at all) still
+	// publishes an empty index, as it always has. Like the -since refusal
+	// above, this sits above the unpublish pass: a run that is going to give
+	// up must not have taken any page down on its way out.
 	if len(summaries) == 0 && len(inputs) > 0 {
 		return fmt.Errorf("none of the %d discovered input(s) on or after -since %s could be read; refusing to publish an empty index", len(inputs), opts.Since)
 	}
-	if skippedPreSince > 0 {
-		fmt.Fprintf(stdout, "site: %d day(s) before -since %s unpublished (%d detail page file(s) removed)\n", skippedPreSince, opts.Since, removedPreSince)
+
+	// Every publishable day is now known good, so the days below the floor can
+	// come down: the index rebuilt below no longer lists them.
+	var unpublishErr error
+	var removedPreSince int
+	for _, in := range preFloor {
+		n, err := unpublishDay(opts, state, in)
+		if err != nil {
+			// Collected rather than returned: one unremovable page must not
+			// cost the site the index and state written below. The run still
+			// reports failure, because a pre-floor page left reachable is
+			// exactly what the floor exists to prevent.
+			unpublishErr = errors.Join(unpublishErr, err)
+		}
+		removedPreSince += n
+		if n > 0 {
+			// Taking a published day down changes what the index says, so the
+			// index has to be rewritten even though no day page was rebuilt.
+			// Without this the row for the day we just unpublished would stay
+			// in index.json and in the hero total until some other input
+			// happened to change.
+			dirty = true
+		}
+	}
+	if len(preFloor) > 0 {
+		fmt.Fprintf(stdout, "site: %d day(s) before -since %s unpublished (%d detail page file(s) removed)\n", len(preFloor), opts.Since, removedPreSince)
 	}
 
 	if dirty {
-		if err := saveSiteState(opts.StatePath, state); err != nil {
-			return fmt.Errorf("save state: %w", err)
-		}
+		// The index before the state, deliberately. The index is what links
+		// the pages just taken down, so if it cannot be rendered the state
+		// must not record the removals either — the next run then rebuilds
+		// both, instead of inheriting a state that says the index is current
+		// while the site still serves links to deleted pages.
 		if err := renderIndex(opts, summaries); err != nil {
 			return fmt.Errorf("render index: %w", err)
+		}
+		if err := saveSiteState(opts.StatePath, state); err != nil {
+			return fmt.Errorf("save state: %w", err)
 		}
 	} else {
 		// Verify the on-disk state still matches the loaded one. If they
@@ -300,8 +332,12 @@ func runSite(args []string, stdout io.Writer) error {
 			}
 		}
 	}
-	if unpublishErr != nil {
-		return unpublishErr
+	// Both collected failures are reported only after the site has been
+	// published, so that a page this run could not write or delete costs the
+	// site nothing it was serving: the index and the state are written either
+	// way, and the run still exits non-zero for the cron to alert on.
+	if err := errors.Join(unpublishErr, pageRenderErr); err != nil {
+		return err
 	}
 
 	var n int
@@ -535,6 +571,13 @@ func collectPageOnlyInputs(outDir string, dst map[string]siteInput) error {
 	return nil
 }
 
+// errUnreadablePage marks a page-only day whose published JSON could not be
+// read or parsed. It is the one page-only failure that legitimately costs a
+// day its row in the index, and it is tagged so the caller can tell it apart
+// from every other error this function returns — those are problems with this
+// run, not with the day's record, and the day keeps its row.
+var errUnreadablePage = errors.New("unreadable published page")
+
 // processSiteDay analyzes one (source, day) pair, writes its JSON/HTML if the
 // input changed (or opts.Force, or the template version moved), updates state
 // in place, and returns the summary for the index. The bool reports whether
@@ -547,6 +590,13 @@ func collectPageOnlyInputs(outDir string, dst map[string]siteInput) error {
 // summary is read straight from the on-disk page so the index keeps showing
 // history. Its HTML is still re-rendered when the page predates the current
 // template, because that needs no raw log — see rerenderPageOnlyDay.
+//
+// The two page-only failures are deliberately not interchangeable. An
+// unreadable record (errUnreadablePage) comes back with a zero summary, and
+// the caller drops the day. A failed re-render comes back with the summary
+// intact, because the day's numbers are correct even though its markup is
+// stale — a transient write failure must not delete the day from the index
+// and shrink the published all-time total.
 func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *SiteState) (SiteDaySummary, bool, error) {
 	if in.PageOnly {
 		sum, err := summaryFromPage(in, opts.Today, opts.OutDir)
@@ -559,7 +609,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 		}
 		rendered, err := rerenderPageOnlyDay(opts, state, in)
 		if err != nil {
-			return SiteDaySummary{}, false, err
+			return sum, false, err
 		}
 		return sum, rendered, nil
 	}
@@ -781,6 +831,10 @@ func summaryFromStateWithOpts(in siteInput, st SiteDayState, today, outDir strin
 // pruned by the collector's RETENTION_DAYS) but the day has already been
 // analyzed and published, so the index can keep showing it without a raw
 // rebuild.
+//
+// Both read errors are tagged errUnreadablePage: the day has no usable record
+// left, which is what lets the caller drop it from the index instead of
+// failing the run.
 func summaryFromPage(in siteInput, today, outDir string) (SiteDaySummary, error) {
 	sum := SiteDaySummary{
 		Source:  in.Source,
@@ -789,11 +843,11 @@ func summaryFromPage(in siteInput, today, outDir string) (SiteDaySummary, error)
 	}
 	b, err := os.ReadFile(in.Path)
 	if err != nil {
-		return SiteDaySummary{}, fmt.Errorf("%s: %w", in.Path, err)
+		return SiteDaySummary{}, fmt.Errorf("%w: %s: %w", errUnreadablePage, in.Path, err)
 	}
 	var rep Report
 	if err := json.Unmarshal(b, &rep); err != nil {
-		return SiteDaySummary{}, fmt.Errorf("%s: %w", in.Path, err)
+		return SiteDaySummary{}, fmt.Errorf("%w: %s: %w", errUnreadablePage, in.Path, err)
 	}
 	sum.DropPkts = rep.DropPkts
 	sum.PassPkts = rep.PassPkts

@@ -122,6 +122,10 @@ func registrationUserData(email string, userData string) (map[string]any, error)
 			return nil, fmt.Errorf("userData is not valid JSON")
 		}
 	}
+	// JSON null is an empty optional user-data object.
+	if data == nil {
+		data = map[string]any{}
+	}
 	if email != "" {
 		data["email"] = email
 	}
@@ -232,10 +236,10 @@ func RequestRegistrationOtp(current *UdpAgent, workingDir string, logLevel int, 
 	if target == nil {
 		return result
 	}
-	if err := instance.requestOtp(target, &common.AgentOTPMsg{
+	if err := instance.sendOtp(target, &common.AgentOTPMsg{
 		UserId: email, DeviceId: deviceId, OrganizationId: orgId,
 		AuthServiceId: target.AuthServiceId, PublicKey: result.PublicKey, UserData: data,
-	}); err != nil {
+	}, owned); err != nil {
 		result.ErrCode = registrationErrorCode(err)
 		result.ErrMsg = err.Error()
 		return result

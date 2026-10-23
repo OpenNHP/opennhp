@@ -3,6 +3,10 @@ package agent
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -103,5 +107,100 @@ func TestSDKRegistrationPreservesIdentity(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestRegistrationUserData(t *testing.T) {
+	for _, input := range []string{"", "null", "{}", `{"email":"ignored","role":"member"}`} {
+		t.Run(input, func(t *testing.T) {
+			data, err := registrationUserData("user@example.com", input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if data["email"] != "user@example.com" {
+				t.Fatalf("email missing: %#v", data)
+			}
+			if input == `{"email":"ignored","role":"member"}` && data["role"] != "member" {
+				t.Fatal("extra data was lost")
+			}
+		})
+	}
+	for _, input := range []string{"[", "[]", `"text"`, "42"} {
+		if _, err := registrationUserData("user@example.com", input); err == nil {
+			t.Errorf("accepted non-object data %q", input)
+		}
+	}
+}
+
+// Exercise the public API through temporary-agent shutdown, then read the
+// socket. Both cipher schemes must produce a real packet before success.
+func TestRegistrationOtpTemporaryAgentTransmits(t *testing.T) {
+	for _, cipherType := range []int{0, 1} {
+		t.Run(fmt.Sprint(cipherType), func(t *testing.T) {
+			receiver, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer receiver.Close()
+			key := make([]byte, core.PrivateKeySize)
+			key[0] = 2
+			server := core.NewDevice(core.NHP_SERVER, key, nil)
+			publicKey := server.PublicKeyBase64()
+			if cipherType == 1 {
+				publicKey = server.PublicKeyExBase64()
+			}
+			dir := t.TempDir()
+			etc := filepath.Join(dir, "etc")
+			if err := os.MkdirAll(etc, 0700); err != nil {
+				t.Fatal(err)
+			}
+			// Keep startup logging configuration fixed; changing its level after
+			// Start has a separate pre-existing race when config.toml is absent.
+			if err := os.WriteFile(filepath.Join(etc, "config.toml"), []byte("LogLevel = 0\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			config := fmt.Sprintf("[[Servers]]\nName = %q\nPubKeyBase64 = %q\n[[Servers.Instances]]\nIp = %q\nPort = %d\n", "test", publicKey, "127.0.0.1", receiver.LocalAddr().(*net.UDPAddr).Port)
+			if err := os.WriteFile(filepath.Join(etc, "server.toml"), []byte(config), 0600); err != nil {
+				t.Fatal(err)
+			}
+			result := RequestRegistrationOtp(nil, dir, log.LogLevelSilent, "", cipherType, "user@example.com", "", "org", "null", "asp", "res", "test")
+			if result.ErrCode != common.ErrSuccess.ErrorCode() {
+				t.Fatalf("OTP failed: %s %s", result.ErrCode, result.ErrMsg)
+			}
+			if result.PrivateKey == "" || result.PublicKey == "" {
+				t.Fatal("generated key was not returned")
+			}
+			if err := receiver.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			var buf [core.PacketBufferSize]byte
+			n, _, err := receiver.ReadFromUDP(buf[:])
+			if err != nil {
+				t.Fatalf("SDK reported success but no packet arrived: %v", err)
+			}
+			packet := &core.Packet{Buf: &buf, Content: buf[:n]}
+			kind, _, err := server.RecvPrecheck(packet)
+			if err != nil || kind != core.NHP_OTP {
+				t.Fatalf("invalid OTP packet: type=%d error=%v", kind, err)
+			}
+
+			// An invalid peer key must report encryption failure, not queued success.
+			config = fmt.Sprintf("[[Servers]]\nName = %q\nPubKeyBase64 = %q\n[[Servers.Instances]]\nIp = %q\nPort = %d\n", "test", "AQ==", "127.0.0.1", receiver.LocalAddr().(*net.UDPAddr).Port)
+			// Use a new directory so no previous file watcher can observe this write.
+			badDir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(badDir, "etc"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(badDir, "etc", "config.toml"), []byte("LogLevel = 0\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(badDir, "etc", "server.toml"), []byte(config), 0600); err != nil {
+				t.Fatal(err)
+			}
+			failed := RequestRegistrationOtp(nil, badDir, log.LogLevelSilent, "", cipherType, "user@example.com", "", "org", "null", "asp", "res", "test")
+			if failed.ErrCode == common.ErrSuccess.ErrorCode() {
+				t.Fatal("invalid peer key reported success")
+			}
+		})
 	}
 }

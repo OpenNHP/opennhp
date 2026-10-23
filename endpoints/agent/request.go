@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"net"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
@@ -27,6 +28,12 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 
 // requestOtp sends a request-specific identity without changing the agent.
 func (a *UdpAgent) requestOtp(target *KnockTarget, otpMsg *common.AgentOTPMsg) error {
+	return a.sendOtp(target, otpMsg, false)
+}
+
+// sendOtp waits for a socket write when the caller owns a temporary agent.
+// OTP is one-way: successful transmission does not confirm email delivery.
+func (a *UdpAgent) sendOtp(target *KnockTarget, otpMsg *common.AgentOTPMsg, synchronous bool) error {
 	otpBytes, _ := json.Marshal(otpMsg) //nolint:gosec // G117: Passcode is unset here (this builds the OTP *request*, not a response) and the message is sent over the encrypted NHP channel, not logged
 
 	serverPeer := target.GetServerPeerForScheme(a.config.DefaultCipherScheme)
@@ -58,6 +65,25 @@ func (a *UdpAgent) requestOtp(target *KnockTarget, otpMsg *common.AgentOTPMsg) e
 	if !a.IsRunning() {
 		log.Error("agent(%s#%d)[RequestOtp] MsgData channel closed or being closed, skip sending", otpMsg.UserId, otpMd.TransactionId)
 		return common.ErrPacketToMessageRoutineStopped
+	}
+
+	if synchronous {
+		// The temporary agent is stopped as soon as this returns. Bypass the
+		// asynchronous queues so Stop cannot discard a successful request.
+		mad, err := a.device.MsgToPacket(otpMd)
+		if err != nil {
+			return err
+		}
+		conn, err := net.DialUDP("udp", nil, otpMd.RemoteAddr)
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			return err
+		}
+		_, err = conn.Write(mad.BasePacket.Content)
+		return err
 	}
 
 	// IsRunning() above is only a cheap fast-path reject; it cannot make

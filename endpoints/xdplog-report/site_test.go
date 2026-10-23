@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -64,8 +65,9 @@ func runSiteCmd(t *testing.T, logs, out string, extraArgs ...string) {
 }
 
 // indexAndPages enumerates the files that the site subcommand owns: the
-// index, the scripts it writes, state, and every detail page under
-// d/<source>/<day>.{html,json}.
+// index, the scripts it writes, state, every detail page under
+// d/<source>/<day>.{html,json}, and the private per-day fact files the
+// all-time source and country totals are unioned from.
 func indexAndPages(out string) []string {
 	files := []string{
 		filepath.Join(out, "index.html"),
@@ -78,7 +80,8 @@ func indexAndPages(out string) []string {
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		if strings.HasPrefix(p, filepath.Join(out, "d", "server")) {
+		if strings.HasPrefix(p, filepath.Join(out, "d", "server")) ||
+			strings.HasPrefix(p, filepath.Join(out, "facts", "server")) {
 			files = append(files, p)
 		}
 		return nil
@@ -1130,7 +1133,7 @@ func TestSiteIndexNoHeroWhenEmpty(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := renderIndex(&SiteOptions{OutDir: out}, nil); err != nil {
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}); err != nil {
 		t.Fatal(err)
 	}
 	page, err := os.ReadFile(filepath.Join(out, "index.html"))
@@ -1214,7 +1217,8 @@ func TestSourceColumnRendersLabel(t *testing.T) {
 }
 
 // TestTotalNumberJS pins the machine-readable export another site embeds with
-// a <script src>: one constant, the same total the homepage hero shows.
+// a <script src>: three constants, the packet total being the same number the
+// homepage hero shows.
 func TestTotalNumberJS(t *testing.T) {
 	logs, out := stageTestdata(t)
 	runSiteCmd(t, logs, out)
@@ -1230,6 +1234,22 @@ func TestTotalNumberJS(t *testing.T) {
 	}
 	if !strings.Contains(body, "Counting starts: "+siteDay1) {
 		t.Error("totalnumber.js does not record the counting start date")
+	}
+	// The two union counts are published as constants too, so an embedding
+	// page never has to special-case a missing binding. The fixture resolves
+	// no countries without a geo source, and day 1's two public sources are
+	// day 2's as well.
+	got := readTotalNumbers(t, out)
+	for _, name := range []string{"NHP_TOTAL_ATTACK_SOURCE_IPS", "NHP_TOTAL_ATTACK_COUNTRIES"} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("totalnumber.js does not export %s:\n%s", name, body)
+		}
+	}
+	if n := got["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 2 (fixture has one reserved source)", n)
+	}
+	if n := got["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 0 (no geo source configured)", n)
 	}
 	// It has to stay executable as a plain classic script.
 	for _, scheme := range []string{"http://", "https://"} {
@@ -1247,15 +1267,20 @@ func TestTotalNumberJSEmptySite(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := renderIndex(&SiteOptions{OutDir: out}, nil); err != nil {
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(out, "totalnumber.js"))
 	if err != nil {
 		t.Fatalf("totalnumber.js not written on an empty site: %v", err)
 	}
-	if !strings.Contains(string(b), "const NHP_TOTAL_ATTACK_BLOCKED = 0;") {
-		t.Errorf("empty site total is not 0:\n%s", b)
+	for name, n := range readTotalNumbers(t, out) {
+		if n != 0 {
+			t.Errorf("empty site %s = %d, want 0:\n%s", name, n, b)
+		}
+	}
+	if got := len(readTotalNumbers(t, out)); got != 3 {
+		t.Errorf("empty site exports %d constants, want all 3:\n%s", got, b)
 	}
 	if strings.Contains(string(b), "Counting starts:") {
 		t.Error("empty site must not claim a counting start date")
@@ -1410,7 +1435,7 @@ func TestIndexJSONIsArrayNotNull(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := renderIndex(&SiteOptions{OutDir: out}, nil); err != nil {
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(out, "index.json"))
@@ -1441,7 +1466,14 @@ func writeDropLog(t *testing.T, logs, source, day string, pkts int) {
 // because runSiteCmd passes no -state.
 func readSiteState(t *testing.T, out string) SiteState {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(out, "state.json"))
+	return readSiteStateAt(t, filepath.Join(out, "state.json"))
+}
+
+// readSiteStateAt is readSiteState for a run that passed -state somewhere
+// other than <out>.
+func readSiteStateAt(t *testing.T, path string) SiteState {
+	t.Helper()
+	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1641,5 +1673,274 @@ func TestSitePageOnlyDayRerendersOnce(t *testing.T) {
 	}
 	if second.ModTime().UnixNano() != first.ModTime().UnixNano() {
 		t.Error("page-only day was re-rendered again on an unchanged run")
+	}
+}
+
+// writeDropLogWithSources writes a day whose per-packet DROP lines name every
+// address in srcs, plus the [NHP-STAT] line that carries the exact packet
+// count. Sources, not packets, are what the all-time totals union, so a test
+// that wants distinct attackers has to write addresses here.
+func writeDropLogWithSources(t *testing.T, logs, source, day string, pkts int, srcs ...string) {
+	t.Helper()
+	dir := filepath.Join(logs, source)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=%d LOGGED=%d TOTAL=%d\n", pkts, len(srcs), pkts)
+	for i, s := range srcs {
+		fmt.Fprintf(&b, "10:%02d:00 s [NHP-DROP] REASON=TCP_OTHER SRC=%s DST=10.0.0.1 LEN=60 PROTO=TCP SPT=1 DPT=%d RELAY=0\n", i, s, 1000+i)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "nhp_server_xdp-"+day+".log"), []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// readTotalNumbers parses the constants out of totalnumber.js. The file is a
+// comment block followed by three `const NAME = <int>;` lines, so a regexp
+// per name is enough and a hand-rolled JS parser would not be.
+func readTotalNumbers(t *testing.T, out string) map[string]int {
+	t.Helper()
+	b := readArtifact(t, out, "totalnumber.js")
+	got := map[string]int{}
+	for _, m := range rangeConstants.FindAllStringSubmatch(string(b), -1) {
+		n, err := strconv.Atoi(m[2])
+		if err != nil {
+			t.Fatalf("totalnumber.js constant %s = %q: %v", m[1], m[2], err)
+		}
+		got[m[1]] = n
+	}
+	return got
+}
+
+var rangeConstants = regexp.MustCompile(`const (NHP_[A-Z_]+) = (\d+);`)
+
+// TestDayFactsRoundTrip pins the per-day sidecar encoding. The counts it
+// carries are the ones totalnumber.js publishes, so a decode that silently
+// dropped a record would publish a smaller total with no other symptom.
+func TestDayFactsRoundTrip(t *testing.T) {
+	srcs := []uint64{1, 2, 3, 0xffff_ffff_ffff_ffff}
+	countries := []string{"AU", "CN", "US"}
+	enc := encodeDayFacts(srcs, countries)
+	gotSrcs, gotCountries, err := decodeDayFacts(enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotSrcs) != len(srcs) {
+		t.Fatalf("decoded %d sources, want %d", len(gotSrcs), len(srcs))
+	}
+	for i := range srcs {
+		if gotSrcs[i] != srcs[i] {
+			t.Errorf("source[%d] = %d, want %d", i, gotSrcs[i], srcs[i])
+		}
+	}
+	if strings.Join(gotCountries, ",") != "AU,CN,US" {
+		t.Errorf("countries = %v, want AU,CN,US", gotCountries)
+	}
+	// A future layout must be refused rather than decoded as this one: the
+	// bytes would still be plausible, and the site would publish a wrong
+	// total with nothing to notice.
+	if _, _, err := decodeDayFacts([]byte("XDF2nope")); err == nil {
+		t.Error("a file with the wrong magic was accepted")
+	}
+	// A truncated tail loses that day, not the whole run: the complete
+	// records before the cut still decode, and only the partial one is
+	// dropped.
+	if srcs, countries, err := decodeDayFacts(enc[:len(enc)-3]); err != nil {
+		t.Errorf("truncated file refused outright: %v", err)
+	} else if len(countries) != 2 || countries[1] != "CN" {
+		t.Errorf("truncated file kept %v, want the two complete records AU,CN", countries)
+	} else if len(srcs) != len(gotSrcs) {
+		t.Errorf("truncated file lost complete source records: %d", len(srcs))
+	}
+}
+
+// TestSiteTotalsUnionAcrossDays is the point of the sidecar: an address that
+// attacks on several days is one attacker. Summing the per-day counts would
+// publish 4 here; the union is 3. The reserved address is excluded from both,
+// matching the per-day unique_attack_ips the index already shows.
+func TestSiteTotalsUnionAcrossDays(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100,
+		"203.0.113.5", "198.51.100.7", "10.0.0.9")
+	writeDropLogWithSources(t, logs, "server", siteDay2, 200,
+		"203.0.113.5", "192.0.2.9")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	// The per-day numbers are unchanged by any of this: 2 unique sources each,
+	// so a reader summing unique_attack_ips gets 4.
+	var idx []SiteDaySummary
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	var sum int
+	for _, s := range idx {
+		sum += s.UniqueIPs
+	}
+	if sum != 4 {
+		t.Fatalf("per-day unique sources sum to %d, want 4", sum)
+	}
+
+	got := readTotalNumbers(t, out)
+	if got["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 3 (the union, not the sum)",
+			got["NHP_TOTAL_ATTACK_SOURCE_IPS"])
+	}
+	// 203.0.113.0/24 resolves to AU in testdata/geo.csv; the other two
+	// resolve to nothing and must not be counted as a country.
+	if got["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 1 (AU only)",
+			got["NHP_TOTAL_ATTACK_COUNTRIES"])
+	}
+	if got["NHP_TOTAL_ATTACK_BLOCKED"] != 300 {
+		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want 300", got["NHP_TOTAL_ATTACK_BLOCKED"])
+	}
+}
+
+// TestGeoInstallReachesPublishedDays covers the deploy that drops the
+// GeoLite2 database onto the relay. Nothing about those days' raw logs
+// changes, so without the geo fingerprint in state.json they would never be
+// re-analyzed and the site's country total would stay at whatever the days
+// after the install happened to see.
+func TestGeoInstallReachesPublishedDays(t *testing.T) {
+	logs, out := stageTestdata(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	runSiteCmd(t, logs, out, "-state", statePath)
+
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
+		t.Fatalf("countries = %d before any geo source exists, want 0", n)
+	}
+	if st := readSiteStateAt(t, statePath); st.Days["server"][siteDay1].Geo != "" {
+		t.Errorf("state records geo %q for a day analyzed without one",
+			st.Days["server"][siteDay1].Geo)
+	}
+
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
+		t.Errorf("countries = %d after installing a geo source, want 1", n)
+	}
+	jb, err := os.ReadFile(filepath.Join(out, "d", "server", siteDay1+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	if err := json.Unmarshal(jb, &rep); err != nil {
+		t.Fatal(err)
+	}
+	if !rep.GeoEnabled || len(rep.TopGeo) == 0 {
+		t.Error("a day published before the geo source was installed was not re-analyzed with it")
+	}
+	if st := readSiteStateAt(t, statePath); st.Days["server"][siteDay1].Geo == "" {
+		t.Error("state did not record the geo source that produced the day")
+	}
+}
+
+// TestGeoRemovalKeepsPublishedAttribution pins the asymmetry in geoStale: a
+// database that goes away must not re-analyze the days back to no regions.
+// Their raw logs age out of the collector's cache, so the attribution they
+// already have is the last copy of it.
+func TestGeoRemovalKeepsPublishedAttribution(t *testing.T) {
+	logs, out := stageTestdata(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	runSiteCmd(t, logs, out, "-state", statePath) // database gone
+
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
+		t.Errorf("countries = %d after the geo source went away, want 1 (kept)", n)
+	}
+}
+
+// TestUnpublishRemovesFacts covers the -since floor moving forward. The day's
+// pages come down and its state entry is dropped; leaving its fact file would
+// keep its attackers in the all-time source count for a day the index no
+// longer lists.
+func TestUnpublishRemovesFacts(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+
+	const preFloor = "2026-10-15"
+	writeDropLogWithSources(t, logs, "server", preFloor, 50, "198.51.100.7")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", statePath, "-since", "")
+
+	facts := dayFactsPath(statePath, "server", preFloor)
+	if _, err := os.Stat(facts); err != nil {
+		t.Fatalf("facts not written for the pre-floor day: %v", err)
+	}
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
+		t.Fatalf("sources = %d, want 2", n)
+	}
+
+	runSiteCmd(t, logs, out, "-state", statePath) // default floor unpublishes preFloor
+
+	if _, err := os.Stat(facts); !os.IsNotExist(err) {
+		t.Errorf("facts for the unpublished day survived: %v", err)
+	}
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 1 {
+		t.Errorf("sources = %d after unpublishing the pre-floor day, want 1", n)
+	}
+}
+
+// TestMissingFactsAreReported covers a day whose facts file is gone and whose
+// raw log no longer exists — the state a site is left in when the feature
+// lands on a build whose days are already published. The run must still
+// publish (the packet total is unaffected) and must say which day is not
+// contributing, rather than quietly publishing a smaller source total.
+func TestMissingFactsAreReported(t *testing.T) {
+	logs, out := stageTestdata(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	runSiteCmd(t, logs, out, "-state", statePath)
+
+	if err := os.Remove(filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dayFactsPath(statePath, "server", siteDay2)); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := run([]string{"site", "-logs", logs, "-out", out, "-state", statePath}, &buf); err != nil {
+		t.Fatalf("a day with no facts must not fail the run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "server/"+siteDay2) {
+		t.Errorf("run output does not name the day that is not contributing:\n%s", buf.String())
+	}
+	if !indexHasDay(t, out, siteDay2) {
+		t.Error("a day with no facts dropped out of the index")
+	}
+	// Only day 1's attackers are counted, and day 1's own facts survived.
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
+		t.Errorf("sources = %d, want 2 (day 1 only)", n)
+	}
+}
+
+// TestGeoStaleDirection pins the trigger rule itself: a day analyzed with no
+// geo source is stale once one exists, and never the other way round.
+func TestGeoStaleDirection(t *testing.T) {
+	for _, tc := range []struct {
+		prev, want string
+		stale      bool
+	}{
+		{"", "", false},
+		{"", "mmdb:/db", true},
+		{"mmdb:/db", "", false},
+		{"mmdb:/db", "mmdb:/db", false},
+		{"mmdb:/db", "csv:/db", true},
+	} {
+		if got := geoStale(tc.prev, tc.want); got != tc.stale {
+			t.Errorf("geoStale(%q, %q) = %v, want %v", tc.prev, tc.want, got, tc.stale)
+		}
 	}
 }

@@ -83,6 +83,40 @@ type SiteDayState struct {
 	// lacks degrades to "this page predates the current template" and
 	// rebuilds itself. See siteRenderVersion.
 	Render int `json:"render"`
+	// Geo is the geo source whose lookups produced this day, empty for
+	// none. A day analyzed with no database has no region table and no
+	// countries, and nothing about its raw log changing would ever rebuild
+	// it — so installing the database has to be what marks it stale. See
+	// geoKey.
+	Geo string `json:"geo,omitempty"`
+}
+
+// geoKey names the geo source a run is using, for the per-day fingerprint.
+// Only the path is part of it, deliberately not the database's size or mtime:
+// MaxMind publishes twice a week, and re-analyzing every cached day on each
+// update would rewrite every page for a table nobody reads. Re-deriving after
+// a database swap is what -force is for.
+func geoKey(opts *SiteOptions) string {
+	switch {
+	case opts.GeoMMDB != "":
+		return "mmdb:" + opts.GeoMMDB
+	case opts.GeoCSV != "":
+		return "csv:" + opts.GeoCSV
+	default:
+		return ""
+	}
+}
+
+// geoStale reports whether a day analyzed under prev has to be re-analyzed
+// because the current run has a geo source prev did not use.
+//
+// Only that direction triggers a rebuild. Taking a database away must not wipe
+// the attribution a published day already carries: its raw log may already
+// have aged out of the collector's cache, in which case the region table and
+// the day's countries are unrecoverable, and a site that quietly lost them
+// would report a smaller country total than it really saw.
+func geoStale(prev string, want string) bool {
+	return want != "" && prev != want
 }
 
 // siteRenderVersion identifies the detail-page markup this binary writes.
@@ -310,13 +344,23 @@ func runSite(args []string, stdout io.Writer) error {
 		fmt.Fprintf(stdout, "site: %d day(s) before -since %s unpublished (%d detail page file(s) removed)\n", len(preFloor), opts.Since, removedPreSince)
 	}
 
+	// The all-time source and country counts come from each day's private
+	// facts, unioned here. Computed on every run, not only a dirty one, so a
+	// day whose facts cannot be read is reported today rather than the day
+	// some unrelated input next goes stale.
+	union := unionDayFacts(opts.StatePath, summaries)
+	if len(union.Missing) > 0 {
+		fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the all-time totals are a lower bound\n",
+			len(union.Missing), strings.Join(union.Missing, ", "))
+	}
+
 	if dirty {
 		// The index before the state, deliberately. The index is what links
 		// the pages just taken down, so if it cannot be rendered the state
 		// must not record the removals either — the next run then rebuilds
 		// both, instead of inheriting a state that says the index is current
 		// while the site still serves links to deleted pages.
-		if err := renderIndex(opts, summaries); err != nil {
+		if err := renderIndex(opts, summaries, union); err != nil {
 			return fmt.Errorf("render index: %w", err)
 		}
 		if err := saveSiteState(opts.StatePath, state); err != nil {
@@ -404,6 +448,13 @@ func unpublishDay(opts *SiteOptions, state *SiteState, in siteInput) (int, error
 			return removed, fmt.Errorf("unpublish %s: %w", p, err)
 		}
 		removed++
+	}
+	// The day's facts go down with its pages. Leaving them would keep the
+	// day's attackers in the all-time source count for a day the index no
+	// longer lists — the exact "published number disagrees with the pages
+	// behind it" state the -since floor exists to prevent.
+	if err := removeDayFacts(dayFactsPath(opts.StatePath, in.Source, in.Day)); err != nil {
+		return removed, fmt.Errorf("unpublish facts: %w", err)
 	}
 	if days, ok := state.Days[in.Source]; ok {
 		delete(days, in.Day)
@@ -624,15 +675,20 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 		state.Days[in.Source] = prevDays
 	}
 	prev := prevDays[in.Day]
-	// Three ways a day is dirty: the input fingerprint moved, the operator
-	// asked for a full rebuild, or the page was rendered by a different
-	// template version. The last one is what lets a markup-only change reach
-	// every published day — the input has not changed at all in that case, so
+	// Four ways a day is dirty: the input fingerprint moved, the operator
+	// asked for a full rebuild, the page was rendered by a different
+	// template version, or a geo source appeared that this day was not
+	// analyzed with. The third is what lets a markup-only change reach every
+	// published day — the input has not changed at all in that case, so
 	// without siteRenderVersion those pages would keep whatever title the
-	// deploy that first wrote them happened to use.
+	// deploy that first wrote them happened to use. The fourth is what makes
+	// installing the GeoLite2 database reach days published before it
+	// existed, instead of leaving the site's country total at whatever the
+	// days after the install happened to see.
 	unchanged := !opts.Force &&
 		prev.Built &&
 		prev.Render == siteRenderVersion &&
+		!geoStale(prev.Geo, geoKey(opts)) &&
 		prev.Size == fi.Size() &&
 		prev.MTime == fi.ModTime().Unix()
 	if unchanged {
@@ -661,6 +717,21 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	rep.BackLink = "../../index.html"
 	rep.IsSiteDetail = true
 
+	// The day's source and country sets are captured here, while the raw log
+	// that produced them still exists. Once the collector prunes it, this is
+	// the last chance: the published JSON carries only counts and a top N,
+	// neither of which can be unioned across days.
+	addrs := an.SourceAddrs()
+	srcs := make([]uint64, 0, len(addrs))
+	for _, addr := range addrs {
+		srcs = append(srcs, sourceHash(addr))
+	}
+	sort.Slice(srcs, func(i, j int) bool { return srcs[i] < srcs[j] })
+	factsPath := dayFactsPath(opts.StatePath, in.Source, in.Day)
+	if err := writeDayFacts(factsPath, srcs, an.Countries()); err != nil {
+		return SiteDaySummary{}, false, fmt.Errorf("write facts: %w", err)
+	}
+
 	dayDir := filepath.Join(opts.OutDir, "d", in.Source)
 	if err := os.MkdirAll(dayDir, 0o755); err != nil {
 		return SiteDaySummary{}, false, err
@@ -678,6 +749,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 		Built:  true,
 		Path:   in.Path,
 		Render: siteRenderVersion,
+		Geo:    geoKey(opts),
 	}
 
 	return summaryFromReport(in, rep, opts.Today), true, nil
@@ -695,8 +767,8 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 // the day's only remaining record, and rewriting it would churn the file the
 // next run parses for no change in bytes.
 //
-// Size, MTime and Path are carried over untouched so that a day whose raw log
-// reappears is still rebuilt from the log rather than trusted from here.
+// Size, MTime, Path and Geo are carried over untouched so that a day whose raw
+// log reappears is still rebuilt from the log rather than trusted from here.
 func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (bool, error) {
 	var prev SiteDayState
 	if days, ok := state.Days[in.Source]; ok {
@@ -734,6 +806,7 @@ func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (boo
 		Built:  true,
 		Path:   prev.Path,
 		Render: siteRenderVersion,
+		Geo:    prev.Geo,
 	}
 	if days, ok := state.Days[in.Source]; ok {
 		days[in.Day] = next

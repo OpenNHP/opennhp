@@ -145,10 +145,17 @@ Layout under `-out`:
   index.html
   index.json
   countup.js                # self-hosted homepage counter (see below)
-  totalnumber.js            # the total as one JS constant (see below)
+  totalnumber.js            # the all-time totals as JS constants (see below)
   d/server/2026-10-16.html  # one per day
   d/server/2026-10-16.json
 ```
+
+Beside `state.json` (i.e. under `-state`, never under `-out` on the demo
+deployment) the site keeps one private file per day,
+`facts/<source>/<day>.facts`: the day's distinct source addresses and
+countries, hashed. The all-time source and country totals are unions of
+those; see `totalnumber.js` below for why they cannot be summed from
+`index.json` or published in it.
 
 The homepage's `<h1>` is **Invisible Server, Visible Attacks** and it opens with a
 hero line: the all-time **total attack packets blocked**, summed over every
@@ -235,31 +242,70 @@ a stricter older CSP, or under `prefers-reduced-motion`, the number reads as
 static text. The site loads no third-party resource — the nginx vhost's CSP is
 `script-src 'self'`, and countup.js is the only script it allows.
 
-### `totalnumber.js`: embedding the total on another site
+### `totalnumber.js`: embedding the totals on another site
 
-`totalnumber.js` publishes the same all-time total as a single JavaScript
-constant, for a page elsewhere that wants the headline figure and nothing
-else:
+`totalnumber.js` publishes three all-time figures as JavaScript constants, for
+a page elsewhere that wants the headline numbers and nothing else:
 
 ```html
 <script src="https://stats.opennhp.org/totalnumber.js"></script>
-<script>console.log(NHP_TOTAL_ATTACK_BLOCKED);</script>
+<script>
+  console.log(NHP_TOTAL_ATTACK_BLOCKED);    // attack packets, exact
+  console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // distinct source addresses
+  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // distinct countries
+</script>
 ```
 
 It is a sibling of `index.json`, not a replacement: `index.json` stays
-authoritative (one row per day, total reproducible by summing `drop_pkts`),
-while this file is the one-number answer. The value is a pure function of the
-summaries, so a rebuild with no new data rewrites a byte-identical file. On an
-empty site it is still written, exporting `0` with no counting-start comment,
-so an embedding page never gets a 404 and a dangling reference. As a classic
+authoritative (one row per day, packet total reproducible by summing
+`drop_pkts`), while this file is the headline answer. On an empty site it is
+still written, exporting `0` for all three with no counting-start comment, so
+an embedding page never gets a 404 and a dangling reference. As a classic
 script it needs no CORS header — the *importing* page's CSP governs it.
 
-`state.json` (the incremental build state) goes wherever `-state` says and
-**not** into `-out` by default on the demo deployment. It records the
-absolute path of every input file, which is host layout an anonymous visitor
-to a public site has no business reading; the deploy passes a private path
-and the nginx vhost refuses `/state.json` as a second line of defence.
-Delete it to force a full rebuild (or pass `-force`).
+**The two union counts are not sums, and they are not reproducible from
+`index.json`.** `unique_attack_ips` is a per-day *count*: an address that
+scans the host every day is one attacker, and adding the days up counts it
+once per day. The all-time figure is the union of the days' address sets, so
+each day's set is captured while its raw log still exists and stored in
+`facts/<source>/<day>.facts` next to `state.json` (see below). The same goes
+for countries. Private/reserved sources are excluded from both, matching the
+per-day column, and a source the GeoLite2 database cannot place belongs to no
+country — it raises the source count only.
+
+### GeoIP: what the `-geo-mmdb` / `-geo-csv` flags change on the site
+
+Pass a geo database and every published day gains a region table, and the
+site's country total starts filling in. Each day's `state.json` entry records
+the geo source it was analysed with, so **installing a database re-analyses
+the days already published** — nothing about their raw logs changes, and
+without that fingerprint the country total would stay at whatever the days
+after the install happened to see. Taking a database away is deliberately
+*not* a trigger in the other direction: a day's raw log may already have aged
+out of the collector's cache, and re-analysing without geo would wipe the
+attribution that can never be recovered. Use `-force` to re-derive after
+swapping in a newer GeoLite2 build.
+
+A day whose raw log has already been pruned cannot be re-analysed, so it keeps
+whatever its published record says. If a day's facts file is missing its
+sources and countries contribute nothing, and the run says so on stdout:
+
+```
+site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the all-time totals are a lower bound
+```
+
+The run does not fail: the packet total is exact and stays published. The
+line is there because a silently smaller "unique sources" number is exactly
+the kind of thing this site is written against.
+
+`state.json` and the `facts/` directory beside it (the incremental build state
+and the per-day source/country sets) go wherever `-state` says and **not**
+into `-out` by default on the demo deployment. `state.json` records the
+absolute path of every input file, and the fact files are derived from
+unmasked source addresses; the deploy passes a private path and the nginx
+vhost refuses `/state.json` and `/facts/` as a second line of defence.
+Delete the state to force a full rebuild (or pass `-force`); deleting only the
+`facts/` directory is recoverable by the same route.
 
 `index.json` is a JSON array of summaries, sorted by day descending:
 
@@ -469,10 +515,14 @@ go run ./xdplog-report site \
   index.html
   index.json
   countup.js
-  totalnumber.js          # 累计总数，导出为一个 JS 常量
+  totalnumber.js          # 累计数字，导出为 JS 常量
   d/server/2026-10-16.html  # 每天一个
   d/server/2026-10-16.json
 ```
+
+`state.json` 旁边（即 `-state` 指向的目录下，demo 部署中永远不在 `-out` 里）还会为每天
+保存一个私有文件 `facts/<source>/<day>.facts`：当天去重后的来源地址与国家，存的是哈希。
+全站的来源总数和国家总数就是这些集合的并集，原因见下面的 `totalnumber.js`。
 
 首页的 `<h1>` 是 **Invisible Server, Visible Attacks**，标题下方先给出一个 hero 大数字：
 **累计被拦截的攻击数据包数**，等于 `index.json` 所有行的 `drop_pkts` 之和；再下一行小字
@@ -520,23 +570,51 @@ dirty，因此该行会在同一次运行里从 `index.json` 和首页总数中�
 泛称。`index.json` 的 `source` 字段保持目录原名 —— 它属于已发布的契约，已有解析代码依赖
 这个值。
 
-`totalnumber.js` 把同一个累计总数导出成一个 JavaScript 常量，供别的站点直接引用：
+`totalnumber.js` 把三个累计数字导出成 JavaScript 常量，供别的站点直接引用：
 
 ```html
 <script src="https://stats.opennhp.org/totalnumber.js"></script>
-<script>console.log(NHP_TOTAL_ATTACK_BLOCKED);</script>
+<script>
+  console.log(NHP_TOTAL_ATTACK_BLOCKED);    // 被拦截的攻击包数（精确）
+  console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // 去重后的来源 IP 总数
+  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // 去重后的来源国家总数
+</script>
 ```
 
-它是 `index.json` 的补充而不是替代：`index.json` 依然是权威数据（每天一行，总数可通过对
-`drop_pkts` 求和复现），这个文件只回答"总数是多少"这一个问题。内容是 summaries 的纯函数，
-所以没有新数据时重跑会写出逐字节相同的文件。站点为空时它照样生成，导出 `0` 且不带统计起点
-注释，引用方不会拿到 404 然后留下一个悬空引用。它是普通 classic script，跨站引用不需要
-CORS 头 —— 受引用方自己的 CSP 约束。
+它是 `index.json` 的补充而不是替代：`index.json` 依然是权威数据（每天一行，包数可通过对
+`drop_pkts` 求和复现），这个文件只回答"总数是多少"这一个问题。站点为空时它照样生成，
+三个常量都是 `0` 且不带统计起点注释，引用方不会拿到 404 然后留下一个悬空引用。它是普通
+classic script，跨站引用不需要 CORS 头 —— 受引用方自己的 CSP 约束。
 
-`state.json`（内部增量状态）写到 `-state` 指定的位置。demo 部署把它放在
-`-out` 之外：它记录了每个输入文件的绝对路径，属于主机布局，不该出现在公开站点上；
-部署脚本传入私有路径，nginx vhost 另外再用 `location = /state.json { return 404; }`
-挡一道。删除该文件（或加 `-force`）即可触发全量重算。
+**后两个数字是并集，不是求和，也无法从 `index.json` 复现。**
+`unique_attack_ips` 是"某一天有多少个不同的来源"：一个每天扫一遍主机的 IP 只有一个身份，
+把各天的数字加起来却会把它算成好几天。因此全站数字取的是各天地址集合的并集 —— 每天的集合
+在原始日志还在的时候就抓下来，存进 `state.json` 旁边的 `facts/<source>/<day>.facts`
+（见下）。国家数同理。私有/保留地址两个口径都排除，与索引里每天那一列一致；GeoLite2 数据库
+定位不到的来源不属于任何国家，只抬升来源数。
+
+### GeoIP：`-geo-mmdb` / `-geo-csv` 对站点的影响
+
+给了 geo 数据库之后，每个已发布的日子都会多出一张地区表，站点的国家总数也开始有值。
+`state.json` 会为每一天记录它是**用哪个** geo 源分析的，所以**装上数据库会自动重算已经发布的
+那些天** —— 它们原始日志没有任何变化，没有这个指纹的话国家总数会一直停在"装库之后那几天"
+的水平。反方向是刻意不触发的：某天的原始日志可能已经被采集脚本清掉了，再不带 geo 重算一遍
+等于抹掉再也找不回来的归属信息。换了新版 GeoLite2 数据库想重算，用 `-force`。
+
+原始日志已被清掉、又恰好没有 facts 文件的那一天，它的来源和国家不参与统计，运行时会明说：
+
+```
+site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the all-time totals are a lower bound
+```
+
+这次运行不会失败：包数总数是精确的，照常发布。之所以要打这一行，是因为悄悄偏小的"来源数"
+正是这个站点一直在防的那类事。
+
+`state.json` 和它旁边的 `facts/` 目录（增量状态与每天的来源/国家集合）写到 `-state` 指定
+的位置。demo 部署把它们放在 `-out` 之外：`state.json` 记录了每个输入文件的绝对路径，
+属于主机布局；facts 文件是由未脱敏的来源地址派生出来的。部署脚本传入私有路径，nginx vhost
+另外再用 `location = /state.json { return 404; }` 和 `location ^~ /facts/ { return 404; }`
+各挡一道。删除状态文件（或加 `-force`）即可触发全量重算。
 
 `index.json` 是一个按日期倒序排列的摘要数组：
 

@@ -381,15 +381,43 @@ its row and its share of the total, and only the run fails — otherwise a
 transient EACCES or ENOSPC on the web root would silently shrink
 `NHP_TOTAL_ATTACK_BLOCKED` and put it back on the next good run.
 
-**`totalnumber.js`** publishes the same total as one JavaScript constant,
-`NHP_TOTAL_ATTACK_BLOCKED`, for another site to embed with
-`<script src="https://stats.opennhp.org/totalnumber.js">`. It is generated
-into the web root beside `index.html` and served from its own nginx location
-(short `Cache-Control`, no CORS header — a classic script needs none, and the
-*importing* page's CSP governs it). It is written even on an empty site, as
-`0`, so an embedding page never gets a 404 and a dangling reference. It is a
-sibling of `index.json`, not a replacement: `index.json` stays authoritative
-and the total stays reproducible by summing `drop_pkts`.
+**`totalnumber.js`** publishes three all-time figures as JavaScript constants
+for another site to embed with
+`<script src="https://stats.opennhp.org/totalnumber.js">`:
+`NHP_TOTAL_ATTACK_BLOCKED` (exact packets, the same number the hero shows),
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. It is
+generated into the web root beside `index.html` and served from its own nginx
+location (short `Cache-Control`, no CORS header — a classic script needs
+none, and the *importing* page's CSP governs it). All three are written even
+on an empty site, as `0`, so an embedding page never gets a 404 and a dangling
+reference. Only the packet total is a sibling of `index.json` in the sense
+that index.json stays authoritative and the total stays reproducible by
+summing `drop_pkts`.
+
+**The other two are unions, not sums, and they are not reproducible from
+`index.json`.** `unique_attack_ips` is a per-day *count*: an address that
+scans the host daily is one attacker, and adding the days counts it once per
+day. So each day's set of sources and countries is captured while its raw log
+still exists and written to `facts/<source>/<day>.facts` beside `state.json`
+(`facts.go`) — outside the web root on the relay, refused by `/facts/` in the
+nginx vhost, and never published because a 64-bit hash of an IPv4 address is
+reversible by brute force over 2^32. `unpublishDay` deletes a day's file with
+its pages, so the -since floor cannot leave a removed day's attackers in the
+total; a day whose facts are unreadable is named on stdout rather than
+silently dropped, because a smaller published total is exactly the failure
+this site is written against.
+
+**GeoIP is part of the state's fingerprint.** `SiteDayState.Geo` records the
+geo source a day was analyzed with, and a day analyzed without one is stale
+the moment a database appears — so dropping GeoLite2-City on the relay
+re-analyzes the days already published instead of leaving the country total
+at whatever the days after the install saw. The reverse is deliberately not a
+trigger: a day whose raw log has aged out can never get its attribution back,
+so taking a database away must not wipe what a published day already has.
+`deploy/scripts/xdpstats-collect.sh` passes
+`-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` when that
+file is readable (MaxMind's license means it is uploaded by hand, not shipped
+by the deploy) and says so in the collect log either way.
 
 **Data flow**
 

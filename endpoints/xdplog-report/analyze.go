@@ -53,6 +53,11 @@ type Analyzer struct {
 	unknown     map[string]struct{}
 	v6Events    int
 	totalEvents int
+	// countries is every ISO code a DROP source resolved to, filled by Build.
+	// It is a set, not a count, because the site's all-time country total is
+	// the union across days and no day can be re-analyzed once its raw log
+	// has aged out. See facts.go.
+	countries map[string]struct{}
 }
 
 func NewAnalyzer(since, until string) *Analyzer {
@@ -69,6 +74,7 @@ func NewAnalyzer(since, until string) *Analyzer {
 		lastTotal:  map[string]uint64{},
 		budgetDays: map[string]string{},
 		unknown:    map[string]struct{}{},
+		countries:  map[string]struct{}{},
 	}
 }
 
@@ -401,6 +407,10 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 	geoAgg := map[string]*GeoRow{}
 	geoIPs := map[string]map[netip.Addr]struct{}{}
 	var geoEvents int
+	// Drop the accumulation: Build is the only place that knows the day's
+	// country set, and calling it twice over the same Analyzer (as the tests
+	// do) must not double-report.
+	clear(a.countries)
 	for addr, agg := range a.ips {
 		if isReserved(addr) {
 			rep.ReservedIPs++
@@ -414,6 +424,7 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 		country := "Unknown"
 		if g, ok := geo.Lookup(addr); ok && g.Country != "" {
 			country = g.Country
+			a.countries[country] = struct{}{}
 		}
 		row := geoAgg[country]
 		if row == nil {
@@ -485,6 +496,35 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 	}
 	rep.IPv6Share = ratio(uint64(a.v6Events), dropEvents)
 	return rep
+}
+
+// SourceAddrs returns the day's distinct attack sources, reserved ranges
+// excluded so the count lines up with Report.UniqueIPs — the number the site
+// already publishes per day, and the one an all-time total would otherwise
+// silently disagree with.
+//
+// A private/loopback source is excluded from the union but was counted as
+// UniqueIPs that day, so a day with only reserved sources contributes to
+// neither. That is deliberate: the site's claim is about attackers on the
+// internet, and 10.0.0.9 is not one.
+func (a *Analyzer) SourceAddrs() []netip.Addr {
+	out := make([]netip.Addr, 0, len(a.ips))
+	for addr := range a.ips {
+		if isReserved(addr) {
+			continue
+		}
+		out = append(out, addr)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Less(out[j]) })
+	return out
+}
+
+// Countries returns the sorted ISO codes the day's sources resolved to.
+// Empty when Build ran without a geo resolver, and "Unknown" is never among
+// them: a source the database cannot place belongs to no country, and counting
+// the placeholder would report a country that does not exist.
+func (a *Analyzer) Countries() []string {
+	return sortedKeys(a.countries)
 }
 
 func topPorts(m map[int]int, n int) []int {

@@ -24,7 +24,8 @@
 #   3. For every (source, date) the local cache is missing, smaller than
 #      the remote, OR has today's UTC date, runs `get <date>`, validates
 #      the last line, gzips, and writes the cache atomically.
-#   4. Runs `xdplog-report site` to rebuild the static site from the cache.
+#   4. Runs `xdplog-report site` to rebuild the static site from the cache,
+#      passing -geo-mmdb when the GeoLite2 database is present on the relay.
 #   5. Prunes raw cache files older than 90 days.
 #
 # Concurrency: protected by a non-blocking flock at $RAW_DIR/.lock. A second
@@ -46,10 +47,14 @@ set -euo pipefail
 #   WEB_DIR  — the published site. Lives under /var/www, not $HOME: on
 #              AL2023 /home/ec2-user is mode 0700 and nginx workers run as
 #              nginx, so a root under $HOME returns 403 to every request.
-#   STATE    — the incremental-build state. Kept out of WEB_DIR on purpose:
+#   STATE    — the incremental-build state, kept beside the per-day fact
+#              files that hang off it (facts/<source>/<day>.facts: the hashed
+#              source and country sets the all-time attacker and country
+#              totals are unioned from). Kept out of WEB_DIR on purpose:
 #              state.json records the absolute path of every raw cache file,
 #              which is host layout an anonymous visitor has no business
-#              reading.
+#              reading, and the fact files are derived from unmasked source
+#              addresses.
 XDPSTATS_DIR="/home/ec2-user/xdpstats"
 RAW_DIR="$XDPSTATS_DIR/raw"
 WEB_DIR="/var/www/stats"
@@ -298,6 +303,19 @@ if [ "$DEBUG_LIST_ONLY" -eq 1 ]; then
 fi
 
 # ---- rebuild site -----------------------------------------------------------
+# GeoLite2-City, if it has been unpacked on the relay, is what turns a source
+# address into a country. It is optional on purpose: the database is licensed
+# from MaxMind, so it is uploaded by hand rather than shipped by the deploy,
+# and a host without one still builds a correct site — it just publishes no
+# country counts. XDPSTATS_GEO_MMDB overrides the path for a local run.
+GEO_MMDB="${XDPSTATS_GEO_MMDB:-/home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb}"
+if [ -r "$GEO_MMDB" ]; then
+  SITE_ARGS+=("-geo-mmdb" "$GEO_MMDB")
+  log "info" "GeoIP enabled from $GEO_MMDB"
+else
+  log "info" "no GeoIP database at $GEO_MMDB; region table and country totals stay empty"
+fi
+
 if [ -x "$SITE_BIN" ]; then
   log "info" "running xdplog-report site"
   if ! "$SITE_BIN" site -logs "$RAW_DIR" -out "$WEB_DIR" "${SITE_ARGS[@]}" >>"$LOG_FILE" 2>&1; then

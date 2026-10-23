@@ -1428,7 +1428,8 @@ nhp-serverd
         ├─ gzip -> /home/ec2-user/xdpstats/raw/server/*.log.gz  (0700, 90-day retention)
         └─ xdplog-report site
              ├─ /var/www/stats/{index.html,index.json,countup.js,totalnumber.js,d/server/<day>.{html,json}}
-             └─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
+             ├─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
+             └─ facts -> /home/ec2-user/xdpstats/facts/server/<day>.facts  (same reason)
                                                 │
                           nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/
 ```
@@ -1471,11 +1472,50 @@ deleting state.json. Days whose raw log the collector already pruned are
 re-rendered from their published `<day>.json` without recomputing any numbers.
 Expect one full page rewrite in the first run after a template change.
 
-`totalnumber.js` in the web root carries the same all-time total as one
-JavaScript constant, `NHP_TOTAL_ATTACK_BLOCKED`, for other sites to embed via
-`<script src="https://stats.opennhp.org/totalnumber.js">`. It has its own
-nginx location with a short `Cache-Control`; no CORS header, because a classic
-script does not need one and the importing page's own CSP governs it.
+`totalnumber.js` in the web root carries three all-time figures as JavaScript
+constants, for other sites to embed via
+`<script src="https://stats.opennhp.org/totalnumber.js">`:
+`NHP_TOTAL_ATTACK_BLOCKED` (exact attack packets — the same number the hero
+shows), `NHP_TOTAL_ATTACK_SOURCE_IPS` (distinct source addresses since the
+floor) and `NHP_TOTAL_ATTACK_COUNTRIES` (distinct countries those addresses
+resolved to). It has its own nginx location with a short `Cache-Control`; no
+CORS header, because a classic script does not need one and the importing
+page's own CSP governs it.
+
+**GeoIP.** The collector passes
+`-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` to
+`xdplog-report site` when that file is readable, and logs which way it went
+(`GeoIP enabled from …` / `no GeoIP database at …`). MaxMind's licence means
+the database is **not** shipped by `deploy-xdpstats` — unpack it on the relay
+by hand (`/home/ec2-user/GeoLite2-City_<builddate>/GeoLite2-City.mmdb`, and
+keep the path: the collector looks at that exact one, overridable with
+`XDPSTATS_GEO_MMDB`). Every published day then gains a region table and the
+country total starts filling in. Installing it re-analyzes the days already
+published — each day records the geo source it was built with, and their raw
+logs have not changed, so nothing else would mark them stale. Expect one full
+day rewrite in the first run after the database appears. A day whose raw log
+has already aged out of `xdpstats/raw` cannot be re-analyzed and keeps the
+attribution it was published with; removing the database later never triggers
+a rebuild for the same reason. After replacing the file with a newer GeoLite2
+build, run `sudo -u ec2-user /usr/local/bin/xdplog-report site -logs
+/home/ec2-user/xdpstats/raw -out /var/www/stats -state
+/home/ec2-user/xdpstats/state.json -geo-mmdb <new path> -force` to re-derive
+attribution; without `-force` the new database applies to days as they change.
+
+**Where the all-time source and country counts come from.** Not from
+`index.json`: `unique_attack_ips` is a per-day count, and an address that
+scans the host every day is one attacker, so summing the days over-counts it
+once per day. Each day's set of sources and countries is therefore captured
+while its raw log still exists and stored beside `state.json` at
+`/home/ec2-user/xdpstats/facts/server/<day>.facts` (0700 dir, 0600 files —
+hashed addresses, and a 64-bit hash of an IPv4 is reversible, so this must
+never be published; the nginx vhost refuses `/facts/` for the case where
+`-state` is ever pointed inside the web root). `unpublishDay` removes a day's
+file with its pages, so moving the `-since` floor forward cannot leave a
+removed day's attackers in the total. A day whose facts file is missing
+contributes nothing and is named in `xdpstats/collect.log` as
+`site: N day(s) contribute no source/country data (...)` — the run still
+publishes, because the packet total is unaffected.
 
 ### Deploy order: `infra-demo apply` comes first
 

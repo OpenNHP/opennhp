@@ -1,6 +1,7 @@
 package iossdk
 
-import "C"
+// This file is bound with gomobile. It never calls C. An unused import "C"
+// would mark the file as cgo, which gomobile cannot bind.
 import (
 	"encoding/base64"
 	"encoding/json"
@@ -38,6 +39,29 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
 		return false
 	}
 
+	return true
+}
+
+// NhpAgentInitWithKey starts the agent without reading PrivateKeyBase64 from
+// etc/config.toml. privateKey is the base64 agent private key already held by
+// the platform secure store. cipherType is 0 for Curve25519 and 1 for SM2.
+func NhpAgentInitWithKey(workingDir string, logLevel int, privateKey string, cipherType int) bool {
+	if gAgentInstance != nil {
+		return true
+	}
+	if privateKey == "" {
+		return false
+	}
+	instance, err := agent.StartAllowingMissingConfig(workingDir, logLevel)
+	if err != nil {
+		return false
+	}
+	gAgentInstance = instance
+	if err := agent.InstallRegistrationKey(instance, privateKey, cipherType); err != nil {
+		instance.Stop()
+		gAgentInstance = nil
+		return false
+	}
 	return true
 }
 
@@ -384,4 +408,22 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
 	pub := e.PublicKeyBase64()
 
 	return pub
+}
+
+// Request a one-time password so this device key can be registered.
+// The server emails the code to email. privateKey may be empty to generate a
+// new key when no agent is running. A running agent is not re-keyed.
+func NhpAgentRequestOtp(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string) string {
+	return agent.RequestRegistrationOtp(
+		gAgentInstance, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster,
+	).JSON()
+}
+
+// Register the device public key with the one-time password from NhpAgentRequestOtp.
+// Pass the same privateKey that the OTP request returned. An empty privateKey is
+// rejected when no running agent already holds that key. A running agent is not re-keyed.
+func NhpAgentRegister(workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, otp string) string {
+	return agent.RegisterDevice(
+		gAgentInstance, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, otp,
+	).JSON()
 }

@@ -9,13 +9,17 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP: Kit de herramientas de seguridad Zero Trust de código abierto
+# OpenNHP
+
+### Haz que Internet sea invisible para los atacantes
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/OpenNHP/opennhp)
+
+OpenNHP oculta tus servidores, puertos y dominios de la Internet pública. Nada responde hasta que un cliente demuestra su identidad con un único paquete cifrado, de modo que los escáneres, los bots y los atacantes impulsados por IA no encuentran nada que atacar.
 
 **OpenNHP** es un kit de herramientas ligero, de código abierto e impulsado por criptografía, que implementa seguridad Zero Trust para infraestructuras, aplicaciones y datos. Es la implementación de referencia de la *[especificación Network-infrastructure Hiding Protocol (NHP)](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)* de la [**Cloud Security Alliance (CSA)**](https://cloudsecurityalliance.org/) e incluye dos protocolos principales:
 

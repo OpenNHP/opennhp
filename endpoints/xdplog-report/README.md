@@ -165,6 +165,12 @@ can reproduce the number by summing `drop_pkts`. A day whose raw log has
 already aged out of the collector's cache still counts as long as its
 `d/<source>/<day>.json` is on disk.
 
+Beside the packet total the hero shows two more figures, **Source IPs** and
+**Countries**: the all-time unions `totalnumber.js` exports as
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. All three count
+up together. A figure that is zero is hidden; without a geo source there are
+no countries, and "0 Countries" would read as "attacked from nowhere".
+
 The `<title>` is a different string — **Zero Trust in Action: Live Attacks on
 OpenNHP Servers** — because a browser tab, a search result and a chat preview
 have room to say what the site is *about*, while the heading above the fold
@@ -529,6 +535,11 @@ go run ./xdplog-report site \
 `Since YYYY-MM-DD` 标出统计起点（最早发布的那一天）。两者都是从索引现算的，不是另外存的：
 读者对 `drop_pkts` 求和就能复现这个数字。某天的原始日志即使已经过期滚出采集缓存，只要
 `d/<source>/<day>.json` 还在磁盘上就仍然计入。
+
+包数总数旁边还并排显示 **Source IPs** 和 **Countries** 两个数字，即 `totalnumber.js` 导出的
+`NHP_TOTAL_ATTACK_SOURCE_IPS` 与 `NHP_TOTAL_ATTACK_COUNTRIES`（跨天并集）。三个数字一起
+递增动画。值为 0 的数字不显示：没有 geo 数据库时就没有国家，显示"0 Countries"会被理解成
+"没有任何国家的攻击"。
 
 `<title>` 用的则是另一句 —— **Zero Trust in Action: Live Attacks on OpenNHP
 Servers**。浏览器标签页、搜索结果和聊天预览有空间说清这个站"是关于什么的"，而首屏大标题

@@ -58,12 +58,16 @@ type indexPageData struct {
 	TotalDropPkts string
 	// SinceDay is the earliest published day, already in YYYY-MM-DD. Empty
 	// when there is nothing to publish, which suppresses the hero block.
-	//
-	// The all-time source and country counts are deliberately absent: unlike
-	// the packet total they cannot be reproduced from index.json (see
-	// facts.go), so they are published through totalnumber.js only and the
-	// homepage says nothing it could not show its work for.
 	SinceDay string
+	// TotalSources and TotalCountries are the all-time distinct source IPs
+	// and countries — the same unions totalnumber.js exports as
+	// NHP_TOTAL_ATTACK_SOURCE_IPS and NHP_TOTAL_ATTACK_COUNTRIES. Unlike the
+	// packet total they cannot be reproduced from index.json (the per-day sets
+	// behind them stay private, see facts.go), so the page's note says they
+	// are unions. Zero hides the figure: no geo source means no countries, and
+	// showing "0 countries" would read as "no attacks from anywhere".
+	TotalSources   int
+	TotalCountries int
 }
 
 // renderIndex writes index.html, index.json, countup.js and totalnumber.js
@@ -122,6 +126,9 @@ func renderIndex(opts *SiteOptions, summaries []SiteDaySummary, union factsUnion
 		TotalRaw:      total,
 		TotalDropPkts: groupThousands(total),
 		SinceDay:      since,
+
+		TotalSources:   union.Sources,
+		TotalCountries: union.Countries,
 	})
 }
 
@@ -238,7 +245,9 @@ func writeCountUpJS(outDir string) error {
 }
 
 // countUpJS is the homepage counter animation, served same-origin from the
-// site root and allowed by the nginx vhost's `script-src 'self'`.
+// site root and allowed by the nginx vhost's `script-src 'self'`. It animates
+// every element carrying data-total: the packet total, source IPs and
+// countries.
 //
 // Progressive enhancement: the hero span in index.html already contains the
 // real formatted total, so with JavaScript disabled, blocked by an older CSP,
@@ -246,11 +255,6 @@ func writeCountUpJS(outDir string) error {
 // The script only rewinds it to 0 and counts up.
 const countUpJS = `(function () {
   "use strict";
-  var el = document.getElementById("total-attacks");
-  if (!el) return;
-  var target = parseInt(el.getAttribute("data-total"), 10);
-  if (!isFinite(target) || target <= 0) return;
-  var final = el.textContent;
   var reduce = window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduce || typeof requestAnimationFrame !== "function") return;
@@ -259,38 +263,48 @@ const countUpJS = `(function () {
   function easeOutExpo(t) {
     return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
   }
-  function run() {
-    var start = null;
-    function frame(now) {
-      if (start === null) start = now;
-      var p = Math.min((now - start) / DURATION, 1);
-      el.textContent = Math.round(target * easeOutExpo(p))
-        .toLocaleString("en-US");
-      if (p < 1) {
-        requestAnimationFrame(frame);
-      } else {
-        // Land on the server-rendered text, never on a rounded float.
-        el.textContent = final;
-      }
-    }
-    requestAnimationFrame(frame);
-  }
 
-  // The hero sits above the fold, but observe anyway: on a short viewport the
-  // animation should start when the counter is seen, not at page load.
-  if (typeof IntersectionObserver !== "function") {
-    run();
-    return;
-  }
-  var io = new IntersectionObserver(function (entries) {
-    for (var i = 0; i < entries.length; i++) {
-      if (!entries[i].isIntersecting) continue;
-      io.disconnect();
+  function countUp(el) {
+    var target = parseInt(el.getAttribute("data-total"), 10);
+    if (!isFinite(target) || target <= 0) return;
+    var final = el.textContent;
+
+    function run() {
+      var start = null;
+      function frame(now) {
+        if (start === null) start = now;
+        var p = Math.min((now - start) / DURATION, 1);
+        el.textContent = Math.round(target * easeOutExpo(p))
+          .toLocaleString("en-US");
+        if (p < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          // Land on the server-rendered text, never on a rounded float.
+          el.textContent = final;
+        }
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // The hero sits above the fold, but observe anyway: on a short viewport
+    // the animation should start when the counter is seen, not at page load.
+    if (typeof IntersectionObserver !== "function") {
       run();
       return;
     }
-  }, { threshold: 0.4 });
-  io.observe(el);
+    var io = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (!entries[i].isIntersecting) continue;
+        io.disconnect();
+        run();
+        return;
+      }
+    }, { threshold: 0.4 });
+    io.observe(el);
+  }
+
+  var els = document.querySelectorAll("[data-total]");
+  for (var n = 0; n < els.length; n++) countUp(els[n]);
 })();
 `
 
@@ -364,6 +378,7 @@ var htmlIndex = template.Must(template.New("htmlIndex").Funcs(template.FuncMap{
 	},
 	"sourceLabel": sourceLabel,
 	"flags":       flagsFor,
+	"group":       group,
 }).Parse(`<!doctype html>
 <html lang="en">
 <head>
@@ -410,14 +425,18 @@ a:hover{text-decoration:underline}
 /* Hero counter. The label says "packets" because that is what DropPkts
    counts — the daily table calls the same number "DROP packets (exact)" and
    the detail pages "Attack (DROP) packets"; calling it attacks would
-   overstate what a dropped packet is. The number stays in ink rather than
-   the red accent so it reads as a total, not as a current alert, and it
-   deliberately does not use tabular-nums: the digits change width while
-   counting and a fixed advance makes them jitter. */
+   overstate what a dropped packet is. The three figures (packets, source IPs,
+   countries) sit side by side with the label under each. They are green
+   rather than the red accent so they read as attacks stopped, not as a
+   current alert, and deliberately do not use tabular-nums: the digits change
+   width while counting and a fixed advance makes them jitter. */
 .hero{margin:26px 0 8px;text-align:center}
 .hero-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.hero-num{font-size:48px;font-weight:600;line-height:1.15;letter-spacing:-.02em;color:var(--fg);animation:hero-in .9s cubic-bezier(.16,1,.3,1) both}
+.hero-num{font-size:48px;font-weight:700;line-height:1.15;letter-spacing:-.02em;color:#1a7f37;animation:hero-in .9s cubic-bezier(.16,1,.3,1) both}
 .hero-since{font-size:12px;color:var(--muted)}
+.hero-stats{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:12px 56px}
+.hero-stat{text-align:center}
+.hero-stat .hero-label{margin-top:4px}
 @keyframes hero-in{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.hero-num{animation:none}}
 footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
@@ -432,9 +451,21 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 </header>
 
 {{if .SinceDay}}
-<section class="hero" aria-label="Total attack packets blocked">
-<div class="hero-label">Total attack packets blocked</div>
+<section class="hero" aria-label="All-time attack totals">
+<div class="hero-stats">
+<div class="hero-stat">
 <div><span class="hero-num" id="total-attacks" data-total="{{.TotalRaw}}">{{.TotalDropPkts}}</span></div>
+<div class="hero-label">Attack packets blocked</div>
+</div>
+{{if .TotalSources}}<div class="hero-stat">
+<div><span class="hero-num" id="total-sources" data-total="{{.TotalSources}}">{{group .TotalSources}}</span></div>
+<div class="hero-label">Source IPs</div>
+</div>{{end}}
+{{if .TotalCountries}}<div class="hero-stat">
+<div><span class="hero-num" id="total-countries" data-total="{{.TotalCountries}}">{{group .TotalCountries}}</span></div>
+<div class="hero-label">Countries</div>
+</div>{{end}}
+</div>
 <div class="hero-since">Since {{.SinceDay}}</div>
 </section>
 {{end}}

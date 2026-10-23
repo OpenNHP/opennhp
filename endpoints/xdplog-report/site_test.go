@@ -1805,6 +1805,58 @@ func TestSiteTotalsUnionAcrossDays(t *testing.T) {
 	}
 }
 
+// TestSiteHeroShowsSourcesAndCountries covers the hero's second and third
+// figures: the all-time distinct source IPs and countries, rendered beside the
+// packet total with the same values totalnumber.js exports, and wired to the
+// counter animation through data-total.
+func TestSiteHeroShowsSourcesAndCountries(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100,
+		"203.0.113.5", "198.51.100.7", "10.0.0.9")
+	writeDropLogWithSources(t, logs, "server", siteDay2, 200,
+		"203.0.113.5", "192.0.2.9")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	nums := readTotalNumbers(t, out)
+	page := string(readArtifact(t, out, "index.html"))
+	for _, want := range []string{
+		fmt.Sprintf(`id="total-sources" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_SOURCE_IPS"], nums["NHP_TOTAL_ATTACK_SOURCE_IPS"]),
+		fmt.Sprintf(`id="total-countries" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_COUNTRIES"], nums["NHP_TOTAL_ATTACK_COUNTRIES"]),
+		">Source IPs<", ">Countries<",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html missing %q", want)
+		}
+	}
+	if nums["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 || nums["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
+		t.Errorf("totals = %v, want 3 sources / 1 country", nums)
+	}
+	if !strings.Contains(string(readArtifact(t, out, "countup.js")), `querySelectorAll("[data-total]")`) {
+		t.Error("countup.js does not animate every data-total counter")
+	}
+}
+
+// TestSiteHeroHidesZeroCountries: without a geo source no source resolves to a
+// country, and a "0 Countries" figure would read as "attacked from nowhere".
+func TestSiteHeroHidesZeroCountries(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", filepath.Join(root, "state", "state.json"))
+
+	page := string(readArtifact(t, out, "index.html"))
+	if strings.Contains(page, `id="total-countries"`) {
+		t.Error("hero shows a countries figure with no geo source")
+	}
+	if !strings.Contains(page, `id="total-sources"`) {
+		t.Error("hero dropped the source IP figure")
+	}
+}
+
 // TestGeoInstallReachesPublishedDays covers the deploy that drops the
 // GeoLite2 database onto the relay. Nothing about those days' raw logs
 // changes, so without the geo fingerprint in state.json they would never be

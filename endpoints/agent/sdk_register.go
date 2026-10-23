@@ -115,19 +115,17 @@ func InstallRegistrationKey(a *UdpAgent, privateKey string, cipherType int) erro
 	return a.ReinitWithKey(priv, cipherSchemeFor(cipherType))
 }
 
-func applyRegistrationUser(a *UdpAgent, email string, deviceId string, orgId string, userData string) error {
+func registrationUserData(email string, userData string) (map[string]any, error) {
 	data := map[string]any{}
 	if userData != "" {
 		if err := json.Unmarshal([]byte(userData), &data); err != nil {
-			return fmt.Errorf("userData is not valid JSON")
+			return nil, fmt.Errorf("userData is not valid JSON")
 		}
 	}
 	if email != "" {
 		data["email"] = email
 	}
-	a.SetDeviceId(deviceId)
-	a.SetKnockUser(email, orgId, data)
-	return nil
+	return data, nil
 }
 
 func registrationTarget(a *UdpAgent, aspId string, resId string, cluster string) (*KnockTarget, error) {
@@ -155,7 +153,7 @@ func registrationTarget(a *UdpAgent, aspId string, resId string, cluster string)
 // ReinitWithKey is not called on that agent. Any other case starts a
 // short-lived agent, which the caller must Stop, and which must not replace
 // the caller's saved instance.
-func prepareRegistration(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, generateKey bool) (RegistrationResult, *UdpAgent, *KnockTarget, bool) {
+func prepareRegistration(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, aspId string, resId string, cluster string, generateKey bool) (RegistrationResult, *UdpAgent, *KnockTarget, bool) {
 	if email == "" || aspId == "" || resId == "" || cluster == "" {
 		return invalidRegistration("email, aspId, resId, and cluster are required"), nil, nil, false
 	}
@@ -197,12 +195,6 @@ func prepareRegistration(current *UdpAgent, workingDir string, logLevel int, pri
 		}
 	}
 
-	if err := applyRegistrationUser(instance, email, deviceId, orgId, userData); err != nil {
-		if owned {
-			instance.Stop()
-		}
-		return invalidRegistration(err.Error()), nil, nil, false
-	}
 	result := RegistrationResult{
 		PrivateKey: instance.PrivateKeyBase64(),
 		PublicKey:  instance.PublicKeyBase64ByCipherScheme(),
@@ -226,16 +218,24 @@ func finishOwnedAgent(instance *UdpAgent, owned bool) {
 }
 
 // RequestRegistrationOtp sends NHP-OTP for this agent key. An empty privateKey
-// generates a key only when no agent is running. A running agent is never re-keyed.
+// generates a key only when no agent is running. A running agent is never re-keyed
+// and its knock identity is unchanged.
 func RequestRegistrationOtp(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string) RegistrationResult {
+	data, err := registrationUserData(email, userData)
+	if err != nil {
+		return invalidRegistration(err.Error())
+	}
 	result, instance, target, owned := prepareRegistration(
-		current, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, true,
+		current, workingDir, logLevel, privateKey, cipherType, email, aspId, resId, cluster, true,
 	)
 	defer finishOwnedAgent(instance, owned)
 	if target == nil {
 		return result
 	}
-	if err := instance.RequestOtp(target); err != nil {
+	if err := instance.requestOtp(target, &common.AgentOTPMsg{
+		UserId: email, DeviceId: deviceId, OrganizationId: orgId,
+		AuthServiceId: target.AuthServiceId, PublicKey: result.PublicKey, UserData: data,
+	}); err != nil {
 		result.ErrCode = registrationErrorCode(err)
 		result.ErrMsg = err.Error()
 		return result
@@ -249,19 +249,26 @@ func RequestRegistrationOtp(current *UdpAgent, workingDir string, logLevel int, 
 // RegisterDevice submits the one-time password for the key from
 // RequestRegistrationOtp. privateKey must be that key. An empty privateKey is
 // accepted only when current is running and already holds one. A running agent
-// is never re-keyed.
+// is never re-keyed and its knock identity is unchanged.
 func RegisterDevice(current *UdpAgent, workingDir string, logLevel int, privateKey string, cipherType int, email string, deviceId string, orgId string, userData string, aspId string, resId string, cluster string, otp string) RegistrationResult {
 	if otp == "" {
 		return invalidRegistration("otp is required")
 	}
+	data, err := registrationUserData(email, userData)
+	if err != nil {
+		return invalidRegistration(err.Error())
+	}
 	result, instance, target, owned := prepareRegistration(
-		current, workingDir, logLevel, privateKey, cipherType, email, deviceId, orgId, userData, aspId, resId, cluster, false,
+		current, workingDir, logLevel, privateKey, cipherType, email, aspId, resId, cluster, false,
 	)
 	defer finishOwnedAgent(instance, owned)
 	if target == nil {
 		return result
 	}
-	ack, err := instance.RegisterPublicKey(otp, target)
+	ack, err := instance.registerPublicKey(target, &common.AgentRegisterMsg{
+		UserId: email, DeviceId: deviceId, OrganizationId: orgId, OTP: otp,
+		AuthServiceId: target.AuthServiceId, PublicKey: result.PublicKey, UserData: data,
+	})
 	if ack != nil {
 		result.ErrCode = ack.ErrCode
 		result.ErrMsg = ack.ErrMsg

@@ -22,6 +22,11 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 		UserData:       a.knockUser.UserData,
 	}
 	a.knockUserMutex.RUnlock()
+	return a.requestOtp(target, otpMsg)
+}
+
+// requestOtp sends a request-specific identity without changing the agent.
+func (a *UdpAgent) requestOtp(target *KnockTarget, otpMsg *common.AgentOTPMsg) error {
 	otpBytes, _ := json.Marshal(otpMsg) //nolint:gosec // G117: Passcode is unset here (this builds the OTP *request*, not a response) and the message is sent over the encrypted NHP channel, not logged
 
 	serverPeer := target.GetServerPeerForScheme(a.config.DefaultCipherScheme)
@@ -87,6 +92,11 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 		UserData:       a.knockUser.UserData,
 	}
 	a.knockUserMutex.RUnlock()
+	return a.registerPublicKey(target, regMsg)
+}
+
+// registerPublicKey sends a request-specific identity without changing the agent.
+func (a *UdpAgent) registerPublicKey(target *KnockTarget, regMsg *common.AgentRegisterMsg) (rakMsg *common.ServerRegisterAckMsg, err error) {
 	regBytes, _ := json.Marshal(regMsg)
 
 	serverPeer := target.GetServerPeerForScheme(a.config.DefaultCipherScheme)

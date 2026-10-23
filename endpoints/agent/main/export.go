@@ -53,11 +53,12 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
 		return true
 	}
 
-	gAgentInstance = &agent.UdpAgent{}
-	err := gAgentInstance.Start(deepCopyCString(workingDir), int(logLevel))
+	instance := &agent.UdpAgent{}
+	err := instance.Start(deepCopyCString(workingDir), int(logLevel))
 	if err != nil {
 		return false
 	}
+	gAgentInstance = instance
 
 	return true
 }

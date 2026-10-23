@@ -9,9 +9,7 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP
-
-### Make the Internet Invisible to Attackers
+# Make the Internet Invisible to Attackers
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)

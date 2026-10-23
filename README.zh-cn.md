@@ -9,9 +9,7 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP
-
-### 让互联网对攻击者隐身
+# 让互联网对攻击者隐身
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)

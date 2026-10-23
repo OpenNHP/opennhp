@@ -15,6 +15,15 @@ func SetGlobalLogger(l *Logger) {
 	glbLogger.callDepth += 1
 }
 
+// SetLevel changes the process-wide logger level. Call it after the agent
+// starts when no config.toml was loaded, because a missing file otherwise
+// replaces the requested level with silent.
+func SetLevel(level int) {
+	if glbLogger != nil {
+		glbLogger.SetLogLevel(level)
+	}
+}
+
 // must be called after SetGlobalLogger()
 func Warning(format string, args ...any) {
 	glbLogger.Warning(format, args...)

@@ -62,6 +62,32 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
 	return true
 }
 
+// nhp_agent_init_with_key starts the agent without reading PrivateKeyBase64
+// from etc/config.toml. privateKey is the base64 agent private key. cipherType
+// is 0 for Curve25519 and 1 for SM2. The caller must not log privateKey.
+//
+//export nhp_agent_init_with_key
+func nhp_agent_init_with_key(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int) bool {
+	if gAgentInstance != nil {
+		return true
+	}
+	key := deepCopyCString(privateKey)
+	if key == "" {
+		return false
+	}
+	instance, err := agent.StartAllowingMissingConfig(deepCopyCString(workingDir), int(logLevel))
+	if err != nil {
+		return false
+	}
+	gAgentInstance = instance
+	if err := agent.InstallRegistrationKey(instance, key, int(cipherType)); err != nil {
+		instance.Stop()
+		gAgentInstance = nil
+		return false
+	}
+	return true
+}
+
 // Synchronously stop and release nhp_agent.
 //
 //export nhp_agent_close
@@ -426,4 +452,41 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
 	pPub := C.CString(pub)
 
 	return pPub
+}
+
+func keepRegistrationAgent(instance *agent.UdpAgent) {
+	gAgentInstance = instance
+}
+
+func registrationJSON(result agent.RegistrationResult) *C.char {
+	return C.CString(result.JSON())
+}
+
+// Request a one-time password so this device key can be registered.
+// The server emails the code to email. privateKey may be empty to generate a new key.
+// The caller must free the returned string with nhp_free_cstring.
+//
+//export nhp_agent_request_otp
+func nhp_agent_request_otp(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int, email *C.char, deviceId *C.char, orgId *C.char, userData *C.char, aspId *C.char, resId *C.char, cluster *C.char) *C.char {
+	result, instance := agent.RequestRegistrationOtp(
+		gAgentInstance, deepCopyCString(workingDir), int(logLevel), deepCopyCString(privateKey), int(cipherType),
+		deepCopyCString(email), deepCopyCString(deviceId), deepCopyCString(orgId), deepCopyCString(userData),
+		deepCopyCString(aspId), deepCopyCString(resId), deepCopyCString(cluster),
+	)
+	keepRegistrationAgent(instance)
+	return registrationJSON(result)
+}
+
+// Register the current device public key with the one-time password from nhp_agent_request_otp.
+// Pass the same privateKey that request returned. The caller must free the returned string with nhp_free_cstring.
+//
+//export nhp_agent_register
+func nhp_agent_register(workingDir *C.char, logLevel C.int, privateKey *C.char, cipherType C.int, email *C.char, deviceId *C.char, orgId *C.char, userData *C.char, aspId *C.char, resId *C.char, cluster *C.char, otp *C.char) *C.char {
+	result, instance := agent.RegisterDevice(
+		gAgentInstance, deepCopyCString(workingDir), int(logLevel), deepCopyCString(privateKey), int(cipherType),
+		deepCopyCString(email), deepCopyCString(deviceId), deepCopyCString(orgId), deepCopyCString(userData),
+		deepCopyCString(aspId), deepCopyCString(resId), deepCopyCString(cluster), deepCopyCString(otp),
+	)
+	keepRegistrationAgent(instance)
+	return registrationJSON(result)
 }

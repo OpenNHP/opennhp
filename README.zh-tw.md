@@ -9,13 +9,17 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP：開源零信任安全工具套件
+# OpenNHP
+
+### 讓網際網路對攻擊者隱形
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/OpenNHP/opennhp)
+
+OpenNHP 將您的伺服器、連接埠與網域從公共網際網路上隱藏起來。在用戶端以單一加密封包證明身分之前，任何服務都不會回應——掃描器、機器人與 AI 驅動的攻擊者將無從下手。
 
 **OpenNHP** 是一套輕量級、以密碼學為基礎的開源工具套件，為基礎架構、應用程式與資料提供零信任安全保障。它是[**雲端安全聯盟（CSA）**](https://cloudsecurityalliance.org/) *[網路基礎架構隱藏協定（NHP）規範](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)*的參考實作，包含兩項核心協定：
 

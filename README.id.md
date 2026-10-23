@@ -9,13 +9,17 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP: Toolkit Keamanan Zero Trust Open Source
+# OpenNHP
+
+### Membuat Internet Tak Terlihat oleh Penyerang
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/OpenNHP/opennhp)
+
+OpenNHP menyembunyikan server, port, dan domain Anda dari internet publik. Tidak ada yang merespons sampai klien membuktikan identitasnya dengan satu paket terenkripsi, sehingga pemindai, bot, dan penyerang berbasis AI tidak menemukan apa pun untuk diserang.
 
 **OpenNHP** adalah toolkit open source ringan berbasis kriptografi untuk menerapkan keamanan Zero Trust pada infrastruktur, aplikasi, dan data. OpenNHP merupakan implementasi referensi dari [**Cloud Security Alliance (CSA)**](https://cloudsecurityalliance.org/) *[spesifikasi Network-infrastructure Hiding Protocol (NHP)](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)*, serta menghadirkan dua protokol inti:
 

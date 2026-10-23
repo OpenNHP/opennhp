@@ -1003,7 +1003,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    sudo systemctl status xdpstats.timer --no-pager    # active, waiting
    sudo systemctl list-timers xdpstats.timer          # 列出下一次触发时间
    sudo -u ec2-user /home/ec2-user/xdpstats/xdpstats-collect.sh -v   # 一次手动跑
-   ls /var/www/stats/                                 # 含 index.html/index.json/d/server/<day>.html
+   ls /var/www/stats/                                 # 含 index.html/index.json/countup.js/d/server/<day>.html
    # 权限三连（任一不对 nginx 就会 403 或泄露未脱敏日志）：
    stat -c '%a %U %n' /home/ec2-user /home/ec2-user/xdpstats \
                               /home/ec2-user/xdpstats/raw /var/www/stats
@@ -1021,6 +1021,16 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    ```bash
    curl -fsS https://stats.opennhp.org/ | head -20                       # 含 <title>
    curl -fsS https://stats.opennhp.org/index.json | jq '.[0] | keys'    # 含 source/day/drop_pkts
+   # 首页 hero 计数与 index.json 求和一致（不依赖 JS，静态文本即最终值）：
+   curl -fsS https://stats.opennhp.org/ | grep -o 'data-total="[0-9]*"'  # 累计 DROP 包数
+   curl -fsS https://stats.opennhp.org/ | grep -o 'Since [0-9-]*'         # 最早一天
+   curl -fsSI https://stats.opennhp.org/countup.js | head -1             # 200，自托管脚本
+   curl -fsSI https://stats.opennhp.org/totalnumber.js | head -1         # 200，导出的总数
+   # <head> 的 SEO / 社交标签（绝对 URL 只能是 stats.opennhp.org 自己的）：
+   curl -fsS https://stats.opennhp.org/ | grep -o '<title>[^<]*</title>'
+   curl -fsS https://stats.opennhp.org/ | grep -c 'og:\(title\|description\|url\|type\|image\)'
+   # og:image 指向的预览图必须真实存在，否则社交分享没有图：
+   curl -fsSI https://stats.opennhp.org/og.png | head -1                 # 200
    openssl s_client -connect stats.opennhp.org:443 -servername stats.opennhp.org \
      </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName  # DNS:stats.opennhp.org
    ```

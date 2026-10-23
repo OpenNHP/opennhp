@@ -3,13 +3,25 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+)
+
+// The two days the site fixtures are staged under. They sit on and after
+// defaultSiteSince so the -since floor keeps them published; the checked-in
+// testdata files keep their original names because report_test.go reads them
+// by date for the single-file CLI, which has no floor. Dates come from file
+// names, so staging the same bytes under a different day is faithful.
+const (
+	siteDay1 = "2026-10-16"
+	siteDay2 = "2026-10-17"
 )
 
 // stageTestdata copies the checked-in testdata log files into a fresh
@@ -24,12 +36,16 @@ func stageTestdata(t *testing.T) (string, string) {
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range []string{"2026-10-01", "2026-10-02"} {
-		b, err := os.ReadFile(filepath.Join("testdata", "nhp_server_xdp-"+d+".log"))
+	// fixture day -> testdata file whose bytes it stages.
+	for _, pair := range []struct{ day, fixture string }{
+		{siteDay1, "2026-10-01"},
+		{siteDay2, "2026-10-02"},
+	} {
+		b, err := os.ReadFile(filepath.Join("testdata", "nhp_server_xdp-"+pair.fixture+".log"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(src, "nhp_server_xdp-"+d+".log"), b, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(src, "nhp_server_xdp-"+pair.day+".log"), b, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -49,18 +65,23 @@ func runSiteCmd(t *testing.T, logs, out string, extraArgs ...string) {
 }
 
 // indexAndPages enumerates the files that the site subcommand owns: the
-// index, state, and every detail page under d/<source>/<day>.{html,json}.
+// index, the scripts it writes, state, every detail page under
+// d/<source>/<day>.{html,json}, and the private per-day fact files the
+// all-time source and country totals are unioned from.
 func indexAndPages(out string) []string {
 	files := []string{
 		filepath.Join(out, "index.html"),
 		filepath.Join(out, "index.json"),
+		filepath.Join(out, "countup.js"),
+		filepath.Join(out, "totalnumber.js"),
 		filepath.Join(out, "state.json"),
 	}
 	_ = filepath.Walk(out, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		if strings.HasPrefix(p, filepath.Join(out, "d", "server")) {
+		if strings.HasPrefix(p, filepath.Join(out, "d", "server")) ||
+			strings.HasPrefix(p, filepath.Join(out, "facts", "server")) {
 			files = append(files, p)
 		}
 		return nil
@@ -72,7 +93,7 @@ func TestSiteGeneratesDays(t *testing.T) {
 	logs, out := stageTestdata(t)
 	runSiteCmd(t, logs, out)
 
-	for _, day := range []string{"2026-10-01", "2026-10-02"} {
+	for _, day := range []string{siteDay1, siteDay2} {
 		htmlPath := filepath.Join(out, "d", "server", day+".html")
 		jsonPath := filepath.Join(out, "d", "server", day+".json")
 		if _, err := os.Stat(htmlPath); err != nil {
@@ -87,6 +108,61 @@ func TestSiteGeneratesDays(t *testing.T) {
 			t.Errorf("%s missing: %v", f, err)
 		}
 	}
+}
+
+// TestSiteDetailTitleAndSubtitle covers the per-day page's headline: the
+// "Daily Attack Report: <day>" title and the sentence under it. The numbers in
+// that sentence are asserted against the day's own JSON, so prose and the
+// Overview cards below it can never disagree.
+func TestSiteDetailTitleAndSubtitle(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	const day = siteDay1
+	jb, err := os.ReadFile(filepath.Join(out, "d", "server", day+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	if err = json.Unmarshal(jb, &rep); err != nil {
+		t.Fatal(err)
+	}
+	pb, err := os.ReadFile(filepath.Join(out, "d", "server", day+".html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(pb)
+
+	// The site publishes one day per page, so the title names that one day —
+	// Report.From/To carry timestamps and must not leak into it.
+	if !strings.Contains(page, "<title>Daily Attack Report: "+day+"</title>") {
+		t.Errorf("detail page title is not the day-scoped headline:\n%s", firstLines(page, 8))
+	}
+	if !strings.Contains(page, "<h1>Daily Attack Report: "+day+"</h1>") {
+		t.Errorf("detail page h1 is not the day-scoped headline:\n%s", firstLines(page, 12))
+	}
+	want := fmt.Sprintf("%s hostile packets from %s sources were silently dropped",
+		groupThousands(rep.DropPkts), group(rep.UniqueIPs))
+	if !strings.Contains(page, want) {
+		t.Errorf("detail subtitle missing %q:\n%s", want, firstLines(page, 12))
+	}
+	if want := "That&rsquo;s " + pc(rep.DropShare) + " of all inbound traffic"; !strings.Contains(page, want) {
+		t.Errorf("detail subtitle missing %q", want)
+	}
+	// The old third line still carries the full timestamp range, which the
+	// title deliberately drops.
+	if !strings.Contains(page, rep.From+" &ndash; "+rep.To) {
+		t.Error("detail page lost its servers/timescale line")
+	}
+}
+
+// firstLines returns the first n lines of s, for test failure messages.
+func firstLines(s string, n int) string {
+	lines := strings.SplitN(s, "\n", n+1)
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func TestSiteIndexOrderDesc(t *testing.T) {
@@ -104,7 +180,7 @@ func TestSiteIndexOrderDesc(t *testing.T) {
 	if len(idx) != 2 {
 		t.Fatalf("index rows = %d, want 2", len(idx))
 	}
-	if idx[0].Day != "2026-10-02" || idx[1].Day != "2026-10-01" {
+	if idx[0].Day != siteDay2 || idx[1].Day != siteDay1 {
 		t.Errorf("index order = %s, %s", idx[0].Day, idx[1].Day)
 	}
 }
@@ -144,13 +220,13 @@ func TestSiteIncrementalReRender(t *testing.T) {
 	logs, out := stageTestdata(t)
 	runSiteCmd(t, logs, out)
 
-	day1 := filepath.Join(out, "d", "server", "2026-10-01.html")
-	day2 := filepath.Join(out, "d", "server", "2026-10-02.html")
+	day1 := filepath.Join(out, "d", "server", siteDay1+".html")
+	day2 := filepath.Join(out, "d", "server", siteDay2+".html")
 	st1, _ := os.Stat(day1)
 	st2, _ := os.Stat(day2)
 
 	// Grow day1 input so its size+mtime change.
-	src := filepath.Join(logs, "server", "nhp_server_xdp-2026-10-01.log")
+	src := filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay1+".log")
 	f, err := os.OpenFile(src, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +261,7 @@ func TestSiteMaskIPDefault(t *testing.T) {
 
 	htmlPaths := []string{
 		filepath.Join(out, "index.html"),
-		filepath.Join(out, "d", "server", "2026-10-01.html"),
+		filepath.Join(out, "d", "server", siteDay1+".html"),
 	}
 	for _, p := range htmlPaths {
 		b, err := os.ReadFile(p)
@@ -211,7 +287,7 @@ func TestSiteMaskIPDefault(t *testing.T) {
 
 	// Sanity: at least one masked form should appear in the detail page so a
 	// regression that drops masking entirely fails loudly.
-	detail, err := os.ReadFile(filepath.Join(out, "d", "server", "2026-10-01.html"))
+	detail, err := os.ReadFile(filepath.Join(out, "d", "server", siteDay1+".html"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,10 +305,10 @@ func TestSiteIgnoreInvalidFilename(t *testing.T) {
 	skip := []string{
 		"nhp_server_xdp-evaluate-2026-10-01.log",
 		"nhp_server_xdp-audit-2026-10-01.log",
-		"nhp_server_xdp-2026-1-1.log",     // bad date
-		"nhp_server_xdp-20261001.log",     // no dashes
-		"nhp_server_xdp-2026-10-01.txt",   // wrong extension
-		"other_server_xdp-2026-10-03.log", // wrong prefix
+		"nhp_server_xdp-2026-1-1.log",         // bad date
+		"nhp_server_xdp-20261001.log",         // no dashes
+		"nhp_server_xdp-" + siteDay1 + ".txt", // wrong extension
+		"other_server_xdp-2026-10-03.log",     // wrong prefix
 	}
 	for _, name := range skip {
 		if err := os.WriteFile(filepath.Join(src, name), []byte("garbage\n"), 0o644); err != nil {
@@ -253,7 +329,7 @@ func TestSiteIgnoreInvalidFilename(t *testing.T) {
 	for _, s := range idx {
 		got[s.Day] = true
 	}
-	for _, d := range []string{"2026-10-01", "2026-10-02"} {
+	for _, d := range []string{siteDay1, siteDay2} {
 		if !got[d] {
 			t.Errorf("missing valid day %s", d)
 		}
@@ -261,7 +337,7 @@ func TestSiteIgnoreInvalidFilename(t *testing.T) {
 	if got["2026-10-03"] {
 		t.Error("rogue day 2026-10-03 leaked into index")
 	}
-	if _, err := os.Stat(filepath.Join(out, "d", "server", "2026-10-01.txt.html")); err == nil {
+	if _, err := os.Stat(filepath.Join(out, "d", "server", siteDay1+".txt.html")); err == nil {
 		t.Error(".txt file was rendered as a page")
 	}
 }
@@ -377,7 +453,7 @@ func TestSiteGeoCSVPassesThrough(t *testing.T) {
 	logs, out := stageTestdata(t)
 	runSiteCmd(t, logs, out, "-geo-csv", "testdata/geo.csv")
 
-	b, err := os.ReadFile(filepath.Join(out, "d", "server", "2026-10-01.json"))
+	b, err := os.ReadFile(filepath.Join(out, "d", "server", siteDay1+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +479,7 @@ func TestSiteBackLinkResolves(t *testing.T) {
 	logs, out := stageTestdata(t)
 	runSiteCmd(t, logs, out)
 
-	page := filepath.Join(out, "d", "server", "2026-10-01.html")
+	page := filepath.Join(out, "d", "server", siteDay1+".html")
 	b, err := os.ReadFile(page)
 	if err != nil {
 		t.Fatal(err)
@@ -443,7 +519,7 @@ func TestSiteStateOutsideWebRoot(t *testing.T) {
 	}
 	// The pages themselves must still be complete: the state is what makes
 	// the second run a no-op.
-	for _, day := range []string{"2026-10-01", "2026-10-02"} {
+	for _, day := range []string{siteDay1, siteDay2} {
 		if _, err := os.Stat(filepath.Join(out, "d", "server", day+".html")); err != nil {
 			t.Errorf("%s missing: %v", day, err)
 		}
@@ -476,7 +552,7 @@ func TestSiteRebuildsWhenPageMissingButStateSaysBuilt(t *testing.T) {
 	logs, out := stageTestdata(t)
 	runSiteCmd(t, logs, out)
 
-	day := "2026-10-01"
+	day := siteDay1
 	htmlPath := filepath.Join(out, "d", "server", day+".html")
 	jsonPath := filepath.Join(out, "d", "server", day+".json")
 	if err := os.Remove(htmlPath); err != nil {
@@ -538,8 +614,8 @@ func TestSiteKeepsOrphanDetailPage(t *testing.T) {
 
 	// day-1 raw log is GONE (pruned by the collector), but a detail page
 	// already lives on disk.
-	const orphanDay = "2026-10-01"
-	const freshDay = "2026-10-02"
+	const orphanDay = siteDay1
+	const freshDay = siteDay2
 	if err := os.WriteFile(filepath.Join(srcOut, orphanDay+".html"),
 		[]byte("<!doctype html><html><body>orphan</body></html>"), 0o644); err != nil {
 		t.Fatal(err)
@@ -595,14 +671,40 @@ func TestSiteKeepsOrphanDetailPage(t *testing.T) {
 		t.Fatalf("fresh day %s missing from index", freshDay)
 	}
 
-	// The orphan detail page's pre-built HTML must be left alone — the
-	// raw log is gone, so there is nothing to rebuild from.
+	// The orphan day cannot be re-analyzed — the raw log is gone — but its
+	// HTML is a pure function of the JSON beside it, so it adopts the
+	// current template with its own numbers intact. That is what keeps a
+	// title change from leaving the oldest pages on markup nobody runs.
 	html, err := os.ReadFile(filepath.Join(srcOut, orphanDay+".html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(html), "orphan") {
-		t.Error("orphan page HTML was rewritten; expected the page to be preserved verbatim")
+	if strings.Contains(string(html), "orphan") {
+		t.Error("orphan page HTML still the hand-written fixture; expected a re-render")
+	}
+	if !strings.Contains(string(html), "Daily Attack Report") {
+		t.Error("orphan page HTML was not re-rendered with the current template")
+	}
+	if !strings.Contains(string(html), "1,234 hostile packets from 7 sources") {
+		t.Errorf("orphan page lost its own numbers:\n%s", string(html))
+	}
+
+	// The homepage counter is the sum over the index, so the aged-out day
+	// still counts: the visitor's lifetime total is 1234 + 5, and the
+	// earliest day — which only the orphan page knows — is the "Since" date.
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := heroRe.FindStringSubmatch(string(page))
+	if m == nil {
+		t.Fatalf("index.html has no #total-attacks counter")
+	}
+	if m[1] != "1239" || m[2] != "1,239" {
+		t.Errorf("hero total = %s / %q, want 1239 / \"1,239\" (orphan day must still count)", m[1], m[2])
+	}
+	if !strings.Contains(string(page), "Since "+orphanDay) {
+		t.Error("Since line does not come from the oldest day, which here is the orphan")
 	}
 }
 
@@ -624,7 +726,7 @@ func TestSiteDropsUnreadableOrphanPage(t *testing.T) {
 	}
 
 	// Unparseable orphan page (e.g. a half-written first run).
-	const badDay = "2026-10-01"
+	const badDay = siteDay1
 	if err := os.WriteFile(filepath.Join(srcOut, badDay+".html"), []byte("garbage"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +735,7 @@ func TestSiteDropsUnreadableOrphanPage(t *testing.T) {
 	}
 
 	// A healthy raw input so the bail-out at "no raw inputs" still kicks in.
-	const goodDay = "2026-10-02"
+	const goodDay = siteDay2
 	if err := os.WriteFile(filepath.Join(srcLogs, "nhp_server_xdp-"+goodDay+".log"),
 		[]byte("10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=5 LOGGED=1 TOTAL=5\n"),
 		0o644); err != nil {
@@ -663,5 +765,1182 @@ func TestSiteDropsUnreadableOrphanPage(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("healthy day %s missing from index", goodDay)
+	}
+}
+
+// TestSiteKeepsPageOnlyDayWhenRerenderFails covers the page-only error the
+// orphan rule must not swallow: the day's JSON is perfectly readable, but its
+// HTML cannot be written — an EACCES, an ENOSPC, a failed rename. The record is
+// intact, so the day keeps its index row and its share of the hero total and
+// the run fails loudly afterwards. Treating this as an orphan is what made the
+// published total quietly fall whenever the web root was briefly unwritable,
+// and jump back on the next good run with nothing having flagged the gap.
+func TestSiteKeepsPageOnlyDayWhenRerenderFails(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+	wantTotal := indexTotalFromJSON(t, out)
+
+	// Age the day out of the collector cache and roll the state's render
+	// version back, so its page is due a re-render.
+	if err := os.Remove(filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log")); err != nil {
+		t.Fatalf("prune the raw log: %v", err)
+	}
+	setStateRender(t, out, 0)
+
+	// Put a directory where the page goes: writeFileAtomic renames a sibling
+	// temp file over the path, and that rename never succeeds onto a
+	// directory. Preferred over chmod because it still fails when the suite
+	// runs as root.
+	pagePath := filepath.Join(out, "d", "server", siteDay2+".html")
+	if err := os.Remove(pagePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(pagePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pagePath, "blocker"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	err := run([]string{"site", "-logs", logs, "-out", out, "-top", "20"}, &buf)
+	if err == nil {
+		t.Fatal("expected the failed re-render to fail the run")
+	}
+	if !strings.Contains(err.Error(), siteDay2) {
+		t.Errorf("error should name the day whose page could not be written: %v", err)
+	}
+	if !indexHasDay(t, out, siteDay2) {
+		t.Errorf("page-only day %s dropped out of the index because its HTML could not be re-rendered", siteDay2)
+	}
+	if got := indexTotalFromJSON(t, out); got != wantTotal {
+		t.Errorf("published total = %d, want %d; a write failure must not shrink it", got, wantTotal)
+	}
+	page := readArtifact(t, out, "index.html")
+	if m := heroRe.FindStringSubmatch(string(page)); m == nil {
+		t.Error("index.html has no #total-attacks counter")
+	} else if m[2] != groupThousands(wantTotal) {
+		t.Errorf("hero total = %q, want %q", m[2], groupThousands(wantTotal))
+	}
+	// The state must not claim a re-render that never happened, or the next
+	// run would skip the retry.
+	if got := readSiteState(t, out).Days["server"][siteDay2].Render; got == siteRenderVersion {
+		t.Error("state recorded a successful re-render that never happened")
+	}
+
+	// Clear the obstruction. The next run re-renders the day it kept, and the
+	// total does not move.
+	if err := os.RemoveAll(pagePath); err != nil {
+		t.Fatal(err)
+	}
+	runSiteCmd(t, logs, out)
+	if b := readArtifact(t, filepath.Join(out, "d", "server"), siteDay2+".html"); !strings.Contains(string(b), "Daily Attack Report") {
+		t.Errorf("page-only day was not re-rendered once the path was writable:\n%s", b)
+	}
+	if got := indexTotalFromJSON(t, out); got != wantTotal {
+		t.Errorf("published total after recovery = %d, want %d", got, wantTotal)
+	}
+}
+
+// TestFailedRunLeavesPreFloorPagesPublished is the ordering half of the -since
+// floor: a pre-floor page comes down only after every publishable day has
+// succeeded, never while the loop is still working. A raw log that cannot be
+// analyzed must not cost the site what it is already serving — the index on
+// disk still links those pages and still counts them in the hero total, so
+// deleting them on the way out would leave dead links and a total that no
+// longer matches the files behind it.
+func TestFailedRunLeavesPreFloorPagesPublished(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+
+	const preFloor = "2026-10-15"
+	writeDropLog(t, logs, "server", preFloor, 7)
+	writeDropLog(t, logs, "server", siteDay1, 5)
+	runSiteCmd(t, logs, out, "-since", "") // the site as it looked before the floor
+
+	preHTML := filepath.Join(out, "d", "server", preFloor+".html")
+	preJSON := filepath.Join(out, "d", "server", preFloor+".json")
+	for _, p := range []string{preHTML, preJSON} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("fixture failed to publish %s: %v", p, err)
+		}
+	}
+	wantTotal := indexTotalFromJSON(t, out)
+
+	// A .gz that is not gzip: undiscoverable by content, unreadable by the
+	// analyzer. Its day is on and after the floor, so the run reaches it.
+	badPath := filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log.gz")
+	if err := os.WriteFile(badPath, []byte("this is not a gzip stream\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	err := run([]string{"site", "-logs", logs, "-out", out, "-top", "20"}, &buf)
+	if err == nil {
+		t.Fatal("expected the unreadable log to fail the run")
+	}
+	if !strings.Contains(err.Error(), siteDay2) {
+		t.Errorf("error should name the day that failed: %v", err)
+	}
+	for _, p := range []string{preHTML, preJSON} {
+		if _, statErr := os.Stat(p); statErr != nil {
+			t.Errorf("failed run deleted the pre-floor page %s: %v", p, statErr)
+		}
+	}
+	if !indexHasDay(t, out, preFloor) {
+		t.Error("pre-floor day left the index while its page is still being served")
+	}
+	if got := indexTotalFromJSON(t, out); got != wantTotal {
+		t.Errorf("published total = %d, want %d; a failed run must leave the site as it was", got, wantTotal)
+	}
+	if !strings.Contains(string(readArtifact(t, out, "index.html")), `href="d/server/`+preFloor+`.html"`) {
+		t.Error("index no longer links the pre-floor day whose page is still published")
+	}
+
+	// The floor still applies on the next good run: with the unreadable log
+	// gone, the pre-floor day comes down and the index stops linking it.
+	if err := os.Remove(badPath); err != nil {
+		t.Fatal(err)
+	}
+	runSiteCmd(t, logs, out)
+	for _, p := range []string{preHTML, preJSON} {
+		if _, statErr := os.Stat(p); !os.IsNotExist(statErr) {
+			t.Errorf("%s survived the -since floor (stat err = %v)", p, statErr)
+		}
+	}
+	if indexHasDay(t, out, preFloor) {
+		t.Error("pre-floor day is still indexed after a successful run")
+	}
+}
+
+// heroRe captures the homepage counter's raw data-total and its rendered
+// fallback text. The text is what a visitor with JavaScript disabled, an
+// older CSP, or prefers-reduced-motion sees, so it has to be the real total,
+// not a zero waiting for the animation.
+var heroRe = regexp.MustCompile(`id="total-attacks" data-total="(\d+)">([^<]*)</span>`)
+
+// absoluteURLRe matches every absolute URL in a published file.
+var absoluteURLRe = regexp.MustCompile(`https?://[^"'[:space:]>]+`)
+
+// scriptSrcRe matches the src of every <script> tag — the one construct the
+// CSP allows and the only way an injected script would run. canonical and
+// og:* URLs are deliberately not matched: a crawler reads those, a browser
+// does not fetch them.
+var scriptSrcRe = regexp.MustCompile(`(?i)<script[^>]*\ssrc="([^"]+)"`)
+
+// externalStyleRe matches a stylesheet link. The site styles itself with a
+// single inline <style>, and the CSP grants style-src 'unsafe-inline' with no
+// host, so any such link would be blocked anyway.
+var externalStyleRe = regexp.MustCompile(`(?i)<link[^>]*\srel="?stylesheet"?`)
+
+// readArtifact reads one published file, failing the test if it is missing.
+func readArtifact(t *testing.T, out, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, name))
+	if err != nil {
+		t.Fatalf("%s not written: %v", name, err)
+	}
+	return b
+}
+
+// assertSelfContained fails if b references any host other than the site's own
+// origin. A page whose only absolute URLs are its own is still offline-buildable
+// and still has nothing to go and fetch; a CDN would break both the CSP and the
+// promise, and an attacker who could inject one would get a beacon for free.
+func assertSelfContained(t *testing.T, name string, b []byte) {
+	t.Helper()
+	if err := selfContainedError(string(b)); err != nil {
+		t.Errorf("%s: %v", name, err)
+	}
+}
+
+// selfContainedError returns the first absolute URL in s that is not the site's
+// own origin, or nil. Split out from the t.Errorf so the rule can be tested on
+// both sides of the line — including the lookalike host, which a plain
+// "does it contain https://" check would wave through.
+func selfContainedError(s string) error {
+	for _, u := range absoluteURLRe.FindAllString(s, -1) {
+		if !strings.HasPrefix(u, siteURL) {
+			return fmt.Errorf("references %s; the site must stay self-contained", u)
+		}
+	}
+	return nil
+}
+
+// indexTotalFromJSON sums the published index contract. index.html's hero is
+// asserted against this so a visitor's number stays reproducible from the
+// machine-readable file.
+func indexTotalFromJSON(t *testing.T, out string) uint64 {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	var total uint64
+	for _, s := range idx {
+		total += s.DropPkts
+	}
+	return total
+}
+
+// TestSiteIndexTotalAndSince covers the homepage hero: the all-time DROP
+// packet total, the "Since" line, and the self-hosted counter that animates
+// it.
+func TestSiteIndexTotalAndSince(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := indexTotalFromJSON(t, out)
+	if want != 1750 {
+		t.Fatalf("fixture total changed: index.json sums to %d, want 1750", want)
+	}
+	if got, formatted := groupThousands(want), "1,750"; got != formatted {
+		t.Fatalf("groupThousands(%d) = %q, want %q", want, got, formatted)
+	}
+
+	m := heroRe.FindStringSubmatch(string(page))
+	if m == nil {
+		t.Fatalf("index.html has no #total-attacks counter:\n%s", page)
+	}
+	if m[1] != "1750" {
+		t.Errorf("data-total = %s, want 1750", m[1])
+	}
+	if m[2] != "1,750" {
+		t.Errorf("static fallback text = %q, want %q", m[2], "1,750")
+	}
+	if !strings.Contains(string(page), "Since "+siteDay1) {
+		t.Error("index.html is missing the earliest-day \"Since\" line")
+	}
+	if !strings.Contains(string(page), `src="countup.js"`) {
+		t.Error("index.html does not load the self-hosted counter")
+	}
+	if !strings.Contains(string(page), `src="./totalnumber.js"`) {
+		t.Error("index.html does not load the exported total")
+	}
+	if !strings.Contains(string(page), siteTitle) {
+		t.Errorf("index.html is missing the site title %q", siteTitle)
+	}
+	if _, err := os.Stat(filepath.Join(out, "countup.js")); err != nil {
+		t.Errorf("countup.js not written: %v", err)
+	}
+
+	// The site's whole point is that nothing is fetched from off-host. Both
+	// scripts are ours, not a CDN's, and the canonical/og URLs that do name an
+	// origin name ours.
+	for _, name := range []string{"index.html", "countup.js"} {
+		assertSelfContained(t, name, readArtifact(t, out, name))
+	}
+	// countup.js runs on every page view and has no metadata reason to know
+	// the site's name, so it may not contain an absolute URL at all. Same for
+	// totalnumber.js, which other sites embed by URL.
+	for _, name := range []string{"countup.js", "totalnumber.js"} {
+		if b := readArtifact(t, out, name); absoluteURLRe.Match(b) {
+			t.Errorf("%s contains an absolute URL:\n%s", name, b)
+		}
+	}
+	// Everything the browser is told to fetch has to be a relative path, so it
+	// resolves against whatever origin serves the page.
+	for _, ref := range scriptSrcRe.FindAllStringSubmatch(string(page), -1) {
+		if strings.Contains(ref[1], "://") {
+			t.Errorf("index.html makes the browser fetch the absolute URL %q", ref[1])
+		}
+	}
+	if externalStyleRe.Match(page) {
+		t.Error("index.html links an external stylesheet; the site styles itself inline")
+	}
+}
+
+// TestAssertSelfContained pins the guard itself. A self-containment check that
+// cannot fail is not a check, and this one has to allow our own origin in
+// metadata while still refusing a CDN — so exercise both sides of the line
+// rather than only the side the real output happens to fall on.
+func TestAssertSelfContained(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		page    string
+		wantErr bool
+	}{
+		{"own origin in canonical", `<link rel="canonical" href="https://stats.opennhp.org/">`, false},
+		{"own origin as og:image", `<meta property="og:image" content="` + siteOGImage + `">`, false},
+		{"no absolute URL at all", `<script src="countup.js" defer></script>`, false},
+		{"cdn script", `<script src="https://cdn.jsdelivr.net/npm/countup.js"></script>`, true},
+		{"third-party analytics", `<img src="http://tracker.example/pixel.gif">`, true},
+		{"lookalike host", `<link rel="canonical" href="https://stats.opennhp.org.evil.test/">`, true},
+		{"http downgrade", `<link rel="canonical" href="http://stats.opennhp.org/">`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := selfContainedError(tc.page)
+			if gotErr := err != nil; gotErr != tc.wantErr {
+				t.Errorf("selfContainedError(%s) error = %v, want error: %v", tc.page, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestSiteIndexHeadMetadata pins the <head> copy: the <title> search engines
+// and chat previews show, the description, and the Open Graph / Twitter card
+// tags. It also pins that the <title> is deliberately NOT the <h1>: a tab has
+// room to say what the site is about, the heading above the fold does not, and
+// collapsing them would lose one of the two.
+func TestSiteIndexHeadMetadata(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := string(page)
+	if i := strings.Index(head, "</head>"); i >= 0 {
+		head = head[:i]
+	}
+
+	for _, want := range []string{
+		"<title>" + siteDocumentTitle + "</title>",
+		`<meta name="description" content="` + siteDescription + `">`,
+		`<link rel="canonical" href="` + siteURL + `">`,
+		`<meta property="og:title" content="` + siteTitle + `">`,
+		`<meta property="og:description" content="` + siteOGDescription + `">`,
+		`<meta property="og:url" content="` + siteURL + `">`,
+		`<meta property="og:type" content="website">`,
+		`<meta property="og:image" content="` + siteOGImage + `">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+	} {
+		if !strings.Contains(head, want) {
+			t.Errorf("index.html <head> is missing:\n  %s", want)
+		}
+	}
+	if strings.Contains(head, "<title>"+siteTitle+"</title>") {
+		t.Error("the <title> collapsed back onto the <h1> slogan")
+	}
+}
+
+// TestSiteIndexNoHeroWhenEmpty asserts the hero is suppressed rather than
+// rendered with a zero total and a bogus "Since" date. renderIndex is called
+// directly because the CLI refuses to publish a site with no inputs at all,
+// so this state is only reachable from a caller with no rows to hand.
+func TestSiteIndexNoHeroWhenEmpty(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "web")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if heroRe.Match(page) {
+		t.Error("index.html rendered a hero counter for an empty site")
+	}
+}
+
+// TestGroupThousands pins the display formatter. Zero and sub-thousand values
+// carry no separator, and every other value groups from the right.
+func TestGroupThousands(t *testing.T) {
+	for _, tc := range []struct {
+		in   uint64
+		want string
+	}{
+		{0, "0"},
+		{7, "7"},
+		{999, "999"},
+		{1000, "1,000"},
+		{12345, "12,345"},
+		{1234567, "1,234,567"},
+		{1000000000, "1,000,000,000"},
+	} {
+		if got := groupThousands(tc.in); got != tc.want {
+			t.Errorf("groupThousands(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	// The template funcs see int and uint64 depending on the Report field.
+	if got := group(uint64(1234567)); got != "1,234,567" {
+		t.Errorf("group(uint64) = %q", got)
+	}
+	if got := group(3); got != "3" {
+		t.Errorf("group(int) = %q", got)
+	}
+	if got := group(int64(1234567)); got != "1,234,567" {
+		t.Errorf("group(int64) = %q", got)
+	}
+	if got := group(1234567); got != "1,234,567" {
+		t.Errorf("group(int) large = %q", got)
+	}
+}
+
+// TestSourceLabel pins the display name for a source directory. "server" is
+// the directory name the collector stages logs under; the column says
+// nhp-server so it names the product rather than repeating a generic noun.
+func TestSourceLabel(t *testing.T) {
+	if got := sourceLabel("server"); got != "nhp-server" {
+		t.Errorf("sourceLabel(server) = %q, want %q", got, "nhp-server")
+	}
+	// An unmapped source (the AC, once it has a parser) renders as-is rather
+	// than blanking the cell.
+	if got := sourceLabel("ac"); got != "ac" {
+		t.Errorf("sourceLabel(ac) = %q, want %q", got, "ac")
+	}
+}
+
+// TestSourceColumnRendersLabel asserts the index table shows the label while
+// index.json keeps the directory name. The JSON field is a published contract
+// — renaming it in the HTML alone would leave the two disagreeing.
+func TestSourceColumnRendersLabel(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), "<td>nhp-server</td>") {
+		t.Errorf("index.html Source column does not render the nhp-server label")
+	}
+	idx, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(idx), `"source": "server"`) {
+		t.Error("index.json must keep the raw directory name in `source`")
+	}
+}
+
+// TestTotalNumberJS pins the machine-readable export another site embeds with
+// a <script src>: three constants, the packet total being the same number the
+// homepage hero shows.
+func TestTotalNumberJS(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	b, err := os.ReadFile(filepath.Join(out, "totalnumber.js"))
+	if err != nil {
+		t.Fatalf("totalnumber.js not written: %v", err)
+	}
+	body := string(b)
+	want := indexTotalFromJSON(t, out)
+	if !strings.Contains(body, fmt.Sprintf("const NHP_TOTAL_ATTACK_BLOCKED = %d;", want)) {
+		t.Errorf("totalnumber.js does not export the index total (%d):\n%s", want, body)
+	}
+	if !strings.Contains(body, "Counting starts: "+siteDay1) {
+		t.Error("totalnumber.js does not record the counting start date")
+	}
+	// The two union counts are published as constants too, so an embedding
+	// page never has to special-case a missing binding. The fixture resolves
+	// no countries without a geo source, and day 1's two public sources are
+	// day 2's as well.
+	got := readTotalNumbers(t, out)
+	for _, name := range []string{"NHP_TOTAL_ATTACK_SOURCE_IPS", "NHP_TOTAL_ATTACK_COUNTRIES"} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("totalnumber.js does not export %s:\n%s", name, body)
+		}
+	}
+	if n := got["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 2 (fixture has one reserved source)", n)
+	}
+	if n := got["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 0 (no geo source configured)", n)
+	}
+	// It has to stay executable as a plain classic script.
+	for _, scheme := range []string{"http://", "https://"} {
+		if strings.Contains(body, scheme) {
+			t.Errorf("totalnumber.js references %s; it must stay self-contained", scheme)
+		}
+	}
+}
+
+// TestTotalNumberJSEmptySite asserts the export is still written when nothing
+// is published: a consumer's <script src> must not 404 and leave a dangling
+// reference, and 0 with no counting start says exactly that.
+func TestTotalNumberJSEmptySite(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "web")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(out, "totalnumber.js"))
+	if err != nil {
+		t.Fatalf("totalnumber.js not written on an empty site: %v", err)
+	}
+	for name, n := range readTotalNumbers(t, out) {
+		if n != 0 {
+			t.Errorf("empty site %s = %d, want 0:\n%s", name, n, b)
+		}
+	}
+	if got := len(readTotalNumbers(t, out)); got != 3 {
+		t.Errorf("empty site exports %d constants, want all 3:\n%s", got, b)
+	}
+	if strings.Contains(string(b), "Counting starts:") {
+		t.Error("empty site must not claim a counting start date")
+	}
+}
+
+// TestSinceFloor pins the -since publishing floor. Days older than the floor
+// are incomplete (the XDP filter was attached after they were recorded), so
+// they are neither rendered nor counted — counting them would silently
+// understate the all-time total.
+func TestSinceFloor(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	src := filepath.Join(logs, "server")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := "10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=5 LOGGED=1 TOTAL=5\n"
+	for _, d := range []string{"2026-10-15", "2026-10-16", "2026-10-17"} {
+		if err := os.WriteFile(filepath.Join(src, "nhp_server_xdp-"+d+".log"), []byte(line), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runSiteCmd(t, logs, out) // default -since
+
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err = json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	if len(idx) != 2 {
+		t.Fatalf("index rows = %d, want 2 (the pre-floor day must be absent)", len(idx))
+	}
+	for _, s := range idx {
+		if s.Day == "2026-10-15" {
+			t.Error("day before the -since floor leaked into the index")
+		}
+	}
+	// No page for it either — the floor is a publishing decision, not a
+	// rendering filter over an otherwise published day.
+	if _, statErr := os.Stat(filepath.Join(out, "d", "server", "2026-10-15.html")); !os.IsNotExist(statErr) {
+		t.Error("pre-floor day produced a detail page")
+	}
+	// 2 days x 5 packets. The excluded day would have made it 15.
+	if got := indexTotalFromJSON(t, out); got != 10 {
+		t.Errorf("total = %d, want 10 (pre-floor day must not be counted)", got)
+	}
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), "Since 2026-10-16") {
+		t.Error("Since line must name the floor, not the oldest input on disk")
+	}
+}
+
+// TestSinceFloorEmpty asserts a -since that excludes every discovered day is
+// refused rather than published: blanking a populated index is the one
+// outcome a misconfigured floor must never produce.
+func TestSinceFloorEmpty(t *testing.T) {
+	logs, out := stageTestdata(t)
+	// Publish both fixture days first, so the refusal below has a populated
+	// site to protect.
+	runSiteCmd(t, logs, out, "-since", "")
+	var buf bytes.Buffer
+	err := run([]string{"site", "-logs", logs, "-out", out, "-top", "20", "-since", "2099-01-01"}, &buf)
+	if err == nil {
+		t.Fatal("expected a -since beyond every input day to be refused")
+	}
+	if !strings.Contains(err.Error(), "-since") {
+		t.Errorf("error should name the offending flag: %v", err)
+	}
+	// The refusal has to come before the unpublish pass: a floor that
+	// excludes everything must not delete every detail page on its way to
+	// the same empty index.
+	for _, day := range []string{siteDay1, siteDay2} {
+		if _, statErr := os.Stat(filepath.Join(out, "d", "server", day+".html")); statErr != nil {
+			t.Errorf("%s page removed by a refused run: %v", day, statErr)
+		}
+	}
+}
+
+// TestSinceFloorOverride asserts -since can move the floor, including
+// clearing it to publish everything. This is what a local debug run wants.
+func TestSinceFloorOverride(t *testing.T) {
+	logs, out := stageTestdata(t)
+	// The fixtures are already on/after the floor; clearing it must still
+	// publish both days rather than error on an empty filter.
+	runSiteCmd(t, logs, out, "-since", "")
+
+	var idx []SiteDaySummary
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	if len(idx) != 2 {
+		t.Errorf("index rows = %d, want 2 with -since cleared", len(idx))
+	}
+
+	// A bad -since is a flag error, not a silent no-op.
+	var buf bytes.Buffer
+	err = run([]string{"site", "-logs", logs, "-out", out, "-since", "16-10-2026"}, &buf)
+	if err == nil {
+		t.Fatal("expected -since to reject a non-ISO date")
+	}
+	if !strings.Contains(err.Error(), "-since must be YYYY-MM-DD") {
+		t.Errorf("unexpected -since validation error: %v", err)
+	}
+}
+
+// TestPublishesDay pins the floor comparison itself, including the
+// malformed-day escape hatch.
+func TestPublishesDay(t *testing.T) {
+	o := &SiteOptions{Since: defaultSiteSince}
+	for _, tc := range []struct {
+		day  string
+		want bool
+	}{
+		{"2026-10-15", false}, // one day before the floor
+		{"2026-10-16", true},  // exactly the floor is published
+		{"2026-10-17", true},
+		{"2026-11-01", true},
+		{"2025-01-01", false},
+		// A day the parser rejects is kept: a collector bug is worth showing
+		// in the index rather than hiding.
+		{"not-a-date", true},
+	} {
+		if got := o.publishesDay(tc.day); got != tc.want {
+			t.Errorf("publishesDay(%q) = %v, want %v", tc.day, got, tc.want)
+		}
+	}
+	// An empty floor publishes everything.
+	all := &SiteOptions{}
+	if !all.publishesDay("2020-01-01") {
+		t.Error("an empty -since must publish every day")
+	}
+}
+
+// TestIndexJSONIsArrayNotNull guards the published contract: index.json is an
+// array even when the site is empty. json.Marshal writes a nil slice as
+// `null`, and a consumer doing `for (const row of data)` would throw on that
+// and read it as a broken deploy rather than "no days yet".
+func TestIndexJSONIsArrayNotNull(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "web")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(b)); got != "[]" {
+		t.Errorf("empty index.json = %q, want %q", got, "[]")
+	}
+}
+
+// writeDropLog stages a minimal single-day log with an exact DROP count. Used
+// where the fixture content is irrelevant and only the day's presence and
+// totals matter.
+func writeDropLog(t *testing.T, logs, source, day string, pkts int) {
+	t.Helper()
+	dir := filepath.Join(logs, source)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := fmt.Sprintf("10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=%d LOGGED=1 TOTAL=%d\n", pkts, pkts)
+	if err := os.WriteFile(filepath.Join(dir, "nhp_server_xdp-"+day+".log"), []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// readSiteState loads <out>/state.json, which is where the tests keep it
+// because runSiteCmd passes no -state.
+func readSiteState(t *testing.T, out string) SiteState {
+	t.Helper()
+	return readSiteStateAt(t, filepath.Join(out, "state.json"))
+}
+
+// readSiteStateAt is readSiteState for a run that passed -state somewhere
+// other than <out>.
+func readSiteStateAt(t *testing.T, path string) SiteState {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st SiteState
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+// setStateRender rewrites every day entry's render version. Version 0 stands
+// in for a state.json written by a binary that did not record the field: the
+// key is simply absent and decodes to zero.
+func setStateRender(t *testing.T, out string, v int) {
+	t.Helper()
+	st := readSiteState(t, out)
+	for src, days := range st.Days {
+		for day, d := range days {
+			d.Render = v
+			st.Days[src][day] = d
+		}
+	}
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = append(b, '\n')
+	if err := os.WriteFile(filepath.Join(out, "state.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// indexHasDay reports whether the published index still lists day.
+func indexHasDay(t *testing.T, out, day string) bool {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range idx {
+		if s.Day == day {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSiteUnpublishesPreFloorPages covers the migration the floor implies on a
+// site that is already serving the day. stats.opennhp.org published days
+// before 2026-10-16 before the floor existed, and merely skipping them leaves
+// their detail pages reachable at their old URLs — unlinked, but still public
+// and still carrying the partial record the floor exists to withhold. The run
+// has to take them back down.
+func TestSiteUnpublishesPreFloorPages(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+
+	const preFloor = "2026-10-15"
+	writeDropLog(t, logs, "server", preFloor, 7)
+	writeDropLog(t, logs, "server", siteDay1, 5)
+	writeDropLog(t, logs, "server", siteDay2, 5)
+
+	// Before the floor existed the day published like any other.
+	runSiteCmd(t, logs, out, "-since", "")
+	preHTML := filepath.Join(out, "d", "server", preFloor+".html")
+	preJSON := filepath.Join(out, "d", "server", preFloor+".json")
+	for _, p := range []string{preHTML, preJSON} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("fixture failed to publish %s: %v", p, err)
+		}
+	}
+
+	// The deploy that introduces the floor runs with the default.
+	runSiteCmd(t, logs, out)
+
+	for _, p := range []string{preHTML, preJSON} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s survived the -since floor (stat err = %v)", p, err)
+		}
+	}
+	if indexHasDay(t, out, preFloor) {
+		t.Errorf("pre-floor day %s is still indexed", preFloor)
+	}
+	// 2 days x 5 packets. The unpublished day would have made it 17.
+	if got := indexTotalFromJSON(t, out); got != 10 {
+		t.Errorf("total = %d, want 10 (pre-floor day must not be counted)", got)
+	}
+	if _, ok := readSiteState(t, out).Days["server"][preFloor]; ok {
+		t.Errorf("state.json still carries a fingerprint for the unpublished day %s", preFloor)
+	}
+
+	// Every later run must stay a no-op: the page is already gone, and an
+	// absent file is not an error.
+	runSiteCmd(t, logs, out)
+	if _, err := os.Stat(preHTML); !os.IsNotExist(err) {
+		t.Errorf("%s came back on the second run (stat err = %v)", preHTML, err)
+	}
+}
+
+// TestSiteRenderVersionRebuildsUnchangedDay covers the deploy-time half of the
+// same story. A markup-only change moves siteRenderVersion, and the input
+// fingerprint does not move with it — so without the version in state.json a
+// title change would reach only the days whose logs happen to change that
+// week, and every other published page would keep the old title forever.
+func TestSiteRenderVersionRebuildsUnchangedDay(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	day1 := filepath.Join(out, "d", "server", siteDay1+".html")
+	day2 := filepath.Join(out, "d", "server", siteDay2+".html")
+	before1, err := os.Stat(day1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before2, err := os.Stat(day2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No input changed. This is the state an earlier binary leaves behind:
+	// matching fingerprints, no render version recorded.
+	setStateRender(t, out, 0)
+	runSiteCmd(t, logs, out)
+
+	after1, err := os.Stat(day1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after2, err := os.Stat(day2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after1.ModTime().UnixNano() == before1.ModTime().UnixNano() {
+		t.Error("day 1 page was not rebuilt after the template version moved")
+	}
+	if after2.ModTime().UnixNano() == before2.ModTime().UnixNano() {
+		t.Error("day 2 page was not rebuilt after the template version moved")
+	}
+
+	b, err := os.ReadFile(day1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "Daily Attack Report") {
+		t.Errorf("rebuilt day page is not on the current template:\n%s", string(b))
+	}
+	if got := readSiteState(t, out).Days["server"][siteDay1].Render; got != siteRenderVersion {
+		t.Errorf("state render version = %d, want %d", got, siteRenderVersion)
+	}
+}
+
+// TestSitePageOnlyDayRerendersOnce covers the days whose raw log the collector
+// already pruned. They cannot be re-analyzed, but their HTML is a pure
+// function of the published JSON beside them, so the template still reaches
+// them — once, and then the state keeps every later run quiet.
+func TestSitePageOnlyDayRerendersOnce(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	dayHTML := filepath.Join(out, "d", "server", siteDay2+".html")
+	if err := os.Remove(filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log")); err != nil {
+		t.Fatalf("prune the raw log: %v", err)
+	}
+	setStateRender(t, out, 0)
+
+	runSiteCmd(t, logs, out)
+
+	first, err := os.Stat(dayHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(dayHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "Daily Attack Report") {
+		t.Errorf("page-only day was not re-rendered with the current template:\n%s", string(b))
+	}
+	// Its numbers still come from the JSON, not from a rebuilt-from-nothing
+	// zero row.
+	if !indexHasDay(t, out, siteDay2) {
+		t.Error("page-only day dropped out of the index")
+	}
+	if idx := readSiteState(t, out); idx.Days["server"][siteDay2].Render != siteRenderVersion {
+		t.Error("state did not record the render version for the page-only day")
+	}
+
+	runSiteCmd(t, logs, out)
+	second, err := os.Stat(dayHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ModTime().UnixNano() != first.ModTime().UnixNano() {
+		t.Error("page-only day was re-rendered again on an unchanged run")
+	}
+}
+
+// writeDropLogWithSources writes a day whose per-packet DROP lines name every
+// address in srcs, plus the [NHP-STAT] line that carries the exact packet
+// count. Sources, not packets, are what the all-time totals union, so a test
+// that wants distinct attackers has to write addresses here.
+func writeDropLogWithSources(t *testing.T, logs, source, day string, pkts int, srcs ...string) {
+	t.Helper()
+	dir := filepath.Join(logs, source)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "10:00:00 s [NHP-STAT] VERDICT=DROP REASON=TCP_OTHER WINDOW=60s PKTS=%d LOGGED=%d TOTAL=%d\n", pkts, len(srcs), pkts)
+	for i, s := range srcs {
+		fmt.Fprintf(&b, "10:%02d:00 s [NHP-DROP] REASON=TCP_OTHER SRC=%s DST=10.0.0.1 LEN=60 PROTO=TCP SPT=1 DPT=%d RELAY=0\n", i, s, 1000+i)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "nhp_server_xdp-"+day+".log"), []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// readTotalNumbers parses the constants out of totalnumber.js. The file is a
+// comment block followed by three `const NAME = <int>;` lines, so a regexp
+// per name is enough and a hand-rolled JS parser would not be.
+func readTotalNumbers(t *testing.T, out string) map[string]int {
+	t.Helper()
+	b := readArtifact(t, out, "totalnumber.js")
+	got := map[string]int{}
+	for _, m := range rangeConstants.FindAllStringSubmatch(string(b), -1) {
+		n, err := strconv.Atoi(m[2])
+		if err != nil {
+			t.Fatalf("totalnumber.js constant %s = %q: %v", m[1], m[2], err)
+		}
+		got[m[1]] = n
+	}
+	return got
+}
+
+var rangeConstants = regexp.MustCompile(`const (NHP_[A-Z_]+) = (\d+);`)
+
+// TestDayFactsRoundTrip pins the per-day sidecar encoding. The counts it
+// carries are the ones totalnumber.js publishes, so a decode that silently
+// dropped a record would publish a smaller total with no other symptom.
+func TestDayFactsRoundTrip(t *testing.T) {
+	srcs := []uint64{1, 2, 3, 0xffff_ffff_ffff_ffff}
+	countries := []string{"AU", "CN", "US"}
+	enc := encodeDayFacts(srcs, countries)
+	gotSrcs, gotCountries, err := decodeDayFacts(enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotSrcs) != len(srcs) {
+		t.Fatalf("decoded %d sources, want %d", len(gotSrcs), len(srcs))
+	}
+	for i := range srcs {
+		if gotSrcs[i] != srcs[i] {
+			t.Errorf("source[%d] = %d, want %d", i, gotSrcs[i], srcs[i])
+		}
+	}
+	if strings.Join(gotCountries, ",") != "AU,CN,US" {
+		t.Errorf("countries = %v, want AU,CN,US", gotCountries)
+	}
+	// A future layout must be refused rather than decoded as this one: the
+	// bytes would still be plausible, and the site would publish a wrong
+	// total with nothing to notice.
+	if _, _, err := decodeDayFacts([]byte("XDF2nope")); err == nil {
+		t.Error("a file with the wrong magic was accepted")
+	}
+	// A truncated tail loses that day, not the whole run: the complete
+	// records before the cut still decode, and only the partial one is
+	// dropped.
+	if srcs, countries, err := decodeDayFacts(enc[:len(enc)-3]); err != nil {
+		t.Errorf("truncated file refused outright: %v", err)
+	} else if len(countries) != 2 || countries[1] != "CN" {
+		t.Errorf("truncated file kept %v, want the two complete records AU,CN", countries)
+	} else if len(srcs) != len(gotSrcs) {
+		t.Errorf("truncated file lost complete source records: %d", len(srcs))
+	}
+}
+
+// TestSiteTotalsUnionAcrossDays is the point of the sidecar: an address that
+// attacks on several days is one attacker. Summing the per-day counts would
+// publish 4 here; the union is 3. The reserved address is excluded from both,
+// matching the per-day unique_attack_ips the index already shows.
+func TestSiteTotalsUnionAcrossDays(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100,
+		"203.0.113.5", "198.51.100.7", "10.0.0.9")
+	writeDropLogWithSources(t, logs, "server", siteDay2, 200,
+		"203.0.113.5", "192.0.2.9")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	// The per-day numbers are unchanged by any of this: 2 unique sources each,
+	// so a reader summing unique_attack_ips gets 4.
+	var idx []SiteDaySummary
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	var sum int
+	for _, s := range idx {
+		sum += s.UniqueIPs
+	}
+	if sum != 4 {
+		t.Fatalf("per-day unique sources sum to %d, want 4", sum)
+	}
+
+	got := readTotalNumbers(t, out)
+	if got["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 3 (the union, not the sum)",
+			got["NHP_TOTAL_ATTACK_SOURCE_IPS"])
+	}
+	// 203.0.113.0/24 resolves to AU in testdata/geo.csv; the other two
+	// resolve to nothing and must not be counted as a country.
+	if got["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 1 (AU only)",
+			got["NHP_TOTAL_ATTACK_COUNTRIES"])
+	}
+	if got["NHP_TOTAL_ATTACK_BLOCKED"] != 300 {
+		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want 300", got["NHP_TOTAL_ATTACK_BLOCKED"])
+	}
+}
+
+// TestGeoInstallReachesPublishedDays covers the deploy that drops the
+// GeoLite2 database onto the relay. Nothing about those days' raw logs
+// changes, so without the geo fingerprint in state.json they would never be
+// re-analyzed and the site's country total would stay at whatever the days
+// after the install happened to see.
+func TestGeoInstallReachesPublishedDays(t *testing.T) {
+	logs, out := stageTestdata(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	runSiteCmd(t, logs, out, "-state", statePath)
+
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
+		t.Fatalf("countries = %d before any geo source exists, want 0", n)
+	}
+	if st := readSiteStateAt(t, statePath); st.Days["server"][siteDay1].Geo != "" {
+		t.Errorf("state records geo %q for a day analyzed without one",
+			st.Days["server"][siteDay1].Geo)
+	}
+
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
+		t.Errorf("countries = %d after installing a geo source, want 1", n)
+	}
+	jb, err := os.ReadFile(filepath.Join(out, "d", "server", siteDay1+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	if err := json.Unmarshal(jb, &rep); err != nil {
+		t.Fatal(err)
+	}
+	if !rep.GeoEnabled || len(rep.TopGeo) == 0 {
+		t.Error("a day published before the geo source was installed was not re-analyzed with it")
+	}
+	if st := readSiteStateAt(t, statePath); st.Days["server"][siteDay1].Geo == "" {
+		t.Error("state did not record the geo source that produced the day")
+	}
+}
+
+// TestGeoRemovalKeepsPublishedAttribution pins the asymmetry in geoStale: a
+// database that goes away must not re-analyze the days back to no regions.
+// Their raw logs age out of the collector's cache, so the attribution they
+// already have is the last copy of it.
+func TestGeoRemovalKeepsPublishedAttribution(t *testing.T) {
+	logs, out := stageTestdata(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	runSiteCmd(t, logs, out, "-state", statePath) // database gone
+
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
+		t.Errorf("countries = %d after the geo source went away, want 1 (kept)", n)
+	}
+}
+
+// TestUnpublishRemovesFacts covers the -since floor moving forward. The day's
+// pages come down and its state entry is dropped; leaving its fact file would
+// keep its attackers in the all-time source count for a day the index no
+// longer lists.
+func TestUnpublishRemovesFacts(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+
+	const preFloor = "2026-10-15"
+	writeDropLogWithSources(t, logs, "server", preFloor, 50, "198.51.100.7")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", statePath, "-since", "")
+
+	facts := dayFactsPath(statePath, "server", preFloor)
+	if _, err := os.Stat(facts); err != nil {
+		t.Fatalf("facts not written for the pre-floor day: %v", err)
+	}
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
+		t.Fatalf("sources = %d, want 2", n)
+	}
+
+	runSiteCmd(t, logs, out, "-state", statePath) // default floor unpublishes preFloor
+
+	if _, err := os.Stat(facts); !os.IsNotExist(err) {
+		t.Errorf("facts for the unpublished day survived: %v", err)
+	}
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 1 {
+		t.Errorf("sources = %d after unpublishing the pre-floor day, want 1", n)
+	}
+}
+
+// TestMissingFactsAreReported covers a day whose facts file is gone and whose
+// raw log no longer exists — the state a site is left in when the feature
+// lands on a build whose days are already published. The run must still
+// publish (the packet total is unaffected) and must say which day is not
+// contributing, rather than quietly publishing a smaller source total.
+func TestMissingFactsAreReported(t *testing.T) {
+	logs, out := stageTestdata(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	runSiteCmd(t, logs, out, "-state", statePath)
+
+	if err := os.Remove(filepath.Join(logs, "server", "nhp_server_xdp-"+siteDay2+".log")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dayFactsPath(statePath, "server", siteDay2)); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := run([]string{"site", "-logs", logs, "-out", out, "-state", statePath}, &buf); err != nil {
+		t.Fatalf("a day with no facts must not fail the run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "server/"+siteDay2) {
+		t.Errorf("run output does not name the day that is not contributing:\n%s", buf.String())
+	}
+	if !indexHasDay(t, out, siteDay2) {
+		t.Error("a day with no facts dropped out of the index")
+	}
+	// Only day 1's attackers are counted, and day 1's own facts survived.
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
+		t.Errorf("sources = %d, want 2 (day 1 only)", n)
+	}
+}
+
+// TestGeoStaleDirection pins the trigger rule itself: a day analyzed with no
+// geo source is stale once one exists, and never the other way round.
+func TestGeoStaleDirection(t *testing.T) {
+	for _, tc := range []struct {
+		prev, want string
+		stale      bool
+	}{
+		{"", "", false},
+		{"", "mmdb:/db", true},
+		{"mmdb:/db", "", false},
+		{"mmdb:/db", "mmdb:/db", false},
+		{"mmdb:/db", "csv:/db", true},
+	} {
+		if got := geoStale(tc.prev, tc.want); got != tc.stale {
+			t.Errorf("geoStale(%q, %q) = %v, want %v", tc.prev, tc.want, got, tc.stale)
+		}
 	}
 }

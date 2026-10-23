@@ -318,9 +318,106 @@ run (triggered by the `deploy-demo-v2` workflow).
 #### XDP attack stats site (stats.opennhp.org)
 
 Daily summaries of the nhp-server XDP ingress filter's `[NHP-DROP]` events are
-published at `https://stats.opennhp.org/`. Static HTML + JSON, no scripts, no
-external resources, fully offline-built from the same
-`logs/nhp_server_xdp-YYYY-MM-DD.log` files the daemon writes.
+published at `https://stats.opennhp.org/`. Static HTML + JSON, no third-party
+resources, fully offline-built from the same
+`logs/nhp_server_xdp-YYYY-MM-DD.log` files the daemon writes. The homepage
+leads with a hero total of all-time blocked packets (plus a `Since` date) that
+`countup.js` counts up; that script is generated into the web root by
+`xdplog-report site`, loaded same-origin, and is one of the two the CSP permits
+(`script-src 'self'`, the other being `totalnumber.js`, which the homepage also
+loads so it can quote its own `NHP_TOTAL_ATTACK_BLOCKED`). It is progressive
+enhancement — the number is already in the HTML for readers without JS, without
+that CSP, or with reduced motion.
+
+**One documented exception to self-containment.** The homepage `<head>` carries a
+meta description, a canonical URL and the Open Graph / Twitter card tags
+(`og:title` / `og:description` / `og:url` / `og:type` / `og:image`, plus
+`twitter:card`), so a search result or a chat link renders with a real
+description. Those tag values are absolute URLs, which is what
+`assertSelfContained` (`site_test.go`) has to allow for: it fails on any
+absolute URL that is **not** `siteURL` rather than on absolute URLs at all, and
+it separately rejects any `<script src>` that is not a relative path. A crawler
+reads those tags, the browser never fetches them, so they do not make the page
+depend on anything off-host. The `<title>` is deliberately not the `<h1>`:
+`siteDocumentTitle` ("Zero Trust in Action: Live Attacks on OpenNHP Servers")
+is what a tab and a search result show, `siteTitle` ("Invisible Server, Visible
+Attacks") is the heading and `og:title`. `og:image` points at `/og.png` in the
+web root, which has to exist there for social previews to render anything.
+
+**Publishing floor.** `xdplog-report site` publishes nothing before `-since`
+(default `2026-10-16`, `defaultSiteSince` in `site.go`): those days get no
+detail page, no index row, and no share of the total. The XDP filter was
+attached after that log was written, so the earlier record is partial and
+counting it would understate the totals by an unquantifiable amount. A `-since`
+that excludes every discovered day is refused **before anything is deleted**, so
+a typo can neither blank a populated index nor leave a site of dead links;
+`-since ""` publishes everything, for local debugging. A site that already
+served a day below the floor is migrated by `unpublishDay` (`site.go`): the next
+run deletes that day's `d/<source>/<day>.{html,json}`, drops its `state.json`
+entry and re-renders the index — a page left in the web root is still reachable
+at its old URL, so unlinked is not unpublished. That deletion is the only thing
+the subcommand removes; raw logs and the collector cache are never touched, and
+a page it cannot delete fails the run after the index is written. The deletions
+run only once every publishable day has succeeded and immediately before that
+index is written, and the index is written before `state.json`: any run that
+gives up — an unreadable log, an empty index it refuses to publish — leaves the
+site it was serving intact, links and total unchanged, instead of removing pages
+the old index still points at. **The homepage's Source column renders `server`
+as `nhp-server`** (`sourceLabel` in `render_index.go`) while `index.json` keeps
+the raw directory name — `source` is a published field and renaming it breaks
+existing parsers.
+
+**Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
+that produced each day page, so bumping that constant in `site.go` re-renders
+every published day on the next run instead of only the days whose raw log
+happened to change that week. Days whose raw log the collector already pruned
+are re-rendered from their published `d/<source>/<day>.json`
+(`rerenderPageOnlyDay`) — the HTML is a pure function of it — but their numbers
+are never recomputed. A markup change therefore needs neither `-force` nor a
+hand-deleted `state.json`. A page-only day whose *record* is unreadable drops
+out of the index (`errUnreadablePage`), because there is nothing left to
+publish; one whose record reads fine but whose page cannot be **written** keeps
+its row and its share of the total, and only the run fails — otherwise a
+transient EACCES or ENOSPC on the web root would silently shrink
+`NHP_TOTAL_ATTACK_BLOCKED` and put it back on the next good run.
+
+**`totalnumber.js`** publishes three all-time figures as JavaScript constants
+for another site to embed with
+`<script src="https://stats.opennhp.org/totalnumber.js">`:
+`NHP_TOTAL_ATTACK_BLOCKED` (exact packets, the same number the hero shows),
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. It is
+generated into the web root beside `index.html` and served from its own nginx
+location (short `Cache-Control`, no CORS header — a classic script needs
+none, and the *importing* page's CSP governs it). All three are written even
+on an empty site, as `0`, so an embedding page never gets a 404 and a dangling
+reference. Only the packet total is a sibling of `index.json` in the sense
+that index.json stays authoritative and the total stays reproducible by
+summing `drop_pkts`.
+
+**The other two are unions, not sums, and they are not reproducible from
+`index.json`.** `unique_attack_ips` is a per-day *count*: an address that
+scans the host daily is one attacker, and adding the days counts it once per
+day. So each day's set of sources and countries is captured while its raw log
+still exists and written to `facts/<source>/<day>.facts` beside `state.json`
+(`facts.go`) — outside the web root on the relay, refused by `/facts/` in the
+nginx vhost, and never published because a 64-bit hash of an IPv4 address is
+reversible by brute force over 2^32. `unpublishDay` deletes a day's file with
+its pages, so the -since floor cannot leave a removed day's attackers in the
+total; a day whose facts are unreadable is named on stdout rather than
+silently dropped, because a smaller published total is exactly the failure
+this site is written against.
+
+**GeoIP is part of the state's fingerprint.** `SiteDayState.Geo` records the
+geo source a day was analyzed with, and a day analyzed without one is stale
+the moment a database appears — so dropping GeoLite2-City on the relay
+re-analyzes the days already published instead of leaving the country total
+at whatever the days after the install saw. The reverse is deliberately not a
+trigger: a day whose raw log has aged out can never get its attribution back,
+so taking a database away must not wipe what a published day already has.
+`deploy/scripts/xdpstats-collect.sh` passes
+`-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` when that
+file is readable (MaxMind's license means it is uploaded by hand, not shipped
+by the deploy) and says so in the collect log either way.
 
 **Data flow**
 

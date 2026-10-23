@@ -139,8 +139,20 @@ func TestCLIFormatsAndMask(t *testing.T) {
 		t.Error("csv header missing")
 	}
 	page := runReport(t, append(args, "-format", "html")...)
-	if !strings.HasPrefix(page, "<!doctype html>") || !strings.Contains(page, "NHP Server XDP Attack Report") {
+	if !strings.HasPrefix(page, "<!doctype html>") || !strings.Contains(page, "Daily Attack Report: 2026-10-01 – 2026-10-02") {
 		t.Error("html page missing")
+	}
+	// The headline sentence is built from the same counters as the Overview
+	// cards, so a drift between them (or a formatter that stopped grouping)
+	// shows up as a mismatch with those cards rather than as a silent prose
+	// number. UniqueIPs is the "Unique attack source IPs" card: private and
+	// reserved sources are excluded there, so the fixture's 10.0.0.9 does
+	// not count.
+	if !strings.Contains(page, "1,750 hostile packets from 2 sources") {
+		t.Error("detail subtitle does not carry the grouped totals")
+	}
+	if !strings.Contains(page, "That&rsquo;s 99.43% of all inbound traffic") {
+		t.Error("detail subtitle does not carry the DROP share")
 	}
 	if !strings.Contains(page, "WARNING") || !strings.Contains(page, "Not enabled") {
 		t.Error("html warning or geo-disabled note missing")

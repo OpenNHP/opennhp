@@ -34,7 +34,21 @@ type SiteOptions struct {
 	MaskIP    bool
 	Force     bool
 	Today     string // YYYY-MM-DD (UTC), supplied by the caller
+	// Since is the earliest day (YYYY-MM-DD) the site publishes. Days older
+	// than this are neither rendered nor counted in the homepage total; see
+	// defaultSiteSince. Empty disables the floor.
+	Since string
 }
+
+// defaultSiteSince is the first day the public site counts.
+//
+// The XDP filter was attached to the demo host later than the logs that were
+// already sitting in its log directory, so everything before this date is a
+// partial record: counting it would understate the totals and, worse, make
+// the all-time hero number quietly wrong by an amount nobody can audit. The
+// floor is a publishing decision, not a data-availability one — the detail
+// pages for older days are simply not part of this site.
+const defaultSiteSince = "2026-10-16"
 
 // SiteDaySummary is one row of the site's index. Field names are part of the
 // published index.json contract; do not rename without a schema bump.
@@ -60,7 +74,63 @@ type SiteDayState struct {
 	MTime int64  `json:"mtime_unix"`
 	Built bool   `json:"built"`
 	Path  string `json:"path"` // absolute path to the gzipped cache file (informational)
+	// Render is the detail-page template version that produced the page on
+	// disk. Zero means "written by a binary that did not record it", which
+	// is exactly what every existing state.json decodes to. It is a
+	// per-day field rather than a state-schema bump on purpose: a schema
+	// change would refuse to load the old file and force an operator to
+	// delete state.json or pass -force, while a field the old file simply
+	// lacks degrades to "this page predates the current template" and
+	// rebuilds itself. See siteRenderVersion.
+	Render int `json:"render"`
+	// Geo is the geo source whose lookups produced this day, empty for
+	// none. A day analyzed with no database has no region table and no
+	// countries, and nothing about its raw log changing would ever rebuild
+	// it — so installing the database has to be what marks it stale. See
+	// geoKey.
+	Geo string `json:"geo,omitempty"`
 }
+
+// geoKey names the geo source a run is using, for the per-day fingerprint.
+// Only the path is part of it, deliberately not the database's size or mtime:
+// MaxMind publishes twice a week, and re-analyzing every cached day on each
+// update would rewrite every page for a table nobody reads. Re-deriving after
+// a database swap is what -force is for.
+func geoKey(opts *SiteOptions) string {
+	switch {
+	case opts.GeoMMDB != "":
+		return "mmdb:" + opts.GeoMMDB
+	case opts.GeoCSV != "":
+		return "csv:" + opts.GeoCSV
+	default:
+		return ""
+	}
+}
+
+// geoStale reports whether a day analyzed under prev has to be re-analyzed
+// because the current run has a geo source prev did not use.
+//
+// Only that direction triggers a rebuild. Taking a database away must not wipe
+// the attribution a published day already carries: its raw log may already
+// have aged out of the collector's cache, in which case the region table and
+// the day's countries are unrecoverable, and a site that quietly lost them
+// would report a smaller country total than it really saw.
+func geoStale(prev string, want string) bool {
+	return want != "" && prev != want
+}
+
+// siteRenderVersion identifies the detail-page markup this binary writes.
+// processSiteDay treats a day whose state records a different version as
+// dirty and re-renders it, so a change to render_html.go reaches pages that
+// were published by an earlier deploy without an operator having to notice.
+//
+// Bump it whenever a template change must reach already-published pages. A
+// data-only change needs no bump: the input fingerprint already forces a
+// rebuild whenever the raw log changes. Day pages whose raw log has been
+// pruned cannot be rebuilt from the log, but their HTML is a pure function of
+// the published d/<source>/<day>.json, so they are re-rendered from that — see
+// rerenderPageOnlyDay.
+const siteRenderVersion = 1
 
 // SiteState is the on-disk incremental state.
 type SiteState struct {
@@ -71,7 +141,11 @@ type SiteState struct {
 const siteStateSchema = 1
 
 // runSite parses flags, scans the input directory, and rebuilds the static
-// site. It is intentionally read-only on inputs and never deletes user data.
+// site. It is read-only on its inputs — the raw logs and the collector cache —
+// and the only files it removes are the pre-floor detail pages under -out that
+// it published itself. Those are deleted only after every publishable day has
+// succeeded and immediately before the index that stops linking them is
+// written, so a run that gives up leaves the site it was serving intact.
 func runSite(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("xdplog-report site", flag.ContinueOnError)
 	today := time.Now().UTC().Format("2006-01-02")
@@ -82,6 +156,7 @@ func runSite(args []string, stdout io.Writer) error {
 		TopN:   20,
 		MaskIP: true,
 		Today:  today,
+		Since:  defaultSiteSince,
 	}
 	fs.StringVar(&opts.LogsDir, "logs", "", "directory of <source>/nhp_server_xdp-YYYY-MM-DD.log[.gz]")
 	fs.StringVar(&opts.OutDir, "out", "", "web root directory (created if missing)")
@@ -91,6 +166,7 @@ func runSite(args []string, stdout io.Writer) error {
 	fs.StringVar(&opts.GeoMMDB, "geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	fs.BoolVar(&opts.MaskIP, "mask-ip", opts.MaskIP, "truncate source IPs in the public site (default true)")
 	fs.BoolVar(&opts.Force, "force", false, "rebuild every day even if inputs are unchanged")
+	fs.StringVar(&opts.Since, "since", opts.Since, "earliest YYYY-MM-DD day to publish (default "+defaultSiteSince+"; empty publishes all days)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -102,6 +178,11 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	if opts.TopN < 1 {
 		return fmt.Errorf("-top must be >= 1")
+	}
+	if opts.Since != "" {
+		if _, err := time.Parse("2006-01-02", opts.Since); err != nil {
+			return fmt.Errorf("-since must be YYYY-MM-DD: %q", opts.Since)
+		}
 	}
 	if opts.GeoCSV != "" && opts.GeoMMDB != "" {
 		return fmt.Errorf("-geo-csv and -geo-mmdb are mutually exclusive")
@@ -162,19 +243,62 @@ func runSite(args []string, stdout io.Writer) error {
 		return fmt.Errorf("no nhp_server_xdp-YYYY-MM-DD.log[.gz] files under %s", opts.LogsDir)
 	}
 
+	// Refuse a misconfigured -since before touching anything. The unpublish
+	// pass below deletes pre-floor detail pages, and the case this guards is
+	// exactly the one where that would delete all of them: publishing an empty
+	// index would blank the public stats page, and unpublishing every day on
+	// the way there would leave a site of dead links instead. The daily cron
+	// turns this into a failed unit and a loud log line rather than either.
+	publishable := 0
+	for _, in := range inputs {
+		if opts.publishesDay(in.Day) {
+			publishable++
+		}
+	}
+	if publishable == 0 && len(inputs) > 0 {
+		return fmt.Errorf("no day on or after -since %s among %d discovered input(s); refusing to publish an empty index", opts.Since, len(inputs))
+	}
+
 	var summaries []SiteDaySummary
 	dirty := false
+	var pageRenderErr error
+	// Days below the -since floor, collected here and deleted only once every
+	// publishable day has been processed successfully. Deleting them inline
+	// instead meant that an exit between there and the index write — a raw log
+	// that cannot be analyzed, the empty-index refusal — left the pages already
+	// removed while the index on disk still linked them and still counted them
+	// in the hero total: a site of dead links until some later run rebuilt the
+	// index.
+	var preFloor []siteInput
 	for _, in := range inputs {
+		if !opts.publishesDay(in.Day) {
+			// Below the floor: not analyzed, not written, and not in the
+			// index, so it cannot reach the homepage total either. A site that
+			// published the day before the floor existed still has to take it
+			// back down — see unpublishDay, and the ordering note on preFloor.
+			preFloor = append(preFloor, in)
+			continue
+		}
 		summary, wasDirty, err := processSiteDay(opts, geo, in, state)
-		if err != nil {
-			if in.PageOnly {
-				// A page-only entry with an unreadable page is a true
-				// orphan: drop it from the index rather than fail the
-				// whole run. The state.json entry, if any, is left in
-				// place; a future -force rebuild will reconcile.
-				fmt.Fprintf(stdout, "site: dropping orphan %s/%s: %v\n", in.Source, in.Day, err)
-				continue
-			}
+		switch {
+		case err == nil:
+		case in.PageOnly && errors.Is(err, errUnreadablePage):
+			// A page-only entry whose published JSON cannot be read is a true
+			// orphan: drop it from the index rather than fail the whole run.
+			// The state.json entry, if any, is left in place; a future -force
+			// rebuild will reconcile.
+			fmt.Fprintf(stdout, "site: dropping orphan %s/%s: %v\n", in.Source, in.Day, err)
+			continue
+		case in.PageOnly:
+			// A page-only day whose record read fine but whose HTML could not
+			// be written — an EACCES, an ENOSPC, a failed rename. The day's
+			// numbers are still exactly right, so it stays in the index and in
+			// the hero total and the run reports failure at the end; dropping
+			// it here would silently shrink the public total every time the
+			// web root was briefly unwritable, and the next good run would
+			// put it back without anything having flagged the gap.
+			pageRenderErr = errors.Join(pageRenderErr, fmt.Errorf("%s/%s: %w", in.Source, in.Day, err))
+		default:
 			return fmt.Errorf("%s/%s: %w", in.Source, in.Day, err)
 		}
 		summaries = append(summaries, summary)
@@ -183,12 +307,64 @@ func runSite(args []string, stdout io.Writer) error {
 		}
 	}
 
+	// Every day that survived the floor dropped out as an unreadable orphan.
+	// Rendering that would overwrite a populated index with an empty one, so
+	// refuse instead. A genuinely empty site (-logs holds nothing at all) still
+	// publishes an empty index, as it always has. Like the -since refusal
+	// above, this sits above the unpublish pass: a run that is going to give
+	// up must not have taken any page down on its way out.
+	if len(summaries) == 0 && len(inputs) > 0 {
+		return fmt.Errorf("none of the %d discovered input(s) on or after -since %s could be read; refusing to publish an empty index", len(inputs), opts.Since)
+	}
+
+	// Every publishable day is now known good, so the days below the floor can
+	// come down: the index rebuilt below no longer lists them.
+	var unpublishErr error
+	var removedPreSince int
+	for _, in := range preFloor {
+		n, err := unpublishDay(opts, state, in)
+		if err != nil {
+			// Collected rather than returned: one unremovable page must not
+			// cost the site the index and state written below. The run still
+			// reports failure, because a pre-floor page left reachable is
+			// exactly what the floor exists to prevent.
+			unpublishErr = errors.Join(unpublishErr, err)
+		}
+		removedPreSince += n
+		if n > 0 {
+			// Taking a published day down changes what the index says, so the
+			// index has to be rewritten even though no day page was rebuilt.
+			// Without this the row for the day we just unpublished would stay
+			// in index.json and in the hero total until some other input
+			// happened to change.
+			dirty = true
+		}
+	}
+	if len(preFloor) > 0 {
+		fmt.Fprintf(stdout, "site: %d day(s) before -since %s unpublished (%d detail page file(s) removed)\n", len(preFloor), opts.Since, removedPreSince)
+	}
+
+	// The all-time source and country counts come from each day's private
+	// facts, unioned here. Computed on every run, not only a dirty one, so a
+	// day whose facts cannot be read is reported today rather than the day
+	// some unrelated input next goes stale.
+	union := unionDayFacts(opts.StatePath, summaries)
+	if len(union.Missing) > 0 {
+		fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the all-time totals are a lower bound\n",
+			len(union.Missing), strings.Join(union.Missing, ", "))
+	}
+
 	if dirty {
+		// The index before the state, deliberately. The index is what links
+		// the pages just taken down, so if it cannot be rendered the state
+		// must not record the removals either — the next run then rebuilds
+		// both, instead of inheriting a state that says the index is current
+		// while the site still serves links to deleted pages.
+		if err := renderIndex(opts, summaries, union); err != nil {
+			return fmt.Errorf("render index: %w", err)
+		}
 		if err := saveSiteState(opts.StatePath, state); err != nil {
 			return fmt.Errorf("save state: %w", err)
-		}
-		if err := renderIndex(opts, summaries); err != nil {
-			return fmt.Errorf("render index: %w", err)
 		}
 	} else {
 		// Verify the on-disk state still matches the loaded one. If they
@@ -199,6 +375,13 @@ func runSite(args []string, stdout io.Writer) error {
 				return fmt.Errorf("save state: %w", err)
 			}
 		}
+	}
+	// Both collected failures are reported only after the site has been
+	// published, so that a page this run could not write or delete costs the
+	// site nothing it was serving: the index and the state are written either
+	// way, and the run still exits non-zero for the cron to alert on.
+	if err := errors.Join(unpublishErr, pageRenderErr); err != nil {
+		return err
 	}
 
 	var n int
@@ -218,6 +401,65 @@ func ternary(cond bool, a, b string) string {
 		return a
 	}
 	return b
+}
+
+// publishesDay reports whether day falls on or after the -since floor. An
+// empty floor publishes everything, which is what local debug runs want.
+//
+// A day this cannot parse is published rather than dropped: -since is already
+// validated at the flag boundary, so a malformed day reaching here is a
+// collector bug worth surfacing in the index rather than one worth hiding.
+// Well-formed days compare as plain strings because both sides are
+// zero-padded YYYY-MM-DD, which sorts identically to the dates themselves.
+func (o *SiteOptions) publishesDay(day string) bool {
+	if o.Since == "" {
+		return true
+	}
+	if _, err := time.Parse("2006-01-02", day); err != nil {
+		return true
+	}
+	return day >= o.Since
+}
+
+// unpublishDay removes one day's published detail page and forgets its state
+// entry. It reports how many files it deleted.
+//
+// The -since floor is a publishing decision, and a site that was already
+// serving days below it has to actually take them back down: skipping the day
+// stops this run from writing a page or an index row for it, but a
+// d/<source>/<day>.{html,json} left on disk stays reachable at its old URL —
+// unlinked, yes, but not unpublished, and not the partial record the floor
+// exists to withhold. This is the migration path for stats.opennhp.org, whose
+// pages for days before the floor were published by an earlier deploy.
+//
+// Only files this run owns are removed, and only for days this run discovered
+// under -logs or under <out>/d. The day string is the date-shaped capture from
+// those filenames' regex, so it cannot escape d/<source>/. A page that is
+// already gone is not an error: the second run of the migration, and every
+// later daily run, must stay a no-op.
+func unpublishDay(opts *SiteOptions, state *SiteState, in siteInput) (int, error) {
+	var removed int
+	for _, ext := range []string{".json", ".html"} {
+		p := filepath.Join(opts.OutDir, "d", in.Source, in.Day+ext)
+		if err := os.Remove(p); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return removed, fmt.Errorf("unpublish %s: %w", p, err)
+		}
+		removed++
+	}
+	// The day's facts go down with its pages. Leaving them would keep the
+	// day's attackers in the all-time source count for a day the index no
+	// longer lists — the exact "published number disagrees with the pages
+	// behind it" state the -since floor exists to prevent.
+	if err := removeDayFacts(dayFactsPath(opts.StatePath, in.Source, in.Day)); err != nil {
+		return removed, fmt.Errorf("unpublish facts: %w", err)
+	}
+	if days, ok := state.Days[in.Source]; ok {
+		delete(days, in.Day)
+	}
+	return removed, nil
 }
 
 // siteInput is one (source, day, file) tuple discovered on disk. PageOnly
@@ -380,15 +622,32 @@ func collectPageOnlyInputs(outDir string, dst map[string]siteInput) error {
 	return nil
 }
 
+// errUnreadablePage marks a page-only day whose published JSON could not be
+// read or parsed. It is the one page-only failure that legitimately costs a
+// day its row in the index, and it is tagged so the caller can tell it apart
+// from every other error this function returns — those are problems with this
+// run, not with the day's record, and the day keeps its row.
+var errUnreadablePage = errors.New("unreadable published page")
+
 // processSiteDay analyzes one (source, day) pair, writes its JSON/HTML if the
-// input changed (or opts.Force), updates state in place, and returns the
-// summary for the index. The bool reports whether this day was rebuilt so
-// the caller can decide whether the index and state.json need to be rewritten.
+// input changed (or opts.Force, or the template version moved), updates state
+// in place, and returns the summary for the index. The bool reports whether
+// this day was rebuilt so the caller can decide whether the index and
+// state.json need to be rewritten.
 //
 // For a PageOnly input (no raw log under -logs, only an existing detail page
 // under <out>/d/<src>/<day>.json, typically because the collector pruned a
-// raw cache older than RETENTION_DAYS), nothing is rebuilt: the summary is
-// read straight from the on-disk page so the index keeps showing history.
+// raw cache older than RETENTION_DAYS), the numbers are never re-analyzed: the
+// summary is read straight from the on-disk page so the index keeps showing
+// history. Its HTML is still re-rendered when the page predates the current
+// template, because that needs no raw log — see rerenderPageOnlyDay.
+//
+// The two page-only failures are deliberately not interchangeable. An
+// unreadable record (errUnreadablePage) comes back with a zero summary, and
+// the caller drops the day. A failed re-render comes back with the summary
+// intact, because the day's numbers are correct even though its markup is
+// stale — a transient write failure must not delete the day from the index
+// and shrink the published all-time total.
 func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *SiteState) (SiteDaySummary, bool, error) {
 	if in.PageOnly {
 		sum, err := summaryFromPage(in, opts.Today, opts.OutDir)
@@ -399,7 +658,11 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 			// next raw rebuild (e.g. -force) will reconcile.
 			return SiteDaySummary{}, false, err
 		}
-		return sum, false, nil
+		rendered, err := rerenderPageOnlyDay(opts, state, in)
+		if err != nil {
+			return sum, false, err
+		}
+		return sum, rendered, nil
 	}
 
 	fi, err := os.Stat(in.Path)
@@ -412,8 +675,20 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 		state.Days[in.Source] = prevDays
 	}
 	prev := prevDays[in.Day]
+	// Four ways a day is dirty: the input fingerprint moved, the operator
+	// asked for a full rebuild, the page was rendered by a different
+	// template version, or a geo source appeared that this day was not
+	// analyzed with. The third is what lets a markup-only change reach every
+	// published day — the input has not changed at all in that case, so
+	// without siteRenderVersion those pages would keep whatever title the
+	// deploy that first wrote them happened to use. The fourth is what makes
+	// installing the GeoLite2 database reach days published before it
+	// existed, instead of leaving the site's country total at whatever the
+	// days after the install happened to see.
 	unchanged := !opts.Force &&
 		prev.Built &&
+		prev.Render == siteRenderVersion &&
+		!geoStale(prev.Geo, geoKey(opts)) &&
 		prev.Size == fi.Size() &&
 		prev.MTime == fi.ModTime().Unix()
 	if unchanged {
@@ -442,6 +717,21 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	rep.BackLink = "../../index.html"
 	rep.IsSiteDetail = true
 
+	// The day's source and country sets are captured here, while the raw log
+	// that produced them still exists. Once the collector prunes it, this is
+	// the last chance: the published JSON carries only counts and a top N,
+	// neither of which can be unioned across days.
+	addrs := an.SourceAddrs()
+	srcs := make([]uint64, 0, len(addrs))
+	for _, addr := range addrs {
+		srcs = append(srcs, sourceHash(addr))
+	}
+	sort.Slice(srcs, func(i, j int) bool { return srcs[i] < srcs[j] })
+	factsPath := dayFactsPath(opts.StatePath, in.Source, in.Day)
+	if err := writeDayFacts(factsPath, srcs, an.Countries()); err != nil {
+		return SiteDaySummary{}, false, fmt.Errorf("write facts: %w", err)
+	}
+
 	dayDir := filepath.Join(opts.OutDir, "d", in.Source)
 	if err := os.MkdirAll(dayDir, 0o755); err != nil {
 		return SiteDaySummary{}, false, err
@@ -454,13 +744,76 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	}
 
 	prevDays[in.Day] = SiteDayState{
-		Size:  fi.Size(),
-		MTime: fi.ModTime().Unix(),
-		Built: true,
-		Path:  in.Path,
+		Size:   fi.Size(),
+		MTime:  fi.ModTime().Unix(),
+		Built:  true,
+		Path:   in.Path,
+		Render: siteRenderVersion,
+		Geo:    geoKey(opts),
 	}
 
 	return summaryFromReport(in, rep, opts.Today), true, nil
+}
+
+// rerenderPageOnlyDay rewrites a page-only day's HTML from the report JSON
+// published beside it, but only when the state says the page came from a
+// different template version. It reports whether it rewrote anything.
+//
+// The raw log is gone — that is what makes the day page-only — but the HTML
+// is a pure function of d/<source>/<day>.json, which is still on disk. So a
+// title or subtitle change can reach these days too, instead of leaving the
+// oldest pages on a template nobody runs any more while the recent ones move
+// on. The JSON is deliberately not rewritten: it was just read, its content is
+// the day's only remaining record, and rewriting it would churn the file the
+// next run parses for no change in bytes.
+//
+// Size, MTime, Path and Geo are carried over untouched so that a day whose raw
+// log reappears is still rebuilt from the log rather than trusted from here.
+func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (bool, error) {
+	var prev SiteDayState
+	if days, ok := state.Days[in.Source]; ok {
+		prev = days[in.Day]
+	}
+	if prev.Built && prev.Render == siteRenderVersion {
+		return false, nil
+	}
+
+	b, err := os.ReadFile(in.Path)
+	if err != nil {
+		return false, err
+	}
+	var rep Report
+	if err := json.Unmarshal(b, &rep); err != nil {
+		return false, fmt.Errorf("%s: %w", in.Path, err)
+	}
+	// Same two fields processSiteDay sets before writing the page; the
+	// published JSON carries them, and a page written by an older binary or
+	// hand-assembled may not.
+	rep.BackLink = "../../index.html"
+	rep.IsSiteDetail = true
+	var sb strings.Builder
+	if err := renderHTML(&sb, &rep); err != nil {
+		return false, err
+	}
+	htmlPath := filepath.Join(opts.OutDir, "d", in.Source, in.Day+".html")
+	if err := writeFileAtomic(htmlPath, []byte(sb.String()), 0o644); err != nil {
+		return false, err
+	}
+
+	next := SiteDayState{
+		Size:   prev.Size,
+		MTime:  prev.MTime,
+		Built:  true,
+		Path:   prev.Path,
+		Render: siteRenderVersion,
+		Geo:    prev.Geo,
+	}
+	if days, ok := state.Days[in.Source]; ok {
+		days[in.Day] = next
+	} else {
+		state.Days[in.Source] = map[string]SiteDayState{in.Day: next}
+	}
+	return true, nil
 }
 
 // snapshot returns a deep copy of state for change detection.
@@ -551,6 +904,10 @@ func summaryFromStateWithOpts(in siteInput, st SiteDayState, today, outDir strin
 // pruned by the collector's RETENTION_DAYS) but the day has already been
 // analyzed and published, so the index can keep showing it without a raw
 // rebuild.
+//
+// Both read errors are tagged errUnreadablePage: the day has no usable record
+// left, which is what lets the caller drop it from the index instead of
+// failing the run.
 func summaryFromPage(in siteInput, today, outDir string) (SiteDaySummary, error) {
 	sum := SiteDaySummary{
 		Source:  in.Source,
@@ -559,11 +916,11 @@ func summaryFromPage(in siteInput, today, outDir string) (SiteDaySummary, error)
 	}
 	b, err := os.ReadFile(in.Path)
 	if err != nil {
-		return SiteDaySummary{}, fmt.Errorf("%s: %w", in.Path, err)
+		return SiteDaySummary{}, fmt.Errorf("%w: %s: %w", errUnreadablePage, in.Path, err)
 	}
 	var rep Report
 	if err := json.Unmarshal(b, &rep); err != nil {
-		return SiteDaySummary{}, fmt.Errorf("%s: %w", in.Path, err)
+		return SiteDaySummary{}, fmt.Errorf("%w: %s: %w", errUnreadablePage, in.Path, err)
 	}
 	sum.DropPkts = rep.DropPkts
 	sum.PassPkts = rep.PassPkts

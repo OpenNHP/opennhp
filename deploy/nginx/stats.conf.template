@@ -9,9 +9,10 @@
 # Two properties this file has to preserve, and why they cost what they cost:
 #
 #   1. Nothing sensitive is reachable. The raw log cache (unmasked source
-#      IPs) and the incremental-build state.json (absolute paths of that
-#      cache) live OUTSIDE the root below, and /state.json is refused a
-#      second time here in case a future -out change puts it back inside.
+#      IPs), the incremental-build state.json (absolute paths of that cache)
+#      and the per-day fact files (hashed source and country sets) live
+#      OUTSIDE the root below, and /state.json plus /facts/ are refused a
+#      second time here in case a future -out change puts them back inside.
 #   2. nginx can actually read the root. /home/ec2-user is mode 0700 on
 #      AL2023 and the workers run as nginx, so a root under $HOME returns
 #      403 for every request. The site therefore lives under /var/www, which
@@ -42,11 +43,14 @@ server {
     root  ${STATS_WEB_ROOT};
     index index.html;
 
-    # Hardening: the site has no scripts and no remote styles, so the only
-    # inline style attribute is the bar width the renderer emits (which is
-    # a numeric interpolation). default-src 'none' blocks scripts, frames,
-    # and any future XHR. style-src 'unsafe-inline' keeps the existing
-    # inline <style> block working without a nonce rewrite.
+    # Hardening: the site loads no third-party resources and only one
+    # script of its own — countup.js, the homepage counter animation written
+    # by `xdplog-report site` into the web root — hence script-src 'self'
+    # rather than a CDN host. The only inline style attribute is the bar
+    # width the renderer emits (which is a numeric interpolation).
+    # default-src 'none' still blocks frames and any future XHR.
+    # style-src 'unsafe-inline' keeps the existing inline <style> block
+    # working without a nonce rewrite.
     #
     # NOTE ON add_header INHERITANCE: nginx only inherits add_header from an
     # enclosing level when the nested level declares none of its own. Any
@@ -55,17 +59,22 @@ server {
     # HSTS and no nosniff. That is why they are repeated rather than
     # hoisted, and why a new location must copy them.
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options "nosniff" always;
 
     # Hide directory listings. The site is a flat tree; missing files
     # should 404 cleanly without exposing the layout.
     autoindex off;
 
-    # Defense in depth: state.json holds absolute paths of the raw cache.
-    # The deploy keeps it outside the root (-state), so this should never
+    # Defense in depth: state.json holds absolute paths of the raw cache, and
+    # facts/<source>/<day>.facts holds the per-day sets of hashed source
+    # addresses the all-time attacker and country totals are unioned from.
+    # The deploy keeps both outside the root (-state), so neither should ever
     # match, but a stale file from an older layout must not become public.
     location = /state.json {
+        return 404;
+    }
+    location ^~ /facts/ {
         return 404;
     }
 
@@ -73,7 +82,7 @@ server {
     location /d/ {
         limit_except GET HEAD { deny all; }
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri $uri/ =404;
     }
@@ -86,7 +95,21 @@ server {
         limit_except GET HEAD { deny all; }
         add_header Cache-Control "public, max-age=300" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    # totalnumber.js: the same all-time total as one JavaScript constant,
+    # for another site to embed with <script src="https://stats.opennhp.org/
+    # totalnumber.js">. It is a plain classic script, so no CORS header is
+    # needed for that to work — the importing page's own CSP governs it.
+    # Same short cache-control as index.json, same repeated headers.
+    location = /totalnumber.js {
+        limit_except GET HEAD { deny all; }
+        add_header Cache-Control "public, max-age=300" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri =404;
     }
@@ -96,7 +119,7 @@ server {
         limit_except GET HEAD { deny all; }
         add_header Cache-Control "public, max-age=300" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files /index.html =404;
     }
@@ -104,7 +127,7 @@ server {
     location / {
         limit_except GET HEAD { deny all; }
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri $uri/ =404;
     }

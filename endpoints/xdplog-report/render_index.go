@@ -433,7 +433,6 @@ a:hover{text-decoration:underline}
 .hero{margin:26px 0 8px;text-align:center}
 .hero-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .hero-num{font-size:48px;font-weight:700;line-height:1.15;letter-spacing:-.02em;color:#1a7f37;animation:hero-in .9s cubic-bezier(.16,1,.3,1) both}
-.hero-since{font-size:12px;color:var(--muted)}
 .hero-stats{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:12px 56px}
 .hero-stat{text-align:center}
 .hero-stat .hero-label{margin-top:4px}
@@ -466,12 +465,11 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <div class="hero-label">Countries</div>
 </div>{{end}}
 </div>
-<div class="hero-since">Since {{.SinceDay}}</div>
 </section>
 {{end}}
 
 <p class="note">
-Days are UTC. Click a row to open the detail page.
+{{if .SinceDay}}Since {{.SinceDay}}. {{end}}Days are UTC. Click a row to open the detail page.
 {{if .Masked}}Source IPs on the detail pages are truncated to <code>a.b.c.x</code> (IPv4) and the first 48 bits (IPv6).{{else}}
 Source IPs on the detail pages are <strong>not</strong> masked.
 {{end}}

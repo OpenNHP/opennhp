@@ -159,8 +159,8 @@ those; see `totalnumber.js` below for why they cannot be summed from
 
 The homepage's `<h1>` is **Invisible Server, Visible Attacks** and it opens with a
 hero line: the all-time **total attack packets blocked**, summed over every
-row of `index.json`, with a `Since YYYY-MM-DD` line naming the earliest day
-still published. Both are derived from the index, not stored: an index reader
+row of `index.json`, and the note below it opens with `Since YYYY-MM-DD`, naming the earliest
+day still published. Both are derived from the index, not stored: an index reader
 can reproduce the number by summing `drop_pkts`. A day whose raw log has
 already aged out of the collector's cache still counts as long as its
 `d/<source>/<day>.json` is on disk.
@@ -531,8 +531,8 @@ go run ./xdplog-report site \
 全站的来源总数和国家总数就是这些集合的并集，原因见下面的 `totalnumber.js`。
 
 首页的 `<h1>` 是 **Invisible Server, Visible Attacks**，标题下方先给出一个 hero 大数字：
-**累计被拦截的攻击数据包数**，等于 `index.json` 所有行的 `drop_pkts` 之和；再下一行小字
-`Since YYYY-MM-DD` 标出统计起点（最早发布的那一天）。两者都是从索引现算的，不是另外存的：
+**累计被拦截的攻击数据包数**，等于 `index.json` 所有行的 `drop_pkts` 之和；下方说明文字以
+`Since YYYY-MM-DD` 开头，标出统计起点（最早发布的那一天）。两者都是从索引现算的，不是另外存的：
 读者对 `drop_pkts` 求和就能复现这个数字。某天的原始日志即使已经过期滚出采集缓存，只要
 `d/<source>/<day>.json` 还在磁盘上就仍然计入。
 

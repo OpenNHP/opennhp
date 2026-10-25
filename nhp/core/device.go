@@ -581,6 +581,14 @@ func (d *Device) PacketToMsg(pd *PacketData) (ppd *PacketParserData, err error) 
 }
 
 func (d *Device) SendMsgToPacket(md *MsgData) {
+	// Stop() closes msgToPacketQueue after only the device's own routines
+	// (d.wg) have exited. Callers of this method run in goroutines tracked by
+	// other wait groups — e.g. the agent's sendMessageRoutine (a.wg) — so one
+	// can still arrive here after the queue is closed during shutdown. A send on
+	// a closed channel panics even inside a select/default, which would abort
+	// the whole process (fatal in an embedded gomobile/cgo build). Recover turns
+	// that shutdown close race into a dropped message instead of a crash.
+	defer func() { _ = recover() }()
 	select {
 	case d.msgToPacketQueue <- md:
 		// process encryption and send encrypted packet via connection
@@ -591,6 +599,11 @@ func (d *Device) SendMsgToPacket(md *MsgData) {
 }
 
 func (d *Device) RecvPacketToMsg(pd *PacketData) {
+	// Same shutdown close race as SendMsgToPacket: packetToMsgQueue is closed in
+	// Stop() while packet receivers (tracked by conn/other wait groups, not
+	// d.wg) may still be running. Recover so a late send becomes a drop, not a
+	// panic.
+	defer func() { _ = recover() }()
 	select {
 	case d.packetToMsgQueue <- pd:
 		// process decryption and deliver plain text message to DecryptedMessageCh

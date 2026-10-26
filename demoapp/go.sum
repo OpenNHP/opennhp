@@ -17,8 +17,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dustin/go-humanize v1.1.0 h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=
 github.com/dustin/go-humanize v1.1.0/go.mod h1:hc1CvRkJMsgxqjmjMQF3QNRAZBwY8AXBAzKYoSX9sFI=
-github.com/emmansun/gmsm v0.45.0 h1:PU/6ObyR3g05YN3jn1L5GZDowzyAi8Xhkq4svzYNyiA=
-github.com/emmansun/gmsm v0.45.0/go.mod h1:HgLSvmdePGLo+Fo2PNgdTQU6lqAepSyriSQJRpECY6w=
+github.com/emmansun/gmsm v0.45.1 h1:S77WOluBZ9JH2wh701H2QR03eQYNGLeN8IUkdhgGpRA=
+github.com/emmansun/gmsm v0.45.1/go.mod h1:RfnfrzyB9XbDi73nF1NHbJeqJj+a6pg/pXr5lrZKMok=
 github.com/fsnotify/fsnotify v1.10.1 h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx59Ho=
 github.com/fsnotify/fsnotify v1.10.1/go.mod h1:TLheqan6HD6GBK6PrDWyDPBaEV8LspOxvPSjC+bVfgo=
 github.com/gabriel-vasile/mimetype v1.4.13 h1:46nXokslUBsAJE/wMsp5gtO500a4F3Nkz9Ufpk2AcUM=

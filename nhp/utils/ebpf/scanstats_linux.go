@@ -189,7 +189,7 @@ func drainSrcHits(m *ebpf.Map) (map[uint32]uint64, bool) {
 	return out, n >= scanMapLruThreshold
 }
 
-func reportEventScan(portMap, srcMap *ebpf.Map, interval time.Duration, topn int, stop <-chan struct{}, serverId string, logger *log.Logger) {
+func reportEventScan(portMap, srcMap *ebpf.Map, interval time.Duration, topn int, stop <-chan struct{}, componentId string, logger *log.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	window := int(interval.Seconds())
@@ -217,11 +217,11 @@ func reportEventScan(portMap, srcMap *ebpf.Map, interval time.Duration, topn int
 			return a.Port < b.Port
 		}) {
 			logger.Info("%s %s [NHP-SCAN] WINDOW=%ds KIND=PORT PROTO=%s DPT=%d PKTS=%d",
-				now, serverId, window, protoToString(e.Key.Proto), e.Key.Port, e.Hits)
+				now, componentId, window, protoToString(e.Key.Proto), e.Key.Port, e.Hits)
 		}
 		for _, e := range topN(srcs, topn, func(a, b uint32) bool { return a < b }) {
 			logger.Info("%s %s [NHP-SCAN] WINDOW=%ds KIND=SRC SRC=%s PKTS=%d",
-				now, serverId, window, uint32ToIPv4(e.Key), e.Hits)
+				now, componentId, window, uint32ToIPv4(e.Key), e.Hits)
 		}
 
 		lru := 0
@@ -229,6 +229,6 @@ func reportEventScan(portMap, srcMap *ebpf.Map, interval time.Duration, topn int
 			lru = 1
 		}
 		logger.Info("%s %s [NHP-SCAN] WINDOW=%ds KIND=TOTAL UNIQ_SRC=%d UNIQ_PORT=%d PKTS=%d LRU=%d",
-			now, serverId, window, len(srcs), len(ports), pkts, lru)
+			now, componentId, window, len(srcs), len(ports), pkts, lru)
 	}
 }

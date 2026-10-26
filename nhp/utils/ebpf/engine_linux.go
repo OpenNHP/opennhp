@@ -155,6 +155,16 @@ type EngineHandle struct {
 	DenyLogger   *log.Logger
 	AcLogger     *log.Logger
 	ServerLogger *log.Logger
+
+	// AcStatsLogger is the nhp-ac's XDP telemetry log: nhp_ac_xdp-<date>.log,
+	// the same shape the nhp-server writes, so the public stats site can
+	// count the AC as a second source without a second parser.
+	//
+	// It is a separate file from the accept/deny pair above on purpose.
+	// Those two are a per-flow audit trail with one line per packet and no
+	// bound on its size; this one is the rate-limited, byte-budgeted
+	// accounting the site reads. Nil for VariantServer.
+	AcStatsLogger *log.Logger
 }
 
 type bpfObjects struct {
@@ -173,6 +183,27 @@ type bpfObjects struct {
 	// assigned here only so that a pin left over from an incompatible build
 	// fails the load by name, the same reason Conntrack is assigned below.
 	KnockPeers *ebpf.Map `ebpf:"knock_peers"`
+
+	// The XDP telemetry maps, the same five the nhp-server's filter uses
+	// (nhp/ebpf/xdp/nhp_xdp_stats.h). The XDP program counts every packet it
+	// drops into them and the reporting half below turns those counters into
+	// the log lines the stats site reads.
+	//
+	// Like the server's copies they are not pinned: only this process reads
+	// them, so there is no pin to leave behind and none to remove. The fifth
+	// one, nhp_event_rate, is kernel-only — the token buckets are written and
+	// read inside the program, never from user space — so it needs no field
+	// here, exactly as on the server side.
+	//
+	// Assigning them here also means an object built before the shared
+	// telemetry header fails the load by name, instead of loading an AC that
+	// silently reports nothing: the enforcement and the reporting ship
+	// together, and a mismatch between them is a deploy error worth failing
+	// on.
+	NhpEvents   *ebpf.Map `ebpf:"nhp_events"`
+	ActionStats *ebpf.Map `ebpf:"nhp_action_stats"`
+	PortHits    *ebpf.Map `ebpf:"nhp_port_hits"`
+	SrcHits     *ebpf.Map `ebpf:"nhp_src_hits"`
 }
 
 type tcBpfObjects struct {
@@ -264,6 +295,21 @@ var (
 	// does not — and about a watchdog detach being a real stop rather than a
 	// detach with the telemetry still running.
 	serverStop chan struct{}
+
+	// Closed by cleanupPins(VariantAC) to stop the goroutines the AC load
+	// starts: the telemetry perf reader, the stats reporter, the scan
+	// reporter and the log sweeper. They would otherwise outlive the filter
+	// they report on and keep writing to a log.Logger the caller has closed.
+	//
+	// The AC's own accept/deny reader (readAcEvents) predates this and has
+	// no stop channel; it is a separate ring and a separate log, and it is
+	// left as it was.
+	acStop chan struct{}
+
+	// The AC's telemetry logger, kept here as well as on the handle so that
+	// cleanupPins can close it on the shutdown path. log.Logger.Close is
+	// idempotent, so closing it again from the caller is harmless.
+	acStatsLogger *log.Logger
 
 	// Where each variant last pinned, so the exported CleanupBPFFiles(variant)
 	// — which takes no directory, and is called from daemon shutdown paths and
@@ -472,6 +518,66 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 
 	// Start a goroutine to monitor Perf Buffer events
 	go readAcEvents(eventsMap, params.ComponentId, h.DenyLogger, h.AcLogger)
+
+	// The XDP telemetry, in the nhp-server's log shape.
+	//
+	// The AC's XDP program counts every packet it drops into the same five
+	// maps the server's filter uses (nhp/ebpf/xdp/nhp_xdp_stats.h), and this
+	// is the reporting half: one logger, one perf reader, and the three
+	// reporters that turn the counters into [NHP-DROP] / [NHP-STAT] /
+	// [NHP-SCAN] lines.
+	//
+	// The lines are byte for byte the ones the server writes, so the stats
+	// site parses the AC's log with the parser it already has and counts the
+	// AC as a second source. That is the whole point: the AC's own
+	// accept/deny log above says nothing about *why* a packet was dropped,
+	// one line per packet, and no bound on its size.
+	//
+	// None of this touches the verdict. The program decides, this reports.
+	logDir := filepath.Join(params.LogDirPath, "logs")
+
+	// A separate file from the accept/deny pair, and a separate prefix from
+	// the server's: both hosts' logs are pulled by the same collector, and a
+	// shared name would put two hosts' lines in one file.
+	h.AcStatsLogger = log.NewLoggerDefine(
+		"",
+		params.LogLevel,
+		logDir,
+		acEventLogName,
+	)
+	h.AcStatsLogger.SetFlags(stdlog.Lmsgprefix)
+	acStatsLogger = h.AcStatsLogger
+
+	acStop = make(chan struct{})
+
+	// The per-packet event stream. When the per-packet log is disabled the
+	// ring is never opened: nobody would read it, and opening it only to
+	// close it again would cost a perf_event_open(2) for nothing. The
+	// summaries below are unaffected either way, and so is the filter's
+	// verdict — this is telemetry, never policy.
+	var perfReader *perf.Reader
+	if !params.DisableEventLog && objs.NhpEvents != nil {
+		reader, perfErr := perf.NewReader(objs.NhpEvents, os.Getpagesize())
+		if perfErr != nil {
+			// Not fatal. The event log is diagnostics, and losing it is no
+			// reason to leave the AC enforcing nothing. The program keeps
+			// counting, the summaries keep reporting, and the host says so.
+			log.Error("failed to create AC perf reader; the XDP filter will run without an event log: %v", perfErr)
+		} else {
+			perfReader = reader
+		}
+	}
+	if perfReader != nil {
+		go readEventStream(perfReader, acStop, params.ComponentId, h.AcStatsLogger, acActionName)
+	}
+	if objs.ActionStats != nil {
+		go reportEventStats(objs.ActionStats, acStop, params.ComponentId, h.AcStatsLogger, acActionName)
+	}
+	if objs.PortHits != nil && objs.SrcHits != nil && params.ScanReportInterval > 0 && params.ScanReportTopN > 0 {
+		go reportEventScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
+			acStop, params.ComponentId, h.AcStatsLogger)
+	}
+	go pruneEventLogs(logDir, acStop, []string{acEventLogName})
 
 	return h, nil
 }
@@ -800,6 +906,17 @@ func warnOnGlobalIPv6(iface *net.Interface) {
 // prefix, so the two must not drift apart.
 const serverEventLogName = "nhp_server_xdp"
 
+// acEventLogName is the AC's counterpart of serverEventLogName: the
+// log.Logger name, i.e. the file is <logdir>/nhp_ac_xdp-<date>.log.
+// pruneEventLogs deletes by the same prefix, so the two must not drift
+// apart.
+//
+// It is deliberately not the server's prefix. Both hosts write into their
+// own logs directory, but the collector pulls both with the same keypair and
+// caches them per source; a shared name would put two hosts' lines in one
+// file and make the counters unreadable.
+const acEventLogName = "nhp_ac_xdp"
+
 // Action codes reported by nhp/ebpf/xdp/nhp_server_xdp.c. Keep in sync.
 const (
 	ActDropOther       uint8 = 0
@@ -1022,7 +1139,7 @@ func (b *eventLogBudget) spend(now time.Time, n int, logger *log.Logger) bool {
 // the nhp-server and the nhp-ac is the action code space, and that is what
 // actionName is for. The line format is identical either way, which is what
 // lets the published site read the two hosts' logs with one parser.
-func readEventStream(perfReader *perf.Reader, stop <-chan struct{}, serverId string, logger *log.Logger, actionName actionNamer) {
+func readEventStream(perfReader *perf.Reader, stop <-chan struct{}, componentId string, logger *log.Logger, actionName actionNamer) {
 	defer perfReader.Close()
 
 	// Unblocks the Read below on shutdown; the loop then sees the closed ring
@@ -1039,9 +1156,13 @@ func readEventStream(perfReader *perf.Reader, stop <-chan struct{}, serverId str
 		}
 	}()
 
-	budget := &eventLogBudget{limit: serverLogDailyEventBytes, componentId: serverId}
+	budget := &eventLogBudget{limit: serverLogDailyEventBytes, componentId: componentId}
 
-	log.Info("Start listening for server eBPF events (PERF BUFFER)")
+	// Deliberately not the nhp-ac's "Start listening for eBPF events" line:
+	// that one is the accept/deny reader, and the deploy gate greps for it.
+	// Two different messages for two different rings, so the gate cannot be
+	// satisfied by the wrong one.
+	log.Info("Start listening for XDP telemetry events (PERF BUFFER)")
 
 	for {
 		record, err := perfReader.Read()
@@ -1054,7 +1175,7 @@ func readEventStream(perfReader *perf.Reader, stop <-chan struct{}, serverId str
 				return
 			default:
 			}
-			log.Error("Error reading server eBPF event: %v", err)
+			log.Error("Error reading XDP telemetry event: %v", err)
 			continue
 		}
 		// struct nhp_event_t in nhp_server_xdp.c, __attribute__((packed)).
@@ -1087,7 +1208,7 @@ func readEventStream(perfReader *perf.Reader, stop <-chan struct{}, serverId str
 
 		line := fmt.Sprintf("%s %s [NHP-%s] REASON=%s SRC=%s DST=%s LEN=%d PROTO=%s SPT=%d DPT=%d RELAY=%d",
 			eventTime.Format("15:04:05"),
-			serverId,
+			componentId,
 			verdict,
 			reason,
 			srcStr,
@@ -1140,7 +1261,7 @@ type serverActionStat struct {
 // nothing print nothing: a quiet host writes a quiet log.
 //
 // actionName is the variant's reason table; everything else is shared.
-func reportEventStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string, logger *log.Logger, actionName actionNamer) {
+func reportEventStats(statsMap *ebpf.Map, stop <-chan struct{}, componentId string, logger *log.Logger, actionName actionNamer) {
 	prev := make([]serverActionStat, serverEventActions)
 
 	ticker := time.NewTicker(serverStatsInterval)
@@ -1179,7 +1300,7 @@ func reportEventStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string,
 			verdict, reason := actionName(uint8(action))
 			logger.Info("%s %s [NHP-STAT] VERDICT=%s REASON=%s WINDOW=%ds PKTS=%d LOGGED=%d TOTAL=%d",
 				time.Now().Format("15:04:05"),
-				serverId,
+				componentId,
 				verdict,
 				reason,
 				int(serverStatsInterval.Seconds()),
@@ -1569,6 +1690,16 @@ func cleanupPins(variant EngineVariant, pinDir string) {
 		return
 	}
 
+	// The telemetry goroutines first, so that nothing is left writing into a
+	// log this function is about to close. Nil-and-close, like the server's
+	// stop channel above: this can run twice (an error path inside
+	// loadAcEngine, then the caller's shutdown) and closing a channel a
+	// second time panics.
+	if acStop != nil {
+		close(acStop)
+		acStop = nil
+	}
+
 	// Cleared as well as closed, the same as the server's link above: this can
 	// run twice (an error path inside loadAcEngine, then the caller's shutdown)
 	// and closing a link a second time is an error on an already-freed handle.
@@ -1581,6 +1712,18 @@ func cleanupPins(variant EngineVariant, pinDir string) {
 		acTcLink.Close()
 		acTcLink = nil
 		log.Info("TCX link detached and closed")
+	}
+
+	// The log last, so that a reporter still winding down after the stop
+	// channel closed has its last line written before the file goes away.
+	//
+	// The server's logger is closed by its caller right after this function
+	// returns; the AC's telemetry logger is closed here, because the AC has no
+	// caller that holds it. log.Logger.Close is idempotent, so a later close
+	// from the caller is harmless.
+	if acStatsLogger != nil {
+		acStatsLogger.Close()
+		acStatsLogger = nil
 	}
 }
 

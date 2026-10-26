@@ -80,12 +80,17 @@ func nhp_agent_init_with_key(workingDir *C.char, logLevel C.int, privateKey *C.c
 	if err != nil {
 		return false
 	}
-	gAgentInstance = instance
+	// Install the key on the local instance BEFORE publishing it as
+	// gAgentInstance. ReinitWithKey swaps a.device without a lock and is only
+	// safe while senders are idle, so no other SDK entry point may observe this
+	// agent until both Start and the rekey have succeeded (mirrors PR 1806 for
+	// nhp_agent_init). On failure nothing was ever published, so there is no
+	// gAgentInstance to clear and no concurrent caller left on a stopped agent.
 	if err := agent.InstallRegistrationKey(instance, key, int(cipherType)); err != nil {
 		instance.Stop()
-		gAgentInstance = nil
 		return false
 	}
+	gAgentInstance = instance
 	return true
 }
 

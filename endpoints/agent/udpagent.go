@@ -527,7 +527,12 @@ func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
 }
 
 func (a *UdpAgent) SetDeviceId(devId string) {
+	// deviceId is read by the knock/OTP/register message builders under
+	// knockUserMutex (knock.go, request.go); take the same lock on the write so
+	// a registration call that sets the device id never races the knock loop.
+	a.knockUserMutex.Lock()
 	a.deviceId = devId
+	a.knockUserMutex.Unlock()
 }
 
 func (a *UdpAgent) SetCheckResults(results map[string]any) {
@@ -571,8 +576,21 @@ func (a *UdpAgent) PublicKeyBase64() string {
 
 // PublicKeyBase64ByCipherScheme returns the public key matching the active
 // cipher scheme: SM2 for CIPHER_SCHEME_GMSM, curve25519 for CIPHER_SCHEME_CURVE.
+//
+// Both reads are synchronized: the scheme via keyMu (GetCipherScheme), against
+// the config watcher's SetCipherScheme; the device via deviceMutex, against
+// ReinitWithKey's device swap. GetCipherScheme releases keyMu before deviceMutex
+// is taken, and callers that already hold knockUserMutex (request.go) keep the
+// knockUserMutex -> keyMu -> deviceMutex order the config watcher also uses, so
+// there is no lock-ordering cycle.
 func (a *UdpAgent) PublicKeyBase64ByCipherScheme() string {
-	if a.config.DefaultCipherScheme == common.CIPHER_SCHEME_GMSM {
+	scheme := a.config.GetCipherScheme()
+	a.deviceMutex.RLock()
+	defer a.deviceMutex.RUnlock()
+	if a.device == nil {
+		return ""
+	}
+	if scheme == common.CIPHER_SCHEME_GMSM {
 		return a.device.PublicKeyExBase64()
 	}
 	return a.device.PublicKeyBase64()

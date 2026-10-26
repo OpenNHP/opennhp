@@ -1,11 +1,14 @@
 package agent
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
@@ -267,14 +270,32 @@ func TestInstallRegistrationKey(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid cipherType is rejected", func(t *testing.T) {
+		a := &UdpAgent{config: &Config{}}
+		if err := InstallRegistrationKey(a, "AAAA", int(core.ECC_UMI)); err == nil {
+			t.Fatal("expected an error for an unsupported cipherType")
+		}
+		if err := InstallRegistrationKey(a, "AAAA", 99); err == nil {
+			t.Fatal("expected an error for a garbage cipherType")
+		}
+	})
+
 	t.Run("matching key and scheme is a no-op", func(t *testing.T) {
-		// When the agent already holds this exact key and scheme, no device
-		// reinit should be attempted (which would require a started device).
-		a := &UdpAgent{config: &Config{
-			PrivateKeyBase64:    "already-installed",
-			DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
-		}}
-		if err := InstallRegistrationKey(a, "already-installed", int(core.ECC_CURVE25519)); err != nil {
+		// Build an agent whose device holds a known key; installing that exact
+		// key+scheme must be a no-op (AgentHoldsRegistrationKey matches by public
+		// key, so no device reinit is attempted).
+		priv := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+		dev := core.NewDevice(core.NHP_AGENT, priv, nil)
+		if dev == nil {
+			t.Fatal("NewDevice returned nil")
+		}
+		dev.Start()
+		t.Cleanup(dev.Stop)
+		a := &UdpAgent{
+			config: &Config{DefaultCipherScheme: common.CIPHER_SCHEME_CURVE},
+			device: dev,
+		}
+		if err := InstallRegistrationKey(a, base64.StdEncoding.EncodeToString(priv), int(core.ECC_CURVE25519)); err != nil {
 			t.Fatalf("expected no-op, got error: %v", err)
 		}
 	})
@@ -369,4 +390,283 @@ func TestPrepareRegistrationRunningAgentGuards(t *testing.T) {
 			t.Fatalf("expected refusal, got code=%q msg=%q instance=%v", result.ErrCode, result.ErrMsg, instance)
 		}
 	})
+}
+
+// newRunningReusableAgent builds a started-enough running agent that the
+// register flow will reuse: it holds a real device (so
+// PublicKeyBase64ByCipherScheme works) and a known knock identity, but its
+// cluster maps are empty so registrationTarget fails after
+// applyRegistrationUser has already mutated the identity — which is exactly the
+// window the save/restore must cover, and it avoids any real network send.
+// newRunningReusableAgent returns the agent and the base64 of the key its device
+// actually holds, so callers can pass a privateKey that AgentHoldsRegistrationKey
+// will match (reaching the reuse path) rather than one that gets rejected.
+func newRunningReusableAgent(t *testing.T) (*UdpAgent, string) {
+	t.Helper()
+	priv := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	keyB64 := base64.StdEncoding.EncodeToString(priv)
+	dev := core.NewDevice(core.NHP_AGENT, priv, nil)
+	if dev == nil {
+		t.Fatal("NewDevice returned nil")
+	}
+	dev.Start()
+	t.Cleanup(dev.Stop)
+
+	a := &UdpAgent{
+		config:              &Config{PrivateKeyBase64: keyB64, DefaultCipherScheme: common.CIPHER_SCHEME_CURVE},
+		device:              dev,
+		deviceId:            "orig-device",
+		knockUser:           &KnockUser{UserId: "orig@user", OrganizationId: "orig-org", UserData: map[string]any{"k": "v"}},
+		serverClusterMap:    map[string]*ServerCluster{},
+		serverClusterByName: map[string]*ServerCluster{},
+	}
+	a.running.Store(true)
+	return a, keyB64
+}
+
+func assertOriginalIdentity(t *testing.T, a *UdpAgent) {
+	t.Helper()
+	a.knockUserMutex.RLock()
+	defer a.knockUserMutex.RUnlock()
+	if a.deviceId != "orig-device" {
+		t.Errorf("deviceId = %q, want orig-device (registration leaked its identity into the live agent)", a.deviceId)
+	}
+	if a.knockUser.UserId != "orig@user" {
+		t.Errorf("UserId = %q, want orig@user", a.knockUser.UserId)
+	}
+	if a.knockUser.OrganizationId != "orig-org" {
+		t.Errorf("OrganizationId = %q, want orig-org", a.knockUser.OrganizationId)
+	}
+	if len(a.knockUser.UserData) != 1 || a.knockUser.UserData["k"] != "v" {
+		t.Errorf("UserData = %v, want map[k:v] (registration data must not persist)", a.knockUser.UserData)
+	}
+}
+
+func TestRequestRegistrationOtpRestoresRunningAgentIdentity(t *testing.T) {
+	a, key := newRunningReusableAgent(t)
+	res := RequestRegistrationOtp(
+		a, "", 0, key, int(core.ECC_CURVE25519),
+		"new@user", "new-device", "new-org", `{"x":1}`, "asp", "res", "missing-cluster",
+	)
+	// The unknown cluster makes this fail, which is fine — we only care that the
+	// live agent's identity was put back after it was reused and mutated.
+	if res.ErrCode == common.ErrSuccess.ErrorCode() {
+		t.Fatalf("expected a failure result for an unknown cluster, got success: %+v", res)
+	}
+	if res.ErrMsg == "close the running agent before registering a different key" {
+		t.Fatalf("agent was wrongly rejected instead of reused: %+v", res)
+	}
+	assertOriginalIdentity(t, a)
+}
+
+func TestRegisterDeviceRestoresRunningAgentIdentity(t *testing.T) {
+	a, key := newRunningReusableAgent(t)
+	res := RegisterDevice(
+		a, "", 0, key, int(core.ECC_CURVE25519),
+		"new@user", "new-device", "new-org", `{"x":1}`, "asp", "res", "missing-cluster", "123456",
+	)
+	if res.ErrCode == common.ErrSuccess.ErrorCode() {
+		t.Fatalf("expected a failure result for an unknown cluster, got success: %+v", res)
+	}
+	if res.ErrMsg == "close the running agent before registering a different key" {
+		t.Fatalf("agent was wrongly rejected instead of reused: %+v", res)
+	}
+	assertOriginalIdentity(t, a)
+}
+
+// TestRegistrationIdentityUpdatesAreRaceFree hammers a running agent with
+// registration calls (each reuses it, overwrites its identity, then restores)
+// while another goroutine reads the identity the way the knock path does, under
+// knockUserMutex. Run under -race it proves SetDeviceId's write is synchronized
+// with those reads; before SetDeviceId took the lock this failed the detector.
+func TestRegistrationIdentityUpdatesAreRaceFree(t *testing.T) {
+	a, key := newRunningReusableAgent(t)
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				a.knockUserMutex.RLock()
+				_ = a.deviceId
+				_ = a.knockUser.UserId
+				a.knockUserMutex.RUnlock()
+			}
+		}
+	}()
+	for i := 0; i < 50; i++ {
+		RequestRegistrationOtp(
+			a, "", 0, key, int(core.ECC_CURVE25519),
+			"new@user", "new-device", "new-org", "", "asp", "res", "missing-cluster",
+		)
+	}
+	close(stop)
+	wg.Wait()
+	assertOriginalIdentity(t, a)
+}
+
+func TestAgentHoldsRegistrationKey(t *testing.T) {
+	priv := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	keyB64 := base64.StdEncoding.EncodeToString(priv)
+	dev := core.NewDevice(core.NHP_AGENT, priv, nil)
+	if dev == nil {
+		t.Fatal("NewDevice returned nil")
+	}
+	dev.Start()
+	t.Cleanup(dev.Stop)
+	a := &UdpAgent{
+		config: &Config{DefaultCipherScheme: common.CIPHER_SCHEME_CURVE},
+		device: dev,
+	}
+
+	if !AgentHoldsRegistrationKey(a, keyB64, int(core.ECC_CURVE25519)) {
+		t.Error("expected true for the agent's own key and scheme")
+	}
+	other := base64.StdEncoding.EncodeToString(core.NewECDH(core.ECC_CURVE25519).PrivateKey())
+	if AgentHoldsRegistrationKey(a, other, int(core.ECC_CURVE25519)) {
+		t.Error("expected false for a different key")
+	}
+	if AgentHoldsRegistrationKey(a, keyB64, int(core.ECC_SM2)) {
+		t.Error("expected false for a mismatched cipher scheme")
+	}
+	for _, bad := range []string{"", "@@not base64@@"} {
+		if AgentHoldsRegistrationKey(a, bad, int(core.ECC_CURVE25519)) {
+			t.Errorf("expected false for invalid key %q", bad)
+		}
+	}
+	if AgentHoldsRegistrationKey(nil, keyB64, int(core.ECC_CURVE25519)) {
+		t.Error("expected false for a nil agent")
+	}
+	if AgentHoldsRegistrationKey(&UdpAgent{config: &Config{}}, keyB64, int(core.ECC_CURVE25519)) {
+		t.Error("expected false for an agent with no device")
+	}
+
+	// Sealed-key case (#4): the config string is the sealed blob, not the
+	// plaintext base64 — identity must still match by derived public key.
+	sealed := &UdpAgent{
+		config: &Config{PrivateKeyBase64: "AQIDBA==sealed-blob-not-the-plaintext", DefaultCipherScheme: common.CIPHER_SCHEME_CURVE},
+		device: dev,
+	}
+	if !AgentHoldsRegistrationKey(sealed, keyB64, int(core.ECC_CURVE25519)) {
+		t.Error("expected true comparing by public key even when the config string differs (sealed key)")
+	}
+}
+
+func TestPrepareRegistrationRejectsInvalidCipherType(t *testing.T) {
+	for _, ct := range []int{int(core.ECC_UMI), 99, -1} {
+		result, instance, target, owned := prepareRegistration(
+			nil, "", 0, "AAAA", ct,
+			"u@e.com", "dev", "org", "", "asp", "res", "cl", false,
+		)
+		if result.ErrCode != common.ErrInvalidInput.ErrorCode() {
+			t.Errorf("cipherType %d: ErrCode = %q, want %q", ct, result.ErrCode, common.ErrInvalidInput.ErrorCode())
+		}
+		if instance != nil || target != nil || owned {
+			t.Errorf("cipherType %d: expected nil instance/target and owned=false", ct)
+		}
+	}
+}
+
+// TestPublicKeyByCipherSchemeConcurrentReadsAreRaceFree exercises the two reads
+// PublicKeyBase64ByCipherScheme / agentCipherScheme make — the cipher scheme and
+// a.device — against the writers they race in production: the config watcher
+// (SetCipherScheme, under keyMu) and ReinitWithKey's device swap (under
+// deviceMutex). Run under -race it proves both reads are synchronized; before
+// the fix both were bare field reads and the detector flagged them.
+func TestPublicKeyByCipherSchemeConcurrentReadsAreRaceFree(t *testing.T) {
+	mkDev := func() *core.Device {
+		d := core.NewDevice(core.NHP_AGENT, core.NewECDH(core.ECC_CURVE25519).PrivateKey(), nil)
+		if d == nil {
+			t.Fatal("NewDevice returned nil")
+		}
+		d.Start()
+		t.Cleanup(d.Stop)
+		return d
+	}
+	dev1, dev2 := mkDev(), mkDev()
+	a := &UdpAgent{
+		config: &Config{DefaultCipherScheme: common.CIPHER_SCHEME_CURVE},
+		device: dev1,
+	}
+	someKey := base64.StdEncoding.EncodeToString(core.NewECDH(core.ECC_CURVE25519).PrivateKey())
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Scheme writer under keyMu — mimics the config.toml watcher.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				a.config.SetCipherScheme(common.CIPHER_SCHEME_GMSM)
+				a.config.SetCipherScheme(common.CIPHER_SCHEME_CURVE)
+			}
+		}
+	}()
+
+	// Device writer under deviceMutex — mimics ReinitWithKey's swap window.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				a.deviceMutex.Lock()
+				a.device = dev2
+				a.deviceMutex.Unlock()
+				a.deviceMutex.Lock()
+				a.device = dev1
+				a.deviceMutex.Unlock()
+			}
+		}
+	}()
+
+	// Readers through the guarded accessors.
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = a.PublicKeyBase64ByCipherScheme()
+					_ = agentCipherScheme(a)
+					_ = AgentHoldsRegistrationKey(a, someKey, int(core.ECC_CURVE25519))
+				}
+			}
+		}()
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+}
+
+func TestPrepareRegistrationSealedKeyIsReused(t *testing.T) {
+	// A running agent started from a sealed key (config string != plaintext)
+	// must still be reused when the caller passes the matching plaintext key,
+	// not rejected as "a different key".
+	a, key := newRunningReusableAgent(t)
+	a.config.PrivateKeyBase64 = "AQIDBA==sealed-blob-not-the-plaintext"
+
+	res := RequestRegistrationOtp(
+		a, "", 0, key, int(core.ECC_CURVE25519),
+		"new@user", "new-device", "new-org", "", "asp", "res", "missing-cluster",
+	)
+	if res.ErrMsg == "close the running agent before registering a different key" {
+		t.Fatalf("sealed-key agent wrongly rejected as a different key: %+v", res)
+	}
+	assertOriginalIdentity(t, a)
 }

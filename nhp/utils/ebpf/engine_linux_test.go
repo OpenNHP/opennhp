@@ -1175,19 +1175,32 @@ func TestClientProtocolsWithoutAConnectedSocketArePassed(t *testing.T) {
 // NHP_EVENT_ACTIONS sizes the per-action arrays on the C side and the summary
 // loop on this one. If the C grew a slot and this did not, the extra classes
 // would simply never be summarized.
+//
+// The constant lives in nhp_xdp_stats.h, the telemetry mechanism the
+// nhp-server's and the nhp-ac's ingress filters share, so both files are
+// read: the constant may sit in either, and a second definition of it would
+// be a drift the test should not accept.
 func TestServerEventActionsMatchesTheProgram(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
-	if err != nil {
-		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	var srcs []string
+	for _, name := range []string{"nhp_server_xdp.c", "nhp_xdp_stats.h"} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		srcs = append(srcs, string(b))
 	}
+	src := strings.Join(srcs, "\n")
 
-	m := regexp.MustCompile(`(?m)^#define\s+NHP_EVENT_ACTIONS\s+(\d+)`).FindStringSubmatch(string(src))
-	if m == nil {
-		t.Fatal("NHP_EVENT_ACTIONS not found in nhp_server_xdp.c")
+	m := regexp.MustCompile(`(?m)^#define\s+NHP_EVENT_ACTIONS\s+(\d+)`).FindAllStringSubmatch(src, -1)
+	if len(m) == 0 {
+		t.Fatal("NHP_EVENT_ACTIONS not found in nhp_server_xdp.c or nhp_xdp_stats.h")
 	}
-	want, err := strconv.Atoi(m[1])
+	if len(m) > 1 {
+		t.Errorf("NHP_EVENT_ACTIONS is defined %d times; it must be defined once", len(m))
+	}
+	want, err := strconv.Atoi(m[0][1])
 	if err != nil {
-		t.Fatalf("NHP_EVENT_ACTIONS = %q: %v", m[1], err)
+		t.Fatalf("NHP_EVENT_ACTIONS = %q: %v", m[0][1], err)
 	}
 	if serverEventActions != want {
 		t.Errorf("serverEventActions = %d, NHP_EVENT_ACTIONS = %d", serverEventActions, want)

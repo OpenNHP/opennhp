@@ -107,15 +107,16 @@ type EngineLoadParams struct {
 	// and unwinds to fail-open like every other pre-attach error.
 	RelayIPs []string
 
-	// ScanReportInterval and ScanReportTopN drive the [NHP-SCAN] summary
-	// (VariantServer only): the window length and how many ports / sources
-	// each window lists. Zero values disable the report.
+	// ScanReportInterval and ScanReportTopN drive the [NHP-SCAN] summary:
+	// the window length and how many ports / sources each window lists. Both
+	// the nhp-server and the nhp-ac use them. Zero values disable the report.
 	ScanReportInterval time.Duration
 	ScanReportTopN     int
 
-	// DisableEventLog turns off the per-packet event log (VariantServer only).
-	// The zero value keeps it on. The [NHP-STAT] and [NHP-SCAN] summaries are
-	// unaffected, and so is the filter's verdict.
+	// DisableEventLog turns off the per-packet event log. Both the
+	// nhp-server and the nhp-ac use it. The zero value keeps it on. The
+	// [NHP-STAT] and [NHP-SCAN] summaries are unaffected, and so is the
+	// filter's verdict.
 	DisableEventLog bool
 }
 
@@ -202,10 +203,10 @@ type serverBpfObjects struct {
 	RelayIPs  *ebpf.Map     `ebpf:"nhp_relay_ips"`
 	NhpEvents *ebpf.Map     `ebpf:"nhp_events"`
 	// Per-action packet counters, the complete accounting the rate-limited
-	// event stream is a sample of. See reportServerStats.
+	// event stream is a sample of. See reportEventStats.
 	ActionStats *ebpf.Map `ebpf:"nhp_action_stats"`
 	// Dropped-packet aggregation by destination port and by IPv4 source. See
-	// reportServerScan.
+	// reportEventScan.
 	PortHits *ebpf.Map `ebpf:"nhp_port_hits"`
 	SrcHits  *ebpf.Map `ebpf:"nhp_src_hits"`
 }
@@ -746,16 +747,16 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 		// and the summaries keep running.
 		perfReader.Close()
 	} else if perfReader != nil {
-		go readServerEvents(perfReader, serverStop, params.ComponentId, h.ServerLogger)
+		go readEventStream(perfReader, serverStop, params.ComponentId, h.ServerLogger, serverActionName)
 	}
 	if objs.ActionStats != nil {
-		go reportServerStats(objs.ActionStats, serverStop, params.ComponentId, h.ServerLogger)
+		go reportEventStats(objs.ActionStats, serverStop, params.ComponentId, h.ServerLogger, serverActionName)
 	}
 	if objs.PortHits != nil && objs.SrcHits != nil && params.ScanReportInterval > 0 && params.ScanReportTopN > 0 {
-		go reportServerScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
+		go reportEventScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
 			serverStop, params.ComponentId, h.ServerLogger)
 	}
-	go pruneServerEventLogs(logDir, serverStop)
+	go pruneEventLogs(logDir, serverStop, []string{serverEventLogName})
 
 	return h, nil
 }
@@ -795,7 +796,7 @@ func warnOnGlobalIPv6(iface *net.Interface) {
 }
 
 // serverEventLogName is the log.Logger name, i.e. the file is
-// <logdir>/nhp_server_xdp-<date>.log. pruneServerEventLogs deletes by the same
+// <logdir>/nhp_server_xdp-<date>.log. pruneEventLogs deletes by the same
 // prefix, so the two must not drift apart.
 const serverEventLogName = "nhp_server_xdp"
 
@@ -890,6 +891,69 @@ func serverActionName(action uint8) (verdict, reason string) {
 	}
 }
 
+// actionNamer maps a BPF action code to the verdict and the reason the log
+// line carries.
+//
+// The nhp-server and the nhp-ac run different XDP programs with different
+// action code spaces, so the reason table is a parameter rather than a
+// package-level lookup: each variant passes its own, and the reporting code
+// below is written once.
+type actionNamer func(action uint8) (verdict, reason string)
+
+// Action codes reported by nhp/ebpf/xdp/nhp_ebpf_xdp.c, the nhp-ac's own
+// ingress program. Mirror the ACT_AC_* defines there; a test fails if the two
+// drift apart.
+//
+// The code space is the AC's own: the two programs never share a log file,
+// and each log is decoded with its own name table. The values must stay
+// below NHP_EVENT_ACTIONS (32) on the C side, or the class is neither
+// counted nor rate limited.
+const (
+	ActAcDropKnockExpired  uint8 = 0
+	ActAcDropTcpSyn        uint8 = 1
+	ActAcDropTcpStealth    uint8 = 2
+	ActAcDropTcpOther      uint8 = 3
+	ActAcDropUdpOther      uint8 = 4
+	ActAcDropNonTcpUdp     uint8 = 5
+	ActAcPassKnockAdmitted uint8 = 6
+	ActAcPassFlowTracked   uint8 = 7
+)
+
+// acActionName is the nhp-ac's counterpart of serverActionName.
+//
+// The DROP reasons reuse the server's vocabulary on purpose: the two hosts'
+// data ends up in the same published site, and a category the site does not
+// know about cannot be counted together with the rest. KNOCK_EXPIRED is the
+// AC's own class — a peer whose knock window closed, as opposed to a peer
+// that never knocked at all, which is what the scan classes describe.
+//
+// The reason strings are written out literally because
+// endpoints/xdplog-report/report_test.go cross-checks them against the
+// site's classifier: it scans this file for `return "DROP", "..."` and
+// requires every reason it finds there to be one the site knows.
+func acActionName(action uint8) (verdict, reason string) {
+	switch action {
+	case ActAcDropKnockExpired:
+		return "DROP", "KNOCK_EXPIRED"
+	case ActAcDropTcpSyn:
+		return "DROP", "TCP_SYN_SCAN"
+	case ActAcDropTcpStealth:
+		return "DROP", "TCP_STEALTH_SCAN"
+	case ActAcDropTcpOther:
+		return "DROP", "TCP_OTHER"
+	case ActAcDropUdpOther:
+		return "DROP", "UDP_OTHER"
+	case ActAcDropNonTcpUdp:
+		return "DROP", "NON_TCP_UDP"
+	case ActAcPassKnockAdmitted:
+		return "PASS", "KNOCK_ADMITTED"
+	case ActAcPassFlowTracked:
+		return "PASS", "FLOW_TRACKED"
+	default:
+		return "DROP", fmt.Sprintf("UNKNOWN-%d", action)
+	}
+}
+
 // serverLogDailyEventBytes is how much per-packet event text the filter may
 // append in one calendar day.
 //
@@ -912,10 +976,18 @@ const serverLogDailyEventBytes = 64 << 20 // 64 MiB
 // one calendar day, reset when the date changes because that is when the
 // logger starts a new file.
 type eventLogBudget struct {
-	day       string
-	written   int64
-	limit     int64
-	exhausted bool
+	// componentId is the daemon's id, stamped into the budget line so it
+	// has the same shape as every other line in the log. It is not
+	// decoration: the site's parser recognizes the budget marker by
+	// position — "HH:MM:SS <id> [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED" —
+	// and a line without the id shifts the marker into the tag's place,
+	// so the line is read as a malformed STAT line and the day's budget
+	// flag never lights up.
+	componentId string
+	day         string
+	written     int64
+	limit       int64
+	exhausted   bool
 }
 
 // spend reports whether a line of n bytes may still be written today, and
@@ -939,12 +1011,18 @@ func (b *eventLogBudget) spend(now time.Time, n int, logger *log.Logger) bool {
 	b.exhausted = true
 	log.Warning("xdp event log: %d MiB of per-packet lines written today; suppressing further ones until tomorrow. Per-minute [NHP-STAT] totals continue and stay exact.",
 		b.limit>>20)
-	logger.Info("%s [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED BYTES=%d: per-packet lines suppressed for the rest of the day; totals continue below",
-		now.Format("15:04:05"), b.written)
+	logger.Info("%s %s [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED BYTES=%d: per-packet lines suppressed for the rest of the day; totals continue below",
+		now.Format("15:04:05"), b.componentId, b.written)
 	return false
 }
 
-func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId string, logger *log.Logger) {
+// readEventStream turns the perf ring into one log line per event.
+//
+// It is written once for both variants: the only thing that differs between
+// the nhp-server and the nhp-ac is the action code space, and that is what
+// actionName is for. The line format is identical either way, which is what
+// lets the published site read the two hosts' logs with one parser.
+func readEventStream(perfReader *perf.Reader, stop <-chan struct{}, serverId string, logger *log.Logger, actionName actionNamer) {
 	defer perfReader.Close()
 
 	// Unblocks the Read below on shutdown; the loop then sees the closed ring
@@ -961,7 +1039,7 @@ func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId st
 		}
 	}()
 
-	budget := &eventLogBudget{limit: serverLogDailyEventBytes}
+	budget := &eventLogBudget{limit: serverLogDailyEventBytes, componentId: serverId}
 
 	log.Info("Start listening for server eBPF events (PERF BUFFER)")
 
@@ -1004,7 +1082,7 @@ func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId st
 			dstStr = uint32ToIPv4(binary.BigEndian.Uint32(record.RawSample[13:17]))
 		}
 
-		verdict, reason := serverActionName(action)
+		verdict, reason := actionName(action)
 		eventTime := bootTime.Add(time.Duration(timestamp))
 
 		line := fmt.Sprintf("%s %s [NHP-%s] REASON=%s SRC=%s DST=%s LEN=%d PROTO=%s SPT=%d DPT=%d RELAY=%d",
@@ -1043,7 +1121,7 @@ type serverActionStat struct {
 	Logged  uint64
 }
 
-// reportServerStats turns the counters the XDP program keeps for every packet
+// reportEventStats turns the counters the XDP program keeps for every packet
 // into one summary line per action per window.
 //
 // It exists because the event stream is deliberately incomplete. Two things
@@ -1060,7 +1138,9 @@ type serverActionStat struct {
 // event stream (0 for the bulk classes, less than PKTS whenever the bucket
 // ran dry), TOTAL the count since the filter was attached. Actions that saw
 // nothing print nothing: a quiet host writes a quiet log.
-func reportServerStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string, logger *log.Logger) {
+//
+// actionName is the variant's reason table; everything else is shared.
+func reportEventStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string, logger *log.Logger, actionName actionNamer) {
 	prev := make([]serverActionStat, serverEventActions)
 
 	ticker := time.NewTicker(serverStatsInterval)
@@ -1096,7 +1176,7 @@ func reportServerStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string
 			logged := total.Logged - prev[action].Logged
 			prev[action] = total
 
-			verdict, reason := serverActionName(uint8(action))
+			verdict, reason := actionName(uint8(action))
 			logger.Info("%s %s [NHP-STAT] VERDICT=%s REASON=%s WINDOW=%ds PKTS=%d LOGGED=%d TOTAL=%d",
 				time.Now().Format("15:04:05"),
 				serverId,
@@ -1128,12 +1208,12 @@ const (
 	serverLogSweepInterval  = time.Hour
 )
 
-func pruneServerEventLogs(logDir string, stop <-chan struct{}) {
+func pruneEventLogs(logDir string, stop <-chan struct{}, prefixes []string) {
 	ticker := time.NewTicker(serverLogSweepInterval)
 	defer ticker.Stop()
 
 	for {
-		sweepServerEventLogs(logDir, time.Now(), serverLogRetentionDays, serverLogRetentionBytes)
+		sweepEventLogs(logDir, time.Now(), serverLogRetentionDays, serverLogRetentionBytes, prefixes)
 		select {
 		case <-stop:
 			return
@@ -1142,18 +1222,26 @@ func pruneServerEventLogs(logDir string, stop <-chan struct{}) {
 	}
 }
 
-// serverEventLogWriters are the log.Logger file families the event logger
-// creates. log.NewLoggerDefine starts three AsyncLogWriters per logger — the
-// main one plus "-evaluate" and "-audit" siblings — and all three land in this
+// eventLogWriters are the log.Logger file families one event logger creates.
+// log.NewLoggerDefine starts three AsyncLogWriters per logger — the main one
+// plus "-evaluate" and "-audit" siblings — and all three land in the log
 // directory under this prefix. The glob below matches all of them on purpose
 // (they are this filter's files and nothing else's), so the "never today's
 // file" exclusion has to cover all three: each is open for append, and the
 // sibling writers reopen theirs by name the moment a line is routed to them.
-var serverEventLogWriters = []string{serverEventLogName, serverEventLogName + "-evaluate", serverEventLogName + "-audit"}
+func eventLogWriters(prefix string) []string {
+	return []string{prefix, prefix + "-evaluate", prefix + "-audit"}
+}
 
-// sweepServerEventLogs is the body of one sweep. The bounds are arguments
+// sweepEventLogs is the body of one sweep. The bounds are arguments
 // rather than the constants above so a test can exercise the size path without
 // writing a quarter of a gigabyte.
+//
+// prefixes are the log file name prefixes this variant owns — the nhp-server
+// writes nhp_server_xdp-*, the nhp-ac writes nhp_ac_xdp-*. Only those
+// families are touched: the nhp-ac's logs directory also holds its
+// nhp_deny-*, nhp_accept-* and ac-* files, and the daemon's own log is none
+// of the sweep's business.
 //
 // Today's files are never deleted but they *are* counted. Leaving them out of
 // the total let a single day outgrow the whole budget while the sweep reported
@@ -1162,13 +1250,7 @@ var serverEventLogWriters = []string{serverEventLogName, serverEventLogName + "-
 // always meant to describe. The day's growth itself is bounded by
 // serverLogDailyEventBytes on the writing side — the sweep cannot bound it,
 // because it must not touch the file being appended to.
-func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64) {
-	matches, err := filepath.Glob(filepath.Join(logDir, serverEventLogName+"-*.log"))
-	if err != nil {
-		log.Error("xdp event log retention: cannot list %s: %v", logDir, err)
-		return
-	}
-
+func sweepEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64, prefixes []string) {
 	type logFile struct {
 		path string
 		mod  time.Time
@@ -1176,9 +1258,18 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 	}
 
 	today := now.Format("2006-01-02")
-	current := make(map[string]struct{}, len(serverEventLogWriters))
-	for _, name := range serverEventLogWriters {
-		current[filepath.Join(logDir, fmt.Sprintf("%s-%s.log", name, today))] = struct{}{}
+	var matches []string
+	current := make(map[string]struct{})
+	for _, prefix := range prefixes {
+		found, err := filepath.Glob(filepath.Join(logDir, prefix+"-*.log"))
+		if err != nil {
+			log.Error("xdp event log retention: cannot list %s: %v", logDir, err)
+			return
+		}
+		matches = append(matches, found...)
+		for _, name := range eventLogWriters(prefix) {
+			current[filepath.Join(logDir, fmt.Sprintf("%s-%s.log", name, today))] = struct{}{}
+		}
 	}
 
 	files := make([]logFile, 0, len(matches))

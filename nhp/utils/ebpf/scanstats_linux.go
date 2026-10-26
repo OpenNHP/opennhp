@@ -189,7 +189,7 @@ func drainSrcHits(m *ebpf.Map) (map[uint32]uint64, bool) {
 	return out, n >= scanMapLruThreshold
 }
 
-func reportServerScan(portMap, srcMap *ebpf.Map, interval time.Duration, topn int, stop <-chan struct{}, serverId string, logger *log.Logger) {
+func reportEventScan(portMap, srcMap *ebpf.Map, interval time.Duration, topn int, stop <-chan struct{}, serverId string, logger *log.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	window := int(interval.Seconds())

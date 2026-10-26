@@ -1010,6 +1010,79 @@ func TestServerActionNamesCoverTheProgramsActionCodes(t *testing.T) {
 	}
 }
 
+// The nhp-ac's action codes and their names, the counterpart of
+// TestServerActionNamesCoverTheProgramsActionCodes. The AC's program has its
+// own code space, and the reason table that decodes it lives in user space:
+// a code the table does not know shows up in the published log as
+// "REASON=UNKNOWN-7", which the site's classifier cannot place.
+func TestAcActionNamesCoverTheProgramsActionCodes(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_ebpf_xdp.c: %v", err)
+	}
+
+	re := regexp.MustCompile(`(?m)^#define\s+(ACT_AC_\w+)\s+(\d+)`)
+	matches := re.FindAllStringSubmatch(string(src), -1)
+	if len(matches) == 0 {
+		t.Fatal("no ACT_AC_* constants found; has the program been renamed?")
+	}
+
+	seen := make(map[uint8]string, len(matches))
+	for _, m := range matches {
+		code, err := strconv.ParseUint(m[2], 10, 8)
+		if err != nil {
+			t.Fatalf("%s = %q: %v", m[1], m[2], err)
+		}
+		if other, dup := seen[uint8(code)]; dup {
+			t.Errorf("%s and %s share action code %d", other, m[1], code)
+		}
+		seen[uint8(code)] = m[1]
+
+		verdict, reason := acActionName(uint8(code))
+		if strings.HasPrefix(reason, "UNKNOWN-") {
+			t.Errorf("%s (%d) has no name in acActionName", m[1], code)
+		}
+		// A DROP_* constant that logs as PASS (or the reverse) would make the
+		// event log say the opposite of what the kernel did.
+		wantDrop := strings.HasPrefix(m[1], "ACT_AC_DROP_")
+		if got := verdict == "DROP"; got != wantDrop {
+			t.Errorf("%s (%d) logs verdict %q", m[1], code, verdict)
+		}
+	}
+}
+
+// The AC's DROP reasons have to be the ones the published site already knows,
+// because the site's classifier is a closed list and an unknown reason falls
+// into "Unknown reason" instead of a category.
+//
+// The site lives in another Go module, so this test cannot reach its
+// dropCategories map; it asserts the same list the site has, and the site's
+// own TestClassifierMatchesEngine checks the other direction -- that every
+// reason this file names is in the site's table.
+func TestAcDropReasonsAreInTheSiteClassifier(t *testing.T) {
+	want := []struct {
+		action uint8
+		reason string
+	}{
+		{ActAcDropKnockExpired, "KNOCK_EXPIRED"},
+		{ActAcDropTcpSyn, "TCP_SYN_SCAN"},
+		{ActAcDropTcpStealth, "TCP_STEALTH_SCAN"},
+		{ActAcDropTcpOther, "TCP_OTHER"},
+		{ActAcDropUdpOther, "UDP_OTHER"},
+		{ActAcDropNonTcpUdp, "NON_TCP_UDP"},
+	}
+
+	for _, w := range want {
+		verdict, reason := acActionName(w.action)
+		if verdict != "DROP" {
+			t.Errorf("action %d logs verdict %q, want DROP", w.action, verdict)
+		}
+		if reason != w.reason {
+			t.Errorf("action %d logs reason %q, want %q", w.action, reason, w.reason)
+		}
+	}
+}
+
 // action_is_drop() decides which verdicts feed the scan tables. It must name
 // exactly the codes serverActionName() reports as DROP: a range check once
 // swept in the XDP_PASS fragment/ICMPv6 codes, which put legitimate agents'
@@ -1222,7 +1295,7 @@ func TestSweepServerEventLogsKeepsTodayAndForeignFiles(t *testing.T) {
 	// delete.
 	foreign := writeLogFile(t, dir, "server-2026-09-01.log", now.AddDate(0, 0, -28), 10)
 
-	sweepServerEventLogs(dir, now, 14, 1<<30)
+	sweepEventLogs(dir, now, 14, 1<<30, []string{serverEventLogName})
 
 	// Today's file is open and being appended to, so it is exempt; `recent`
 	// is inside the age bound; `foreign` is another logger's.
@@ -1247,7 +1320,7 @@ func TestSweepServerEventLogsEnforcesTheByteBudget(t *testing.T) {
 	middle := writeLogFile(t, dir, "nhp_server_xdp-2026-09-27.log", now.AddDate(0, 0, -2), 100)
 	newest := writeLogFile(t, dir, "nhp_server_xdp-2026-09-28.log", now.AddDate(0, 0, -1), 100)
 
-	sweepServerEventLogs(dir, now, 14, 250)
+	sweepEventLogs(dir, now, 14, 250, []string{serverEventLogName})
 
 	if _, err := os.Stat(oldest); !os.IsNotExist(err) {
 		t.Errorf("the oldest file should go first (err=%v)", err)
@@ -1273,7 +1346,7 @@ func TestSweepServerEventLogsExemptsEverySiblingsCurrentFile(t *testing.T) {
 	todayAudit := writeLogFile(t, dir, "nhp_server_xdp-audit-2026-09-29.log", now, 10)
 	staleEval := writeLogFile(t, dir, "nhp_server_xdp-evaluate-2026-09-01.log", now.AddDate(0, 0, -28), 10)
 
-	sweepServerEventLogs(dir, now, 14, 1<<30)
+	sweepEventLogs(dir, now, 14, 1<<30, []string{serverEventLogName})
 
 	for _, path := range []string{todayMain, todayEval, todayAudit} {
 		if _, err := os.Stat(path); err != nil {
@@ -1297,7 +1370,7 @@ func TestSweepServerEventLogsCountsTodayAgainstTheBudget(t *testing.T) {
 
 	// 340 bytes on disk against a 250-byte budget, all of the overage in a
 	// file that cannot be removed. Everything that *can* go, goes.
-	sweepServerEventLogs(dir, now, 14, 250)
+	sweepEventLogs(dir, now, 14, 250, []string{serverEventLogName})
 
 	if _, err := os.Stat(yesterday); !os.IsNotExist(err) {
 		t.Errorf("history should be pruned while the directory is over budget (err=%v)", err)
@@ -1311,10 +1384,13 @@ func TestSweepServerEventLogsCountsTodayAgainstTheBudget(t *testing.T) {
 // one day can write, which is the part the sweep cannot reach because the file
 // it would have to delete is the one being appended to.
 func TestEventLogBudgetStopsAtTheDailyLimitAndResetsOnTheNextDay(t *testing.T) {
-	logger := log.NewLoggerDefine("", 0, t.TempDir(), "budget_test")
+	dir := t.TempDir()
+	// log.LogLevelInfo, not 0: level 0 is silent, and the point of this
+	// test is the line the budget writes to the file.
+	logger := log.NewLoggerDefine("", log.LogLevelInfo, dir, "budget_test")
 	t.Cleanup(logger.Close)
 
-	b := &eventLogBudget{limit: 100}
+	b := &eventLogBudget{limit: 100, componentId: "srv1"}
 	day1 := time.Date(2026, 9, 29, 23, 0, 0, 0, time.UTC)
 
 	if !b.spend(day1, 60, logger) {
@@ -1328,6 +1404,26 @@ func TestEventLogBudgetStopsAtTheDailyLimitAndResetsOnTheNextDay(t *testing.T) {
 	}
 	if b.spend(day1.Add(30*time.Minute), 1, logger) {
 		t.Fatal("suppression lasts for the rest of the day, not for one call")
+	}
+
+	// The budget line has to carry the component id, in the same place every
+	// other line carries it: the site's parser recognizes the marker by
+	// position ("HH:MM:SS <id> [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED"), so a
+	// line without the id puts the marker where the tag belongs, the line is
+	// read as a malformed STAT line, and the day's budget flag never lights
+	// up.
+	logger.Close() // flush the async writer before reading the file
+	matches, err := filepath.Glob(filepath.Join(dir, "budget_test-*.log"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("the budget line was not written (matches=%v, err=%v)", matches, err)
+	}
+	content, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("reading the budget log: %v", err)
+	}
+	want := "23:00:00 srv1 [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED"
+	if !strings.Contains(string(content), want) {
+		t.Errorf("the budget line does not carry the component id in the expected place\nwant a line containing %q\ngot:\n%s", want, content)
 	}
 
 	// The logger opens a new file at the date rollover, so the allowance

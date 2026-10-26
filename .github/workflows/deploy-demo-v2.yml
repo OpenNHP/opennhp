@@ -3671,7 +3671,7 @@ jobs:
           done <<< "$STATS_PRIV"
 
       - name: Download build + configs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nhp-demo-build
           path: artifact

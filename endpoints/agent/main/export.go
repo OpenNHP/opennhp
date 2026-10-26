@@ -67,7 +67,7 @@ func nhp_agent_init(workingDir *C.char, logLevel C.int) bool {
 // from etc/config.toml. privateKey is the base64 agent private key. cipherType
 // is 0 for Curve25519 and 1 for SM2. The caller must not log privateKey.
 //
-// If an agent is already initialised, this returns true only when that agent
+// If an agent is already initialized, this returns true only when that agent
 // already holds exactly this key and cipher scheme; otherwise it returns false
 // (the agent is never silently re-keyed — close it first). Note: Start installs
 // a config.toml watcher, so editing etc/config.toml later can reset the cipher
@@ -80,7 +80,7 @@ func nhp_agent_init_with_key(workingDir *C.char, logLevel C.int, privateKey *C.c
 		return false
 	}
 	if gAgentInstance != nil {
-		// Already initialised: success only if it holds this exact key+scheme.
+		// Already initialized: success only if it holds this exact key+scheme.
 		// Returning true for a different key would leave the caller knocking
 		// with the wrong identity and no error.
 		return agent.AgentHoldsRegistrationKey(gAgentInstance, key, int(cipherType))

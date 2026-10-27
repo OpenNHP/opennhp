@@ -467,3 +467,198 @@ func TestHistoryRowsAreNotPublishedTwice(t *testing.T) {
 		}
 	}
 }
+func TestHistoryGeneratorFromSavedPage(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "history.json")
+	var buf strings.Builder
+	err := run([]string{"history", "-html", filepath.Join("testdata", "history-page-2026-10-26.html"), "-out", out}, &buf)
+	if err != nil {
+		t.Fatalf("history: %v\n%s", err, buf.String())
+	}
+	h, err := loadSiteHistory(out)
+	if err != nil {
+		t.Fatalf("the generated snapshot does not load: %v", err)
+	}
+	if h.Since != "2026-10-16" {
+		t.Errorf("since = %q, want 2026-10-16", h.Since)
+	}
+	if h.Totals.Blocked != 3501020 {
+		t.Errorf("totals.blocked = %d, want 3501020", h.Totals.Blocked)
+	}
+	if h.Totals.SourceIPs != 25136 {
+		t.Errorf("totals.source_ips = %d, want 25136", h.Totals.SourceIPs)
+	}
+	if h.Totals.Countries != 130 {
+		t.Errorf("totals.countries = %d, want 130", h.Totals.Countries)
+	}
+	if len(h.Days) != 11 {
+		t.Fatalf("the snapshot lists %d days, want 11", len(h.Days))
+	}
+	want := map[string]uint64{
+		"2026-10-26": 8162,
+		"2026-10-25": 554239,
+		"2026-10-24": 876945,
+		"2026-10-23": 382917,
+		"2026-10-22": 574967,
+		"2026-10-21": 358779,
+		"2026-10-20": 217022,
+		"2026-10-19": 385531,
+		"2026-10-18": 28456,
+		"2026-10-17": 24092,
+		"2026-10-16": 89910,
+	}
+	for _, d := range h.Days {
+		w, ok := want[d.Day]
+		if !ok {
+			t.Errorf("the snapshot lists an unexpected day %s", d.Day)
+			continue
+		}
+		if d.DropPkts != w {
+			t.Errorf("%s: drop_pkts = %d, want %d", d.Day, d.DropPkts, w)
+		}
+		if d.Source != "server" {
+			t.Errorf("%s: source = %q, want server", d.Day, d.Source)
+		}
+	}
+	// The flags survive the round trip: the page's chips are the only
+	// record of them the snapshot has.
+	byDay := map[string]SiteDaySummary{}
+	for _, d := range h.Days {
+		byDay[d.Day] = d
+	}
+	if !byDay["2026-10-26"].Partial {
+		t.Error("2026-10-26 lost its partial flag")
+	}
+	if byDay["2026-10-26"].RestartsDetected != 1 {
+		t.Errorf("2026-10-26: restarts_detected = %d, want 1", byDay["2026-10-26"].RestartsDetected)
+	}
+	if byDay["2026-10-25"].RestartsDetected != 0 {
+		t.Errorf("2026-10-25: restarts_detected = %d, want 0", byDay["2026-10-25"].RestartsDetected)
+	}
+	if byDay["2026-10-26"].UniqueIPs != 3125 {
+		t.Errorf("2026-10-26: unique_attack_ips = %d, want 3125", byDay["2026-10-26"].UniqueIPs)
+	}
+	if byDay["2026-10-26"].PeakHour != "2026-10-26 00:00" {
+		t.Errorf("2026-10-26: peak_hour = %q", byDay["2026-10-26"].PeakHour)
+	}
+	if byDay["2026-10-26"].TopCategory != "TCP SYN scan" {
+		t.Errorf("2026-10-26: top_category = %q", byDay["2026-10-26"].TopCategory)
+	}
+}
+
+// TestHistoryGeneratorRefusesInconsistentPage pins the generator's own
+// check: a page whose rows do not add up to its hero total is refused, so a
+// parsing slip cannot become a permanent baseline.
+func TestHistoryGeneratorRefusesInconsistentPage(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "history-page-2026-10-26.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := strings.Replace(string(b), `data-total="3501020"`, `data-total="3501021"`, 1)
+	if broken == string(b) {
+		t.Fatal("the fixture no longer carries the hero total")
+	}
+	dir := t.TempDir()
+	page := filepath.Join(dir, "page.html")
+	if err = os.WriteFile(page, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf strings.Builder
+	err = run([]string{"history", "-html", page, "-out", filepath.Join(dir, "history.json")}, &buf)
+	if err == nil {
+		t.Fatal("the generator accepted a page whose rows do not add up")
+	}
+	if !strings.Contains(err.Error(), "DROP packets") {
+		t.Errorf("error does not explain the mismatch: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
+		t.Error("a snapshot was written for a page that does not add up")
+	}
+}
+
+// TestHistoryGeneratorFromIndexJSON pins the second input path: a published
+// index.json plus the totalnumber.js beside it produce the same snapshot the
+// saved page does.
+func TestHistoryGeneratorFromIndexJSON(t *testing.T) {
+	dir := t.TempDir()
+	fromPage := filepath.Join(dir, "from-page.json")
+	var buf strings.Builder
+	if err := run([]string{"history", "-html", filepath.Join("testdata", "history-page-2026-10-26.html"), "-out", fromPage}, &buf); err != nil {
+		t.Fatalf("history -html: %v\n%s", err, buf.String())
+	}
+
+	// The index.json path needs a site to have published it, so the fixture
+	// page's own rows are rebuilt into one — the same numbers, in the
+	// machine-readable shape the site publishes.
+	page, err := os.ReadFile(filepath.Join("testdata", "history-page-2026-10-26.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hist, err := historyPageFromHTMLBytes(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := hist.Rows
+	idxBytes, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idxPath := filepath.Join(dir, "index.json")
+	if err = os.WriteFile(idxPath, idxBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	totalsPath := filepath.Join(dir, "totalnumber.js")
+	totalsBody := totalNumberJS(hist.Blocked, hist.Sources, hist.Countries, hist.Since, nil)
+	if err = os.WriteFile(totalsPath, []byte(totalsBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fromIndex := filepath.Join(dir, "from-index.json")
+	if err = run([]string{"history", "-index", idxPath, "-totals", totalsPath, "-out", fromIndex}, &buf); err != nil {
+		t.Fatalf("history -index: %v\n%s", err, buf.String())
+	}
+
+	a, err := os.ReadFile(fromPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(fromIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != string(b) {
+		t.Errorf("the two input paths disagree:\n--- page ---\n%s\n--- index ---\n%s", a, b)
+	}
+}
+
+// TestHistoryGeneratorRefusesAnIndexWithHistoryRows pins that a snapshot
+// cannot be taken from a site that already carries one: the frozen days
+// would be counted twice.
+func TestHistoryGeneratorRefusesAnIndexWithHistoryRows(t *testing.T) {
+	dir := t.TempDir()
+	idx := filepath.Join(dir, "index.json")
+	rows := []SiteDaySummary{{Source: "server", Day: "2026-10-16", DropPkts: 10, History: true}}
+	b, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(idx, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	totals := filepath.Join(dir, "totalnumber.js")
+	if err = os.WriteFile(totals, []byte(totalNumberJS(10, 1, 1, "2026-10-16", nil)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf strings.Builder
+	err = run([]string{"history", "-index", idx, "-totals", totals, "-out", filepath.Join(dir, "history.json")}, &buf)
+	if err == nil {
+		t.Fatal("the generator accepted an index that already lists history rows")
+	}
+	if !strings.Contains(err.Error(), "history rows") {
+		t.Errorf("error does not explain the problem: %v", err)
+	}
+}
+
+// TestHistoryFlagsIncludeHistory pins that the frozen rows are marked on the
+// homepage: a reader who cannot click a date deserves to know why.

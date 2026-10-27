@@ -14,6 +14,10 @@ const (
 	CatIPv6      Category = "IPv6"
 	CatOther     Category = "Other"
 	CatUnknown   Category = "Unknown reason"
+	// CatKnockExpired is the nhp-ac's own class: a peer whose knock window
+	// closed, as opposed to a peer that never knocked at all. It is not a
+	// scan, so it does not belong under any of the categories above.
+	CatKnockExpired Category = "Knock window expired"
 )
 
 // dropCategories mirrors the DROP side of serverActionName in
@@ -32,6 +36,7 @@ var dropCategories = map[string]Category{
 	"NON_TCP_UDP":      CatOtherProt,
 	"V6_OTHER":         CatIPv6,
 	"OTHER":            CatOther,
+	"KNOCK_EXPIRED":    CatKnockExpired,
 }
 
 // classify returns the category and whether the reason is known.

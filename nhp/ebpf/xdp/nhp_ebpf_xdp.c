@@ -4,6 +4,7 @@
 #include <bpf/bpf_endian.h>
 
 #include "nhp_maps.h"
+#include "nhp_xdp_stats.h"
 
 #define ETH_P_ARP 0x0806
 #define ETH_P_IP    0x0800
@@ -19,9 +20,36 @@
 #define DHCP_PORT_R 67
 #define DHCP_PORT_O 68
 
+/* The AC's own action codes.
+ *
+ * These are a separate code space from the nhp-server's ACT_* defines: the
+ * two programs never share a log file and each log is decoded with its own
+ * name table (acActionName in nhp/utils/ebpf/engine_linux.go), so the same
+ * number can mean different things in the two.
+ *
+ * Every value must stay below NHP_EVENT_ACTIONS (32) in nhp_xdp_stats.h: a
+ * code at or past it is still judged, but it is neither counted in
+ * nhp_action_stats nor rate limited by the per-class token bucket, so its
+ * packets would be invisible to the [NHP-STAT] summary and unbounded on the
+ * perf ring. */
+#define ACT_AC_DROP_KNOCK_EXPIRED   0
+#define ACT_AC_DROP_TCP_SYN         1
+#define ACT_AC_DROP_TCP_STEALTH     2
+#define ACT_AC_DROP_TCP_OTHER       3
+#define ACT_AC_DROP_UDP_OTHER       4
+#define ACT_AC_DROP_NON_TCP_UDP     5
+#define ACT_AC_PASS_KNOCK_ADMITTED  6
+#define ACT_AC_PASS_FLOW_TRACKED    7
+
 /* The whitelist maps, conn_track and their key/value structs live in
  * nhp_maps.h -- they are shared with tc_egress.c through their pins. */
 
+/* The accept / deny audit channel.
+ *
+ * This ring and the one in nhp_xdp_stats.h are two independent paths: this
+ * one carries every accepted and denied flow to the nhp_deny-*.log and
+ * nhp_accept-*.log files, one line per packet, unbounded; the nhp_events ring
+ * carries the counted, rate-limited telemetry that the stats site reads. */
 struct event_t {
     __u64 timestamp;    
     __u8 action;        
@@ -143,6 +171,11 @@ static __always_inline int admit_ingress(void *ctx, struct iphdr *iph,
                                          struct ipv4_ct_tuple *ct_key, __u64 now,
                                          bool track, bool ac_owns_flow,
                                          __u64 expire_time) {
+    /* A new flow the AC admitted because a knock was live. Worth a line: it
+     * is a decision, and it is rare. drop=false -- an admitted flow is not
+     * an attack, so it stays out of the per-port / per-source aggregation
+     * behind the [NHP-SCAN] summary. */
+    record_event(ctx, ACT_AC_PASS_KNOCK_ADMITTED, iph, ct_key->sport, ct_key->dport, 0, true, false);
     submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key->sport, ct_key->dport, iph->protocol, iph->tot_len);
     if (ac_owns_flow)
         return XDP_PASS;
@@ -166,6 +199,29 @@ static __always_inline int admit_ingress(void *ctx, struct iphdr *iph,
  * nhp_ct_close_ttl_refresh(). */
 static __always_inline void apply_close_ttl(struct conn_value *val, bool is_fin, bool is_rst, __u64 idle_ttl_ns) {
     nhp_ct_close_ttl_refresh(val, is_fin, is_rst, false /* from the peer */, idle_ttl_ns);
+}
+
+/* The reason a packet that no whitelist admitted is dropped.
+ *
+ * The rule is the nhp-server's, unchanged (nhp_server_xdp.c): a SYN without
+ * an ACK is a peer asking to open a connection -- a connect or a SYN scan;
+ * a packet with neither SYN, ACK nor RST is a stealth scan (FIN / NULL /
+ * XMAS); anything else on TCP is TCP_OTHER. UDP is UDP_OTHER and every other
+ * protocol is NON_TCP_UDP.
+ *
+ * Telemetry only. The caller drops the packet either way; this decides which
+ * class it is counted under, never whether it is dropped. */
+static __always_inline __u8 ac_classify_drop(__u8 proto, bool is_syn, bool is_ack, bool is_rst) {
+    if (proto == IPPROTO_TCP) {
+        if (is_syn)
+            return ACT_AC_DROP_TCP_SYN;
+        if (!is_ack && !is_rst)
+            return ACT_AC_DROP_TCP_STEALTH;
+        return ACT_AC_DROP_TCP_OTHER;
+    }
+    if (proto == IPPROTO_UDP)
+        return ACT_AC_DROP_UDP_OTHER;
+    return ACT_AC_DROP_NON_TCP_UDP;
 }
 
 SEC("xdp")
@@ -202,6 +258,9 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * tc_egress.c builds (it reads ihl * 4 too), or the gates there miss. */
     ct_key.nexthdr = iph->protocol;
     bool is_tcp = false, is_syn = false, is_fin = false, is_rst = false;
+    /* Telemetry only: ac_classify_drop() needs to tell a pure SYN from a
+     * stealth probe, and that means knowing whether the ACK bit is set. */
+    bool is_ack = false;
     if (iph->protocol == IPPROTO_TCP) {
         struct tcphdr *tcp = (void *)iph + (iph->ihl * 4);
         if ((void *)(tcp + 1) > data_end) {
@@ -216,6 +275,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         is_syn = tcp->syn && !tcp->ack;
         is_fin = tcp->fin;
         is_rst = tcp->rst;
+        is_ack = tcp->ack;
 
         if (tcp->dest == bpf_htons(22)) {
             return XDP_PASS;
@@ -251,12 +311,18 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
                 //Lookup icmpwhitelist entry
                 struct icmpwhitelist_value *iw_val = bpf_map_lookup_elem(&icmpwhitelist, &icmpkey);
                 if (!iw_val) {
+                    /* No ICMP whitelist for this pair at all: nobody knocked
+                     * for it, so it counts as an unsolicited probe. */
+                    record_event(ctx, ACT_AC_DROP_NON_TCP_UDP, iph, ct_key.sport, ct_key.dport, 0, true, true);
                     return XDP_DROP;
-                }   
+                }
                 __u64 now = bpf_ktime_get_ns();
                 // Check if whitelist entry has expired
                 if (iw_val->expire_time < now) {
                     bpf_map_delete_elem(&icmpwhitelist, &icmpkey);
+                    /* The entry existed but its window closed: a peer that did
+                     * knock, unlike one that never did. */
+                    record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
                     return XDP_DROP;
                 }
                 // Check if source IP is icmpwhitelisted and allowed
@@ -340,6 +406,11 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
                 apply_close_ttl(&new_val, is_fin, is_rst, NHP_CT_TCP_IDLE_TTL_NS);
             }
             bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
+            /* A flow the AC already admitted. report=false: this is the
+             * bulk of the traffic the AC carries, and a line per packet would
+             * write more log than every other class together. It is still
+             * counted, and the per-window summary reports it. */
+            record_event(ctx, ACT_AC_PASS_FLOW_TRACKED, iph, ct_key.sport, ct_key.dport, 0, false, false);
             return XDP_PASS;
         }
     }
@@ -505,6 +576,9 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = w_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&spp, &key);
+            /* The peer knocked and its window has closed. A legitimate peer
+             * that came back too late, as opposed to one that never knocked. */
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
             return XDP_DROP;
         }
         if (w_val->allowed == 1) {
@@ -515,6 +589,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = sd_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&sdwhitelist, &sdkey);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
             return XDP_DROP;
         }
         if (sd_val->allowed == 1) {
@@ -526,6 +601,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = sp_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&src_port, &spkey);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
             return XDP_DROP;
         }
         if (sp_val->allowed == 1) {
@@ -537,6 +613,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = pl_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&port_list, &pl_key);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
             return XDP_DROP;
         }
         if (pl_val->allowed == 1) {
@@ -547,12 +624,16 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = pp_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&protocol_port, &pp_key);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
             return XDP_DROP;
         }
         if (pp_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
+    /* No whitelist admitted the packet. Which class it is depends on what the
+     * packet was trying to do; either way it is dropped. */
+    record_event(ctx, ac_classify_drop(iph->protocol, is_syn, is_ack, is_rst), iph, ct_key.sport, ct_key.dport, 0, true, true);
     submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
     return XDP_DROP;
 }

@@ -215,6 +215,101 @@ site it was serving exactly as it found it, links and hero total unchanged,
 rather than removing pages the live index still points at. The next successful
 run then does the deletions.
 
+### History baseline: `-history`
+
+The floor has a cost: the totals for the days before it are not on the site
+at all, and nothing else keeps them. `-history <history.json>` points the
+site at a **history snapshot** — a saved copy of the homepage, frozen into a
+file — and the site publishes it as the baseline its counters start from.
+
+```bash
+go run ./xdplog-report site \
+  -logs   /home/ec2-user/xdpstats/raw \
+  -out    /var/www/stats \
+  -state  /home/ec2-user/xdpstats/state.json \
+  -history /home/ec2-user/xdpstats/history.json
+```
+
+The snapshot is:
+
+```json
+{
+  "schema": 1,
+  "since": "2026-10-16",
+  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 130 },
+  "days": [
+    {
+      "source": "server",
+      "day": "2026-10-16",
+      "partial": false,
+      "drop_pkts": 89910,
+      "pass_pkts": 0,
+      "drop_share": 0.6661,
+      "unique_attack_ips": 7336,
+      "peak_hour": "2026-10-16 18:00",
+      "restarts_detected": 1,
+      "budget_exhausted": false,
+      "unknown_reasons": false,
+      "top_category": "TCP SYN scan"
+    }
+  ]
+}
+```
+
+**A frozen day wins.** The days the snapshot lists are published *from the
+snapshot*: the collector's copy of the same day is not analyzed, not published
+and not counted. The snapshot's days and the collector's days overlap
+exactly, so counting both would read `7,002,040` instead of `3,501,020`. Drop
+a day from the snapshot and the next run turns it back into a live row.
+
+**A frozen day has no detail page.** The snapshot carries the day's summary,
+not its DROP events, so the homepage renders the date as plain text and tags
+the row `history`; `index.json` marks it `"history": true`. The pages the
+site published for those days before the snapshot was installed are not
+deleted — unlinked is not unpublished — they simply stop being linked.
+
+**The packet total stays reproducible.** The snapshot's `totals.blocked` must
+equal the sum of its own days' `drop_pkts`, and a snapshot where it does not
+is refused. The hero total therefore stays the sum of every row of
+`index.json`, history rows included.
+
+**The two union counts are added, not merged.** `source_ips` and `countries`
+are the unions of the saved period; the live days have their own union. The
+two periods' address sets were never kept side by side, so the site adds
+them: a source active in both periods is counted once in each. Both figures
+are therefore **lower bounds** on the true distinct totals, and the
+homepage, `totalnumber.js` and this README all say so.
+
+**A snapshot that cannot be read stops the run.** `-history` pointing at a
+missing or invalid file is an error, never a silent fallback to counting only
+the site's own days — that would shrink the published totals by an amount
+nobody could audit. The file's fingerprint goes into `state.json`, so editing
+it rewrites the homepage even when no log changed.
+
+`history.json` is private: keep it beside `state.json`, out of the web root.
+
+### `history` subcommand: freezing a saved page
+
+```bash
+xdplog-report history -html <saved-index.html> -out <history.json>
+xdplog-report history -index <published-index.json> -totals <totalnumber.js> -out <history.json>
+```
+
+The first form reads a saved copy of the homepage; the second reads what the
+site published (`index.json` plus the `totalnumber.js` beside it). Both
+produce the same file.
+
+The generator refuses to write a snapshot that does not add up: the rows it
+parsed have to sum to the page's own all-time total, and the page's stated
+counting start has to be its earliest row. A parsing slip would otherwise
+freeze a wrong baseline into the site's history, permanently.
+
+The checked-in seed is `deploy/config-templates/xdpstats/history.json`, built
+from `testdata/history-page-2026-10-26.html` — a saved copy of the public
+homepage, and the only fixture in `testdata/` that is not hand-written
+synthetic data. `TestHistorySeedSnapshotIsShipped` pins the shipped file to
+the generated one, so the two cannot drift apart.
+
 ### Template changes reach published pages
 
 `state.json` records, per day, the `siteRenderVersion` that produced its page.
@@ -371,6 +466,7 @@ does not need it — bump `siteRenderVersion` instead.
 | `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb`. |
 | `-mask-ip` | **`true`** | Truncate source addresses for the public site. Different default than the single-file CLI. |
 | `-since` | `2026-10-16` | Earliest `YYYY-MM-DD` day to publish. Older days are neither rendered nor counted, and any detail page already published for one is deleted. Empty publishes everything. |
+| `-history` | empty | Optional `history.json` snapshot: the baseline the site's counters start from, and the days it freezes. A path that cannot be read is an error, not a fallback. See "History baseline" above. |
 | `-force` | `false` | Rebuild every day even if inputs are unchanged. Not needed to push a template change out: bumping `siteRenderVersion` does that. |
 
 ### Tests
@@ -382,7 +478,10 @@ go test ./xdplog-report/
 
 The fixtures under `testdata/` are hand-written synthetic logs, not captured
 from a live host. They are exempted from the repository-wide `*.log` ignore rule
-so the tests work on a fresh checkout.
+so the tests work on a fresh checkout. The one exception is
+`testdata/history-page-2026-10-26.html`: a saved copy of the public
+homepage, kept because the history generator's whole job is to read exactly
+that shape of page.
 
 ### Adding a new DROP reason
 
@@ -566,6 +665,85 @@ dirty，因此该行会在同一次运行里从 `index.json` 和首页总数中�
 的删除行为：原始日志和采集缓存一律不动。某个页面删不掉时，索引和状态照常写完，但整次运行
 仍然返回失败 —— 残留页面必须是有声音的，而不是悄无声息。
 
+### 历史基线：`-history`
+
+floor 是有代价的：它之前那几天的累计值根本不在站点上，别的任何地方也没有留存。
+`-history <history.json>` 让站点读一份**历史快照** —— 一份保存下来的首页快照，冻结成文件 ——
+并把它作为计数起点发布出去。
+
+```bash
+go run ./xdplog-report site \
+  -logs   /home/ec2-user/xdpstats/raw \
+  -out    /var/www/stats \
+  -state  /home/ec2-user/xdpstats/state.json \
+  -history /home/ec2-user/xdpstats/history.json
+```
+
+快照长这样：
+
+```json
+{
+  "schema": 1,
+  "since": "2026-10-16",
+  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 130 },
+  "days": [
+    {
+      "source": "server",
+      "day": "2026-10-16",
+      "partial": false,
+      "drop_pkts": 89910,
+      "pass_pkts": 0,
+      "drop_share": 0.6661,
+      "unique_attack_ips": 7336,
+      "peak_hour": "2026-10-16 18:00",
+      "restarts_detected": 1,
+      "budget_exhausted": false,
+      "unknown_reasons": false,
+      "top_category": "TCP SYN scan"
+    }
+  ]
+}
+```
+
+**被冻结的那天说了算。** 快照列出的日子**从快照发布**：采集端同一天的那份不分析、不发布、
+也不计入。快照里的日子和采集端的日子完全重叠，两边都算就会读成 `7,002,040` 而不是
+`3,501,020`。把某天从快照里删掉，下一次运行它就重新变回实时行。
+
+**被冻结的那天没有详情页。** 快照只带当天的汇总，不带逐条 DROP 事件，所以首页把日期渲染成
+纯文本并给该行打上 `history` 标签；`index.json` 里对应标记 `"history": true`。站点在装上快照
+之前为这些天发布过的页面**不会删除** —— 不再被链接不等于已下线 —— 只是不再有入口。
+
+**包数仍然可复现。** 快照的 `totals.blocked` 必须等于它自己各行 `drop_pkts` 之和，不等就直接
+拒绝加载。于是 hero 包数依旧是 `index.json` 全部行 `drop_pkts` 之和，历史行也在内。
+
+**两个并集数是相加，不是合并。** `source_ips` 与 `countries` 是那一期的并集，实时天有它们自己
+的并集；两期的地址集合从未同时留存，所以站点把它们相加：同一个来源在两期都活跃会被各算一次。
+因此这两个数字是真实去重总数的**下界**，首页、`totalnumber.js` 和本文档都写明了这一点。
+
+**读不到的快照会让运行直接失败。** `-history` 指向不存在或非法的文件是错误，绝不会静默退化成
+"只统计自己的数据" —— 那会让公布的累计值凭空少掉一块且没人能复核。文件内容的指纹写进
+`state.json`，所以即使日志一个没变，改了快照也会重写首页。
+
+`history.json` 是私有文件：放在 `state.json` 旁边，不要放进 web root。
+
+### `history` 子命令：把保存的首页冻结成快照
+
+```bash
+xdplog-report history -html <保存的首页.html> -out <history.json>
+xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> -out <history.json>
+```
+
+第一种读保存下来的首页，第二种读站点自己发布的东西（`index.json` 加上旁边的
+`totalnumber.js`）；两者产出同一个文件。
+
+生成器拒绝写出一份对不上的快照：解析出的各行之和必须等于页面自己的累计总数，页面自称的统计
+起点必须等于它最早的那一行。否则一次解析失误就会把错误的基线永久写进站点历史。
+
+入库的种子文件是 `deploy/config-templates/xdpstats/history.json`，由
+`testdata/history-page-2026-10-26.html` 生成 —— 那是一份公开首页的存档，也是 `testdata/`
+里唯一一个不是手写合成数据的 fixture。`TestHistorySeedSnapshotIsShipped` 把入库文件钉死在
+生成结果上，两者不会各走各的。
+
 ### 模板改动会覆盖已发布的页面
 
 `state.json` 会为每一天记录生成该页面的 `siteRenderVersion`。在 `site.go` 里把这个常量 +1，
@@ -676,6 +854,7 @@ site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the 
 | `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`。 |
 | `-mask-ip` | **`true`** | 对外站点做 IP 截断；默认值与单文件 CLI 不同。 |
 | `-since` | `2026-10-16` | 最早发布的 `YYYY-MM-DD` 日期。更早的天既不渲染也不计入总数，已经为这些天发布过的详情页会被删除；传空则全部发布。 |
+| `-history` | 空 | 可选的 `history.json` 历史快照：站点计数起始的基线，以及它冻结的那几天。读不到就直接报错，不会退回只统计自身数据。见上文「历史基线」。 |
 | `-force` | `false` | 即便输入未变化也强制重算每一天。推送模板改动不需要它：`siteRenderVersion` +1 即可。 |
 
 ### 测试
@@ -686,7 +865,9 @@ go test ./xdplog-report/
 ```
 
 `testdata/` 下的 fixture 是手写的合成日志，不是从线上主机抓取的。它们从仓库根目录
-的 `*.log` 忽略规则中豁免，保证全新 checkout 也能跑测试。
+的 `*.log` 忽略规则中豁免，保证全新 checkout 也能跑测试。唯一的例外是
+`testdata/history-page-2026-10-26.html`：一份公开首页的存档 —— 历史生成器要读的正是这种
+页面。
 
 ### 新增 DROP reason
 

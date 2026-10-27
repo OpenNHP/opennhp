@@ -1429,7 +1429,8 @@ nhp-serverd
         └─ xdplog-report site
              ├─ /var/www/stats/{index.html,index.json,countup.js,totalnumber.js,d/server/<day>.{html,json}}
              ├─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
-             └─ facts -> /home/ec2-user/xdpstats/facts/server/<day>.facts  (same reason)
+             ├─ facts -> /home/ec2-user/xdpstats/facts/server/<day>.facts  (same reason)
+             └─ history -> /home/ec2-user/xdpstats/history.json  (baseline for the pre-floor days)
                                                 │
                           nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/
 ```
@@ -1516,6 +1517,59 @@ removed day's attackers in the total. A day whose facts file is missing
 contributes nothing and is named in `xdpstats/collect.log` as
 `site: N day(s) contribute no source/country data (...)` — the run still
 publishes, because the packet total is unaffected.
+
+### History baseline (`history.json`)
+
+The site publishes nothing before `-since` (default `2026-10-16`) and the
+collector's cache does not reach back past the daemon's 14-day retention, so
+the totals for the days before that floor lived nowhere. A copy of the
+homepage saved while it was still current was the only carrier of them, and
+`xdplog-report history` freezes that copy into the file the site reads:
+
+```bash
+cd endpoints
+go run ./xdplog-report history \
+  -html  xdplog-report/testdata/history-page-2026-10-26.html \
+  -out   ../deploy/config-templates/xdpstats/history.json
+```
+
+- **Where it lives.** `/home/ec2-user/xdpstats/history.json` on the relay,
+  installed by `deploy-xdpstats` from
+  `deploy/config-templates/xdpstats/history.json` (0640, beside `state.json`
+  in the 0750 directory). It is **not** in the web root and the nginx vhost
+  needs no change for it.
+- **What the collector does.** `xdpstats-collect.sh` passes
+  `-history $XDPSTATS_DIR/history.json` when the file is readable and logs
+  `history snapshot in use: …`; when it is missing it logs
+  `no history snapshot at …; the site counts from its own data only`. The
+  site itself refuses to run with a `-history` path it cannot read, so a
+  snapshot that is installed but unreadable fails the timer loudly instead
+  of shrinking the published totals.
+- **A frozen day wins.** The days the snapshot lists are published from the
+  snapshot; the collector's copy of the same day is not analyzed, not
+  published and not counted. Without that, the overlapping days would be
+  counted twice and the hero total would read `7,002,040` instead of
+  `3,501,020`. The frozen rows carry `"history": true` in `index.json` and
+  a `history` chip on the homepage, and **their date is not a link**: the
+  snapshot has the day's summary, not its DROP events, so there is no
+  detail page to open. The pages the site published for those days before
+  the snapshot was installed are **not deleted** — unlinked is not
+  unpublished — they simply stop being linked.
+- **The packet total stays reproducible.** The snapshot's
+  `totals.blocked` must equal the sum of its own days' `drop_pkts`, and the
+  site refuses to load a snapshot where it does not. So the hero total is
+  still the sum of every row of `index.json`.
+- **The two union counts are added, not merged.** The snapshot's
+  `source_ips` / `countries` are the unions of the saved period; the live
+  days have their own union. The two periods' address sets were never kept
+  side by side, so the site adds them: a source active in both periods is
+  counted once in each. Both figures are therefore **lower bounds**, and
+  the homepage, `totalnumber.js` and the README all say so.
+- **Rolling it back** is removing the day from `history.json` (or the whole
+  file): the next run rewrites the homepage, the day becomes a live row
+  again and the day page is linked once more. The fingerprint of the file
+  lives in `state.json`, so any edit rewrites the index even when no log
+  changed.
 
 ### Deploy order: `infra-demo apply` comes first
 

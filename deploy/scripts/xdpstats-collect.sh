@@ -25,7 +25,8 @@
 #      the remote, OR has today's UTC date, runs `get <date>`, validates
 #      the last line, gzips, and writes the cache atomically.
 #   4. Runs `xdplog-report site` to rebuild the static site from the cache,
-#      passing -geo-mmdb when the GeoLite2 database is present on the relay.
+#      passing -geo-mmdb when the GeoLite2 database is present on the relay
+#      and -history when the history snapshot is present beside the state.
 #   5. Prunes raw cache files older than 90 days.
 #
 # Concurrency: protected by a non-blocking flock at $RAW_DIR/.lock. A second
@@ -60,6 +61,11 @@ RAW_DIR="$XDPSTATS_DIR/raw"
 WEB_DIR="/var/www/stats"
 STATE_FILE="$XDPSTATS_DIR/state.json"
 SOURCES_CONF="$XDPSTATS_DIR/sources.conf"
+# The history snapshot: the site's own numbers for the days before it started
+# publishing, which the collector's cache does not reach back to. It is
+# installed by deploy-xdpstats from deploy/config-templates/xdpstats/history.json
+# and stays private, beside the state rather than under the web root.
+HISTORY_FILE="$XDPSTATS_DIR/history.json"
 LOG_FILE="$XDPSTATS_DIR/collect.log"
 LOCK_FILE="$RAW_DIR/.lock"
 RETENTION_DAYS=90
@@ -314,6 +320,19 @@ if [ -r "$GEO_MMDB" ]; then
   log "info" "GeoIP enabled from $GEO_MMDB"
 else
   log "info" "no GeoIP database at $GEO_MMDB; region table and country totals stay empty"
+fi
+
+# The history snapshot seeds the site's counters with the days before it
+# started publishing. It is passed only when it is readable: a snapshot that
+# cannot be read is a configuration error the site refuses to run with, and
+# the alternative — running without it — would shrink the published all-time
+# totals to whatever the collector's cache still holds. So a missing snapshot
+# is logged loudly here instead of silently shrinking the numbers.
+if [ -r "$HISTORY_FILE" ]; then
+  SITE_ARGS+=("-history" "$HISTORY_FILE")
+  log "info" "history snapshot in use: $HISTORY_FILE"
+else
+  log "info" "no history snapshot at $HISTORY_FILE; the site counts from its own data only"
 fi
 
 if [ -x "$SITE_BIN" ]; then

@@ -662,3 +662,26 @@ func TestHistoryGeneratorRefusesAnIndexWithHistoryRows(t *testing.T) {
 
 // TestHistoryFlagsIncludeHistory pins that the frozen rows are marked on the
 // homepage: a reader who cannot click a date deserves to know why.
+func TestHistorySeedSnapshotIsShipped(t *testing.T) {
+	seed := filepath.Join("..", "..", "deploy", "config-templates", "xdpstats", "history.json")
+	want := filepath.Join(t.TempDir(), "history.json")
+	var buf strings.Builder
+	if err := run([]string{"history", "-html", filepath.Join("testdata", "history-page-2026-10-26.html"), "-out", want}, &buf); err != nil {
+		t.Fatalf("history: %v\n%s", err, buf.String())
+	}
+	a, err := os.ReadFile(seed)
+	if err != nil {
+		t.Fatalf("the shipped snapshot is missing: %v", err)
+	}
+	b, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != string(b) {
+		t.Errorf("the shipped snapshot differs from the generated one:\n--- shipped ---\n%s\n--- generated ---\n%s", a, b)
+	}
+}
+
+// TestHistoryRowsAreNotPublishedTwice pins the failure the whole feature
+// exists to prevent: the snapshot's days and the collector's days overlap
+// exactly, and counting both would double the site's headline total.

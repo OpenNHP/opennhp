@@ -265,6 +265,25 @@ tcp/22 from the relay SG; recovery of an unfiltered host is still
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
 
+**All-ports exposure on the AC (deliberate).** `aws_security_group.ac` is opened
+the same way, under `var.ac_open_all_ports` (the `infra-demo` `open_ac_all_ports`
+input), and for the same reason — only harder: a packet the security group drops
+never reaches the NIC, so the AC's XDP filter never sees it, never counts it,
+and the AC's column on stats.opennhp.org undercounts the attacks (in the narrow
+posture only tcp/443 and the knock port are reachable, so most scans are gone
+before the filter can see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by
+`nhp-acd` in `FilterMode = 1`) is the only inbound control on everything but
+tcp/22, exactly as on the server; tcp/22 stays restricted to the relay SG. What
+the AC has that the server does not is the fail-closed netfilter backstop
+(`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`), which keeps the
+protected resource shut while the XDP link is detached — i.e. it covers the
+fail-open windows the link has whenever `nhp-acd` is restarting.
+`deploy-demo-v2` establishes that the filter is attached (`Verify the AC's XDP
+ingress filter attached`) and reports whether the group is actually wide open
+(`Check the AC's security group is open to the internet`); `infra-demo` refuses
+to widen a group whose host has no XDP program attached. Both groups are open by
+default in the pipeline — untick the input to go back to the narrow posture.
+
 **Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
 unprivileged on the demo host and `443 < 1024`, the unit cannot rely on
 `CAP_NET_BIND_SERVICE` — granting it would leave the daemon with a non-empty
@@ -278,7 +297,7 @@ must stay in sync (see the note above about `ignore_changes = [user_data]`).
 Relaxing that floor widens the range any unprivileged process on the host
 may bind to, but the XDP filter is what limits the host's inbound exposure
 now that `aws_security_group.server` is deliberately open to all ports (see
-*All-ports exposure* above; `aws_security_group.ac` is still narrow), together
+*All-ports exposure* above), together
 with the fact that this host runs a single service. The filter is fail-open by
 design, which is why the attach gate in `deploy-server` matters. A rollback that moves the port out of the
 privileged range must therefore remove `/etc/sysctl.d/99-nhp-server.conf`

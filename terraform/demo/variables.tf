@@ -87,8 +87,27 @@ variable "nhp_listen_port" {
 # （deploy-demo-v2 的 attach gate 为绿）后，用 infra-demo 的 open_all_ports 输入
 # 或 tfvars 显式设为 true。回滚：翻回 false 再 apply，SG 精确回到窄姿态
 # （udp/nhp_listen_port + relay SG 的 tcp/22）。
+#
+# 注意这里的 default 只是「手工跑 terraform」时的保守值：流水线（infra-demo）
+# 总是显式传值，默认传 true —— 全开是 demo 的常态姿态，统计站要靠它才数得到
+# 真实的扫描量；只有取消勾选 open_all_ports 才会收窄。
 variable "server_open_all_ports" {
   description = "将 nhp-server 的安全组对 0.0.0.0/0 放开 tcp(除 22)/udp/icmp 全端口，由 XDP 独任把关；tcp/22 始终只对 relay SG 开放。翻回 false 并 apply 即精确回到窄 SG 姿态。"
+  type        = bool
+  default     = false
+}
+
+# 与 server_open_all_ports 同形，只是作用在 nhp-ac 上：把 AC 的安全组放开到
+# 全端口（tcp/22 除外，它始终只对 relay SG 开放），由 nhp-acd 自己挂载的
+# XDP 过滤器独任把关。
+#
+# 存在的理由与 server 一样，但口径更硬：被安全组挡掉的包根本到不了网卡，
+# 也就进不了 XDP 的计数器，统计站上 AC 那一栏自然是空的。窄姿态下 AC 只有
+# tcp/443 和 knock 端口可达，所以绝大多数扫描在到达过滤器之前就没了。
+#
+# 流水线（infra-demo）默认传 true；只有取消勾选 open_ac_all_ports 才会收窄。
+variable "ac_open_all_ports" {
+  description = "将 nhp-ac 的安全组对 0.0.0.0/0 放开 tcp(除 22)/udp/icmp 全端口，由 AC 的 XDP 过滤器独任把关；tcp/22 始终只对 relay SG 开放。翻回 false 并 apply 即精确回到窄 SG 姿态。"
   type        = bool
   default     = false
 }

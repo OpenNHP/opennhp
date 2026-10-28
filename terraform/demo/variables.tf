@@ -39,10 +39,58 @@ variable "subnet_cidr" {
   default     = "10.0.1.0/24"
 }
 
+# Pinning the relay's private address narrows the nhp-server XDP whitelist.
+#
+# That whitelist is the only thing that reaches tcp/22 on the server host. It
+# carries the relay's private address (SSH arrives from there, because CI jumps
+# through the relay), the relay's public address, and — because
+# aws_instance.relay normally takes whatever the subnet hands it — the whole
+# public subnet, so that a replaced relay coming back on a different address is
+# still let in. Without that prefix a replacement is a root-volume-detach
+# recovery: the live whitelist names the old address, SSH from the new relay is
+# dropped, and the deploy job that would push the correction reaches the server
+# *through* the relay.
+#
+# The cost is that the AC and the server share that subnet and are covered too,
+# which is wider than the policy anyone would write down. Pinning the address
+# here removes the reason for the prefix: a replaced relay comes back on the
+# same address, so the deploy renders the two host addresses alone and the XDP
+# layer matches the security group (SSH from the relay's SG and nothing else).
+#
+# Left empty by default, which keeps today's behaviour exactly. Set it to the
+# address the relay *already has* — `terraform output relay_private_ip` — and
+# apply: Terraform sees no change, because the attribute already holds that
+# value. Setting it to any other address replaces the instance, so do not
+# invent one.
+variable "relay_private_ip" {
+  description = "Pin the relay's private IPv4 (must be the address it already has, or the instance is replaced). Empty lets AWS choose, and the deploy then whitelists the whole subnet so a replaced relay keeps SSH to nhp-server."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.relay_private_ip == "" || can(cidrnetmask("${var.relay_private_ip}/32"))
+    error_message = "relay_private_ip must be empty or a single IPv4 address."
+  }
+}
+
+# NHP knock 端口的唯一真源：server SG 入站放行 + 渲染 deploy/config-templates 下的
+# server/ac/relay 模板均取自此值。改这里必须先跑 infra-demo（apply）再跑
+# deploy-demo-v2，否则后者 `terraform output -raw nhp_listen_port` 仍读到旧值，
+# 渲染出的配置不会先于 SG 切换（这是设计上天然的安全序）。
 variable "nhp_listen_port" {
-  description = "NHP protocol UDP port"
+  description = "NHP protocol UDP port (knock listener)"
   type        = number
-  default     = 62206
+  default     = 443
+}
+
+# 默认 false：新建/替换的主机在 XDP 挂上之前不能处于全开状态。确认 XDP 已挂上
+# （deploy-demo-v2 的 attach gate 为绿）后，用 infra-demo 的 open_all_ports 输入
+# 或 tfvars 显式设为 true。回滚：翻回 false 再 apply，SG 精确回到窄姿态
+# （udp/nhp_listen_port + relay SG 的 tcp/22）。
+variable "server_open_all_ports" {
+  description = "将 nhp-server 的安全组对 0.0.0.0/0 放开 tcp(除 22)/udp/icmp 全端口，由 XDP 独任把关；tcp/22 始终只对 relay SG 开放。翻回 false 并 apply 即精确回到窄 SG 姿态。"
+  type        = bool
+  default     = false
 }
 
 variable "cloudflare_zone_id" {

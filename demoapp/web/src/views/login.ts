@@ -3,7 +3,7 @@
 
 import { api, ApiError } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t, renderLangSwitcher } from '../i18n.js';
+import { t, appHeaderHtml, renderLangSwitcher } from '../i18n.js';
 import { renderArchDiagram } from './arch-diagram.js';
 import { renderSourceSection, renderFooter } from './footer.js';
 
@@ -14,9 +14,7 @@ export interface LoginViewProps {
 
 export function renderLogin(root: HTMLElement, props: LoginViewProps): void {
   root.innerHTML = `
-    <div class="container">
-      <h1>${t('login.title')}</h1>
-      <p class="subtitle">${t('common.subtitle')}</p>
+    <div class="container">${appHeaderHtml()}
 
       <div id="alert"></div>
 

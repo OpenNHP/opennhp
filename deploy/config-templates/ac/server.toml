@@ -15,4 +15,4 @@ ExpireTime   = 1924991999
 
   [[Servers.Instances]]
   Ip   = "${SERVER_PRIVATE_IP}"
-  Port = 62206
+  Port = ${NHP_SERVER_PORT}

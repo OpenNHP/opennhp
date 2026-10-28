@@ -1520,9 +1520,11 @@ func (a *UdpAgent) GetFirstServerCluster() *ServerCluster {
 
 func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (bool, *common.DAGMsg) {
 	result := false
-	sendAddr := server.SendAddr()
-	if sendAddr == nil {
-		log.Critical("device(%v)[SendDARMsgToServer] register server IP cannot be parsed", a)
+	sendAddr, addrErr := server.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("device(%v)[SendDARMsgToServer] cannot reach register server: %v", a, addrErr)
+		// Must return: the nil-interface type assertion below would panic.
+		return result, nil
 	}
 	drgMsg := msg
 	drgBytes, _ := json.Marshal(drgMsg)
@@ -1626,9 +1628,11 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 
 func (a *UdpAgent) SendDAVMsgToServer(server *core.UdpPeer, msg common.DAVMsg) (bool, *common.DAGMsg) {
 	result := false
-	sendAddr := server.SendAddr()
-	if sendAddr == nil {
-		log.Critical("device(%v)[SendDAVMsgToServer] register server IP cannot be parsed", a)
+	sendAddr, addrErr := server.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("device(%v)[SendDAVMsgToServer] cannot reach register server: %v", a, addrErr)
+		// Must return: the nil-interface type assertion below would panic.
+		return result, nil
 	}
 	davMsg := msg
 	davBytes, _ := json.Marshal(davMsg)

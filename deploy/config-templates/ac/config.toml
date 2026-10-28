@@ -30,4 +30,17 @@ ResourceIds = ["demo"]
 # as long as the nhp-acd process) is wired into the unit. So rolling back is
 # just setting this to 0 and re-running the workflow; no workflow edit and no
 # manual host cleanup.
+#
+# Both modes close the door the same way for TCP: OpenTime governs *new*
+# connections, and a session opened while the knock was valid runs until it
+# goes idle rather than being cut mid-stream. In mode 1 a TCP session is
+# tracked from the SYN the knock admitted and cut down to a 60s close window on
+# FIN/RST, so a new connection — including one that re-uses a source port — is
+# always re-checked against the knock.
+# UDP is stricter in mode 1 than in mode 0: a UDP flow is capped at the time
+# left on the knock and is cut when OpenTime runs out, because UDP has no
+# handshake to bind the tracking entry to one exchange.
+# See "What the knock window covers" in terraform/demo/RUNBOOK.md for how to
+# verify that, for TCP, for UDP, and for the AC's own channel to the server,
+# plus "Known limitation: fixed low UDP source ports".
 FilterMode = 1

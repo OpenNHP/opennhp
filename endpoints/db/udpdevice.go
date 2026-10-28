@@ -786,9 +786,11 @@ func (a *UdpDevice) SendDHPRegister(msg common.DRGMsg) {
 func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 
 	result := false
-	sendAddr := server.SendAddr()
-	if sendAddr == nil {
-		log.Critical("device(%v)[SendNHPDRG] register server IP cannot be parsed", a)
+	sendAddr, addrErr := server.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("device(%v)[SendNHPDRG] cannot reach register server: %v", a, addrErr)
+		// Must return: the nil-interface type assertion below would panic.
+		return result
 	}
 	drgMsg := msg
 	drgBytes, _ := json.Marshal(drgMsg)

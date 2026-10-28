@@ -454,6 +454,394 @@ tail -f /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log
 The `deploy-ac` job reads that file (not the journal) to confirm the perf ring
 buffer opened, and dumps both it and `journalctl` on every abort.
 
+### eBPF map pin mismatch at startup
+
+`nhp-acd` loads two objects — `nhp_ebpf_xdp.o` and `tc_egress.o` — that share
+pinned maps by name (`conn_track`, `nhp_config`, `knock_peers`, the
+whitelists). The loader
+validates map type, key size, value size and `max_entries` when the second
+object reuses a pin, so a pin left over from a different build stops the AC
+from starting with an error naming the map:
+
+```
+Failed to load and assign tc eBPF objects
+... map "conn_track": ... incompatible with pinned map ...
+```
+
+Previously the map most likely to be named here was `spp`, because the TC
+program wrote it; now that TC only reads the whitelists and writes
+`conn_track`, the same class of failure shows up as a **`conn_track`** (or
+`nhp_config`) error instead. It means the same thing and has the same fix —
+the pins are stale:
+
+```bash
+ssh nhp-ac 'systemctl stop nhp-acd; ls -l /sys/fs/bpf/'
+# nhp-acd calls CleanupBPFFiles() on start, which removes every pin it owns,
+# so a plain restart normally clears it:
+ssh nhp-ac 'sudo systemctl restart nhp-acd'
+# if something else still holds them (an orphaned tc filter or xdp link):
+ssh nhp-ac 'sudo tc qdisc del dev $(ip route | awk "/default/ {print \$5; exit}") clsact; \
+            sudo ip link set dev $(ip route | awk "/default/ {print \$5; exit}") xdpgeneric off; \
+            sudo rm -f /sys/fs/bpf/{conn_track,nhp_config,spp,src_port,sdwhitelist,port_list,protocol_port,icmpwhitelist,knock_peers,xdp_white_prog,tc_egress_prog}'
+```
+
+### What the knock window covers (and checking that it closes)
+
+The knock's `OpenTime` governs **new flows**. A TCP session that was opened
+while the knock was valid keeps running until it goes idle — a large download,
+a WebSocket, a long-poll is not cut mid-stream when the window closes. That is
+deliberate, and it is what `FilterMode = 0` does as well: the iptables baseline
+(`docker/iptables_defaults_*.sh`) accepts `-m state --state ESTABLISHED` ahead
+of the per-knock ipset, so expiry there blocks new connections only.
+
+**UDP is not treated that way, and the difference is deliberate** — see the
+UDP bullet below.
+
+In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
+
+* An admitted flow gets an entry keyed on the **full 4-tuple, including the
+  peer's source port**. A new connection uses a new source port, misses
+  `conn_track`, and has to satisfy the whitelist maps — which only user space
+  writes, from the knock.
+* **A TCP entry tracks the connection, not just the tuple**, and gets a
+  refreshed idle window (`NHP_CT_TCP_IDLE_TTL_NS`, 1h) that every packet pushes
+  forward. The peer picks its own source port, so a refreshed window alone
+  would let a peer that knocked once pin a 4-tuple open forever and keep
+  opening connections on it. So: only a **pure SYN** admitted by a whitelist
+  creates an entry; a pure SYN never matches an existing entry and always goes
+  back through the whitelists (this is what netfilter does — a SYN on a
+  closed/TIME_WAIT conntrack becomes NEW, which `--state ESTABLISHED` does not
+  match); a **FIN or an inbound RST** cuts the entry down to
+  `NHP_CT_CLOSE_TTL_NS` (60s). An inbound RST does *not* delete the entry —
+  XDP cannot tell a genuine RST from a spoofed one (no sequence check, and the
+  kernel's RFC 5961 check runs after XDP), and deleting would let any off-path
+  host that guesses the 4-tuple cut the session.
+* **The close cut is not permanent, for the same reason.** An inbound FIN is as
+  unverifiable as an inbound RST, so neither may shorten a session's window for
+  the rest of its life — otherwise one spoofed packet would drop an SSH,
+  WebSocket or long-poll session from 1h (or 180s for an AC-initiated flow) to
+  60s and kill it on the first idle gap after that. The next packet of a flow
+  that is still running restores its full window
+  (`nhp_ct_close_ttl_refresh()`). The cut becomes permanent only once FINs have
+  been seen in **both** directions, and the AC's own half is recorded by the TC
+  egress program (`CT_FLAG_FIN_LOCAL`), which a peer cannot fake — so a real
+  close still dies in 60s rather than lingering for an hour.
+* **A UDP (or other non-TCP) entry is capped at the knock's remaining
+  lifetime** — `min(NHP_CT_OTHER_IDLE_TTL_NS (120s), time left on the knock)` —
+  and is **never refreshed** by an inbound packet. There is no handshake to
+  bind such an entry to a single exchange, so a refreshed window would let a
+  peer that knocked once keep a 4-tuple admitted indefinitely by sending one
+  datagram every 120s, "any"-protocol resources (every port) included. Instead
+  the entry ages out and the flow falls back through the whitelist lookups: it
+  keeps going while the knock is live and dies with it. A long UDP session is
+  therefore cut when `OpenTime` runs out, unlike a TCP one and unlike
+  `FilterMode = 0`, where nf_conntrack keeps it up.
+* The TC egress program writes `conn_track` only for connections the **AC
+  itself** opens (dnf, certbot, NTP, its UDP channel to the nhp-server), and
+  four gates keep it off knock flows: a reverse lookup of the ingress
+  direction, TCP pure-SYN only, a UDP source port that must be inside the
+  host's `net.ipv4.ip_local_port_range` (read at load time into the
+  `nhp_config` map, and logged at startup) or one of the well-known client
+  ports listed in `is_wellknown_client_port()`, and a UDP check that the peer
+  holds — or has ever held — a knock for the port we are sending from. It never
+  writes the whitelist maps.
+* **`knock_peers` is what makes that last gate hold after expiry.** The gate
+  cannot rely on the whitelist maps alone: XDP *deletes* a whitelist entry the
+  moment a packet finds it expired, so by the time the AC answers a peer whose
+  knock ran out there is nothing left in `spp` / `src_port` / `sdwhitelist` to
+  find. The XDP program therefore records every non-TCP packet a whitelist
+  admits in `knock_peers`, keyed on **peer address + the port on the AC +
+  protocol**, and that record is never deleted (it is an LRU, and `nhp-acd`
+  drops the pin at startup). It grants nothing — no packet is ever admitted
+  because of it. It also covers the two knock shapes the whitelist lookups
+  cannot be asked about (`port_list`, whose key wildcards the port range, and
+  `protocol_port`, whose key has no peer address at all).
+* **A record is never written for a port the AC owns as a client**, and that
+  matters because the record never lapses: one written for, say, the source port
+  of the AC's channel to the nhp-server would shut the egress gate on that
+  channel for the life of the daemon. The TC program marks each entry it creates
+  for a flow the AC opened with **`CT_FLAG_AC_CLIENT`** (`0x20`) when nothing at
+  that moment said the peer was knock-gated on the port being sent from — for
+  TCP the pure-SYN gate is proof by itself, for UDP it takes all five whitelist
+  shapes and `knock_peers` coming up empty. XDP serves such a flow from the
+  reverse lookup even while the peer's address holds a live knock, never
+  deletes it on a `knock_peers` record, and records nothing when a whitelist
+  admits a packet on that 4-tuple. So the two claims on a (peer, port,
+  protocol) triple — the knock's and the AC's — are mutually exclusive, and
+  whichever side got there first keeps it.
+* An **egress** entry (`NHP_CT_EGRESS_IDLE_TTL_NS`, 180s) is refreshed by the
+  AC's **own outgoing packets** only. For UDP, XDP deliberately does not
+  refresh it from an inbound packet, so a peer cannot slide the window forward
+  by itself — tighter than netfilter, which refreshes on either direction. An
+  AC-initiated UDP flow therefore lives 180s past the moment the AC last spoke
+  on it, which is what keeps the long-lived AC↔nhp-server channel up (see the
+  next case). XDP also refuses to serve the reverse (egress) lookup at all to a
+  peer that holds a **live `sdwhitelist` entry** or — for non-TCP — a
+  **`knock_peers` record for the port**, so an egress entry that the gates
+  missed can never become a second way in. In the `knock_peers` case the entry
+  is **deleted** rather than just skipped: that record never lapses, so the
+  entry could never serve anything again, and the AC's own sending would
+  otherwise keep resurrecting it (the TC refresh path does not test expiry) as a
+  permanent passenger in the `conn_track` dump. Both of those step aside for an
+  entry carrying `CT_FLAG_AC_CLIENT` — that one *does* pre-date the knock by
+  construction, so it is the AC's own flow and is served and kept. An expired
+  claimed entry admits nothing but is still kept, because it is the only record
+  that the port is the AC's; the AC's next outgoing packet revives it.
+
+So "the door is shut" means *a fresh connection is refused*. Test it that way.
+
+#### TCP
+
+Knock, then wait out `OpenTime` (+ the deploy's compensation) and open a
+**fresh** connection. `curl` reuses a live connection, so force a new one:
+
+```bash
+# during the window — succeeds
+curl -sS --max-time 5 https://<resource> -o /dev/null && echo open
+
+sleep $((OpenTime + 10))
+
+# after the window — must fail to connect (not 4xx/5xx: no TCP handshake)
+curl -sS --max-time 5 --no-keepalive https://<resource> -o /dev/null \
+  || echo "closed (expected)"
+```
+
+An existing connection staying alive across the boundary is **not** a
+regression — verify with a long transfer started inside the window, which
+should complete. To see the difference, keep a connection open (`nc <ac> 443`)
+and start a second one after expiry: the first keeps flowing, the second hangs.
+
+#### UDP
+
+A knock-protected UDP service needs its own case, because UDP has no SYN for
+the TC egress program to gate on. Unlike TCP, **a UDP flow is cut when the
+knock expires** even if it never went idle — its `conn_track` entry is capped
+at the time left on the knock — so the test is simply that traffic stops:
+
+```bash
+# knock for a UDP resource, then during the window:
+nc -u <ac> <udp-port>     # datagrams get through
+
+sleep $((OpenTime + 10))
+
+# after the window, with datagrams still flowing in both directions, the
+# peer's datagrams must be dropped. Watch the AC's deny log while sending.
+ssh nhp-ac 'tail -f /home/ec2-user/nhp-ac/logs/nhp_deny-*.log'
+```
+
+The failure mode this also guards against, and the reason the egress gates
+matter: the knock expires, XDP drops the peer's next datagram, the service then
+answers anyway (a retransmit, a keepalive, a queued reply) — and if that answer
+created an egress entry, the peer's datagrams would be admitted through the
+reverse lookup with no live knock at all.
+
+##### The AC-answers-first case (run this against a service inside the ephemeral range)
+
+This is the ordering that has to be exercised explicitly, because **the AC
+sends first** and the peer's own packets are what would otherwise be dropped.
+Use a UDP service on a port **inside** the ephemeral range — WireGuard 51820,
+QUIC, a game server — behind an `any`-protocol resource (`Protocol` empty or
+`"any"`, `Port = 0`, which is the default resource shape and the one that hits
+every gate at once):
+
+```bash
+# 1. knock, and get datagrams flowing both ways — a WireGuard handshake, or
+#    just `nc -u <ac> 51820` against a listener on the AC
+sleep $((OpenTime + 10))
+
+# 2. the peer goes quiet, but the AC's service keeps sending: a WireGuard
+#    PersistentKeepalive (25s), a QUIC PTO, a reply to an already-queued
+#    datagram. Do NOT send anything from the peer during this step.
+ssh nhp-ac 'sudo tcpdump -ni any -c 5 "udp and port 51820 and src host <ac>"'
+
+# 3. now the peer sends again. It must be dropped.
+nc -u <ac> 51820           # no reply; the peer's address lands in the deny log
+ssh nhp-ac 'tail -f /home/ec2-user/nhp-ac/logs/nhp_deny-*.log'
+```
+
+Step 2 is the regression: if the AC's outgoing keepalive is allowed to create
+an egress `conn_track` entry, step 3 succeeds and each further reply refreshes
+that entry, so the peer keeps the 4-tuple admitted indefinitely with no live
+knock. Confirm no egress entry was created for that flow — the peer's address
+must not appear on the `flags: 01` (CT_DIR_EGRESS) side:
+
+```bash
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track | head -40'
+sudo bpftool map dump pinned /sys/fs/bpf/spp   # knock entries only, and expired ones are gone
+
+# and that the peer is on record as having knocked that port — this is the map
+# the gate reads once the whitelist entry above has been deleted
+sudo bpftool map dump pinned /sys/fs/bpf/knock_peers
+```
+
+If `spp` keeps gaining entries while nobody is knocking, something is writing
+the whitelist from the data path again — that was the original bug. If
+`knock_peers` is *empty* after a UDP knock has passed traffic, the gate has
+nothing to read after expiry and this whole case is open again.
+
+> `knock_peers` is per (peer, port, protocol) and is never expired, so if the
+> AC also needs to talk to that peer **as a UDP client** from that same port
+> number, its replies get no permit. A flow the AC had already opened when the
+> knock arrived is exempt — it carries `CT_FLAG_AC_CLIENT` and no record is
+> written for its port, see the case below. The collision that remains is the
+> other order: the peer knocks first, and the AC then opens a client socket on
+> exactly that port number. The port is not claimable while the knock is on
+> file, so the socket gets no reply permit until the knock lapses — and if the
+> peer's datagrams reach that port in the meantime, the record is written and
+> the permit is withheld for good. In practice the AC's client sockets take a
+> random ephemeral port, so this needs the peer to have knocked exactly that
+> port; restarting `nhp-acd` clears the map.
+
+#### The AC's own channel to the nhp-server (run this one every time)
+
+The case that the two tests above miss, and the one that breaks knocks for
+everybody rather than for one peer. `nhp-acd` reaches the server over a single
+`net.DialUDP` socket held for the life of the process
+(`endpoints/ac/udpac.go`), kept busy by `NHP_KPL` every 20s. Nothing in user
+space whitelists the server, so the server's datagrams — `NHP_AOP` among them —
+get back in **only** through the egress `conn_track` entry the TC program
+writes. If that entry is ever allowed to hard-expire under the AC, every
+inbound server packet is dropped until the next keepalive re-creates it, and
+knocks fail intermittently for as long as the AC is up.
+
+It only shows up after the AC has been running longer than
+`NHP_CT_EGRESS_IDLE_TTL_NS` (180s), so **knock again once the AC has been up
+more than 5 minutes** — a fresh deploy plus an immediate knock will not catch
+it:
+
+```bash
+# how long has nhp-acd been up? needs to be > 5 min for this to prove anything
+ssh nhp-ac 'systemctl show nhp-acd -p ActiveEnterTimestamp'
+
+# knock, and expect the resource to open on the first attempt
+# (a knock that needs a retry, or an AOP timeout in the server log, is the
+#  symptom — the AC drops the AOP and the server gives up)
+```
+
+Then confirm the channel's egress entry is alive and being refreshed, rather
+than being re-created from scratch each time. `nexthdr: 17`, `flags: 1`
+(CT_DIR_EGRESS), the server's address, and a `tx_packets` that keeps climbing
+across two dumps a minute apart:
+
+```bash
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track' \
+  | grep -A 14 '"nexthdr": 17'
+# the AC logs to a file, not journald — see "Where nhp-acd logs" above
+ssh nhp-ac 'grep -E "AOP|AOL" /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log | tail'
+```
+
+A `tx_packets` that resets to 1 every few minutes means the entry is being
+re-created, i.e. it expired — that is the regression. While you are there,
+check the range the egress gate is using; it is logged once at load:
+
+```bash
+ssh nhp-ac 'grep ip_local_port_range /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log'
+# -> "eBPF egress tracking treats source ports >= 32768 as the AC's own"
+ssh nhp-ac 'cat /proc/sys/net/ipv4/ip_local_port_range'   # must agree
+```
+
+If the two disagree, the AC's own UDP flows from below the logged bound get no
+reply permit at all. The value is read from the host at load time and written
+to the `nhp_config` map, so a mismatch means the sysctl was changed after
+`nhp-acd` started — restart it.
+
+##### A knock from the nhp-server's own address (run this after changing any egress gate)
+
+The variant of the case above that a plain knock never reaches, and the one
+that used to take the AC off the air **permanently**. It needs an agent whose
+source address, as the AC sees it, is the **nhp-server's** — which happens
+whenever the two sit behind one NAT, when a small office runs both, or simply
+when someone tests `nhp-agentd` on the server host — plus an `any`-protocol
+resource (`Protocol` empty or `"any"`, `Port = 0`, the default resource shape),
+because that writes `sdwhitelist`, keyed on the address pair alone and so
+matching every port including the AC's client socket.
+
+On the demo stack the cheapest way to get that address is to knock from the
+server host itself:
+
+```bash
+# 1. baseline: the channel's egress entry exists and is claimed.
+#    flags: 32 (0x20 CT_FLAG_AC_CLIENT) on a "flags": 1 (CT_DIR_EGRESS) key
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track' \
+  | grep -B 8 -A 14 '"nexthdr": 17'
+
+# 2. knock from the nhp-server host for an any-protocol resource, and note the
+#    AC's OpenTime for it (deploy/config-templates/ac/resource.toml). Any agent
+#    running there will do — nhp-agentd knocks for whatever is in its
+#    etc/resource.toml — the point is only that the AC sees the server's address
+#    as the knocking peer.
+ssh nhp-server 'cd /home/ec2-user/nhp-agent && ./nhp-agentd run'
+
+# 3. the knock must NOT have given the AC's own channel an ingress entry, and
+#    must NOT have put the channel's source port on record. The server's
+#    address may appear in knock_peers only for the resource's port(s) — never
+#    for the ephemeral port the AC dials from (step 1's "sport" on the
+#    "flags": 1 key).
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/knock_peers'
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track' \
+  | grep -B 8 -A 14 '"nexthdr": 17'
+
+# 4. wait the knock out, then knock again — from anywhere — and expect it to
+#    open on the first attempt
+sleep $((OpenTime + 10))
+```
+
+Step 4 is the regression. If the channel was cut, the knock fails with an AOP
+timeout on the server and nothing at all on the AC (the AOP never arrives), and
+it stays that way for every later knock until `nhp-acd` is restarted:
+
+```bash
+ssh nhp-server 'grep -E "AOP|timeout" /home/ec2-user/nhp-server/logs/server-$(date -u +%F).log | tail'
+ssh nhp-ac     'grep -E "AOP|AOL"     /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log | tail'
+
+# and the fingerprints of the failure, in this order:
+#  - knock_peers holds a record whose dst_port is the AC's dial port
+#  - the channel's egress entry is gone from conn_track, and the AC's
+#    keepalives do not bring it back (tx_packets never reappears)
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/knock_peers'
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track | grep -c "\"flags\": 1,"'
+```
+
+The same test applies to any other UDP host the AC talks to **as a client** —
+an NTP server, a resolver — if an agent ever knocks from its address: knock
+from it, wait out `OpenTime`, then check the AC still gets replies
+(`chronyc sources`, `dig @<resolver>`). A flow the AC had already opened at the
+time of the knock is claimed and survives; one it opens *while* the knock is
+live is not, and comes back only once the knock lapses — see the note under the
+`knock_peers` dump above.
+
+#### Known limitation: fixed low UDP source ports
+
+Gate 3 recognises the AC's own UDP client sockets by their source port being
+inside the host's ephemeral range, plus the fixed well-known client ports
+listed in `is_wellknown_client_port()` (`nhp/ebpf/xdp/tc_egress.c`): **123**
+(NTP, which classic `ntpd` sends from — chrony's default random acquisition
+port is covered by the range anyway), **500** and **4500** (IKE / IKE NAT-T).
+
+Any *other* UDP socket the AC binds to a fixed port below the ephemeral range
+gets **no reply permit**, and its replies are dropped by XDP unless a knock
+whitelists the peer. In practice that means a daemon with an explicit low
+`bind()`, or anything put in `net.ipv4.ip_local_reserved_ports`. One-way
+senders (syslog to 514, SNMP traps) are unaffected because they expect no
+reply.
+
+Symptom: the AC's outbound UDP request is on the wire (`tcpdump -ni any udp`
+shows it leaving) but the reply never reaches the process, and the peer's
+address shows up in the deny log. Fixes, in order of preference:
+
+1. let the daemon use an ephemeral source port (chrony rather than `ntpd`,
+   drop the explicit `bind()`);
+2. add the port to `is_wellknown_client_port()` and redeploy the eBPF objects
+   (`make ebpf-objs`), if it is a port the AC does not also serve to knocking
+   peers;
+3. fall back to `FilterMode = 0`, where nf_conntrack tracks it regardless.
+
+```bash
+# which local UDP ports does the AC actually hold open, and from where?
+ssh nhp-ac 'sudo ss -unap'
+ssh nhp-ac 'cat /proc/sys/net/ipv4/ip_local_reserved_ports'
+```
+
 ### Rolling back to iptables
 
 Set `FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run
@@ -489,3 +877,746 @@ so the eBPF cutover path clears it before starting the daemon; by hand:
 sudo /usr/local/sbin/nhp-ac-backstop.sh status            # reports the raw guard too
 sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down
 ```
+
+## Deploy binaries and the hosts' glibc
+
+### The failure
+
+A deploy that has already stopped the daemons, uploaded the new binaries and
+started them again, and then fails on `systemctl is-active`, with this in the
+journal:
+
+```
+nhp-serverd[226129]: /home/ec2-user/nhp-server/nhp-serverd: /lib64/libc.so.6: version `GLIBC_2.38' not found (required by /home/ec2-user/nhp-server/nhp-serverd)
+systemd[1]: nhp-serverd.service: Main process exited, code=exited, status=1/FAILURE
+```
+
+On the AC the same exec failure takes the daemon down *and* leaves the
+fail-closed backstop in place, since `nhp-acd` never gets far enough to attach
+the XDP program:
+
+```
+nhp-acd[231148]: /home/ec2-user/nhp-ac/nhp-acd: /lib64/libc.so.6: version `GLIBC_2.38' not found
+nhp-ac-backstop.sh[231149]: timed out after 30s waiting for the XDP program on ens5
+nhp-ac-backstop.sh[231149]: keeping the backstop in place - the protected ports stay closed
+```
+
+Nothing is wrong with the configs, the keys or the eBPF objects. The binary
+cannot be exec'd at all: it was linked against a newer glibc than the host has.
+
+### Why it happens
+
+The daemons are **cgo** builds, so they carry versioned references to glibc
+symbols and run only where glibc is at least as new as the builder's. The demo
+hosts are Amazon Linux 2023 (`al2023-ami-2023.*-x86_64` — see `ami.tf`), glibc
+**2.34**. The build used to run straight on `ubuntu-latest`, so the day that
+image moved to a distribution with glibc 2.38 every demo host got a binary it
+could not start — with no code change and nothing in the build log to show it.
+
+cgo is not optional here: `nhp-serverd` loads its auth plugins with
+`plugin.Open`, and Go's `plugin` package is a stub without cgo. A
+`CGO_ENABLED=0` server starts, reports healthy, and fails every plugin load
+with `plugin: not implemented` — no authentication. So the build has to move to
+the target's glibc rather than away from cgo.
+
+### What is in place now
+
+- `deploy-demo-v2`'s build job compiles the daemons and the plugins inside
+  `docker/Dockerfile.al2023-builder` (`amazonlinux:2023` + the `GO_VERSION`
+  Go toolchain). The eBPF objects are BPF bytecode with no libc in them and
+  are still built on the runner with its clang.
+- `scripts/check-glibc-compat.sh` reads the version-needs section of every ELF
+  the job ships — the three daemons, every plugin `.so`, the `demoapp` binary
+  out of `Dockerfile.demoapp` — and fails the job if any needs more than
+  `TARGET_GLIBC` (2.34). It is a check on the artifact, not on how it was
+  produced, so it survives a change of runner, image or toolchain.
+- The same step asserts `nhp-serverd` is still dynamically linked against
+  libc, because `CGO_ENABLED=0` is the obvious way to make the glibc check
+  pass and the one that quietly disables plugin loading.
+- All of this runs **before** the upload, so the failure mode is a red `build`
+  job with every host still running the binary it had.
+
+### Recovery, if it happens again on a host
+
+The hosts keep nothing but the single binary, so roll forward rather than back:
+re-run `deploy-demo-v2` from a commit whose build job is green. If the demo
+needs to come back before that, the previous binary is whatever is still in the
+instance's `/home/ec2-user/nhp-{server,ac,relay}/` only if the deploy did not
+overwrite it — it does, so there is no local rollback. The AC's ports stay
+closed while it is down, which is the intended direction; the nhp-server host
+stays reachable over SSH (it never attached its filter).
+
+Checking a binary by hand, before or after a deploy:
+
+```bash
+# on the host: what glibc is actually here
+ldd --version | head -1
+
+# anywhere, against an artifact: what the binary demands
+readelf --version-info ./nhp-serverd | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1
+
+# or just run the gate
+./scripts/check-glibc-compat.sh 2.34 ./nhp-serverd
+```
+
+## nhp-server ingress filter (XDP)
+
+`nhp-serverd` attaches `nhp_server_xdp.o` at startup and drops everything at
+the driver except UDP on the knock port, SSH from the addresses in
+`etc/xdp.toml`, and the replies to connections the host itself opened. Unlike
+the AC's filter there is no fail-closed backstop and no break-glass SSH path,
+so the whitelist is the one config on these hosts that locks you out when it
+is wrong — including out of the SSH session doing the change, since an inbound
+SSH connection is admitted by the whitelist on every packet, not by any
+connection state.
+
+That third clause is not a convenience. The host is a client as well as a
+server — it resolves names, submits OTP mail to SES, pulls packages, syncs
+time — and the first version of this filter dropped every answer to those,
+which showed up as `i/o timeout` on the *DNS lookup* of the SES endpoint and
+OTP mail that never arrived. Where the AC needs a TC egress program and a
+conn_track map to decide that question, the server asks the kernel's socket
+table directly (`bpf_sk_lookup_{tcp,udp}` in `has_local_flow()`): an
+established or connected socket admits the packet, a *listening* one never
+does, so nothing unsolicited gets in and no state of our own can go stale.
+`deploy-server` probes udp/53 and tcp/587 from the host after every restart so
+a regression here fails the deploy instead of the next OTP request.
+
+The list carries the relay's **private and public** addresses. CI (and any
+operator following this runbook) reaches the server with
+`ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV`, so the packets stay inside
+the VPC and the server sees the relay's *private* address as the source; the
+public address covers the hairpin path through the internet gateway. The
+`deploy-server` job refuses to upload a whitelist that omits the address the
+host reports for its own SSH connection, which is the check that turns this
+mistake into a red run instead of a lockout.
+
+### Why each rule is there
+
+The invariants are listed in `CLAUDE.md`; this is the reasoning, and in most
+cases the incident, behind them.
+
+**"Everything else" includes IPv6 and fragments**, and neither was true at
+first. IPv6 was one `case ETH_P_IPV6: return XDP_PASS`, justified by the demo
+hosts having no v6 service — but sshd binds `[::]:22` by default, so the day a
+v6 CIDR reached the VPC every port would have been open over v6 with the
+deploy's "filter attached" check still green. `handle_ipv6()` now runs the same
+tree minus the whitelist (the LPM trie holds IPv4 prefixes, so no v6 source can
+be recognised as the relay): ICMPv6 ND/MLD and "packet too big" pass so the
+host stays on its subnet, DHCPv6 (547 → 546) and NTP pass for the same reasons
+as their v4 spellings, replies to the host's own v6 flows pass via
+`has_local_flow6()`, everything else is `V6_OTHER`. **SSH must therefore reach
+the host over IPv4**; `warnOnGlobalIPv6` logs a `Warning` naming the address
+when the filtered interface has a global v6 address, and `deploy-server`'s
+`$SSH_CONNECTION` containment gate fails outright for a v6 peer address, since
+no IPv4 entry can contain it.
+
+Non-first IPv4 fragments have no L4 header, and the TCP/UDP branches used to
+read one anyway at `ihl * 4`: every datagram over the path MTU lost its tail to
+`UDP_OTHER` and died in reassembly, while a crafted fragment whose payload read
+`67 → 68` took the DHCP exception. They are now split out before the protocol
+dispatch and passed as `IPV4_FRAGMENT` — inert without the first fragment,
+which carries the ports and takes the full tree. An IPv6 fragment header with a
+non-zero offset gets the same answer (`IPV6_FRAGMENT`). The event record
+(`struct nhp_event_t`) carries an address family and both address pairs so a v6
+drop logs its real source; `serverEventByteSize` in the loader is `sizeof` that
+struct and has to move with it.
+
+**Attaching is opt-in because this is not a hardening tweak.** It drops every
+inbound TCP flow the host did not initiate, SYNs to services this daemon
+listens on included, and on a host reachable only through the whitelist one bad
+list makes it unreachable for good. So a server with no `xdp.toml` keeps
+exactly the exposure it had before the filter existed, even though `make ebpf`
+puts the object in `release/nhp-server/etc/` and many operators run the daemon
+as root. The refusal in front of a listener exists for the same reason:
+attaching there would take that service off the air with nothing in user space
+to say so (the shipped `endpoints/server/main/etc/http.toml` has
+`EnableHttp = true` on 443). Loopback binds are not a conflict — the program is
+on the default-route interface. `http.toml` is hot-reloaded, so
+`updateHttpConfig` refuses the same conflict arriving from the other direction.
+
+`NhpMinFrameBytes` and the knock port are *applied*, not documentation: the
+loader rewrites `nhp_min_udp_len` and `nhp_listen_port` in the object's
+`.rodata` before the verifier runs (`setServerConstants`). The port comes from
+the daemon's own `ListenPort`, never from the TOML, so the filter and the
+listener cannot disagree — a hard-coded 62206 would have dropped every knock on
+any server configured elsewhere. An object too old to carry those constants is
+refused rather than attached with its own defaults.
+
+**DHCP is the exception that matters.** `has_local_flow()` only admits
+*connected* sockets, and a DHCP client receives its lease on a raw `AF_PACKET`
+socket or on one merely bound to udp/68 — so the renewal answer (udp/67 →
+udp/68) was dropped. EC2 leases the primary private IPv4 for a finite time and
+systemd-networkd renews it at half the lease; with the answer dropped the lease
+expired, networkd removed the address, and roughly an hour after a deploy that
+had verified perfectly the host went dark on **every** port at once — SSH, the
+knock port, and with them every recovery path except a reboot. The knock port
+staying open is what makes this look like "the filter closed the whole host"
+rather than a filter bug. chronyd has the same shape one layer up (its poll
+answer comes back to its own udp/123) and costs the clock instead of the
+address, so it is passed too; nothing else is, because the alternative — admit
+anything addressed to a bound port — throws away the "no unsolicited packet
+gets in" property entirely. The AC's program has always had the DHCP
+short-circuit (`DHCP_PORT_R || DHCP_PORT_O`); the server's fork dropped it.
+
+`deploy-server`'s `Verify the host can still renew its DHCP lease` step is the
+standing gate: it runs `networkctl renew` and fails unless a new
+`REASON=DHCP_CLIENT` line shows the answer crossed the filter. No other probe
+can see this, because everything works for as long as the lease lasts. The
+second line of defence is the watchdog in
+`endpoints/server/ebpf/serverengine.go`: if the filtered interface has no
+routable IPv4 address for two minutes it logs `Critical` and detaches, so the
+next DHCP exchange can restore the host instead of needing volume surgery. It
+can only fire in a state where the host answers nothing anyway.
+
+**The capabilities are given back after the attach.** systemd grants CAP_BPF,
+CAP_NET_ADMIN and CAP_PERFMON ambiently; `dropLoaderPrivileges`
+(`nhp/utils/ebpf/caps_linux.go`) subtracts exactly those three from the
+ambient, permitted, effective and inheritable sets when `loadServerEngine`
+returns, on every path out of it. Those three are this unit's whole grant, so
+on this host the daemon is left holding nothing — but the code takes them away
+rather than assigning an empty set, because nhp-serverd also runs as root in
+`docker/Dockerfile.server`, where a blanket reset would quietly cost unrelated
+capabilities (CAP_DAC_OVERRIDE, CAP_NET_BIND_SERVICE) on a deployment that
+never opted into filtering. That
+includes the ones that never reach the attach — a missing object file, a
+verifier rejection, a map that will not pin — and those matter most, because
+each of them is a daemon that then runs fail-open for days with three
+capabilities it will never use again. On a failed load nothing is kept, CAP_BPF
+included: the exemption below exists for the reload path, and a load with no
+handle has none. Holding them for the life of the process would be far
+more than the job needs: CAP_BPF with CAP_PERFMON loads kprobe and tracing
+programs, i.e. `bpf_probe_read_kernel()` over arbitrary kernel memory —
+other processes' credentials, this daemon's own Noise private key — and
+CAP_NET_ADMIN detaches this filter and rewrites routes and netfilter rules. The
+process parses untrusted UDP from the internet and `dlopen`s third-party auth
+plugins into the same address space, so whatever it keeps, they inherit.
+
+Nothing after the attach needs them: map updates go through an fd the process
+already holds, the perf reader is opened before the drop, and detaching is
+`close(2)`. The one exception is `kernel.unprivileged_bpf_disabled`, which
+Amazon Linux 2023 ships non-zero: there bpf(2) is privileged wholesale, so
+CAP_BPF is kept — giving it up would make every `xdp.toml` reload fail with
+EPERM, and that reload is the only remote way to correct a whitelist. The drop
+is process-wide rather than per-thread (libcap's psx; `syscall.AllThreadsSyscall`
+returns ENOTSUP in any binary linking cgo, which this one does by way of
+`plugin`), and `deploy-server`'s `Verify the XDP loader gave its capabilities
+back` reads `/proc/<pid>/task/*/status` to keep it honest.
+
+**The unit settings reach a running server only through the deploy job.**
+`AmbientCapabilities=`, `CapabilityBoundingSet=`, `NoNewPrivileges=` and the
+root `ExecStartPre` that prepares `/sys/fs/bpf` are written in
+`terraform/demo/userdata/server.sh` *and* installed as a systemd drop-in by
+`deploy-server` — keep the two in sync. `aws_instance.server` is pinned the
+same way `aws_instance.ac` is (`lifecycle { ignore_changes = [user_data] }`,
+`user_data_replace_on_change` left at `false`), so an edit to `server.sh`
+reaches new instances only. Without that pin the AWS provider applies a
+`user_data` change in place, which stops and starts the instance: an unplanned
+nhp-server outage — the whole demo, since every knock goes through it — in
+exchange for nothing, because cloud-init does not re-run userdata on an
+existing instance. To roll a userdata change onto this host deliberately,
+replace the instance (`-replace`) and be ready to re-associate the EIP,
+re-deploy, and re-check that the whitelist admits the new host's SSH source.
+
+**The event log is bounded on purpose.** Every line in it is a packet somebody
+else chose to send, and `nhp/log` rotates by date without ever pruning: letting
+it grow hands a scanner the ability to fill the root volume and kill the daemon
+the filter protects. Four limits, because the first three bound a *rate* and
+not a size:
+
+- a per-action per-CPU token bucket (`NHP_EVENT_BURST`), so a flood of one
+  class cannot starve out another's records;
+- a global per-CPU bucket across all classes (`NHP_EVENT_GLOBAL_BURST`) —
+  without it a sender picks the class, and about eleven reachable classes times
+  the per-class budget times the CPU count is hundreds of lines a second;
+- bulk classes counted but never written per packet (`TCP_ESTABLISHED`,
+  `UDP_ESTABLISHED`, `V6_ESTABLISHED`, `ICMPV6_CONTROL`, and every `SSH_RELAY`
+  packet after the SYN), whose rate is the host's throughput rather than its
+  event rate;
+- a daily byte budget in the writer (`serverLogDailyEventBytes`), which is the
+  only one of the four that bounds the file the retention sweep must never
+  delete — today's.
+
+Throughout, the `[NHP-STAT]` summary (one line per active class per minute, fed
+by `nhp_action_stats` counters that tick for *every* packet) keeps the totals
+exact however much reporting was dropped. `pruneServerEventLogs` then caps
+retention at 14 days / 256 MiB, oldest first, counting today's files against
+the budget but never removing them.
+
+**The whitelist entries, and why there may be a subnet prefix.** `etc/xdp.toml`
+(`deploy/config-templates/server/xdp.toml`) is rendered from `$RELAY_IPS` and
+hot-reloaded. CI renders the relay's private address (SSH arrives from there),
+its public address (the hairpin path; whitelisting only this one closes tcp/22
+the moment the daemon restarts), and — unless `var.relay_private_ip` pins the
+relay's address — the VPC subnet. That prefix is what covers a *replaced*
+relay: a new instance comes back on a different private address, the server's
+live whitelist still names the old one, and `deploy-server` reaches the server
+*through* the relay, so it could never push the correction. The dead-man
+watchdog does not fire either — the host still has its address — which makes it
+a root-volume-detach recovery. The cost is that the AC and the server share
+that subnet and are covered too; pinning the address removes the prefix and
+leaves the XDP layer saying exactly what `aws_security_group.server` says
+(SSH from the relay's security group only).
+
+**Where that prefix comes from, and what `'::error::...'` in the gate means.**
+The `configure` job never applies, so it can only read: `terraform output -raw
+subnet_cidr` first, and if that output is not in the state — it is forwarded
+from `aws_subnet.public` and was added to `outputs.tf` after the last
+`infra-demo` apply — `terraform show -json` for `aws_subnet.public.cidr_block`,
+the same value from the same source of truth. The fallback prints a `note:` and
+the right fix is still an `infra-demo` apply; the gate at the end of *Resolve
+the relay addresses* refuses either way if neither produced an IPv4 prefix.
+This is why every `hashicorp/setup-terraform` step in the pipeline — four of
+them, across three workflows (`deploy-demo-v2` twice, `infra-demo`,
+`renew-demo-nhp-cert`) — sets `terraform_wrapper: false`: the wrapper runs
+terraform with `ignoreReturnCode` and, on a non-zero exit, writes
+`::error::Terraform exited with code N.` to **stdout**, so a
+`$(terraform output ... 2>/dev/null || true)` captures the annotation —
+`2>/dev/null` does not hide it and `|| true` discards
+the exit code that would have given it away. Every `[ -z ... ]` fallback behind
+such a capture then silently stops working. Seeing
+`subnet_cidr from Terraform is not an IPv4 prefix: '::error::Terraform exited
+with code 1.'` therefore means *that terraform invocation failed*, not that the
+subnet is misconfigured; re-read it without `2>/dev/null` to see why. The read
+sites now also check the shape of what came back (an IPv4 prefix, a PEM header,
+`true`/`false`) rather than merely that it is non-empty, so a future source of
+stdout noise cannot slip past them either.
+
+
+A shape check is enough only where the fallback answer is the *wide* one:
+`relay_private_ip_pinned` falls back to `false`, which just keeps the subnet
+prefix in the whitelist. For `stealth_ca_enabled` the fallback would be the
+*destructive* one — `false` is what makes `deploy-demo-v2` and
+`renew-demo-nhp-cert` delete `ac-demo-nhp.conf`, `demo.nhp.pem` and
+`demo.nhp-key.pem` from the AC and reload nginx, so a transient terraform or
+backend failure would take down a working demo.nhp TLS setup on a green run.
+Those two sites therefore read `terraform output -json` once and split the three
+cases it can distinguish: a non-zero exit is the invocation failing and is
+fatal, a missing key is an output no apply has written yet and skips the
+demo.nhp step while touching nothing (`deploy-demo-v2` passes it on as
+`stealth_ca_enabled=unknown`), and only a literal `false` takes the cleanup
+branch.
+
+
+**The whitelist is installed before the program is attached**, as
+`EngineLoadParams.RelayIPs`. Writing it afterwards — the first version — leaves
+two holes no CI gate can see, because both are on the host rather than in the
+pipeline: a window after every restart in which SSH from the relay is dropped,
+and, if that one write fails (an LPM-trie `Update` error, ENOMEM), a filter left
+attached enforcing an *empty* whitelist — tcp/22 closed to every source, with no
+break-glass path, at the one moment user space has just proved it cannot write
+the map it would need to fix. As a load parameter a bad whitelist is an ordinary
+pre-attach error: nothing is attached, the pins are swept, the daemon runs
+fail-open.
+
+The same reasoning makes `ReplaceRelayIPs` all-or-nothing against the map and
+not only against the file. It reads the live whitelist first, so it knows which
+keys are its own; a failed `Update` rolls those back and skips the stale sweep,
+leaving the map holding exactly the list it held before. Sweeping anyway is how
+a reload that merely failed to add the relay's *new* address removes its *old*
+one too, under a caller logging that it kept the active whitelist. "Usable" is
+decided by `ParseRelayPrefixes` (`nhp/utils/ebpf/relayips.go`), not by counting
+strings: `["relay.opennhp.org"]`, `[""]`, an IPv6-only list or a typo like
+`["10.0.1.300"]` is a non-empty *list* naming not one address the trie can hold.
+An IPv4-mapped IPv6 prefix (`::ffff:10.0.1.0/120`) is the spelling that gets
+past a check written against `net`: `To4()` is non-nil for it while
+`Mask.Size()` is 120, above the trie's `max_prefixlen` of 32, which the kernel
+answers with `EINVAL` — validated as usable, and the map will not take it.
+
+**If the host is already unreachable, reboot the instance before anything else**
+(`aws ec2 reboot-instances`, no SSH needed): DHCP runs before `nhp-serverd`
+starts, so the address comes back and tcp/22 is open for the window before the
+daemon attaches the filter again. Use that window to either
+`systemctl stop nhp-serverd` (filter detached, host stays reachable) or re-run
+the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
+when the filter is attached and the host does have its address.
+
+### All-ports exposure mode
+
+`var.server_open_all_ports` (opt-in, default `false`, `terraform/demo/variables.tf`; the `infra-demo` workflow input `open_all_ports` sets it, and the workflow refuses `true` in a plan that creates or replaces `aws_instance.server`)
+adds ingress rules to `aws_security_group.server` for `0.0.0.0/0`: tcp 0-21 and
+23-65535, udp 0-65535 and icmp. **tcp/22 is deliberately excluded** (an SG rule
+cannot express "all except 22", hence the split tcp ranges) and stays
+restricted to the relay SG, so sshd never depends on a fail-open filter. Other
+IP protocols are not opened. The udp/knock-port and tcp/22-from-relay rules
+stay, so flipping the variable back is an in-place rule removal and nothing
+else. Scans of tcp/22 do not reach the NIC in this mode and are not counted. The purpose is observation: scans, brute force and reflection probes now
+reach the NIC, where the XDP program counts them (`[NHP-STAT]` per verdict
+class, `[NHP-SCAN]` per port and per source). The decision tree is unchanged —
+a non-whitelisted tcp/22 and every non-knock UDP port are still dropped. Read
+the results with `scripts/xdp-attack-report.sh`.
+
+- **What stays reachable with the filter attached is more than sshd and the
+  knock port.** With the SG open, these XDP exemptions are reachable from any
+  internet source, and they are accepted exposure: UDP 67→68 reaches the
+  host's DHCP client (the source port is spoofable); UDP 123→123 reaches
+  chronyd's bound socket; non-first IPv4 fragments are always passed; ICMP
+  frag-needed is passed (anyone can lower a flow's PMTU). Narrowing options if
+  this stops being acceptable: DHCP only from the VPC DHCP server / link-local
+  range, NTP only from 169.254.169.123, or chrony `port 0`.
+- **Order is the reverse of the knock port.** Run `deploy-demo-v2` first and
+  confirm `Verify the XDP ingress filter attached` is green, then run
+  `infra-demo apply`. Both workflows share `concurrency: demo-terraform`, so
+  they cannot interleave. This is guidance, not a gate: an apply-time probe
+  cannot exist for a host Terraform has not created yet, and tying `apply` to
+  host health would make a flaky SSH hop an infrastructure failure.
+- **The real new exposure is the fail-open window, and it recurs.** The XDP
+  link is held by the process (the program is pinned, the link is not), so the
+  filter is detached whenever `nhp-serverd` is not running or has not attached:
+  every `deploy-demo-v2` run (`deploy-server` stops and restarts the daemon), a
+  failed deploy (e.g. the glibc mismatch that left the daemon down), a
+  fail-open load (an `xdp.toml` refusal, a verifier or kernel error after an AMI
+  change — the `Verify the XDP ingress filter attached` gate turns the run red
+  but does not close the SG), any reboot or stop/start (DHCP comes up before
+  the filter), a crash, and `systemctl restart`. The address watchdog in
+  `endpoints/server/ebpf/serverengine.go` also detaches after 2 minutes without
+  a routable IPv4 address. In each window the host is reachable from the
+  internet on every udp port, every tcp port except 22, and icmp: whatever
+  listens there (chronyd, the NHP daemon's UDP port, SSM/cloud-init agents).
+  tcp/22 is not in that set, because it is not opened at the SG layer. There is
+  deliberately no nftables/iptables backstop: that would contradict "eBPF is
+  the only control". Nothing in `deploy-demo-v2` narrows the SG before stopping
+  the daemon; if that residual exposure stops being acceptable, either narrow
+  the SG around deploys or pin the XDP link (which contradicts the
+  "detach on error" invariant and needs its own decision).
+- **Rollback** is `server_open_all_ports = false` and `infra-demo apply`. The
+  security group returns exactly to udp/knock-port + tcp/22 from the relay SG.
+  Nothing on the host changes; the telemetry stays and just counts less.
+- **Recovery of an unfiltered host** is unchanged: `aws ec2 reboot-instances`,
+  then re-run the deploy.
+- **Plan check before apply.** The plan must show only `~ aws_security_group.server`
+  (plus harmless lifecycle changes). Any `must be replaced` means AMI drift or a
+  changed `description`: stop. The `description` is ForceNew and must not be
+  edited.
+- **CPU.** XDP runs in generic mode, so a packet costs an skb allocation before
+  it is dropped. A large scan burns t3 CPU credits; watch CloudWatch
+  `CPUCreditBalance`.
+- **Per-packet log budget.** The 64 MiB/day budget fills in roughly half a day
+  under constant scanning, which is expected. `[NHP-STAT]` and `[NHP-SCAN]`
+  emit a bounded number of lines per window and are unaffected. `LRU=1` on the
+  `KIND=TOTAL` line means a window overflowed the aggregation tables and the
+  Top-N is approximate; class totals always come from `[NHP-STAT]`.
+- **IPv6** only feeds the port table (the source key is 32-bit). The VPC has no
+  IPv6, so this gap is academic; `V6_OTHER` in `[NHP-STAT]` is exact.
+
+### Replacing an AMI / rebuilding an instance
+
+`data.aws_ami.amazon_linux_2023` is `most_recent = true` and `aws_instance.ami`
+is ForceNew, so without a guard every new al2023 release plans a replace of
+all three hosts on the next `apply`. The relay's private address is not pinned
+by default, so a replaced relay comes back on a new address that the server's
+live XDP whitelist does not contain — and the deploy that would fix the list
+has to SSH through that relay. With the security group wide open, the window
+between boot and the filter attaching is also an all-ports exposure.
+
+`aws_instance.server`, `.ac` and `.relay` therefore carry
+`lifecycle { ignore_changes = [ami] }` (server and ac alongside `user_data`).
+`most_recent` stays, so a first-time `apply` still picks the current AMI.
+Changing the AMI is now an explicit act, one host at a time:
+
+1. Relay first, if at all: pin `var.relay_private_ip` to its current address, or
+   confirm the server's whitelist (`etc/xdp.toml`, `RelayIPs`) covers the new
+   private address. Then `terraform apply -replace=aws_instance.relay`.
+2. Re-run `deploy-demo-v2` and confirm the whitelist check and
+   `Verify the XDP ingress filter attached` are green.
+3. Only then `-replace=aws_instance.ac`, re-deploy, and finally
+   `-replace=aws_instance.server`, re-deploy (re-associate the EIP, check the
+   whitelist admits the SSH source before the filter attaches).
+
+If the AMI had already drifted when the guard was added, the pending replace
+disappears from the plan instead of executing.
+
+### Knock 端口怎么改
+
+`var.nhp_listen_port`（`terraform/demo/variables.tf`）是 NHP knock 端口的**唯
+一**真源。`aws_security_group.server` 的 "NHP UDP" 入站规则、
+`aws_security_group.ac` 的对端 UDP 规则、`server/config.toml` 的
+`ListenPort`、`ac/server.toml` 和 `relay/config.toml` 里 server peer 的
+`Port`，四份全部从此变量派生。三份 TOML 在 `deploy-demo-v2` 的
+`configure` job 里被 `scripts/generate-nhp-keys.sh` 用 `${NHP_SERVER_PORT}`
+渲染（来源是 `terraform output -raw nhp_listen_port`），所以**渲染出的端口
+总是等于已 apply 的状态**，配置永远不会先于安全组切换。
+
+**灰度顺序（缺一步就要预演一次再下）**：
+
+1. 编辑 `terraform/demo/variables.tf`，把 `var.nhp_listen_port.default`
+   改成目标端口（demo 当前为 `443`）。这一步**只改源码**，不立即生效。
+2. 跑 `infra-demo` workflow 的 `apply`。这一步把 SG 规则切到新端口——**此时
+   server 上的 daemon 还在听旧端口**（配置没改），中间会有数十秒到数分钟
+   的 knock 中断，demo 性质下可接受。
+3. 跑 `deploy-demo-v2` workflow。`configure` job 读到的就是新端口，
+   三份 TOML 渲染出新端口 → server SG 已经在新端口上 → drop-in 调整
+   `ip_unprivileged_port_start`（见下）→ daemon 重启监听新端口 → 敲
+   门恢复。
+
+**回滚**：把 `var.nhp_listen_port.default` 改回旧端口（demo 之前为
+`62206`）→ 跑 `infra-demo apply` → 跑 `deploy-demo-v2`。两步顺序对了就不
+会出现「配置与 SG 不一致」的中间态。
+
+**为什么不用 `CAP_NET_BIND_SERVICE`**：demo 上 `nhp-serverd` 以
+`User=ec2-user` 运行，unit 的 `CapabilityBoundingSet` 只有 `CAP_BPF
+CAP_NET_ADMIN CAP_PERFMON`。直接授予 `CAP_NET_BIND_SERVICE` 会让
+`CapAmb` 不为 0，`deploy-server` 的 `Verify the XDP loader gave its
+capabilities back`（要求 `v & ~BPF == 0`）会失败，而且 `nhp-serverd` 同时
+跑在 `docker/Dockerfile.server` 的 root 上下文中，没了收紧就静默拿走
+`CAP_DAC_OVERRIDE` 和 `CAP_NET_BIND_SERVICE`（CLAUDE.md 的 capability 不
+变量）。改用 `net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT`（且仅当
+端口 < 1024）：drop-in 视情况加
+`ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT`，
+端口 < 1024 时也写 `/etc/sysctl.d/99-nhp-server.conf` 持久化；
+`terraform/demo/userdata/server.sh` 同步同样一行（新机路径）。两处必须一
+致——存量机只看 drop-in，新机只看 userdata，缺一就出意外。**放宽这个 floor
+只是放宽本机任意非特权进程可绑定的端口范围**，并不直接改变入站暴露面；真正
+约束主机入站的是安全组（`aws_security_group.server` / `.ac`，只放 UDP/
+${NHP_LISTEN_PORT} + 仅来自 relay 安全组的 22）和「这台主机只跑一个服务」
+的事实，XDP 过滤器是 fail-open 设计，**不能**当成这个约束来读。回滚时如
+果新端口 ≥ 1024，`deploy-demo-v2` 会主动 `rm` 掉 `99-nhp-server.conf` 并把
+内核 floor 恢复到 1024，避免旧的「任何非特权用户可绑 443-1023」的状态留
+在主机上。
+
+**如果新端口 daemon 起不来且 SSH 也被 XDP 挡住**：走上面
+"If the host is already unreachable, reboot the instance" 同一条路径：
+`aws ec2 reboot-instances`（无需 SSH），DHCP 先于 `nhp-serverd` 起来，主
+机地址回来、tcp/22 在 XDP 重新挂上之前有一个窗口可用。
+
+Hands-on verification — a netns rehearsal that exercises every branch of the
+decision tree, the baseline to capture before the first deploy (including the
+check that the whitelisted address is the one the host actually sees SSH
+arrive from), the same commands to re-run afterwards, and the recovery paths
+if it does go wrong — is in **[VERIFY-server-xdp.zh-cn.md](VERIFY-server-xdp.zh-cn.md)** (Chinese).
+
+## Analysing the XDP event log (attack report)
+
+`nhp-serverd` writes `logs/nhp_server_xdp-YYYY-MM-DD.log`. Copy the files off the
+host over the existing SSH channel (through the relay jump host), then run the
+offline report tool on your workstation:
+
+```bash
+cd endpoints
+go run ./xdplog-report -in ./xdp-logs/ -top 10 -format md -out report.md
+# optional region section from your own CIDR->country CSV (cidr,country[,city]):
+go run ./xdplog-report -in ./xdp-logs/ -geo-csv ip2country.csv
+# share externally with source addresses truncated:
+go run ./xdplog-report -in ./xdp-logs/ -mask-ip -format json
+```
+
+Reading the report: attack = `[NHP-DROP]`. Packet totals are exact (summed from the
+per-minute `[NHP-STAT]` lines); source IP, port and region rankings come from the
+rate-limited per-packet lines and are samples. A budget-exhausted warning means
+rankings after that point are incomplete. The tool never touches the network.
+
+## XDP attack stats site (stats.opennhp.org)
+
+`https://stats.opennhp.org/` is a public, read-only site built nightly from
+the same `nhp_server_xdp-YYYY-MM-DD.log` files the daemon writes on
+nhp-server. Days the collector could not pull are skipped silently; today is
+marked `partial`. Source IPs on the public pages are masked (`a.b.c.x` /
+IPv6 /48). Raw logs (unmasked) live on the relay host at
+`/home/ec2-user/xdpstats/raw/` for retroactive re-runs after a classifier
+update.
+
+### Daily flow at a glance
+
+```
+nhp-serverd
+   └─ writes logs/nhp_server_xdp-YYYY-MM-DD.log  (0600, ec2-user)
+
+[relay cron] xdpstats.timer  (OnCalendar=*-*-* 00:20:00 UTC, Persistent=true)
+   └─ xdpstats-collect.sh
+        ├─ ssh ec2-user@nhp-server list    (forced: deploy/scripts/nhp-xdplog-export.sh)
+        ├─ ssh ec2-user@nhp-server get <date>  (same forced command)
+        ├─ gzip -> /home/ec2-user/xdpstats/raw/server/*.log.gz  (0700, 90-day retention)
+        └─ xdplog-report site
+             ├─ /var/www/stats/{index.html,index.json,countup.js,totalnumber.js,d/server/<day>.{html,json}}
+             ├─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
+             └─ facts -> /home/ec2-user/xdpstats/facts/server/<day>.facts  (same reason)
+                                                │
+                          nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/
+```
+
+The collector's SSH keypair (`stats_collector_ssh_*` in `opennhp/demo`) only
+runs the export script on the server side; shell, scp, sftp, and any other
+command are refused by `authorized_keys`. The forced-command script itself
+further restricts `get` to a strict `^\d{4}-\d{2}-\d{2}$` date with no path
+separators. The relay reaches nhp-server through the existing
+relay→server SSH path (already in the XDP whitelist and security group);
+no firewall, capability, or `xdp.toml` change.
+
+**Publishing floor.** `xdplog-report site` publishes nothing before `-since`
+(default `2026-10-16`): no detail page, no index row, and no share of the
+all-time total. The XDP filter was attached after those logs were written, so
+that record is partial and counting it would understate the totals by an
+amount nobody can audit. The collector passes no `-since`, so the deploy picks
+up the default automatically; to move the floor, change `defaultSiteSince` in
+`endpoints/xdplog-report/site.go` (a rebuild) rather than editing the relay.
+A `-since` that would exclude every discovered day is **refused** rather than
+published, so a typo fails the timer loudly instead of blanking the public
+site. The refusal happens before anything is deleted, so that same typo cannot
+turn the site into a list of dead links either.
+
+**Unpublishing is real.** The site was already serving pre-floor days before
+the floor existed, so the first run with the floor **deletes** their
+`/var/www/stats/d/server/<day>.{html,json}` and drops their `state.json`
+entries (`unpublishDay` in `site.go`). Nothing links to them any more, but a
+file left in the web root is still reachable at its old URL and in search
+caches — unlinked is not unpublished. Removing them also marks the index dirty,
+so the row leaves `index.json` and the hero total in the same run. If a file
+cannot be removed the run still writes the index and state and then fails, so
+the leftover shows up in the timer journal instead of quietly. Raw logs and the
+collector's raw cache are never touched.
+
+**Template changes reach old pages.** Each day page records the
+`siteRenderVersion` that rendered it in `state.json`, so bumping that constant
+in `site.go` re-renders every published day on the next run — no `-force`, no
+deleting state.json. Days whose raw log the collector already pruned are
+re-rendered from their published `<day>.json` without recomputing any numbers.
+Expect one full page rewrite in the first run after a template change.
+
+`totalnumber.js` in the web root carries three all-time figures as JavaScript
+constants, for other sites to embed via
+`<script src="https://stats.opennhp.org/totalnumber.js">`:
+`NHP_TOTAL_ATTACK_BLOCKED` (exact attack packets — the same number the hero
+shows), `NHP_TOTAL_ATTACK_SOURCE_IPS` (distinct source addresses since the
+floor) and `NHP_TOTAL_ATTACK_COUNTRIES` (distinct countries those addresses
+resolved to). It has its own nginx location with a short `Cache-Control`; no
+CORS header, because a classic script does not need one and the importing
+page's own CSP governs it.
+
+**GeoIP.** The collector passes
+`-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` to
+`xdplog-report site` when that file is readable, and logs which way it went
+(`GeoIP enabled from …` / `no GeoIP database at …`). MaxMind's licence means
+the database is **not** shipped by `deploy-xdpstats` — unpack it on the relay
+by hand (`/home/ec2-user/GeoLite2-City_<builddate>/GeoLite2-City.mmdb`, and
+keep the path: the collector looks at that exact one, overridable with
+`XDPSTATS_GEO_MMDB`). Every published day then gains a region table and the
+country total starts filling in. Installing it re-analyzes the days already
+published — each day records the geo source it was built with, and their raw
+logs have not changed, so nothing else would mark them stale. Expect one full
+day rewrite in the first run after the database appears. A day whose raw log
+has already aged out of `xdpstats/raw` cannot be re-analyzed and keeps the
+attribution it was published with; removing the database later never triggers
+a rebuild for the same reason. After replacing the file with a newer GeoLite2
+build, run `sudo -u ec2-user /usr/local/bin/xdplog-report site -logs
+/home/ec2-user/xdpstats/raw -out /var/www/stats -state
+/home/ec2-user/xdpstats/state.json -geo-mmdb <new path> -force` to re-derive
+attribution; without `-force` the new database applies to days as they change.
+
+**Where the all-time source and country counts come from.** Not from
+`index.json`: `unique_attack_ips` is a per-day count, and an address that
+scans the host every day is one attacker, so summing the days over-counts it
+once per day. Each day's set of sources and countries is therefore captured
+while its raw log still exists and stored beside `state.json` at
+`/home/ec2-user/xdpstats/facts/server/<day>.facts` (0700 dir, 0600 files —
+hashed addresses, and a 64-bit hash of an IPv4 is reversible, so this must
+never be published; the nginx vhost refuses `/facts/` for the case where
+`-state` is ever pointed inside the web root). `unpublishDay` removes a day's
+file with its pages, so moving the `-since` floor forward cannot leave a
+removed day's attackers in the total. A day whose facts file is missing
+contributes nothing and is named in `xdpstats/collect.log` as
+`site: N day(s) contribute no source/country data (...)` — the run still
+publishes, because the packet total is unaffected.
+
+### Deploy order: `infra-demo apply` comes first
+
+The `stats.opennhp.org` A record is `cloudflare_record.stats` in
+`terraform/demo/dns.tf`. `deploy-demo-v2` never applies Terraform — the
+`configure` job only reads the state — so on a state where that record has
+never been applied the hostname is NXDOMAIN for the whole run. Cert issuance
+does **not** notice: certbot's DNS-01 challenge writes a TXT record through
+the Cloudflare API and never looks up the A record, so the vhost, the
+collector and the timer would all install cleanly and the run would only go
+red at the final `curl https://stats.opennhp.org/`.
+
+So `deploy-xdpstats` refuses before it touches the relay: the first step is a
+preflight that resolves `stats.opennhp.org` against `1.1.1.1` and requires
+exactly one A record equal to `aws_eip.relay.public_ip`. Missing, absent, or
+pointing somewhere else ⇒ red run with the relay untouched and the message
+naming `infra-demo` with `action=apply`. It retries for up to a minute so a
+deploy started right after an apply is not defeated by resolver caching.
+
+Correct order for a release that includes the stats site:
+
+```
+infra-demo (action=apply)   →   deploy-demo-v2 (confirm=deploy)
+```
+
+After the first apply, subsequent deploys need no Terraform run — the record
+is in the state and DNS outlives it.
+
+### Manual recovery / debugging
+
+- **Pull didn't happen today / status is "failed":**
+  ```bash
+  ssh relay-jump
+  sudo journalctl -u xdpstats -n 100 --no-pager
+  sudo systemctl start xdpstats.service   # one-shot, idempotent
+  tail -200 /home/ec2-user/xdpstats/collect.log
+  ```
+  Most failures are an expired `opennhp/demo` entry (`stats_collector_ssh_*`),
+  the server host being down, or a recent deploy that left an older
+  `nhp-xdplog-export.sh`. The unit logs the SSH banner verbatim.
+
+- **Backfill a missing day** (must be inside the daemon's
+  `serverLogRetentionDays = 14`, nhp/utils/ebpf/engine_linux.go:1126):
+  ```bash
+  ssh relay-jump
+  /home/ec2-user/xdpstats/xdpstats-collect.sh -v
+  ```
+  The script's `list` + per-day `get` loop fetches whatever is newer than the
+  local cache.
+
+- **Force a full rebuild** after editing `endpoints/xdplog-report/classify.go`
+  (so a new DROP reason or category applies retroactively):
+  ```bash
+  ssh relay-jump
+  cd endpoints && go build -o /tmp/xdplog-report ./xdplog-report && \
+    sudo install -m 0755 /tmp/xdplog-report /usr/local/bin/xdplog-report
+  sudo -u ec2-user /usr/local/bin/xdplog-report site \
+    -logs  /home/ec2-user/xdpstats/raw \
+    -out   /var/www/stats \
+    -state /home/ec2-user/xdpstats/state.json \
+    -force
+  ```
+
+- **Rotate the collector keypair** (e.g. compromised relay host):
+  ```bash
+  # 1. Re-generate the pair in opennhp/demo; the script is idempotent so a
+  #    second invocation just rotates the missing half:
+  ./scripts/generate-nhp-keys.sh --binary-dir ./release \
+    --template-dir ./deploy/config-templates \
+    --output-dir ./deploy/configs \
+    --server-private-ip "$SERVER_PRIVATE_IP" \
+    --ac-private-ip   "$AC_PRIVATE_IP" \
+    --domain opennhp.org
+  # 2. Re-run deploy-demo-v2 with confirm=deploy. deploy-server REPLACES
+  #    the managed line in /home/ec2-user/.ssh/authorized_keys: it greps out
+  #    every line carrying the key comment `stats.opennhp.org-collector`
+  #    (the tag is stable across rotations, the key material is not) and
+  #    appends the current one, so a rotation cannot leave the old key
+  #    behind. Deploy public-key rows are never touched.
+  #    deploy-xdpstats installs the new private key at
+  #    /home/ec2-user/.ssh/stats_collector_key.
+  # 3. Verify exactly one collector line remains:
+  #      ssh nhp-server 'grep -c stats.opennhp.org-collector ~/.ssh/authorized_keys'
+  ```
+
+- **Add a new source** (AC, etc. — currently only `server` is wired):
+  1. Extend `endpoints/xdplog-report/parse.go` (or split into a separate
+     sub-package) to understand the new log's line shape.
+  2. Provision a new SSH keypair the same way as `stats_collector_ssh_*` and
+     wire it into the new host's `authorized_keys` via `deploy-ac` (or a new
+     sibling job).
+  3. Add a `<name> <ssh_user> <host> <log_dir>` line to
+     `deploy/config-templates/xdpstats/sources.conf` and re-run
+     `deploy-demo-v2`.
+
+### Things the site deliberately does NOT do
+
+- No login / no auth wall / no geo-restriction: the data is mask-anonymized
+  attack telemetry by design (see CLAUDE.md "XDP attack stats site").
+- No exposure of the server's private IP: detail pages only show the
+  `Hostname` from the daemon's `config.toml`.
+- No GeoIP enabled by default. `xdplog-report site -geo-mmdb /path/to/GeoLite2-City.mmdb`
+  turns it on locally for debugging only; the systemd unit does not enable it
+  unless a file is mounted at the documented location.

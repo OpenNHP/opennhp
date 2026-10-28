@@ -389,11 +389,27 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 		(deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP) {
 		return false
 	}
+	// NHP_RLY is a single, authenticated relay→server UDP connection that
+	// multiplexes independently-timed traffic from many web agents. Their
+	// outer-envelope timestamps are not monotonic across clients, so the
+	// per-connection replay gate false-positives and block-lists the shared
+	// relay path — taking out every agent behind that relay, not just one
+	// (GHSA-674q-j8fh-972c). Anti-replay for the real client is enforced on
+	// the decoded inner packet, which HandleRelayForward re-injects on a
+	// connection keyed by the real client address (isolated per-client
+	// replay state); the relay envelope itself is still authenticated by the
+	// relay's Noise static key, so this does not admit unauthenticated peers.
+	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {
+		return false
+	}
 	return true
 }
 
 // shouldCheckFlood uses the same exemptions as the monotonic gate: AOP/ART
-// bursts and reordered responses are valid. Packet dedupe handles ART replays.
+// bursts and reordered responses are valid, and the multiplexed NHP_RLY
+// connection carries legitimate concurrent bursts from many clients (see
+// shouldCheckRecvAttack; GHSA-674q-j8fh-972c). Packet dedupe handles ART
+// replays; per-client flood limiting is applied to the inner relayed packet.
 func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
 		return false
@@ -401,7 +417,42 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
 		return false
 	}
+	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {
+		return false
+	}
 	return true
+}
+
+// futureSkewCached reports whether the (deviceType, peerType, msgType)
+// tuple matches a message whose replay is rejected from an
+// endpoint-owned cache keyed on remoteSendTime, OR matches a
+// message type where the future-skew gate serves a defense-in-depth
+// role even though the primary replay path is not a TTL cache.
+//
+// ART (server ← AC): the original case. The cache is TTL-bounded;
+// without the skew gate, a forward-stamped replay can outlive its
+// cache entry and the staleness floor would still pass it.
+//
+// RLY (server ← relay): defense-in-depth. The primary replay
+// protection is now a per-relay sliding window (see
+// endpoints/server/relay_replay_window.go) keyed on SenderTrxId,
+// not a TTL cache. The skew gate here is what bounds how far a
+// fast-clock relay can push the per-relay epoch anchor, which in
+// turn bounds the worst-case lockout if that relay's clock
+// subsequently steps back.
+//
+// Defensive on peerType even though the cache lookup itself is the
+// authoritative gate for ART — we want the warning to read "X from
+// Y" and a stale envelope claiming a role it cannot legitimately
+// publish should not poison the logs.
+func futureSkewCached(deviceType int, peerType int, msgType int) bool {
+	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
+		return true
+	}
+	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {
+		return true
+	}
+	return false
 }
 
 func (ppd *PacketParserData) validatePeer() (err error) {
@@ -600,18 +651,78 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	// Bound ART clock skew so cache entries outlive every accepted replay.
-	if ppd.device.deviceType == NHP_SERVER && peerDeviceType == NHP_AC && ppd.HeaderType == NHP_ART &&
+	// Bound clock skew on the relay→server path. The justification
+	// here is NOT the TTL-cache argument that drove the original
+	// ART check (the relay RLY path uses a per-relay sliding
+	// window keyed on SenderTrxId, with no TTL — adding a new
+	// envelope type that uses an endpoint-owned TTL cache still
+	// means extending futureSkewCached, but the property is no
+	// longer load-bearing for RLY).
+	//
+	// What the bound DOES do on the RLY path is limit how far a
+	// fast-clock relay can push the per-relay epoch anchor. The
+	// epoch floor (endpoints/server/relay_replay_window.go) and
+	// idle expiration together recover from a clock-step-back, but
+	// recovery takes up to relayReplayIdleTimeout wall-clock
+	// (~16 minutes). Without this bound, a relay running its clock
+	// 1 hour ahead could push the epoch 1 hour forward; on the
+	// subsequent step-back, every legitimate envelope would fail
+	// the epoch floor until the idle timeout fires. Capping the
+	// forward push at ARTRecvFutureSkewSeconds keeps the worst-case
+	// lockout bounded by futureSkew + idle_timeout, and surfaces
+	// "this relay has a bad clock" as a Critical log instead of
+	// silently degrading to a 16-minute outage.
+	//
+	// Deployment note: relay hosts should run NTP. The
+	// ARTRecvFutureSkewSeconds bound is the upper limit on the
+	// asymmetry the server will tolerate between its own clock
+	// and the relay's; a relay that drifts more than this in
+	// either direction is treated as having a broken clock.
+	//
+	// The ART path still has the original TTL-cache property too:
+	// a forward-stamped ART envelope can outlive its cache entry
+	// and replay after the staleness floor passes, and the skew
+	// check is what closes that hole. Adding a new cached type
+	// here still means extending futureSkewCached, since the TTL
+	// argument applies to ART but not to RLY.
+	if futureSkewCached(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) &&
 		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
+		msgType := HeaderTypeToString(ppd.HeaderType)
 		if artSkewWarnAllowed(time.Now().UnixNano()) {
-			log.Critical("ART from %s is %v ahead of local time (limit %d seconds); check AC/server clock synchronization", ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
+			log.Critical("%s from %s is %v ahead of local time (limit %d seconds); check peer clock synchronization",
+				msgType, ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
 		}
 		return ErrStalePacketReceived
 	}
 	if remoteSendTime < (ppd.LocalInitTime - DefaultRecvStalenessFloorSeconds*int64(time.Second)) {
 		// send remote timestamp is too old than receive local time, drop
 		// note there might be time calibration error between remote and local devices
+		//
+		// Registered relay peers share one long-lived UDP conn with the
+		// server (the multiplexed RLY path; see shouldCheckRecvAttack).
+		// Their NHP_RLY envelopes are exempted from the per-connection
+		// monotonic/flood gates for the same reason, but the staleness
+		// floor still applies to any other packet they might emit on the
+		// same conn — two such stale envelopes are enough to drive
+		// RecvThreatCount past ThreatCountBeforeBlock (=1) and call
+		// AddBlockAddr on the RELAY's ip:port, dropping every agent
+		// behind that relay for BlockAddrExpireTime. The relay is
+		// authenticated, so this is not a vector for unauthenticated
+		// abuse; silently drop the packet and keep the relay's block
+		// budget intact. The per-inner-client replay/flood check inside
+		// HandleRelayForward still fires on the decoded inner packet
+		// (relayConn is a separate conn keyed on the real client).
+		if peerDeviceType == NHP_RELAY {
+			if staleRelayWarnAllowed(time.Now().UnixNano()) {
+				log.Critical("received stale %s envelope from registered relay %s, drop without block (further drops in the same interval are not logged)",
+					HeaderTypeToString(ppd.HeaderType), ppd.ConnData.RemoteAddr.String())
+			}
+			ppd.device.notifyPacketDropped("stale")
+			err = ErrStalePacketReceived
+			return err
+		}
 		log.Critical("received stale packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
+		ppd.device.notifyPacketDropped("stale")
 		threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 		if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
 			// clamp threat count to avoid overflow
@@ -669,6 +780,25 @@ const decompressWarnInterval = int64(time.Minute)
 func decompressWarnAllowed(nowNano int64) bool {
 	last := lastDecompressWarnNano.Load()
 	return nowNano-last >= decompressWarnInterval && lastDecompressWarnNano.CompareAndSwap(last, nowNano)
+}
+
+var lastStaleRelayWarnNano atomic.Int64
+
+// staleRelayWarnAllowed gates the "received stale envelope from
+// registered relay" Critical log so a captured genuine relay
+// envelope replayed at line rate cannot translate one capture into
+// unbounded log volume. The drop itself is unchanged — every stale
+// relay envelope still calls notifyPacketDropped("stale") so the
+// rate is visible in metrics. The throttle interval matches the
+// other Critical-rate-limiters in this file (artSkewWarnAllowed,
+// decompressWarnAllowed) at one minute, which is well under the
+// 600s staleness floor an attacker would have to hold their
+// captured envelope against before it can no longer be replayed
+// at all, so an operator still sees the warning long before it
+// could become silent.
+func staleRelayWarnAllowed(nowNano int64) bool {
+	last := lastStaleRelayWarnNano.Load()
+	return nowNano-last >= int64(time.Minute) && lastStaleRelayWarnNano.CompareAndSwap(last, nowNano)
 }
 
 func inflateBody(body []byte) ([]byte, error) {

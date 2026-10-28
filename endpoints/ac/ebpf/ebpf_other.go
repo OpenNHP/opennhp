@@ -3,25 +3,29 @@
 package ebpf
 
 import (
-	// "log"
-
-	"fmt"
+	utilsebpf "github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-var ErrEBPFSupportedOnlyOnLinux = fmt.Errorf("eBPF functionality is only supported on Linux, current platform is not Linux")
+var ErrEBPFSupportedOnlyOnLinux = utilsebpf.ErrEBPFSupportedOnlyOnLinux
+
 var (
 	DenyLogger *log.Logger
 	AcLogger   *log.Logger
 )
 
 func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
-	log.Info("eBPF function must be compiled on Linux OS")
-	return ErrEBPFSupportedOnlyOnLinux
+	_, err := utilsebpf.EngineLoad(utilsebpf.EngineLoadParams{
+		Variant:     utilsebpf.VariantAC,
+		ComponentId: acId,
+		LogDirPath:  dirPath,
+		LogLevel:    logLevel,
+	})
+	return err
 }
 
 // clean eBPF map file
 func CleanupBPFFiles() {
-	log.Info("ebpf func must be compile based linux os")
+	utilsebpf.CleanupBPFFiles(utilsebpf.VariantAC)
 }

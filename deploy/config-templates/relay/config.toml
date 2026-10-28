@@ -33,5 +33,5 @@ LoadBalance  = "weighted-random"
 
   [[Servers.Instances]]
   Host   = "${SERVER_PRIVATE_IP}"
-  Port   = 62206
+  Port   = ${NHP_SERVER_PORT}
   Weight = 1

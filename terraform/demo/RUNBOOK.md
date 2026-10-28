@@ -1299,6 +1299,50 @@ the results with `scripts/xdp-attack-report.sh`.
 - **IPv6** only feeds the port table (the source key is 32-bit). The VPC has no
   IPv6, so this gap is academic; `V6_OTHER` in `[NHP-STAT]` is exact.
 
+### All-ports exposure mode on the AC
+
+`var.ac_open_all_ports` (`terraform/demo/variables.tf`; the `infra-demo`
+workflow input `open_ac_all_ports` sets it, and the workflow refuses `true` in a
+plan that creates or replaces `aws_instance.ac`) opens `aws_security_group.ac`
+the same way: `0.0.0.0/0` on tcp 0-21 and 23-65535, udp 0-65535 and icmp, with
+**tcp/22 still restricted to the relay SG**. The AC's XDP filter
+(`nhp/ebpf/xdp/nhp_ebpf_xdp.c`, attached by `nhp-acd` in `FilterMode = 1`) is
+then the only inbound control on everything but tcp/22.
+
+The reason is the same as on the server, and the symptom is more visible: **a
+packet the security group drops never reaches the NIC, so the filter never sees
+it and never counts it.** In the narrow posture the AC only had tcp/443 and the
+knock port reachable, so almost every scan was gone before the filter could see
+it — and the AC's column on https://stats.opennhp.org read as "the AC is not
+being attacked" rather than "the group ate the packets". The per-packet
+`[NHP-DROP]` lines and the `[NHP-STAT]` counters fill only with what actually
+reaches the NIC, and so does the `[NHP-SCAN]` port/source table once the AC's
+scan-report knobs are set.
+
+- **The pipeline opens it by default.** `open_all_ports` and
+  `open_ac_all_ports` are both ticked by default in the `infra-demo` workflow;
+  only unticking one narrows that group again. The Terraform variables keep
+  `default = false`, so a hand-run `terraform apply` is still conservative — the
+  workflow always passes the value explicitly.
+- **Order is the same as on the server: `deploy-demo-v2` first.** Confirm
+  `Verify the AC's XDP ingress filter attached` is green, then run
+  `infra-demo apply`. The workflow also refuses to widen a group whose host has
+  no XDP program attached (`Require an attached XDP filter before opening all
+  ports`).
+- **The deploy pipeline reports the posture.** `deploy-demo-v2`'s `deploy-ac`
+  job ends with `Check the AC's security group is open to the internet`, which
+  reads the group's rules through the AWS API and warns when they are still
+  narrow — the symptom (an AC column with almost nothing in it) otherwise
+  looks like a broken collector.
+- **What the AC has that the server does not:** the fail-closed netfilter
+  backstop (`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`). It
+  keeps the protected resource shut while the XDP link is detached, i.e. it
+  covers the fail-open windows the link has whenever `nhp-acd` is restarting.
+  The backstop is lifted only once the XDP program is attached.
+- **Rollback** is unticking `open_ac_all_ports` and running `infra-demo apply`.
+  The group returns exactly to tcp/443 + the knock port + tcp/22 from the relay
+  SG. Nothing on the host changes; the telemetry stays and just counts less.
+
 ### Replacing an AMI / rebuilding an instance
 
 `data.aws_ami.amazon_linux_2023` is `most_recent = true` and `aws_instance.ami`

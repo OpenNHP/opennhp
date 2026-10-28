@@ -20,10 +20,15 @@ on:
         required: false
         default: ''
       open_all_ports:
-        description: 'Open the nhp-server security group to all ports (XDP is then the only inbound control). Enable only after deploy-demo-v2 shows the XDP attach gate green.'
+        description: 'Open the nhp-server security group to all ports (XDP is then the only inbound control). Leave it ticked -- a packet the security group drops never reaches the NIC, so it is never counted and the site undercounts the attacks. Untick it only to go back to the narrow group, and for the run that creates a new instance (the workflow refuses a new host with the group wide open).'
         required: false
         type: boolean
-        default: false
+        default: true
+      open_ac_all_ports:
+        description: 'Open the nhp-ac security group to all ports (the AC''s XDP filter is then the only inbound control). Same reasoning as open_all_ports: a packet the security group drops never reaches the AC''s NIC, so the AC''s filter never sees it, never counts it, and the AC''s column on stats.opennhp.org stays empty. Leave it ticked; untick it only to go back to the narrow group, and for the run that creates a new instance.'
+        required: false
+        type: boolean
+        default: true
   push:
     branches:
       - main
@@ -232,7 +237,14 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
           TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
           TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
-          TF_VAR_server_open_all_ports: ${{ github.event.inputs.open_all_ports == 'true' && 'true' || 'false' }}
+          # The security-group posture is the demo's steady state, not a
+          # one-off: a packet the security group drops never reaches the NIC,
+          # so it is never counted by the XDP filter and the stats site
+          # undercounts the attacks. Only an explicit "false" narrows a group
+          # again; a push-triggered plan (no dispatch input) keeps the groups
+          # open rather than quietly planning them shut.
+          TF_VAR_server_open_all_ports: ${{ github.event.inputs.open_all_ports == 'false' && 'false' || 'true' }}
+          TF_VAR_ac_open_all_ports: ${{ github.event.inputs.open_ac_all_ports == 'false' && 'false' || 'true' }}
         run: |
           terraform plan \
             ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \
@@ -240,20 +252,31 @@ jobs:
 
       # A host created or replaced in a plan that also opens every port has no
       # XDP program until deploy-demo-v2 runs, so it would sit fully exposed.
-      - name: Refuse all-ports SG on a new or replaced nhp-server
-        if: env.TF_ACTION == 'plan' || env.TF_ACTION == 'apply'
+      # Dispatch only: a push-triggered plan never applies, so it must not
+      # turn a red build on main over a posture the demo already has.
+      - name: Refuse all-ports SG on a new or replaced host
+        if: github.event_name == 'workflow_dispatch' && (env.TF_ACTION == 'plan' || env.TF_ACTION == 'apply')
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           set -euo pipefail
           terraform show -json tfplan > plan.json
           open_all=$(jq -r '.variables.server_open_all_ports.value // false' plan.json)
-          touched=$(jq -r '[.resource_changes[]
+          open_all_ac=$(jq -r '.variables.ac_open_all_ports.value // false' plan.json)
+          server_touched=$(jq -r '[.resource_changes[]
             | select(.address == "aws_instance.server")
             | select(.change.actions | index("create") or index("delete"))] | length' plan.json)
+          ac_touched=$(jq -r '[.resource_changes[]
+            | select(.address == "aws_instance.ac")
+            | select(.change.actions | index("create") or index("delete"))] | length' plan.json)
           rm -f plan.json
-          if [ "$open_all" = "true" ] && [ "$touched" != "0" ]; then
+          if [ "$open_all" = "true" ] && [ "$server_touched" != "0" ]; then
             echo "::error::server_open_all_ports=true while aws_instance.server is created or replaced in this plan."
-            echo "Apply with open_all_ports=false, run deploy-demo-v2, confirm 'Verify the XDP ingress filter attached' is green, then re-run with open_all_ports=true." >&2
+            echo "Untick open_all_ports for this run, apply, run deploy-demo-v2, confirm 'Verify the XDP ingress filter attached' is green, then re-run with it ticked." >&2
+            exit 1
+          fi
+          if [ "$open_all_ac" = "true" ] && [ "$ac_touched" != "0" ]; then
+            echo "::error::ac_open_all_ports=true while aws_instance.ac is created or replaced in this plan."
+            echo "Untick open_ac_all_ports for this run, apply, run deploy-demo-v2, confirm the AC's XDP filter is attached, then re-run with it ticked." >&2
             exit 1
           fi
 
@@ -262,12 +285,16 @@ jobs:
       # the filter is fail-open. Ask the kernel on the host itself, over the
       # same relay jump the deploy uses, before the SG is widened.
       - name: Require an attached XDP filter before opening all ports
-        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm' && github.event.inputs.open_all_ports == 'true'
+        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm' && (github.event.inputs.open_all_ports != 'false' || github.event.inputs.open_ac_all_ports != 'false')
         working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          OPEN_ALL: ${{ github.event.inputs.open_all_ports == 'false' && 'false' || 'true' }}
+          OPEN_ALL_AC: ${{ github.event.inputs.open_ac_all_ports == 'false' && 'false' || 'true' }}
         run: |
           set -euo pipefail
           RELAY_IP=$(terraform output -raw relay_public_ip)
           SERVER_PRIV=$(terraform output -raw server_private_ip)
+          AC_PRIV=$(terraform output -raw ac_private_ip)
 
           SECRETS=$(aws secretsmanager get-secret-value \
             --secret-id opennhp/demo \
@@ -284,15 +311,29 @@ jobs:
             exit 1
           fi
 
-          if ! ssh -i "$KEY_TMP" -o BatchMode=yes -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile="$KNOWN_TMP" \
-                -o ProxyCommand="ssh -i $KEY_TMP -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_TMP -W %h:%p ec2-user@$RELAY_IP" \
-                ec2-user@"$SERVER_PRIV" "ip -details link show | grep -q xdpgeneric"; then
-            echo "::error::No XDP program attached on nhp-server (or the host is unreachable). Refusing to open all ports."
-            echo "Run deploy-demo-v2, confirm 'Verify the XDP ingress filter attached' is green, then re-run." >&2
-            exit 1
+          # Both hosts run the same shape of XDP filter (the server's
+          # ingress filter and the AC's knock whitelist, both attached in
+          # generic mode), so one probe answers it for either of them.
+          require_xdp() {
+            local host_ip="$1"
+            local label="$2"
+            if ! ssh -i "$KEY_TMP" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile="$KNOWN_TMP" \
+                  -o ProxyCommand="ssh -i $KEY_TMP -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_TMP -W %h:%p ec2-user@$RELAY_IP" \
+                  ec2-user@"$host_ip" "ip -details link show | grep -q xdpgeneric"; then
+              echo "::error::No XDP program attached on nhp-$label (or the host is unreachable). Refusing to open all ports."
+              echo "Run deploy-demo-v2, confirm the XDP filter is attached, then re-run." >&2
+              exit 1
+            fi
+            echo "XDP filter is attached on nhp-$label; proceeding."
+          }
+
+          if [ "$OPEN_ALL" = "true" ]; then
+            require_xdp "$SERVER_PRIV" "server"
           fi
-          echo "XDP filter is attached on nhp-server; proceeding."
+          if [ "$OPEN_ALL_AC" = "true" ]; then
+            require_xdp "$AC_PRIV" "ac"
+          fi
 
       - name: Terraform Apply
         if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm'

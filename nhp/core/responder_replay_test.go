@@ -264,7 +264,7 @@ func TestRLYFutureTimestampBound(t *testing.T) {
 
 // TestFutureSkewCachedPredicate pins the predicate that drives the
 // generalized skew check. The check exists for every tuple that
-// matches a post-validation replay cache (NHP_ART and NHP_RLY today);
+// matches a post-validation replay cache (NHP_ART, NHP_RLY and NHP_AOP today);
 // future cache types must extend this predicate or they inherit the
 // staleness-only check and the original replay hole.
 func TestFutureSkewCachedPredicate(t *testing.T) {
@@ -275,9 +275,9 @@ func TestFutureSkewCachedPredicate(t *testing.T) {
 	}{
 		{"ART cached", NHP_SERVER, NHP_AC, NHP_ART, true},
 		{"RLY cached", NHP_SERVER, NHP_RELAY, NHP_RLY, true},
-		{"AOP not cached", NHP_AC, NHP_SERVER, NHP_AOP, false},
+		{"AOP cached", NHP_AC, NHP_SERVER, NHP_AOP, true},
 		{"KNK not cached", NHP_SERVER, NHP_AGENT, NHP_KNK, false},
-		{"ART on wrong receiver", NHP_AC, NHP_SERVER, NHP_AOP, false},
+		{"ART on wrong receiver", NHP_AC, NHP_SERVER, NHP_ART, false},
 	}
 	for _, c := range cases {
 		if got := futureSkewCached(c.device, c.peer, c.msg); got != c.want {

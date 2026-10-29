@@ -91,10 +91,27 @@ func newRknRateLimiter(ratePerSec, burst, maxEntries int, idleNanos int64) *rknR
 // keyForAddr returns the limiter key: the source IP only, never the port.
 // An attacker rotating source ports must not get a fresh bucket per port.
 func keyForAddr(addr *net.UDPAddr) string {
-	if addr == nil || addr.IP == nil {
+	if addr == nil {
 		return ""
 	}
-	return addr.IP.String()
+	return keyForIP(addr.IP)
+}
+
+// keyForIP is keyForAddr for a bare IP. IPv4 (including IPv4-mapped IPv6)
+// keys on the full address; IPv6 keys on its /64, because one host routinely
+// holds a whole /64 and rotating addresses inside it would otherwise reset
+// the budget and churn the shared table, evicting other sources' buckets.
+func keyForIP(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	if len(ip) != net.IPv6len {
+		return ""
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 // allow reports whether an RKN from addr may proceed to cookie

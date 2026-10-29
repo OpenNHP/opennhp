@@ -35,6 +35,33 @@ func TestIPRateLimiterPortRotationSharesBudget(t *testing.T) {
 	}
 }
 
+func TestIPRateLimiterIPv6AddressRotationSharesBudget(t *testing.T) {
+	r := newIPRateLimiter(1, 4, 100, int64(time.Minute))
+	a := keyForIP(net.ParseIP("2001:db8:1:2::1"))
+	b := keyForIP(net.ParseIP("2001:db8:1:2:ffff:ffff:ffff:ffff"))
+	if a != b {
+		t.Fatalf("addresses in one /64 keyed apart: %q vs %q", a, b)
+	}
+	if !r.allow(a, 0) || !r.allow(b, 0) {
+		t.Fatal("starter packets should be admitted")
+	}
+	if r.allow(keyForIP(net.ParseIP("2001:db8:1:2::abcd")), 0) {
+		t.Fatal("same /64 should not gain a new budget by rotating addresses")
+	}
+	if keyForIP(net.ParseIP("2001:db8:1:3::1")) == a {
+		t.Fatal("a different /64 must get its own budget")
+	}
+}
+
+func TestKeyForIPTreatsMappedIPv4AsIPv4(t *testing.T) {
+	if got := keyForIP(net.ParseIP("::ffff:198.51.100.7")); got != "198.51.100.7" {
+		t.Fatalf("mapped IPv4 key = %q, want 198.51.100.7", got)
+	}
+	if got := keyForAddr(&net.UDPAddr{IP: net.ParseIP("198.51.100.7").To4()}); got != "198.51.100.7" {
+		t.Fatalf("IPv4 key = %q", got)
+	}
+}
+
 func TestIPRateLimiterCapacityIsBounded(t *testing.T) {
 	r := newIPRateLimiter(100, 10, 8, int64(time.Hour))
 	for i := 0; i < 100; i++ {

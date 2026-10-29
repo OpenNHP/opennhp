@@ -973,9 +973,6 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	}
 
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
-	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
-		relayAddrStr, realAddr, len(innerBytes))
-
 	// Per-(relay, real-client) block check. connectionRoutine's
 	// relay-aware BlockSignal branch (the one that drops the
 	// relay's UDP address from AddBlockAddr's target to honor
@@ -1013,12 +1010,17 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	}
 
 	// Relay assertions must not drain a direct client's source budget.
-	rateKey := "rly|" + relayAddrStr + "|" + realIP.String()
+	rateKey := "rly|" + relayAddrStr + "|" + keyForIP(realIP)
 	if !s.allowPacketFromIP(rateKey, time.Now().UnixNano()) {
 		s.logPacketRateLimitDrop(rateKey)
 		s.metrics.recordDroppedPacket("rate_limited")
 		return fmt.Errorf("packet rate limit exceeded")
 	}
+
+	// Logged after the rate gate so a rate-limited client cannot drive
+	// one Info line per packet.
+	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
+		relayAddrStr, realAddr, len(innerBytes))
 
 	// Allocate a pool packet for the inner bytes.
 	innerPkt := s.device.AllocatePoolPacket()

@@ -340,7 +340,9 @@ budget. The 65,536-entry table prefers fully replenished entries for reuse;
 under extreme source churn it evicts the oldest entry to keep admitting new
 sources. This reduces per-source coverage: alert on
 `nhp_server_packet_rate_cache_evictions_total`. Upstream anti-spoofing and flood
-filtering remain necessary; a bounded table cannot retain unlimited identities.
+filtering remain necessary; a bounded table cannot retain unlimited identities. IPv6 sources are budgeted
+per /64 prefix, not per address.
+
 ### Data object identifiers and key files
 
 DoIds must be 1..64 ASCII letters, digits, underscores, or hyphens. UUIDs

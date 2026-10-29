@@ -349,7 +349,14 @@ AOP packets/s times 660 seconds. Alert on
 `nhp_ac_aop_replay_cache_evictions_total`: unexpired capacity evictions shorten
 replay coverage. Expiry is lazy and memory remains bounded without a cleanup
 goroutine. TTL derives from the maximum accepted staleness plus 60 seconds.
-AOP future timestamps remain unbounded; synchronize infrastructure clocks.
+The AC accepts an AOP stamped from `AOPRecvStalenessSeconds` (default 120)
+behind its own clock to 300 seconds ahead. The forward bound is a protocol
+constant (`ARTRecvFutureSkewSeconds`) and is not configurable. Packets outside
+that window are dropped with a Critical log (future-skew logs are rate-limited);
+the server connection is not blocked. Before this change the accepted window was
+600 seconds behind with no forward limit, so an AC whose clock is more than 5
+minutes behind its server will drop every AOP after upgrading; synchronize
+infrastructure clocks before upgrading.
 
 ### Data object identifiers and key files
 

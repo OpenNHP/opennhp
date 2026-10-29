@@ -178,8 +178,8 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	options := a.device.GetOption()
 	options.AOPRecvStalenessSeconds = a.config.AOPRecvStalenessSeconds
 	a.device.SetOption(options)
-	if a.config.AOPReplayCacheEntries < 0 || a.config.AOPReplayCacheEntries > 1_000_000 {
-		return fmt.Errorf("AOPReplayCacheEntries must be between 0 and 1000000, got %d", a.config.AOPReplayCacheEntries)
+	if a.config.AOPReplayCacheEntries < 0 || a.config.AOPReplayCacheEntries > aopReplayCacheMaxSize {
+		return fmt.Errorf("AOPReplayCacheEntries must be between 0 and %d, got %d", aopReplayCacheMaxSize, a.config.AOPReplayCacheEntries)
 	}
 	entries := a.config.AOPReplayCacheEntries
 	if entries == 0 {

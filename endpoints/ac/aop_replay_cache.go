@@ -19,7 +19,10 @@ import (
 // the remaining replay window. Entries can also be lost under capacity pressure.
 const (
 	aopReplayCacheSize = 100_000
-	aopReplayCacheTTL  = (core.DefaultRecvStalenessFloorSeconds + 60) * time.Second
+	// aopReplayCacheMaxSize is the largest accepted AOPReplayCacheEntries;
+	// docs/deploy.md and the AC config templates quote it.
+	aopReplayCacheMaxSize = 1_000_000
+	aopReplayCacheTTL     = (core.DefaultRecvStalenessFloorSeconds + 60) * time.Second
 	// pubkeyFingerprintLen is the truncation budget for the
 	// log-line fingerprint emitted on duplicate-drops. 12 base64
 	// chars ≈ 9 bytes (~72 bits) of pubkey entropy — enough to
@@ -88,7 +91,11 @@ func (c *aopReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	// Round(0) strips the monotonic reading so expiry is compared on the wall
+	// clock, the same clock the responder's staleness gate uses. Otherwise a
+	// backward wall-clock step would let the gate keep accepting a packet whose
+	// entry had already expired in monotonic time.
+	now := time.Now().Round(0)
 	if expires, exists := c.lru.Get(key); exists && now.Before(expires) {
 		return false
 	}

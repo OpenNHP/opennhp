@@ -54,6 +54,10 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 
 	// AOP skips monotonic timestamp checks to permit reordering. This cache
 	// rejects exact authenticated duplicates without blocking the connection.
+	// The tuple is recorded before the body is parsed or applied, so a
+	// byte-identical retransmit of an AOP whose operation failed (bad body,
+	// ipset error) is also dropped as aop_replay. The server stamps a fresh
+	// send time on every retry, so such a drop is not by itself an attack.
 	if !a.aopReplay.MarkSeen(ppd.RemotePubKey, transactionId, ppd.RemoteSendTime) {
 		// Warning, not Critical: this fires both on replay attempts
 		// (the security signal we care about) and on benign in-flight

@@ -52,13 +52,11 @@ const (
 	// (server→AC). recvStalenessFloor documents WHY AOP gets one (the
 	// cross-restart replay window); this constant is the canonical home
 	// for the value. AOP is normally exchanged between infrastructure
-	// components with synchronized clocks, so 120 s provides margin for
-	// wall-clock skew while still shrinking the replay window documented in
-	// endpoints/ac/aop_replay_cache.go — comfortable margin against
-	// clock-step-at-boot and receive-queue-delay false rejects, which for
-	// AOP drop the packet but do NOT block the connection (see
-	// shouldEscalateStale) — while still shrinking the replay window 5×
-	// versus the 600 s default.
+	// components with synchronized clocks, so 120 s leaves margin for
+	// clock-step-at-boot and receive-queue-delay false rejects (which for
+	// AOP drop the packet but do NOT block the connection; see
+	// shouldEscalateStale) while shrinking the replay window documented in
+	// endpoints/ac/aop_replay_cache.go 5× versus the 600 s default.
 	AOPRecvStalenessFloorSeconds = 120
 )
 

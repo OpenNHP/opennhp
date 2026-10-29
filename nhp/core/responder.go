@@ -730,6 +730,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			log.Critical("%s from %s is %v ahead of local time (limit %d seconds); check peer clock synchronization",
 				msgType, ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
 		}
+		// Counted because the log above is rate-limited: a peer whose clock
+		// is ahead loses every such packet, and that must be alertable.
+		ppd.device.notifyPacketDropped("stale")
 		return ErrStalePacketReceived
 	}
 	staleness := recvStalenessFloor(ppd.device.deviceType, peerDeviceType, ppd.HeaderType)

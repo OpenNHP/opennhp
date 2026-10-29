@@ -135,3 +135,36 @@ func TestConfiguredAOPStaleness(t *testing.T) {
 		}
 	}
 }
+
+func TestForwardDatedAOPRejected(t *testing.T) {
+	sender := NewDevice(NHP_SERVER, sentinelPrivateKey(1), nil)
+	receiver := NewDevice(NHP_AC, sentinelPrivateKey(33), nil)
+	t.Cleanup(sender.Stop)
+	t.Cleanup(receiver.Stop)
+	peer := &UdpPeer{PubKeyBase64: receiver.PublicKeyBase64(), Ip: "127.0.0.1", Port: 12346, Type: NHP_AC}
+	sender.AddPeer(peer)
+	receiver.AddPeer(&UdpPeer{PubKeyBase64: sender.PublicKeyBase64(), Ip: "127.0.0.1", Port: 12345, Type: NHP_SERVER})
+	mad, err := sender.MsgToPacket(&MsgData{ConnData: sentinelConnection(sender, 12345, 12346), PeerPk: peer.PublicKey(), HeaderType: NHP_AOP, TransactionId: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The AC receives the packet as though the server's clock ran ahead by
+	// skew: just inside the bound passes, just past it is rejected.
+	for _, tc := range []struct {
+		skew time.Duration
+		want error
+	}{
+		{(ARTRecvFutureSkewSeconds - 1) * time.Second, nil},
+		{(ARTRecvFutureSkewSeconds + 1) * time.Second, ErrStalePacketReceived},
+	} {
+		ppd, err := receiver.createPacketParserData(&PacketData{BasePacket: &Packet{Content: append([]byte(nil), mad.BasePacket.Content...), HeaderType: NHP_AOP}, ConnData: sentinelConnection(receiver, 12346, 12345), InitTime: mad.LocalInitTime - int64(tc.skew)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := ppd.validatePeer()
+		ppd.Destroy()
+		if got != tc.want {
+			t.Fatalf("AOP %v ahead: got %v, want %v", tc.skew, got, tc.want)
+		}
+	}
+}

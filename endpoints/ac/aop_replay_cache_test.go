@@ -323,3 +323,19 @@ func TestAOPReplayCapacityEvictionsExcludeExpiry(t *testing.T) {
 		t.Fatalf("expired entry counted: %d", got)
 	}
 }
+
+// A forward-dated AOP must stay in the cache for as long as it can still pass
+// the staleness gate, which is measured from its send time, not receive time.
+func TestAOPReplayCacheForwardDatedEntryOutlivesReceiveTTL(t *testing.T) {
+	ttl := 50 * time.Millisecond
+	c := newAOPReplayCacheWithParams(aopReplayCacheSize, ttl)
+	pub := pubkeyN('F')
+	sendTime := time.Now().Add(time.Second).UnixNano()
+	if !c.MarkSeen(pub, 7, sendTime) {
+		t.Fatal("first observation must be accepted")
+	}
+	time.Sleep(3 * ttl)
+	if c.MarkSeen(pub, 7, sendTime) {
+		t.Fatal("forward-dated entry expired on receive time; replay accepted")
+	}
+}

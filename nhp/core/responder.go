@@ -464,6 +464,10 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 // without the skew gate, a forward-stamped replay can outlive its
 // cache entry and the staleness floor would still pass it.
 //
+// AOP (AC ← server): TTL-bounded like ART, in the AC's AOP replay
+// cache (endpoints/ac/aop_replay_cache.go). That cache also anchors
+// expiry to the send time; this gate bounds how far ahead it can be.
+//
 // RLY (server ← relay): defense-in-depth. The primary replay
 // protection is now a per-relay sliding window (see
 // endpoints/server/relay_replay_window.go) keyed on SenderTrxId,
@@ -478,6 +482,9 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 // publish should not poison the logs.
 func futureSkewCached(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
+		return true
+	}
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
 		return true
 	}
 	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {

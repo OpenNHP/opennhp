@@ -92,7 +92,16 @@ func (c *aopReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	if expires, exists := c.lru.Get(key); exists && now.Before(expires) {
 		return false
 	}
-	c.lru.Add(key, now.Add(c.ttl))
+	// Anchor expiry to the later of receive time and the authenticated send
+	// time. The staleness gate is measured from the send time, so a
+	// forward-dated AOP (fast server clock) would otherwise keep passing it
+	// after a receive-anchored entry had expired, and replay. The responder's
+	// future-skew gate bounds how far ahead sendTime can be.
+	anchor := now
+	if sent := time.Unix(0, sendTime); sent.After(anchor) {
+		anchor = sent
+	}
+	c.lru.Add(key, anchor.Add(c.ttl))
 	return true
 }
 
@@ -116,6 +125,10 @@ func (c *aopReplayCache) Len() int {
 // builder ~80 B) — negligible at <100 AOP/sec, becomes meaningful
 // at ~10k AOP/sec where the GC pressure starts dominating the
 // per-packet cost.
+//
+// The ':' separators cannot make two keys collide: MarkSeen admits only
+// fixed-length (32- or 64-byte) public keys, so the pubkey prefix has a known
+// length and the two decimal fields contain no ':'.
 func aopReplayKey(peerPubkey []byte, txid uint64, sendTime int64) string {
 	return string(peerPubkey) + ":" + strconv.FormatUint(txid, 10) + ":" + strconv.FormatInt(sendTime, 10)
 }

@@ -4,7 +4,7 @@
 
 import { api, ApiError, type RegisterResponse, type ServerInfo } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t, renderLangSwitcher } from '../i18n.js';
+import { t, appHeaderHtml, renderLangSwitcher } from '../i18n.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 import { renderSourceSection, renderFooter } from './footer.js';
 
@@ -15,9 +15,7 @@ export interface RegisterViewProps {
 
 export function renderRegister(root: HTMLElement, props: RegisterViewProps): void {
   root.innerHTML = `
-    <div class="container">
-      <h1>${t('login.title')}</h1>
-      <p class="subtitle">${t('common.subtitle')}</p>
+    <div class="container">${appHeaderHtml()}
 
       <div id="alert"></div>
 

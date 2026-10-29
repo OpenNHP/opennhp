@@ -713,7 +713,7 @@ const I18N = {
     'serverToml.copy': 'Copy',
     'serverToml.copied': 'server.toml block copied to clipboard.',
     'serverToml.clipboardBlocked': 'Clipboard blocked — select the block and press Cmd/Ctrl+C.',
-    'serverToml.note': 'Native <code>nhp-agentd</code> is UDP-direct only (no relay transport) and the demo\'s <code>62206/udp</code> is not exposed to the public internet — the browser demo reaches the server via the <code>443/TLS</code> relay. This TOML is usable as-is from within the demo VPC, or when the server\'s UDP port is otherwise reachable. For local development, use the docker-compose peer that ships with <code>make agentd</code> (<code>127.0.0.1:62206</code>). The demo keys are re-generated on some deploys — this page always shows the current key (fetched with <code>cache: no-store</code>); if knocking fails peer validation, reload and re-copy.',
+    'serverToml.note': 'Native <code>nhp-agentd</code> is UDP-direct only (no relay transport) and the demo\'s <code>{port}/udp</code> is not exposed to the public internet — the browser demo reaches the server via the <code>443/TLS</code> relay. This TOML is usable as-is from within the demo VPC, or when the server\'s UDP port is otherwise reachable. For local development, use the docker-compose peer that ships with <code>make agentd</code> (<code>127.0.0.1:{port}</code>). The demo keys are re-generated on some deploys — this page always shows the current key (fetched with <code>cache: no-store</code>); if knocking fails peer validation, reload and re-copy.',
     // dynamic
     'msg.enterEmail': 'Please enter your email (used as both user ID and OTP address)',
     'msg.selectServer': 'Please select a target server',
@@ -806,7 +806,7 @@ const I18N = {
     'serverToml.copy': '复制',
     'serverToml.copied': 'server.toml 块已复制到剪贴板。',
     'serverToml.clipboardBlocked': '剪贴板被阻止 — 请选中代码块后按 Cmd/Ctrl+C。',
-    'serverToml.note': '原生 <code>nhp-agentd</code> 仅支持 UDP 直连（无中继传输），且 demo 的 <code>62206/udp</code> 未对公网开放 — 浏览器 demo 通过 <code>443/TLS</code> 中继访问服务器。此 TOML 仅在 demo VPC 内部、或服务器 UDP 端口可达时可直接使用。本地开发请使用 <code>make agentd</code> 附带的 docker-compose peer（<code>127.0.0.1:62206</code>）。demo 密钥在某些部署时会被重新生成 — 本页面始终展示当前密钥（以 <code>cache: no-store</code> 拉取）；若敲门时密钥校验失败，请刷新页面重新复制。',
+    'serverToml.note': '原生 <code>nhp-agentd</code> 仅支持 UDP 直连（无中继传输），且 demo 的 <code>{port}/udp</code> 未对公网开放 — 浏览器 demo 通过 <code>443/TLS</code> 中继访问服务器。此 TOML 仅在 demo VPC 内部、或服务器 UDP 端口可达时可直接使用。本地开发请使用 <code>make agentd</code> 附带的 docker-compose peer（<code>127.0.0.1:{port}</code>）。demo 密钥在某些部署时会被重新生成 — 本页面始终展示当前密钥（以 <code>cache: no-store</code> 拉取）；若敲门时密钥校验失败，请刷新页面重新复制。',
     // dynamic
     'msg.enterEmail': '请输入您的邮箱（同时用作用户 ID 和验证码地址）',
     'msg.selectServer': '请选择目标服务器',
@@ -866,7 +866,20 @@ function applyI18n() {
   document.documentElement.lang = currentLang === 'zh-cn' ? 'zh-CN' : 'en';
   document.title = t('page.title');
   $$('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
-  $$('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
+  $$('[data-i18n-html]').forEach(el => {
+    const key = el.getAttribute('data-i18n-html');
+    // serverToml.note embeds the demo's NHP UDP port (which follows the
+    // terraform/demo var.nhp_listen_port rendered into config.json). The
+    // text would be misleading if it claimed a hardcoded number — render
+    // it with the selected cluster's port so it tracks future port
+    // changes without further edits here.
+    if (key === 'serverToml.note') {
+      const port = currentServerTomlPort();
+      el.innerHTML = t(key, port != null ? { port } : undefined);
+    } else {
+      el.innerHTML = t(key);
+    }
+  });
   // Re-render dynamic areas that were built in the previous language.
   if ($('#otp-email-display') && window.__otpEmail) $('#otp-email-display').textContent = window.__otpEmail;
   if (window.__serverDetailRender) window.__serverDetailRender();
@@ -1058,12 +1071,16 @@ function buildServerToml() {
   const schemeLabel = useSm2 ? 'gmsm/SM2' : 'curve25519';
   const name = c.name || `Cluster ${idx + 1}`;
   const host = c.serverHost || '';
-  // Both demo clusters listen on NHP UDP 62206 (deploy/config-templates
-  // /server{,2}/config.toml ListenPort = 62206).
-  const port = 62206;
+  // serverUdpPort is populated from each cluster in config.json at load time
+  // (see the configClusters.map() in the boot block); it mirrors the
+  // terraform/demo var.nhp_listen_port rendered by deploy-demo-v2, so the
+  // TOML below stays in lockstep with the daemon's actual ListenPort. Do
+  // NOT hardcode a port here — a future port change must change exactly one
+  // place (var.nhp_listen_port).
+  const port = c.serverUdpPort;
   return `# Agent server-peer for ${name} (demo)
 # Cipher: ${schemeLabel}. Native nhp-agentd is UDP-direct; the demo's
-# 62206/udp is NOT public — use from the demo VPC or local docker env.
+# \`${port}/udp\` is NOT public — use from the demo VPC or local docker env.
 # Browser demo reaches the server via the 443/TLS relay.
 [[Servers]]
 Name = "${name}"
@@ -1081,8 +1098,27 @@ function renderServerToml() {
   if (out) out.textContent = buildServerToml();
   const badge = $('#toml-scheme-badge');
   if (badge) badge.innerHTML = schemeBadge(cipherScheme);
+  // Re-render serverToml.note with the newly-selected cluster's value
+  // (its port may differ from the previous cluster). applyI18n handles
+  // the no-cluster-yet case by leaving the note as the previous render.
+  const note = document.querySelector('[data-i18n-html="serverToml.note"]');
+  if (note) {
+    const port = currentServerTomlPort();
+    if (port != null) note.innerHTML = t('serverToml.note', { port });
+  }
 }
 window.__serverTomlRender = renderServerToml;
+
+// Port of the cluster currently selected in #toml-cluster-select, or null
+// if the dropdown hasn't been populated yet. Mirrors buildServerToml()'s
+// `port` so the explanatory note and the rendered TOML stay in sync.
+function currentServerTomlPort() {
+  const sel = $('#toml-cluster-select');
+  if (!sel) return null;
+  const idx = parseInt(sel.value, 10);
+  const c = configClusters[idx];
+  return c && Number.isInteger(c.serverUdpPort) ? c.serverUdpPort : null;
+}
 
 function populateTomlClusterSelect() {
   const sel = $('#toml-cluster-select');
@@ -1373,6 +1409,16 @@ function generateDeviceId() {
         configClusters = cfg.clusters.map(c => ({
           name: c.name || '',
           serverHost: c.serverHost || '',
+          // serverUdpPort is the port the nhp-server actually binds on (single
+          // source of truth: terraform/demo's var.nhp_listen_port, rendered by
+          // deploy-demo-v2 into config.json). Fall back to the flat serverPort
+          // for backwards compatibility with older SPA bundles that did not
+          // carry the per-cluster field, then to 443 as the demo's current
+          // canonical value. buildServerToml() renders this into the
+          // [[Servers.Instances]] Port field so the TOML matches the daemon.
+          serverUdpPort: Number.isInteger(c.serverUdpPort)
+            ? c.serverUdpPort
+            : (Number.isInteger(cfg.serverPort) ? cfg.serverPort : 443),
           publicKeyBase64:    c.serverPublicKey    || '',
           publicKeyBase64SM2: c.serverPublicKeySM2 || '',
           cipherScheme: 0,

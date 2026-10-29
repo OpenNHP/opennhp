@@ -9,13 +9,15 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP：オープンソースのゼロトラスト・セキュリティ・ツールキット
+# インターネットを攻撃者から見えなくする
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/OpenNHP/opennhp)
+
+OpenNHP は、サーバー、ポート、ドメインを公衆インターネットから隠します。クライアントが 1 つの暗号化パケットで身元を証明するまで何も応答しないため、スキャナーやボット、AI を使った攻撃者は攻撃対象を見つけられません。
 
 **OpenNHP** は軽量かつ暗号技術を基盤としたオープンソースのツールキットであり、インフラ・アプリケーション・データに対してゼロトラスト・セキュリティを実現します。[**クラウドセキュリティアライアンス（CSA）**](https://cloudsecurityalliance.org/) の *[Network-infrastructure Hiding Protocol（NHP）仕様](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)* のリファレンス実装であり、次の 2 つのコアプロトコルを備えています：
 

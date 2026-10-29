@@ -9,13 +9,15 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP：开源零信任安全工具套件
+# 让互联网对攻击者隐身
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/OpenNHP/opennhp)
+
+OpenNHP 将你的服务器、端口和域名从公共互联网上隐藏起来。在客户端用一个加密数据包证明身份之前，任何服务都不会响应——扫描器、机器人和 AI 驱动的攻击者将无从下手。
 
 **OpenNHP** 是一个轻量级、基于加密技术的开源工具套件，为基础设施、应用和数据提供零信任安全保障。它是[**云安全联盟（CSA）**](https://cloudsecurityalliance.org/) *[网络基础设施隐藏协议（NHP）规范](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)*的参考实现，包含两项核心协议：
 
@@ -67,11 +69,22 @@ OpenNHP 采用模块化设计，包含三个核心组件，灵感来自 [NIST �
 
 ### 协议流程
 
+**注册（每台设备一次）。** Agent 在本地生成自己的密钥对，然后登记公钥：
+
+1. Agent 请求一次性验证码（`NHP_OTP`），Server 的认证插件将验证码发送给用户（例如通过邮件）。
+2. Agent 提交验证码和公钥（`NHP_REG`），Server 将公钥与用户绑定并回复（`NHP_RAK`）。
+
+私钥始终不离开设备。
+
+**敲门（每次访问）。**
+
 1. Agent 向 Server 发送加密的敲门请求（`NHP_KNK`）。
 2. Server 校验敲门请求，并向 AC 发送操作请求（`NHP_AOP`）。
 3. AC 打开防火墙，并回复（`NHP_ART`）给 Server。
 4. Server 向 Agent 返回带访问信息的确认（`NHP_ACK`）。
 5. Agent 通过 AC 访问受保护资源。
+
+浏览器无法直接发送 UDP 数据包，因此浏览器端 Agent 通过 HTTPS 连接 **NHP-Relay**，由 Relay 将每个数据包封装在经过认证的 `NHP_RLY` 报文中转发给 Server。
 
 ### 加密算法
 
@@ -90,20 +103,27 @@ OpenNHP 提供两种可互换的加密套件：
 
 ```
 opennhp/
-├── nhp/              # 核心协议库（Go 模块）
-│   ├── core/         # 数据包处理、加密、Noise 协议、设备管理
-│   ├── common/       # 共享类型与消息定义
-│   ├── utils/        # 工具函数
-│   ├── plugins/      # 插件处理接口
-│   ├── log/          # 日志基础设施
-│   └── etcd/         # 分布式配置支持
-└── endpoints/        # 守护进程实现（Go 模块，依赖 nhp）
-    ├── agent/        # NHP-Agent 守护进程
-    ├── server/       # NHP-Server 守护进程
-    ├── ac/           # NHP-AC（访问控制器）守护进程
-    ├── db/           # NHP-DB（DHP 的数据经纪人）
-    ├── kgc/          # NHP-KGC（密钥生成中心）
-    └── relay/        # NHP-Relay 守护进程
+├── nhp/                # 核心协议库（Go 模块）
+│   ├── core/           # 数据包处理、加密、Noise 协议、设备管理
+│   ├── common/         # 共享类型与消息定义
+│   ├── keystore/       # 私钥加密存储（静态加密）
+│   ├── ebpf/           # eBPF/XDP 程序（AC 访问控制、Server 入站过滤）
+│   ├── plugins/        # 插件处理接口
+│   ├── utils/  log/  metrics/  audit/  etcd/
+│   └── ...
+├── endpoints/          # 守护进程与 SDK（Go 模块，依赖 nhp）
+│   ├── agent/          # NHP-Agent 守护进程，以及 iOS/Android SDK（agent/iossdk）
+│   ├── js-agent/       # 浏览器 JavaScript Agent SDK（经由 NHP-Relay）
+│   ├── server/         # NHP-Server 守护进程
+│   ├── ac/             # NHP-AC（访问控制器）守护进程
+│   ├── relay/          # NHP-Relay 守护进程（HTTPS 到 UDP 的桥接）
+│   ├── db/             # NHP-DB（DHP 的数据经纪人）
+│   ├── kgc/            # NHP-KGC（密钥生成中心）
+│   └── keystorecli/    # 所有守护进程共用的 `seal` / `unseal` 密钥子命令
+├── examples/           # Server 认证插件与客户端 SDK 示例
+├── demoapp/            # 使用 OpenNHP 保护登录的示例 Web 应用
+├── docker/             # Docker Compose 全栈环境
+└── docs/               # 文档站点（docs.opennhp.org）
 ```
 
 ---
@@ -145,6 +165,32 @@ cd docker && docker-compose up --build
 ```
 
 请参考[快速入门教程](https://docs.opennhp.org/nhp_quick_start/)，在 Docker 环境中模拟完整的认证工作流。
+
+### 注册 Agent
+
+通过 OTP 流程将设备密钥登记到 Server。未提供的参数会以交互方式提示输入：
+
+```bash
+./nhp-agentd register --email you@example.com --asp-id <认证服务 ID> --res-id <资源 ID>
+```
+
+Agent 在本地生成密钥对，请求 Server 发送一次性验证码，输入验证码后即完成公钥注册。可使用 `nhp-agentd seal` 对私钥进行静态加密保存。
+
+---
+
+## 客户端、SDK 与在线演示
+
+| 客户端 | 获取方式 |
+|---|---|
+| 原生 Agent 守护进程 | `make agentd` 构建 `nhp-agentd` |
+| iOS / Android SDK | `make iosagentsdk` / `make androidagentsdk` |
+| JavaScript（浏览器）SDK | [`endpoints/js-agent`](endpoints/js-agent)，经由 NHP-Relay 敲门 |
+
+在浏览器中体验：
+
+- **[agent.opennhp.org](https://agent.opennhp.org)**：使用 JavaScript SDK 向隐藏的服务器敲门
+- **[reg.opennhp.org](https://reg.opennhp.org)**：体验设备注册流程（NHP-OTP → NHP-REG）
+- **[demo.opennhp.org](https://demo.opennhp.org)**：登录受 OpenNHP 保护的 Web 应用
 
 ---
 

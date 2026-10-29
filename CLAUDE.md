@@ -218,10 +218,411 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > `terraform/demo/dns.tf`, and `deploy/config-templates/server/http.toml` sets
 > `EnableHttp = false` so `nhp-serverd` never binds `127.0.0.1:8443`. The
 > `deploy-server` job tears down any leftover `/etc/nginx/conf.d/server.conf`.
-> The server host is reachable only over the NHP UDP knock port (plus SSH from
-> the relay jump host); `deploy/nginx/server.conf.template` is kept for
+> The server host *serves* only the NHP UDP knock port (plus SSH from the relay
+> jump host) — the security group admits more than that, and the XDP filter drops
+> the rest (see *All-ports exposure* below); `deploy/nginx/server.conf.template` is kept for
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
+
+**NHP knock port.** The UDP port `nhp-serverd` listens on for knocks is
+`var.nhp_listen_port` in `terraform/demo/variables.tf` — that variable is the
+single source of truth. `terraform/demo/security-groups.tf` derives both
+`aws_security_group.server` and `aws_security_group.ac` from it, and the
+`deploy-demo-v2` `configure` job reads it via `terraform output` and renders it
+into `server/config.toml`, `ac/server.toml`, and `relay/config.toml` via
+`${NHP_SERVER_PORT}`. To change the port: edit `var.nhp_listen_port`, run
+`infra-demo apply` first (so the security group rule is in place), then run
+`deploy-demo-v2` — the order matters, because the rendered config tracks the
+applied state, never the source-default.
+
+**All-ports exposure (deliberate).** `aws_security_group.server` is opened to
+`0.0.0.0/0` on every tcp port **except 22**, every udp port and icmp while
+`var.server_open_all_ports` is `true` (opt-in, default `false`; set it through the `infra-demo` `open_all_ports`
+input once the attach gate is green, and `infra-demo` refuses it in a plan that
+creates or replaces `aws_instance.server`). That is intentional and is
+for observation: scans must reach the NIC so the XDP filter can count them
+(`[NHP-STAT]`, `[NHP-SCAN]`). In this mode **the XDP filter is the only inbound
+control on everything but tcp/22** — the security group is no longer the
+narrower layer — and it is fail-open and its link is not pinned, so the filter
+is detached on *every* `deploy-demo-v2` run (the daemon is stopped and
+restarted), failed deploy, crash, `systemctl restart`, reboot and failed load,
+not only on a new or replaced instance. During each of those windows the host
+is exposed to the internet on every udp port, every tcp port except 22, and
+icmp: chronyd, the SSM/cloud-init agents and anything else listening. **tcp/22
+is deliberately carved out of the open range** and stays restricted to the relay
+SG at the security-group layer, so sshd never depends on a fail-open filter;
+the cost is that tcp/22 scans never reach the NIC and are not counted. Other IP
+protocols (GRE, ESP, ...) are not opened. What the filter still lets through to the host from any source in this
+mode: the knock port, SSH from the whitelist, UDP 67→68 (DHCP client), UDP
+123→123 (chronyd), non-first IPv4 fragments and ICMP frag-needed. Those are
+accepted exposure, not narrowed. `infra-demo` also SSHes to the existing server through the relay before an `apply` with `open_all_ports` and refuses unless an XDP program is attached (`Require an attached XDP filter before opening all ports`); it is a point-in-time check, so the windows above remain accepted exposure. Order is the *reverse* of the knock-port rule: run `deploy-demo-v2` first
+and confirm `Verify the XDP ingress filter attached` is green, then
+`infra-demo apply`. Rollback is `server_open_all_ports = false` plus
+`infra-demo apply`, which returns the security group exactly to udp/knock-port +
+tcp/22 from the relay SG; recovery of an unfiltered host is still
+`aws ec2 reboot-instances`. `aws_instance.{server,ac,relay}` carry
+`ignore_changes = [ami]` so a new al2023 release never plans a replace; change
+an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
+at a time (see `terraform/demo/RUNBOOK.md`).
+
+**Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
+unprivileged on the demo host and `443 < 1024`, the unit cannot rely on
+`CAP_NET_BIND_SERVICE` — granting it would leave the daemon with a non-empty
+ambient cap set, breaking the `Verify the XDP loader gave its capabilities back`
+gate (`CapAmb` must be 0, `CapPrm/CapEff` must be `v & ~BPF == 0`). Instead,
+`deploy-server` adds an `ExecStartPre=+/sbin/sysctl -q -w
+net.ipv4.ip_unprivileged_port_start=443` to the drop-in, and writes
+`/etc/sysctl.d/99-nhp-server.conf` for persistence. The same line is in
+`terraform/demo/userdata/server.sh` so new hosts start the same way; the two
+must stay in sync (see the note above about `ignore_changes = [user_data]`).
+Relaxing that floor widens the range any unprivileged process on the host
+may bind to, but the XDP filter is what limits the host's inbound exposure
+now that `aws_security_group.server` is deliberately open to all ports (see
+*All-ports exposure* above; `aws_security_group.ac` is still narrow), together
+with the fact that this host runs a single service. The filter is fail-open by
+design, which is why the attach gate in `deploy-server` matters. A rollback that moves the port out of the
+privileged range must therefore remove `/etc/sysctl.d/99-nhp-server.conf`
+and restore the kernel default (1024); the deploy job does this
+automatically when `NHP_LISTEN_PORT >= 1024`.
+
+#### Deploy binaries are built in an Amazon Linux 2023 container
+
+The three demo hosts run the AMI selected by `terraform/demo/ami.tf`
+(`al2023-ami-2023.*-x86_64`), whose glibc is **2.34**. `deploy-demo-v2` builds
+`nhp-serverd` / `nhp-acd` / `nhp-relayd` and the server plugins inside
+`docker/Dockerfile.al2023-builder` — an `amazonlinux:2023` image carrying the
+`GO_VERSION` toolchain — not on the runner, because the daemons are **cgo**
+builds and the glibc they link against is a floor on the glibc they can run on.
+
+Both halves of that are load-bearing:
+
+- **cgo cannot be dropped**, at least for `nhp-serverd`. It loads its auth
+  plugins with `plugin.Open` (`nhp/plugins/serverpluginhandler.go`), and Go's
+  `plugin` package is a stub without cgo: the daemon starts clean and then
+  fails every plugin load with `plugin: not implemented`, which is the loss of
+  authentication, not of a feature. Host and `.so` are built in one container
+  for the same reason `scripts/check-plugin-deps.sh` exists.
+- **The builder cannot be newer than the target.** When `ubuntu-latest` moved
+  past glibc 2.34 the deploy stopped the running daemons, uploaded binaries
+  that exec'd into ``/lib64/libc.so.6: version `GLIBC_2.38' not found``, and
+  left nhp-serverd and nhp-acd down — the AC's fail-closed backstop holding
+  tcp/443 shut — on a run whose only symptom was a red `systemctl is-active`.
+
+`scripts/check-glibc-compat.sh` re-checks every ELF the job ships (the three
+daemons, every plugin `.so`, the `demoapp` binary from `Dockerfile.demoapp`)
+against `TARGET_GLIBC` in the workflow env, and the same step asserts
+`nhp-serverd` is still dynamically linked against libc so that "make the glibc
+check pass" cannot be answered with `CGO_ENABLED=0`. It runs before the upload,
+so a mismatch fails `build` and no deploy job stops anything. The eBPF objects
+are BPF bytecode with no libc in them and are still compiled on the runner.
+Raise `TARGET_GLIBC` only when the demo AMI itself moves.
+
+#### nhp-server eBPF/XDP ingress filter
+
+`nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces
+the same shape at the driver: UDP on the knock port (≥ `NhpMinFrameBytes`), SSH
+only from the addresses in `etc/xdp.toml`, the replies to flows the host itself
+opened, and nothing else — IPv6 and non-first fragments included. It parses no
+NHP protocol; identity is still decided by the Noise handshake in user space.
+The AC's per-knock program and the shared loader
+(`nhp/utils/ebpf/engine_linux.go`) are the same code path, selected by
+`EngineLoadParams.Variant`.
+
+Invariants. Each one is load-bearing and most were paid for once already; the
+reasoning, and the incident behind each, is in
+[terraform/demo/RUNBOOK.md](terraform/demo/RUNBOOK.md) under *nhp-server ingress
+filter (XDP)*.
+
+- **Attaching is opt-in; `etc/xdp.toml` is the opt-in.** No file, an unparsable
+  one, `Enabled = false`, or a `RelayIPs` whose entries do not all parse as IPv4
+  addresses or prefixes ⇒ nothing is attached and the host keeps the exposure it
+  had before the filter existed. `loadXdpConfig`/`startXdpFilter` in
+  `endpoints/server/config.go` also refuse in front of a non-loopback HTTP or
+  metrics listener, and `updateHttpConfig` refuses the mirror case — starting
+  such a listener while the filter is attached.
+- **The whitelist must cover the SSH source, and there is no break-glass path.**
+  A list rendered empty, or without an entry containing the address the host
+  sees SSH arrive from, means detaching the root volume or rebuilding the
+  instance. Entries are host addresses or CIDR prefixes in an LPM trie; one
+  unparsable entry fails the whole list rather than being skipped.
+- **Refusal reasons stay limited to the ones that protect SSH reachability.**
+  With `server_open_all_ports = true` the filter is the only inbound control, so
+  every new reason to refuse attaching is a way to leave all ports open. Telemetry
+  settings (`ScanReportIntervalSeconds`, `ScanReportTopN`) never decide this: an
+  out-of-range value is logged and disables only the `[NHP-SCAN]` summary
+  (`resolveScanReport`), and the filter attaches anyway.
+- **The whitelist is installed before the program is attached**, as
+  `EngineLoadParams.RelayIPs`, never written afterwards. Startup therefore never
+  calls `applyXdpConfig`; that path is the config watcher's, and it always has a
+  live filter and a working list to fall back on.
+- **A reload never weakens a working whitelist.** `applyXdpConfig` keeps the
+  active list on any refusal, and `ReplaceRelayIPs` is all-or-nothing against
+  the map as well as the file: it adds before it sweeps, rolls back its own adds
+  on a failed `Update`, and refuses a map it cannot read.
+- **Loading is fail-open**, and `deploy-server`'s `Verify the XDP ingress filter
+  attached` is what stops that from being a silent loss of protection. Every
+  fallible step happens before `link.AttachXDP`, and any error after it detaches.
+- **The filter must let the host's own traffic back in.** Replies to the
+  daemon's own flows via `bpf_sk_lookup_{tcp,udp}` (connected sockets only,
+  never listening ones); DHCP (67→68) and NTP by port pair, because their
+  clients have no connected socket. Dropping the DHCP answer costs the host its
+  address and every port with it, about an hour after a deploy that verified
+  clean.
+- **The capabilities go back on every path, including the ones that never
+  load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) subtracts
+  `CAP_BPF`, `CAP_NET_ADMIN` and `CAP_PERFMON` from ambient, permitted,
+  effective and inheritable — keeping CAP_BPF only where
+  `kernel.unprivileged_bpf_disabled` makes bpf(2) privileged and the reload path
+  still needs to write the map — process-wide, not just on the calling thread.
+  A subtraction, never an assignment of a fixed set: on the demo unit those
+  three *are* the whole grant, so what is left is nothing, but nhp-serverd also
+  runs as root in `docker/Dockerfile.server`, where resetting to the empty set
+  would silently and irreversibly take away CAP_DAC_OVERRIDE (volume-mounted
+  config owned by another uid) and CAP_NET_BIND_SERVICE (an `http.toml` reload
+  rebinding 80/443) on a host that never opted into filtering at all.
+  The unit grants all three as *ambient* capabilities before any of this code
+  runs, so a host that declines to filter is holding them too: `loadXdpConfig`
+  therefore defers `DropLoaderPrivileges` across all of its returns, not just
+  the loader's. A load that *failed*, and every refusal that never reached the
+  loader, keeps nothing, CAP_BPF included — there is no map to reload, and that
+  is the state the daemon stays in for the life of the process. The drop is
+  once-guarded and the loader goes first, so the attach path's answer is the one
+  that decides CAP_BPF.
+- **The event log is bounded**, because every line in it is a packet someone
+  else chose to send: per-class and global token buckets in the C, bulk classes
+  counted but never written per packet, a daily byte budget in the writer, exact
+  `[NHP-STAT]` totals regardless, and 14-day / 256 MiB retention.
+- **Recovery starts with a reboot** (`aws ec2 reboot-instances`, no SSH needed):
+  DHCP runs before `nhp-serverd`, so tcp/22 is open for the window before the
+  filter is re-attached. Volume surgery is only for a wrong *whitelist* on a
+  host that does have its address.
+
+The gates run before anything is scp'd or restarted — the `configure` job's
+Terraform/DNS resolution and containment check, `deploy-server`'s
+`Check this job's own SSH source is in the XDP whitelist`, and the refusals in
+`startXdpFilter`, `applyXdpConfig` and `ParseRelayPrefixes`
+(`nhp/utils/ebpf/relayips.go`). A red run with the demo still up is the intended
+outcome of any of them.
+
+Capabilities (`CAP_BPF CAP_NET_ADMIN CAP_PERFMON`) plus a root `ExecStartPre`
+that prepares `/sys/fs/bpf` come from `terraform/demo/userdata/server.sh` on new
+hosts and from a systemd drop-in installed by `deploy-server` on existing
+ones — keep the two in sync. `aws_instance.server` carries
+`lifecycle { ignore_changes = [user_data] }` for the same reason
+`aws_instance.ac` does: an in-place `user_data` update stops and starts the
+instance, and cloud-init would not re-run the script anyway, so a userdata edit
+would cost an nhp-server outage and change nothing on the host.
+
+Verification procedure (netns rehearsal, pre-deploy baseline, the same commands
+after the deploy, recovery paths):
+`terraform/demo/VERIFY-server-xdp.zh-cn.md`.
+
+#### XDP attack stats site (stats.opennhp.org)
+
+Daily summaries of the nhp-server XDP ingress filter's `[NHP-DROP]` events are
+published at `https://stats.opennhp.org/`. Static HTML + JSON, no third-party
+resources, fully offline-built from the same `logs/nhp_server_xdp-YYYY-MM-DD.log`
+files the daemon writes (and the daemon's per-packet retention is the only
+window: 14 days, see *nhp-server eBPF/XDP ingress filter* above). The homepage
+leads with a hero total of all-time blocked packets (plus a `Since` date) that
+`countup.js` counts up; that script is generated into the web root by
+`xdplog-report site`, loaded same-origin, and is one of the two the CSP permits
+(`script-src 'self'`, the other being `totalnumber.js`, which the homepage also
+loads so it can quote its own `NHP_TOTAL_ATTACK_BLOCKED`). It is progressive
+enhancement — the number is already in the HTML for readers without JS, without
+that CSP, or with reduced motion.
+
+**One documented exception to self-containment.** The homepage `<head>` carries a
+meta description, a canonical URL and the Open Graph / Twitter card tags
+(`og:title` / `og:description` / `og:url` / `og:type` / `og:image`, plus
+`twitter:card`), so a search result or a chat link renders with a real
+description. Those tag values are absolute URLs, which is what
+`assertSelfContained` (`site_test.go`) has to allow for: it fails on any
+absolute URL that is **not** `siteURL` rather than on absolute URLs at all, and
+it separately rejects any `<script src>` that is not a relative path. A crawler
+reads those tags, the browser never fetches them, so they do not make the page
+depend on anything off-host. The `<title>` is deliberately not the `<h1>`:
+`siteDocumentTitle` ("Zero Trust in Action: Live Attacks on OpenNHP Servers")
+is what a tab and a search result show, `siteTitle` ("Invisible Server, Visible
+Attacks") is the heading and `og:title`. `og:image` points at `/og.png` in the
+web root, which has to exist there for social previews to render anything.
+
+**Publishing floor.** `xdplog-report site` publishes nothing before `-since`
+(default `2026-10-16`, `defaultSiteSince` in `site.go`): those days get no
+detail page, no index row, and no share of the total. The XDP filter was
+attached after that log was written, so the earlier record is partial and
+counting it would understate the totals by an unquantifiable amount. A `-since`
+that excludes every discovered day is refused **before anything is deleted**, so
+a typo can neither blank a populated index nor leave a site of dead links;
+`-since ""` publishes everything, for local debugging. A site that already
+served a day below the floor is migrated by `unpublishDay` (`site.go`): the next
+run deletes that day's `d/<source>/<day>.{html,json}`, drops its `state.json`
+entry and re-renders the index — a page left in the web root is still reachable
+at its old URL, so unlinked is not unpublished. That deletion is the only thing
+the subcommand removes; raw logs and the collector cache are never touched, and
+a page it cannot delete fails the run after the index is written. The deletions
+run only once every publishable day has succeeded and immediately before that
+index is written, and the index is written before `state.json`: any run that
+gives up — an unreadable log, an empty index it refuses to publish — leaves the
+site it was serving intact, links and total unchanged, instead of removing pages
+the old index still points at. **The homepage's Source column renders `server`
+as `nhp-server`** (`sourceLabel` in `render_index.go`) while `index.json` keeps
+the raw directory name — `source` is a published field and renaming it breaks
+existing parsers.
+
+**Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
+that produced each day page, so bumping that constant in `site.go` re-renders
+every published day on the next run instead of only the days whose raw log
+happened to change that week. Days whose raw log the collector already pruned
+are re-rendered from their published `d/<source>/<day>.json`
+(`rerenderPageOnlyDay`) — the HTML is a pure function of it — but their numbers
+are never recomputed. A markup change therefore needs neither `-force` nor a
+hand-deleted `state.json`. A page-only day whose *record* is unreadable drops
+out of the index (`errUnreadablePage`), because there is nothing left to
+publish; one whose record reads fine but whose page cannot be **written** keeps
+its row and its share of the total, and only the run fails — otherwise a
+transient EACCES or ENOSPC on the web root would silently shrink
+`NHP_TOTAL_ATTACK_BLOCKED` and put it back on the next good run.
+
+**`totalnumber.js`** publishes three all-time figures as JavaScript constants
+for another site to embed with
+`<script src="https://stats.opennhp.org/totalnumber.js">`:
+`NHP_TOTAL_ATTACK_BLOCKED` (exact packets, the same number the hero shows),
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. It is
+generated into the web root beside `index.html` and served from its own nginx
+location (short `Cache-Control`, no CORS header — a classic script needs
+none, and the *importing* page's CSP governs it). All three are written even
+on an empty site, as `0`, so an embedding page never gets a 404 and a dangling
+reference. Only the packet total is a sibling of `index.json` in the sense
+that index.json stays authoritative and the total stays reproducible by
+summing `drop_pkts`.
+
+**The other two are unions, not sums, and they are not reproducible from
+`index.json`.** `unique_attack_ips` is a per-day *count*: an address that
+scans the host daily is one attacker, and adding the days counts it once per
+day. So each day's set of sources and countries is captured while its raw log
+still exists and written to `facts/<source>/<day>.facts` beside `state.json`
+(`facts.go`) — outside the web root on the relay, refused by `/facts/` in the
+nginx vhost, and never published because a 64-bit hash of an IPv4 address is
+reversible by brute force over 2^32. `unpublishDay` deletes a day's file with
+its pages, so the -since floor cannot leave a removed day's attackers in the
+total; a day whose facts are unreadable is named on stdout rather than
+silently dropped, because a smaller published total is exactly the failure
+this site is written against.
+
+**GeoIP is part of the state's fingerprint.** `SiteDayState.Geo` records the
+geo source a day was analyzed with, and a day analyzed without one is stale
+the moment a database appears — so dropping GeoLite2-City on the relay
+re-analyzes the days already published instead of leaving the country total
+at whatever the days after the install saw. The reverse is deliberately not a
+trigger: a day whose raw log has aged out can never get its attribution back,
+so taking a database away must not wipe what a published day already has.
+`deploy/scripts/xdpstats-collect.sh` passes
+`-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` when that
+file is readable (MaxMind's license means it is uploaded by hand, not shipped
+by the deploy) and says so in the collect log either way.
+
+**Data flow**
+
+- **Server (writer)**: `nhp-serverd` keeps writing the daily log to
+  `/home/ec2-user/nhp-server/logs/nhp_server_xdp-YYYY-MM-DD.log` as it always
+  has. Same 0600 mode, same `[NHP-DROP]` / `[NHP-STAT]` / `[NHP-SCAN]` lines.
+- **Server (exporter)**: `deploy/scripts/nhp-xdplog-export.sh` is the SSH
+  *forced command* attached to a dedicated ed25519 public key in
+  `/home/ec2-user/.ssh/authorized_keys` (the path sshd reads — not
+  `~/nhp-server/.ssh/...`, which nothing looks at). It accepts only `list`
+  (print date/size/mtime) and `get <YYYY-MM-DD>` (stream one log to stdout);
+  anything else (shell, scp, sftp, paths with `/`, dates that don't match
+  `^\d{4}-\d{2}-\d{2}$`) is rejected at the script. The matching private key
+  is `stats_collector_ssh_private_key` in `opennp/demo`; the public half is
+  installed by `deploy-server` with
+  `command=".../nhp-xdplog-export.sh",no-port-forwarding,no-X11-forwarding,
+  no-agent-forwarding,no-pty`. The descriptive `#` marker sits on its OWN
+  line above the entry, because sshd reads any line *starting* with `#` as a
+  comment and would otherwise never authorize the key.
+- **Relay (collector)**: a systemd timer (`deploy/scripts/xdpstats.timer`,
+  `OnCalendar=*-*-* 00:20:00 UTC`, `Persistent=true`) runs
+  `xdpstats-collect.sh`, which calls `ssh -i ~/.ssh/stats_collector_key -o
+  IdentitiesOnly=yes ... list` then `... get <date>` per day, gzip-stores
+  them under
+  `/home/ec2-user/xdpstats/raw/server/nhp_server_xdp-<date>.log.gz`, then
+  invokes `xdplog-report site`. Host-key checking is
+  `StrictHostKeyChecking=yes` against a known_hosts seeded from
+  `ssh_host_keys` by `deploy-xdpstats` — never TOFU, because the collector is
+  a timer with nobody to answer a prompt.
+- **Site**: `endpoints/xdplog-report` has a `site` subcommand that emits
+  `index.html` + `index.json` plus one `<day>.html` / `<day>.json` per day
+  under `/var/www/stats/`. nginx serves that directory at
+  `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
+  `relay.*` / `agent.*` / `reg.*` / `demo.*` (SAN expanded by
+  `bootstrap-tls.sh`).
+
+**Three directories, three permission stories.** `/home/ec2-user` is mode
+0700 on AL2023 and nginx workers run as `nginx`, so the web root is
+`/var/www/stats` (0755) and NOT under `$HOME`; `raw/` stays 0700 under
+`$HOME` because it is the only place full, unmasked source IPs exist on the
+relay; and `state.json` is written outside the web root via
+`xdplog-report site -state`, because it records the absolute path of every
+raw cache file. `deploy/nginx/stats.conf.template` also refuses
+`location = /state.json` as a second line of defence, and repeats the
+security headers inside every `location` — nginx only inherits `add_header`
+from an enclosing block when the inner block declares none of its own.
+
+**What's deliberately NOT changed**
+
+- `xdp.toml`: not touched. The relay's addresses were already in the SSH
+  whitelist when `server_open_all_ports = false` was the default; opening all
+  ports added an internet-wide observation surface but did not relax that
+  list. Collector SSH rides in on the same path the deploy job uses.
+- The XDP filter, capability grants, `aws_security_group.server`, and the
+  `aws_instance.server` lifecycle are all untouched. The collector is read-only.
+- `deploy-demo-v2` job order. `deploy-xdpstats` chains AFTER `deploy-demoapp`
+  so certbot's `deploy-relay → deploy-jsagent → deploy-demoapp → deploy-xdpstats`
+  serialisation keeps the relay host's exclusive certbot lock sequential.
+  `deploy-server` appends the stats collector public key to
+  `authorized_keys` BEFORE `deploy-xdpstats` runs (first collector SSH would
+  otherwise hit an unknown public-key fallback).
+
+**Deploy order: `infra-demo apply` first.** The `stats.opennhp.org` A record
+is `cloudflare_record.stats` in `terraform/demo/dns.tf`, and `deploy-demo-v2`
+never applies Terraform (`configure` only reads the state) — so the release
+that introduces the site has to be `infra-demo action=apply` →
+`deploy-demo-v2 confirm=deploy`. `deploy-xdpstats`'s first step is a preflight
+that requires `stats.opennhp.org` to resolve to exactly one A record equal to
+`aws_eip.relay.public_ip`, so a forgotten apply is a red run before the relay
+is touched rather than a red curl after the vhost, collector and timer are
+installed. DNS-01 cert issuance cannot be relied on to catch it: it writes a
+TXT record through the Cloudflare API and never looks up the A record.
+
+**Default public behaviour**
+
+- Source IPs are masked: IPv4 truncated to `a.b.c.x`, IPv6 to the first 48 bits.
+  `site` mode of `xdplog-report` defaults `-mask-ip` to `true` (different from
+  the single-file CLI, which defaults `false`). The raw log cache on the relay
+  keeps full IPs for `-force` rebuilds and post-classifier retroanalysis; it is
+  not under the nginx vhost.
+- No login, no rate limit, no geo-restriction. The site is a deliberately
+  public read-only summary of attack telemetry.
+- Detail pages add a `← Back to index` link; the homepage lists every day with
+  partial / budget / restart / unknown flags inline.
+- `tcp/22` scans never reach the host's NIC and are not in the totals; the
+  filter being detached across deploys/reboots is shown as missing minutes, not
+  as zero attacks (a missing minute is not the same as "no attack in that
+  minute").
+
+**Adding the AC later.** AC writes per-flow accept/deny files in a shape
+`parse.go` does not currently parse. Adding it means (1) a parser extension
+in `endpoints/xdplog-report/parse.go`, (2) a new SSH keypair +
+`authorized_keys` line on the AC host, (3) a second `<name> <user> <host>
+<log_dir>` line in `sources.conf`. The site already routes by `<source>`,
+so no `xdplog-report` change is needed once the parser and keypair exist.
+
+**Manual backfill.** If `xdpstats.timer` missed a window longer than the
+daemon's 14-day retention, the missing days are unrecoverable; the next
+deploy should add a one-shot run of `xdplogs-collect.sh -v` after the gap is
+known. RUNBOOK.md § "XDP attack stats site" has the full recovery flow
+including key rotation via `opennhp/demo` and a forced rebuild via
+`xdplog-report site -force`.
 
 ### `opennhp/demo` schema
 
@@ -246,6 +647,8 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `ssh_deploy_private_key` | manually bootstrapped (see `terraform/demo/RUNBOOK.md`); never enters Terraform state | CI SSH into EC2 hosts |
 | `ssh_deploy_public_key` | derived in CI via `ssh-keygen -y` and passed as `TF_VAR_deploy_public_key` | `aws_key_pair.deploy` → `ec2-user` authorized keys |
 | `ssh_host_keys` | `infra-demo` workflow on `apply` | CI `known_hosts` for strict host key checking |
+| `stats_collector_ssh_private_key` | `scripts/generate-nhp-keys.sh` (idempotent; ed25519 via `ssh-keygen -t ed25519 -N ""`) | relay host's `~/.ssh/stats_collector_key` (installed by `deploy-xdpstats`); used by `xdpstats-collect.sh` to pull from nhp-server |
+| `stats_collector_ssh_public_key` | same | nhp-server's `~ec2-user/.ssh/authorized_keys` (appended by `deploy-server` with `command=…/nhp-xdplog-export.sh`,no-*); verified to match the private half before install |
 
 > Cluster 2 has been decommissioned. The corresponding fields
 > (`nhp_jsagent2_*`, `nhp_server2_*`, `nhp_ac2_*`) used to be listed here

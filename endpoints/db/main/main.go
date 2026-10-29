@@ -49,6 +49,11 @@ func initApp() {
 			&cli.StringFlag{Name: "provider-public-key", Value: "", Usage: "provider public key with base64 format"},
 		},
 		Before: func(c *cli.Context) error {
+			if id := c.String("ztdo-id"); id != "" {
+				if err := common.ValidateDoID(id); err != nil {
+					return err
+				}
+			}
 			if c.String("mode") == "encrypt" {
 				if c.String("data-source-type") != "" {
 					if !slices.Contains([]string{"online", "offline", "stream"}, c.String("data-source-type")) {

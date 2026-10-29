@@ -60,7 +60,13 @@ resource "aws_security_group" "server" {
   description = "NHP Server - UDP knocking + HTTPS auth"
   vpc_id      = aws_vpc.demo.id
 
-  # NHP protocol (UDP) from anywhere
+  # NHP knock (UDP/443) from anywhere.
+  #
+  # udp/443 is the NHP protocol knock port -- it MUST stay open. The value is
+  # driven by var.nhp_listen_port (the single source of truth for the knock
+  # port across Terraform, the deploy-demo-v2 templates, and the runtime
+  # configuration). Native nhp-agent clients reach this host directly on this
+  # UDP port; the browser demo reaches it through the relay (HTTPS -> UDP).
   ingress {
     description = "NHP UDP"
     from_port   = var.nhp_listen_port
@@ -80,8 +86,10 @@ resource "aws_security_group" "server" {
   # the authoritative, internet-facing control -- do not re-add it without
   # also re-enabling those two layers.
   #
-  # The UDP rule above is the NHP protocol itself and must stay open. The
-  # browser knock demo reaches this host through the relay (HTTPS -> UDP),
+  # Do not confuse the two 443s:
+  #   - udp/443 (above) -- NHP knock, MUST stay open
+  #   - tcp/443         -- retired demo login page, MUST stay closed
+  # The browser knock demo reaches this host through the relay (HTTPS -> UDP),
   # not through any TCP port on this security group.
 
   # SSH only from relay (jump host)
@@ -91,6 +99,72 @@ resource "aws_security_group" "server" {
     to_port         = 22
     protocol        = "tcp"
     security_groups = [aws_security_group.relay.id]
+  }
+
+  # Everything else, from anywhere -- deliberately, EXCEPT tcp/22. The
+  # nhp-server's XDP filter (nhp/ebpf/xdp/nhp_server_xdp.c) is the ONLY inbound
+  # control on the rest of this host in this mode; the point is to let scans
+  # reach the NIC so the filter can count them ([NHP-STAT] / [NHP-SCAN]).
+  #
+  # The filter is fail-open and its link is not pinned, so it is detached on
+  # every deploy, crash, restart, reboot and failed load. sshd is the
+  # highest-value surface on the host, so its reachability must never depend on
+  # the filter: tcp/22 stays restricted to the relay SG at this layer and is
+  # deliberately carved out of the open range below. Consequence: scans of
+  # tcp/22 no longer reach the NIC and are not counted.
+  #
+  # An SG rule cannot say "all except 22", so the range is spelled out per
+  # protocol: tcp 0-21 and 23-65535, all udp, all icmp. Other IP protocols
+  # (GRE, ESP, ...) are no longer reachable, which is narrower than before.
+  # Whatever else is listening (chronyd, SSM/cloud-init agents) is still
+  # exposed while the filter is detached; see terraform/demo/RUNBOOK.md
+  # "All-ports exposure mode". The two rules above are a subset of this one
+  # (the knock port) or independent of it (ssh), so flipping the variable to
+  # false returns exactly to the narrow posture. Order: deploy-demo-v2 (confirm
+  # "Verify the XDP ingress filter attached" is green) BEFORE infra-demo apply
+  # -- the opposite of the knock-port rule.
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL tcp except 22 (0-21)"
+      from_port   = 0
+      to_port     = 21
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL tcp except 22 (23-65535)"
+      from_port   = 23
+      to_port     = 65535
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL udp (XDP is the only control; see CLAUDE.md)"
+      from_port   = 0
+      to_port     = 65535
+      protocol    = "udp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.server_open_all_ports ? [1] : []
+    content {
+      description = "ALL icmp (XDP is the only control; see CLAUDE.md)"
+      from_port   = -1
+      to_port     = -1
+      protocol    = "icmp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
   }
 
   egress {
@@ -123,7 +197,13 @@ resource "aws_security_group" "ac" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # NHP AOP from server (UDP)
+  # Historical: nhp-acd has no fixed UDP listen port. It dials server with
+  # net.DialUDP from an ephemeral source port (endpoints/ac/msghandler.go:525)
+  # and opens a short-lived UDP socket per authorization (the actual listen
+  # on AC's side). This rule is kept for documentation and is effectively a
+  # no-op on top of AWS SG's stateful return-traffic allowance. Do not
+  # remove it as part of the knock-port change -- deleting SG rules is an
+  # independent cleanup task and must not be bundled here.
   ingress {
     description     = "NHP UDP from server"
     from_port       = var.nhp_listen_port

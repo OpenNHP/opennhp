@@ -9,13 +9,15 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 
-# OpenNHP: Open Source Zero Trust Security Toolkit
+# Make the Internet Invisible to Attackers
 
 [![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
 [![Release](https://img.shields.io/github/v/tag/OpenNHP/opennhp?label=release)](https://github.com/OpenNHP/opennhp/tags)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/OpenNHP/opennhp)
+
+OpenNHP hides your servers, ports, and domains from the public internet. Nothing answers until a client proves who it is with a single encrypted packet, so scanners, bots, and AI-driven attackers find nothing to attack.
 
 **OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It is the reference implementation of the [**Cloud Security Alliance (CSA)**](https://cloudsecurityalliance.org/) *[Network-infrastructure Hiding Protocol (NHP) specification](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)*, and features two core protocols:
 
@@ -67,11 +69,22 @@ OpenNHP follows a modular design with three core components, inspired by the [NI
 
 ### Protocol flow
 
+**Registration (once per device).** The agent generates its own key pair, then enrolls the public key:
+
+1. Agent requests a one-time password (`NHP_OTP`); the Server's auth plugin delivers it to the user (e.g. by email).
+2. Agent sends the OTP and its public key (`NHP_REG`); the Server binds the key to the user and replies (`NHP_RAK`).
+
+The private key never leaves the device.
+
+**Knock (every access).**
+
 1. Agent sends an encrypted knock (`NHP_KNK`) to the Server.
 2. Server validates the knock and sends an operation request (`NHP_AOP`) to the AC.
 3. AC opens the firewall and replies (`NHP_ART`) to the Server.
 4. Server returns an acknowledgment (`NHP_ACK`) with access info to the Agent.
 5. Agent reaches the protected resource through the AC.
+
+Browser agents, which cannot send raw UDP, reach the Server through **NHP-Relay** over HTTPS; the relay forwards each packet inside an authenticated `NHP_RLY` envelope.
 
 ### Cryptography
 
@@ -90,20 +103,27 @@ Both are driven by the [Noise Protocol Framework](https://noiseprotocol.org/). A
 
 ```
 opennhp/
-├── nhp/              # Core protocol library (Go module)
-│   ├── core/         # Packet handling, cryptography, Noise Protocol, device management
-│   ├── common/       # Shared types and message definitions
-│   ├── utils/        # Utility functions
-│   ├── plugins/      # Plugin handler interfaces
-│   ├── log/          # Logging infrastructure
-│   └── etcd/         # Distributed configuration support
-└── endpoints/        # Daemon implementations (Go module, depends on nhp)
-    ├── agent/        # NHP-Agent daemon
-    ├── server/       # NHP-Server daemon
-    ├── ac/           # NHP-AC (access controller) daemon
-    ├── db/           # NHP-DB (Data Broker for DHP)
-    ├── kgc/          # NHP-KGC (Key Generation Center)
-    └── relay/        # NHP-Relay daemon
+├── nhp/                # Core protocol library (Go module)
+│   ├── core/           # Packet handling, cryptography, Noise Protocol, device management
+│   ├── common/         # Shared types and message definitions
+│   ├── keystore/       # Sealed (encrypted-at-rest) private key storage
+│   ├── ebpf/           # eBPF/XDP programs (AC enforcement, Server ingress filter)
+│   ├── plugins/        # Plugin handler interfaces
+│   ├── utils/  log/  metrics/  audit/  etcd/
+│   └── ...
+├── endpoints/          # Daemons and SDKs (Go module, depends on nhp)
+│   ├── agent/          # NHP-Agent daemon, plus the iOS/Android SDK (agent/iossdk)
+│   ├── js-agent/       # JavaScript agent SDK for browsers (via NHP-Relay)
+│   ├── server/         # NHP-Server daemon
+│   ├── ac/             # NHP-AC (access controller) daemon
+│   ├── relay/          # NHP-Relay daemon (HTTPS-to-UDP bridge)
+│   ├── db/             # NHP-DB (Data Broker for DHP)
+│   ├── kgc/            # NHP-KGC (Key Generation Center)
+│   └── keystorecli/    # `seal` / `unseal` key subcommands shared by every daemon
+├── examples/           # Server auth plugins and client SDK samples
+├── demoapp/            # Example web app with NHP-protected login
+├── docker/             # Docker Compose full-stack environment
+└── docs/               # Documentation site (docs.opennhp.org)
 ```
 
 ---
@@ -146,6 +166,32 @@ cd docker && docker-compose up --build
 ```
 
 Follow the [Quick Start tutorial](https://docs.opennhp.org/nhp_quick_start/) to simulate the full authentication workflow in a Docker environment.
+
+### Register an agent
+
+Enroll a device key with a server through the OTP flow. The command prompts for anything you leave out:
+
+```bash
+./nhp-agentd register --email you@example.com --asp-id <auth-service-id> --res-id <resource-id>
+```
+
+The agent generates its key pair locally, asks the server to send a one-time password, then registers the public key once you enter the code. Use `nhp-agentd seal` to keep the private key encrypted at rest.
+
+---
+
+## Clients, SDKs, and Live Demos
+
+| Client | Where |
+|---|---|
+| Native agent daemon | `nhp-agentd` from `make agentd` |
+| iOS / Android SDK | `make iosagentsdk` / `make androidagentsdk` |
+| JavaScript (browser) SDK | [`endpoints/js-agent`](endpoints/js-agent), sends knocks via NHP-Relay |
+
+Try it in the browser:
+
+- **[agent.opennhp.org](https://agent.opennhp.org)**: knock a hidden server with the JavaScript SDK
+- **[reg.opennhp.org](https://reg.opennhp.org)**: walk through device registration (NHP-OTP → NHP-REG)
+- **[demo.opennhp.org](https://demo.opennhp.org)**: a web app whose login is protected by OpenNHP
 
 ---
 

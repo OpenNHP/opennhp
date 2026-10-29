@@ -5,11 +5,76 @@ import (
 	"compress/zlib"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/OpenNHP/opennhp/nhp/core/verifier/csv"
 )
+
+// Scheme names the attestation evidence format the relying party expects.
+// It is chosen by the VERIFIER's own configuration, never by the contents
+// of the evidence being appraised — letting the evidence pick its own
+// verifier is what let a caller select the no-op FallbackVerifier by
+// adding a "test_purpose" key.
+type Scheme string
+
+const (
+	// SchemeCSV is the Hygon CSV attestation report, verified against the
+	// Hygon certificate chain. The only scheme with cryptographic value.
+	SchemeCSV Scheme = "csv"
+	// SchemeTest accepts self-asserted evidence with NO cryptographic
+	// assurance whatsoever. Demo / quick-start only.
+	SchemeTest Scheme = "test"
+)
+
+// ErrTestEvidenceRejected is returned by NewVerifier when the evidence
+// carries a "test_purpose" key but the verifier is configured for a
+// scheme that demands real attestation. Without this guard, an attacker
+// could opt the relying party into the no-op FallbackVerifier simply by
+// adding that key to their evidence.
+var ErrTestEvidenceRejected = errors.New(
+	"evidence carries test_purpose but this verifier is configured for scheme csv")
+
+// ResolveScheme maps an operator-supplied string onto a Scheme, failing
+// closed: anything unrecognized (including "") is SchemeCSV.
+func ResolveScheme(s string) Scheme {
+	if Scheme(strings.ToLower(strings.TrimSpace(s))) == SchemeTest {
+		return SchemeTest
+	}
+	return SchemeCSV
+}
+
+// decompressEvidence reverses the on-the-wire framing used by nhp-agent:
+// base64(zlib(json)).
+//
+// The decoded payload is attacker-controlled (any peer that completes the
+// Noise handshake can pick its length), so the read is bounded by a hard
+// cap; anything past it is rejected to keep a single knock from expanding
+// a few KB into tens of MB in memory.
+const maxEvidenceBytes = 512 * 1024
+
+func decompressEvidence(b64 string) ([]byte, error) {
+	compressed, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode evidence: %v", err)
+	}
+
+	r, err := zlib.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zlib reader: %v", err)
+	}
+	defer r.Close()
+	evidenceBytes, err := io.ReadAll(io.LimitReader(r, maxEvidenceBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read evidence: %v", err)
+	}
+	if len(evidenceBytes) > maxEvidenceBytes {
+		return nil, fmt.Errorf("evidence exceeds %d bytes after decompression", maxEvidenceBytes)
+	}
+	return evidenceBytes, nil
+}
 
 type Verifier interface {
 	// This interface is used to ask verifier to verify the attestation report
@@ -31,15 +96,22 @@ type FallbackVerifier struct {
 }
 
 func (f *FallbackVerifier) Verify() error {
+	// The "test" scheme is for non-TEE demos only. It still refuses
+	// empty values so that a knock carrying an empty JSON body cannot
+	// synthesize a (Measure="", SerialNumber="") that matches a
+	// misconfigured tee.toml entry.
+	if f.Measure == "" || f.SerialNumber == "" {
+		return errors.New("fallback verifier requires non-empty measure and serial_number")
+	}
 	return nil
 }
 
 func (f *FallbackVerifier) GetSerialNumber() string {
-	return f.Measure
+	return f.SerialNumber
 }
 
 func (f *FallbackVerifier) GetMeasure() string {
-	return f.SerialNumber
+	return f.Measure
 }
 
 func NewFallbackVerifier(evidence []byte) (*FallbackVerifier, error) {
@@ -53,40 +125,40 @@ func NewFallbackVerifier(evidence []byte) (*FallbackVerifier, error) {
 	return fallbackVerifier, nil
 }
 
-func NewVerifier(compressedEvienceBase64 string) (Verifier, error) {
-	compressedEvidence, err := base64.StdEncoding.DecodeString(compressedEvienceBase64)
+// NewVerifier dispatches to the verifier selected by `scheme`. The scheme
+// must come from the verifier's own configuration — never from the
+// evidence — because allowing the evidence to pick its own verifier is
+// what made a "test_purpose" key opt the server into the no-op
+// FallbackVerifier.
+func NewVerifier(compressedEvidenceBase64 string, scheme Scheme) (Verifier, error) {
+	evidenceBytes, err := decompressEvidence(compressedEvidenceBase64)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode evidence: %v", err)
+		return nil, err
 	}
 
-	r, err := zlib.NewReader(bytes.NewReader(compressedEvidence))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create zlib reader: %v", err)
-	}
-	defer r.Close()
-	evidenceBytes, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read evidence: %v", err)
-	}
-
-	var evidence map[string]any
-
-	err = json.Unmarshal(evidenceBytes, &evidence)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal evidence: %v", err)
-	}
-
-	var verifier Verifier
-
-	if _, ok := evidence["test_purpose"]; ok {
-		verifier, err = NewFallbackVerifier(evidenceBytes)
-	} else {
-		verifier, err = csv.NewAttestation(string(evidenceBytes))
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create csv verifier: %v", err)
-	} else {
-		return verifier, nil
+	switch scheme {
+	case SchemeTest:
+		v, err := NewFallbackVerifier(evidenceBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create test verifier: %v", err)
+		}
+		return v, nil
+	default:
+		// csv (or anything else) — reject self-asserted evidence outright
+		// instead of forwarding it into the CSV path, which would (a)
+		// try to parse a non-CSV blob, and (b) hit a real, network-bound
+		// verifyCertChain path. Failing closed here also avoids
+		// amplifying a single knock into an unbounded HTTPS GET.
+		var probe map[string]any
+		if jerr := json.Unmarshal(evidenceBytes, &probe); jerr == nil {
+			if _, ok := probe["test_purpose"]; ok {
+				return nil, ErrTestEvidenceRejected
+			}
+		}
+		v, err := csv.NewAttestation(string(evidenceBytes))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create csv verifier: %v", err)
+		}
+		return v, nil
 	}
 }

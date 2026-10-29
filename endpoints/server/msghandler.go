@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,7 +18,24 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	"github.com/OpenNHP/opennhp/nhp/log"
-	utils "github.com/OpenNHP/opennhp/nhp/utils"
+)
+
+var (
+	errReadConfigFailed = errors.New("ztdo config read failed")
+	errSaveConfigFailed = errors.New("ztdo config save failed")
+
+	// lastRelayForwardBlockLog rate-limits the per-packet Critical
+	// emitted by HandleRelayForward when the (relay, real-client)
+	// pair is on the relay-forward block list. The first time that
+	// path fires it is genuinely Critical — an on-path attacker is
+	// replaying captures from a real client already on the block list
+	// — but a sustained flood from the same client would otherwise
+	// emit one Critical line per refused packet, dominating the log
+	// volume an operator relies on to spot other failures. The
+	// dropped-packet counter (packetsDropped{"relay_forward_blocked"})
+	// is preserved so the actual rate is still observable via
+	// metrics; the throttle applies only to the log line.
+	lastRelayForwardBlockLog atomic.Int64
 )
 
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
@@ -60,6 +78,34 @@ func relayAddrFromConnKey(mapKey string) string {
 		return ""
 	}
 	return rest[:idx]
+}
+
+// isValidRelayConnKey reports whether mapKey is a fully-formed
+// relay-forward key of the form "relay|<relayAddr>|<realClientAddr>"
+// — both segments non-empty. The shape is what HandleRelayForward
+// constructs and what relayAddrFromConnKey parses, so a stricter
+// check at the block-map producer (AddRelayForwardBlock) keeps
+// arbitrary caller strings from sneaking into the map and either
+// silently shadowing a legitimate entry or pinning an entry that
+// can never be re-derived by HandleRelayForward's matching lookup.
+func isValidRelayConnKey(mapKey string) bool {
+	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
+		return false
+	}
+	rest := mapKey[len(relayConnKeyPrefix):]
+	// Need exactly one separator between two non-empty segments.
+	idx := strings.IndexByte(rest, relayConnKeySep[0])
+	if idx <= 0 || idx == len(rest)-1 {
+		return false
+	}
+	// No second separator — a key like "relay|a|b|c" would parse
+	// the relay segment as "a" and the client segment as "b|c"
+	// via IndexByte's first match, but that's a key shape nothing
+	// in the system constructs; refuse it.
+	if strings.IndexByte(rest[idx+1:], relayConnKeySep[0]) >= 0 {
+		return false
+	}
+	return true
 }
 
 // incRelayConnCount and decRelayConnCount maintain a per-relay counter
@@ -355,7 +401,10 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 		return err
 	}
 
-	transaction.NextMsgCh <- rakMd
+	if sendErr := transaction.SendMessage(rakMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleRegisterRequest] transaction closed before forward: %v", regMsg.UserId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return err
 }
@@ -425,7 +474,10 @@ func (s *UdpServer) HandleListRequest(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- ackMd
+	if sendErr := transaction.SendMessage(ackMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleListRequest] transaction closed before forward: %v", lstMsg.UserId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return err
 }
@@ -493,7 +545,10 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-ac(%s#%d@%s)[HandleACOnline] transaction closed before forward: %v", acId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -559,7 +614,10 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-db(%s#%d@%s)[HandleDBOnline] transaction closed before forward: %v", dbId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -605,12 +663,15 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 	// forward to a specific transaction
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-agent(@%s#%d@%s)[HandleDHPDARMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDARMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleDHPDARMessage] transaction closed before forward: %v", doId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -642,12 +703,12 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		// config-read failure to the agent and skip attestation
 		// entirely. Attestation must never be evaluated against a
 		// policy we couldn't load.
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%s) failed: %v", transactionId, addrStr, doId, err)
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%q) failed: %v", transactionId, addrStr, common.TruncateDoIDForLog(doId), err)
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = err.Error()
 	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, attErr.Error())
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attestation: %s", transactionId, addrStr, attErr.Error())
 		return attErr
 	} else {
 		dagMsg.DoId = doId
@@ -694,12 +755,15 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 	// forward to a specific transaction
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-agent(@%s#%d@%s)[HandleDHPDARMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDAVMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleDHPDAVMessage] transaction closed before forward: %v", doId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -750,11 +814,14 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-DB(@%s#%d@%s)[HandleDHPDRGMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-db(DoId=%q,trx=#%d@%s)[HandleDHPDRGMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-db(%s#%d@%s)[HandleDHPDRGMessage] transaction closed before forward: %v", doId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 	return nil
 }
 
@@ -763,24 +830,14 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 		return nil
 	}
 
-	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
+	wasmBytes, err := spo.GetPolicy()
 	if err != nil {
-		wasmPath, downloadErr := utils.DownloadFileToTemp(spo.Policy, "wasm-")
-		defer os.Remove(filepath.Dir(wasmPath))
-		defer os.Remove(wasmPath)
-		if downloadErr != nil {
-			return downloadErr
-		}
-		wasmBytes, downloadErr = os.ReadFile(wasmPath)
-		if downloadErr != nil {
-			return downloadErr
-		}
+		return err
 	}
 
 	engine := wasmEngine.NewEngine()
-	err = engine.LoadWasm(wasmBytes)
 	defer engine.Close()
-	if err != nil {
+	if err = engine.LoadWasm(wasmBytes); err != nil {
 		return err
 	}
 
@@ -793,6 +850,10 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 
 func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 	objectId := drgMsg.DoId
+	if err := common.ValidateDoID(objectId); err != nil {
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), err)
+		return err
+	}
 	configFileName := "data-" + objectId + ".json"
 
 	etcDir := filepath.Join(ExeDirPath, "etc", "ztdo")
@@ -806,49 +867,75 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 			drgMsg.AccessUrl = existingDrgMsg.AccessUrl
 		}
 
-		os.Remove(configPath)
 	}
 
 	// Make sure the etc directory exists
 	if err := os.MkdirAll(etcDir, 0755); err != nil {
-		return fmt.Errorf("failed to create etc directory: %v", err)
+		log.Error("server[SaveZdtoConfig] DoId=%q mkdir: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
 	}
 
-	if _, err := os.Stat(configPath); err == nil {
-		return fmt.Errorf("%v already exists, please delete it first", configFileName)
-	}
-
-	file, err := os.Create(configPath)
+	// Write a complete replacement before publishing it, so readers never see
+	// a missing or partially encoded config during an update.
+	file, err := os.CreateTemp(etcDir, ".data-*.json")
 	if err != nil {
-		return fmt.Errorf("failed to create config.json: %v", err)
+		log.Error("server[SaveZdtoConfig] DoId=%q create: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(drgMsg)
+	if err := encoder.Encode(drgMsg); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q encode: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
+	}
+	if err := file.Close(); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q close: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
+	}
+	if err := os.Rename(file.Name(), configPath); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q rename: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
+	}
+
+	return nil
 }
 
 // read data-<doId>.json to DRGMsg Object
 func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
+	if err := common.ValidateDoID(doId); err != nil {
+		log.Warning("server[ReadZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(doId), err)
+		return common.DRGMsg{}, err
+	}
+
 	etcDir := filepath.Join(ExeDirPath, "etc", "ztdo")
 	configFilePath := filepath.Join(etcDir, "data-"+doId+".json")
 	file, err := os.Open(configFilePath)
 	if err != nil {
-		return common.DRGMsg{}, fmt.Errorf("could not open file: %v", err)
+		if os.IsNotExist(err) {
+			log.Debug("server[ReadZdtoConfig] DoId=%q not found: %v", common.TruncateDoIDForLog(doId), err)
+		} else {
+			log.Error("server[ReadZdtoConfig] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
+		}
+		return common.DRGMsg{}, errReadConfigFailed
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	fileContentByte, err := io.ReadAll(file)
 	if err != nil {
-		return common.DRGMsg{}, fmt.Errorf("error reading file: %v", err)
+		log.Error("server[ReadZdtoConfig] DoId=%q read: %v", common.TruncateDoIDForLog(doId), err)
+		return common.DRGMsg{}, errReadConfigFailed
 	}
 
 	var config common.DRGMsg
 
-	err = json.Unmarshal(fileContentByte, &config)
-	if err != nil {
-		return common.DRGMsg{}, fmt.Errorf("json parsing error: %s", err)
+	if err := json.Unmarshal(fileContentByte, &config); err != nil {
+		log.Error("server[ReadZdtoConfig] DoId=%q unmarshal: %v", common.TruncateDoIDForLog(doId), err)
+		return common.DRGMsg{}, errReadConfigFailed
 	}
 	return config, nil
 }
@@ -892,6 +979,42 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
 	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
 		relayAddrStr, realAddr, len(innerBytes))
+
+	// Per-(relay, real-client) block check. connectionRoutine's
+	// relay-aware BlockSignal branch (the one that drops the
+	// relay's UDP address from AddBlockAddr's target to honor
+	// GHSA-674q-j8fh-972c) records the penalty here on the
+	// composite mapKey so subsequent forwards from the same real
+	// client hit this gate and are dropped silently — same
+	// penalty the direct-UDP path has, scoped to "this real
+	// client behind this relay". Without this hook a misbehaving
+	// real client would land on a fresh per-client conn every
+	// time it sent, giving it ~one accepted replay/flood per
+	// three. Raked before conn lookup and the rknLimiter gate so
+	// a blocked client costs the server nothing beyond the map
+	// lookup.
+	connKeyEarly := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + realAddr.String()
+	if s.IsRelayForwardBlocked(connKeyEarly) {
+		// Use the precheck drop stage so an operator looking at
+		// the per-stage "packets_dropped_total" series sees the
+		// drop where it actually happens (relay-forward gate,
+		// not the per-conn inner path it never reaches).
+		s.metrics.recordDroppedPacket("relay_forward_blocked")
+		// Rate-limit the Critical to once per minute. The dropped-
+		// packet counter above still records every refused packet,
+		// so the rate is observable via metrics; the throttle
+		// stops a controlled flood (a client CAN fire one NHP_RLY
+		// per round-trip until the relay's anti-replay blocks it,
+		// but cannot sustain >120/min at the relay→server link)
+		// from dominating log volume and masking other failures.
+		now := time.Now().UnixNano()
+		last := lastRelayForwardBlockLog.Load()
+		if now-last >= int64(time.Minute) && lastRelayForwardBlockLog.CompareAndSwap(last, now) {
+			log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active",
+				realAddr, relayAddrStr)
+		}
+		return fmt.Errorf("relay forward blocked for %s", realAddr)
+	}
 
 	// Allocate a pool packet for the inner bytes.
 	innerPkt := s.device.AllocatePoolPacket()
@@ -943,7 +1066,7 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	// as "[2001:db8::1]:80", so a ':'-delimited key could not be reliably
 	// split from the right. See relayConnKeySep for the full reasoning.
 	relayAddr := ppd.ConnData.RemoteAddr
-	connKey := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + realAddr.String()
+	connKey := connKeyEarly
 	recvTime := time.Now().UnixNano()
 
 	// Three steps run under a single map-mutex critical section so that

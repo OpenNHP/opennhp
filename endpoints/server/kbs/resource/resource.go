@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -156,31 +157,35 @@ func GetResource(c *gin.Context) {
 }
 
 func loadResource(resourceID string) ([]byte, error) {
-	absBaseDir, err := filepath.Abs(baseDir)
-	if err != nil {
-		return nil, fmt.Errorf("fail to get base directory absolute path: %w", err)
-	}
-
-	fullPath := filepath.Join(absBaseDir, resourceID)
-
-	absFullPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return nil, fmt.Errorf("fail to get resource absolute path: %w", err)
-	}
-
-	// Check if the path is within the base directory to avoid path traversal attack.
-	if !strings.HasPrefix(absFullPath, absBaseDir) {
+	// Gin catch-all parameters include one leading slash. Keep the remainder
+	// relative so os.Root still rejects traversal and escaping symlinks.
+	resourceID = strings.TrimPrefix(resourceID, "/")
+	if !filepath.IsLocal(resourceID) {
 		return nil, errors.New("invalid resource ID: potential path traversal attack")
 	}
-
-	if _, statErr := os.Stat(absFullPath); statErr != nil {
-		if os.IsNotExist(statErr) {
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("fail to open resource directory: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.OpenFile(resourceID, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		if os.IsNotExist(err) {
 			return nil, errors.New("resource not found")
 		}
-		return nil, fmt.Errorf("fail to check resource: %w", statErr)
+		return nil, fmt.Errorf("fail to open resource: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	fileInfo, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("fail to stat resource: %w", err)
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return nil, errors.New("resource is not a regular file")
 	}
 
-	data, err := os.ReadFile(absFullPath)
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("fail to read resource: %w", err)
 	}

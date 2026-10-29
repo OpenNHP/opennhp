@@ -32,11 +32,12 @@ func NhpAgentInit(workingDir string, logLevel int) bool {
 		return true
 	}
 
-	gAgentInstance = &agent.UdpAgent{}
-	err := gAgentInstance.Start(workingDir, logLevel)
+	instance := &agent.UdpAgent{}
+	err := instance.Start(workingDir, logLevel)
 	if err != nil {
 		return false
 	}
+	gAgentInstance = instance
 
 	return true
 }

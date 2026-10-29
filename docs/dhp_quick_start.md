@@ -107,6 +107,29 @@ curl --insecure https://localhost:8443/api/v1/attestation/tee
 Next, you need to configure attestation in nhp-server.
 ```shell
 docker exec -it nhp-server /bin/bash
+vi /nhp-server/etc/config.toml
+```
+
+If the host running this stack does NOT have a Hygon CSV card, the
+attestation report above is not a valid CSV report, and the csv verifier
+on nhp-server will refuse it (you will see `attestationVerified:false` and
+an Error line on the server). Tell nhp-server to accept the
+container-generated evidence by adding the line below to `config.toml`:
+
+```toml
+AttestationScheme = "test"
+```
+
+The default (key absent, or any value other than `"test"`) is `"csv"`,
+which requires a real Hygon CSV attestation report. `"test"` accepts
+self-asserted evidence with NO cryptographic assurance — the server
+logs `Critical: AttestationScheme="test": ...` at startup, and on every
+reload where the resolved scheme is still `"test"`. Treat that line as
+**"you are running with a guard off"**. Never set `AttestationScheme =
+"test"` on a host reachable from outside the trust boundary.
+
+Then configure the TEE whitelist:
+```shell
 vi /nhp-server/etc/tee.toml
 # list trusted execution environments under [[TEEs]] table
 

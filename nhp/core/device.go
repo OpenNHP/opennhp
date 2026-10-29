@@ -1,7 +1,9 @@
 package core
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -102,6 +104,11 @@ type Device struct {
 	DecryptedMsgQueue chan *PacketParserData
 	packetToMsgQueue  chan *PacketData
 	msgToPacketQueue  chan *MsgData
+
+	// recvReplayDedupeFn runs after peer/timestamp authentication and before
+	// body decryption. Endpoints can use this chokepoint to reject a response
+	// replay whether or not transaction correlation matched it.
+	recvReplayDedupeFn func(*PacketParserData) error
 }
 
 func NewDevice(t int, prk []byte, option *DeviceOptions) *Device {
@@ -126,6 +133,14 @@ func NewDevice(t int, prk []byte, option *DeviceOptions) *Device {
 		return nil
 	}
 
+	// Randomize the transaction sequence across process/device replacement.
+	var seed [8]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		log.Critical("Failed to initialize transaction sequence: %v", err)
+		return nil
+	}
+	d.counterIndex = binary.BigEndian.Uint64(seed[:])
+
 	d.pool = &PacketBufferPool{}
 	d.pool.Init(PacketBufferPoolSize)
 
@@ -145,6 +160,12 @@ func (d *Device) SetOption(option DeviceOptions) {
 	defer d.optionMutex.Unlock()
 
 	d.option = option
+}
+
+// SetRecvReplayDedupe installs an endpoint-owned replay check. It must be
+// called before Start so worker goroutines can read the hook without locking.
+func (d *Device) SetRecvReplayDedupe(fn func(*PacketParserData) error) {
+	d.recvReplayDedupeFn = fn
 }
 
 // GetOption returns a copy of the current device options.
@@ -335,13 +356,7 @@ func (d *Device) msgToPacketRoutine(id int) {
 					}
 
 					// save initiator transaction
-					t := &LocalTransaction{
-						transactionId: mad.header.Counter(),
-						connData:      mad.connData,
-						mad:           mad,
-						NextPacketCh:  make(chan *Packet),
-						timeout:       d.LocalTransactionTimeout(),
-					}
+					t := newLocalTransaction(mad.header.Counter(), mad.connData, mad, d.LocalTransactionTimeout())
 					d.AddLocalTransaction(t)
 					log.Debug("AddLocalTransaction:deviceType=%d,HeaderType=%d", d.deviceType, mad.HeaderType)
 				}
@@ -461,6 +476,16 @@ func (d *Device) packetToMsgRoutine(id int) {
 					return
 				}
 
+				if d.recvReplayDedupeFn != nil {
+					err = d.recvReplayDedupeFn(ppd)
+					if err != nil {
+						log.Debug("packetToMsgRoutine %d: [%s] packet replay rejected: %v", id, msgType, err)
+						log.Evaluate("packetToMsgRoutine %d: [%s] packet replay rejected: %v", id, msgType, err)
+						d.notifyPacketDropped("replay")
+						return
+					}
+				}
+
 				err = ppd.decryptBody()
 				if err != nil {
 					log.Error("packetToMsgRoutine: %d: [%s] packet decryption failed: %v", id, msgType, err)
@@ -489,13 +514,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				log.Debug("packetToMsgRoutine: complete decrypting start IsTransactionRequest:deviceType:%d,headerType:%s", d.deviceType, HeaderTypeToString(ppd.HeaderType))
 				// start and save responder transaction
 				if d.IsTransactionRequest(ppd.HeaderType) {
-					t := &RemoteTransaction{
-						transactionId: ppd.SenderTrxId,
-						connData:      ppd.ConnData,
-						parserData:    ppd, // ppd is owned and to be destroyed by transaction
-						NextMsgCh:     make(chan *MsgData),
-						timeout:       d.RemoteTransactionTimeout(),
-					}
+					t := newRemoteTransaction(ppd.SenderTrxId, ppd.ConnData, ppd, d.RemoteTransactionTimeout())
 					ppd.ConnData.AddRemoteTransaction(t)
 					log.Debug("IsTransactionRequest:true")
 				}
@@ -547,6 +566,12 @@ func (d *Device) PacketToMsg(pd *PacketData) (ppd *PacketParserData, err error) 
 	if err != nil {
 		return nil, err
 	}
+	if d.recvReplayDedupeFn != nil {
+		if err = d.recvReplayDedupeFn(ppd); err != nil {
+			d.notifyPacketDropped("replay")
+			return nil, err
+		}
+	}
 	err = ppd.decryptBody()
 	if err != nil {
 		return nil, err
@@ -556,6 +581,18 @@ func (d *Device) PacketToMsg(pd *PacketData) (ppd *PacketParserData, err error) 
 }
 
 func (d *Device) SendMsgToPacket(md *MsgData) {
+	// Stop() closes msgToPacketQueue after only the device's own routines
+	// (d.wg) have exited. Callers of this method run in goroutines tracked by
+	// other wait groups — e.g. the agent's sendMessageRoutine (a.wg) — so one
+	// can still arrive here after the queue is closed during shutdown. A send on
+	// a closed channel panics even inside a select/default, which would abort
+	// the whole process (fatal in an embedded gomobile/cgo build). Recover turns
+	// that shutdown close race into a dropped message instead of a crash.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warning("SendMsgToPacket: dropped message after device stop: %v", r)
+		}
+	}()
 	select {
 	case d.msgToPacketQueue <- md:
 		// process encryption and send encrypted packet via connection
@@ -566,6 +603,15 @@ func (d *Device) SendMsgToPacket(md *MsgData) {
 }
 
 func (d *Device) RecvPacketToMsg(pd *PacketData) {
+	// Same shutdown close race as SendMsgToPacket: packetToMsgQueue is closed in
+	// Stop() while packet receivers (tracked by conn/other wait groups, not
+	// d.wg) may still be running. Recover so a late send becomes a drop, not a
+	// panic.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warning("RecvPacketToMsg: dropped message after device stop: %v", r)
+		}
+	}()
 	select {
 	case d.packetToMsgQueue <- pd:
 		// process decryption and deliver plain text message to DecryptedMessageCh

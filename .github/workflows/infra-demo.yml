@@ -19,6 +19,11 @@ on:
         description: 'Type "confirm" for apply/destroy'
         required: false
         default: ''
+      open_all_ports:
+        description: 'Open the nhp-server security group to all ports (XDP is then the only inbound control). Enable only after deploy-demo-v2 shows the XDP attach gate green.'
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -201,6 +206,11 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
+          # The wrapper writes `::error::Terraform exited with code N.` to
+          # stdout on failure (core.setFailed), which any `$(terraform ...)`
+          # capture would pick up as if it were a value. Nothing here consumes
+          # the wrapper's stdout/stderr/exitcode step outputs.
+          terraform_wrapper: false
 
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -222,10 +232,67 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
           TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
           TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
+          TF_VAR_server_open_all_ports: ${{ github.event.inputs.open_all_ports == 'true' && 'true' || 'false' }}
         run: |
           terraform plan \
             ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \
             -out=tfplan
+
+      # A host created or replaced in a plan that also opens every port has no
+      # XDP program until deploy-demo-v2 runs, so it would sit fully exposed.
+      - name: Refuse all-ports SG on a new or replaced nhp-server
+        if: env.TF_ACTION == 'plan' || env.TF_ACTION == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > plan.json
+          open_all=$(jq -r '.variables.server_open_all_ports.value // false' plan.json)
+          touched=$(jq -r '[.resource_changes[]
+            | select(.address == "aws_instance.server")
+            | select(.change.actions | index("create") or index("delete"))] | length' plan.json)
+          rm -f plan.json
+          if [ "$open_all" = "true" ] && [ "$touched" != "0" ]; then
+            echo "::error::server_open_all_ports=true while aws_instance.server is created or replaced in this plan."
+            echo "Apply with open_all_ports=false, run deploy-demo-v2, confirm 'Verify the XDP ingress filter attached' is green, then re-run with open_all_ports=true." >&2
+            exit 1
+          fi
+
+      # The refusal above only looks at the plan. Opening every port is safe
+      # only while the filter is really attached on the existing host, because
+      # the filter is fail-open. Ask the kernel on the host itself, over the
+      # same relay jump the deploy uses, before the SG is widened.
+      - name: Require an attached XDP filter before opening all ports
+        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm' && github.event.inputs.open_all_ports == 'true'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          RELAY_IP=$(terraform output -raw relay_public_ip)
+          SERVER_PRIV=$(terraform output -raw server_private_ip)
+
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+          KEY_TMP=$(mktemp)
+          KNOWN_TMP=$(mktemp)
+          trap 'rm -f "$KEY_TMP" "$KNOWN_TMP"' EXIT
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > "$KEY_TMP"
+          chmod 600 "$KEY_TMP"
+          echo "$SECRETS" | jq -r '.ssh_host_keys // empty' > "$KNOWN_TMP"
+          if [ ! -s "$KNOWN_TMP" ]; then
+            echo "::error::ssh_host_keys missing from opennhp/demo; cannot verify the XDP filter, refusing to open all ports."
+            exit 1
+          fi
+
+          if ! ssh -i "$KEY_TMP" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile="$KNOWN_TMP" \
+                -o ProxyCommand="ssh -i $KEY_TMP -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_TMP -W %h:%p ec2-user@$RELAY_IP" \
+                ec2-user@"$SERVER_PRIV" "ip -details link show | grep -q xdpgeneric"; then
+            echo "::error::No XDP program attached on nhp-server (or the host is unreachable). Refusing to open all ports."
+            echo "Run deploy-demo-v2, confirm 'Verify the XDP ingress filter attached' is green, then re-run." >&2
+            exit 1
+          fi
+          echo "XDP filter is attached on nhp-server; proceeding."
 
       - name: Terraform Apply
         if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm'

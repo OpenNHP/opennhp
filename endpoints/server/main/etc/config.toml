@@ -22,6 +22,7 @@
 # ListenPort (-): udp listening port.
 # Hostname (-): server domain name.
 # OverloadMaxAgentConnectionsPerIP (-): per-source tuple cap during overload only; 0 selects 256.
+# ARTReplayCacheEntries (-): 0 selects 100000, maximum 1000000; restart required.
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # DisableAgentValidation: whether for the server to skip the agent's public key validation.
 # AllowPrivateRelaySource: accept private (RFC1918 / loopback / CGNAT)

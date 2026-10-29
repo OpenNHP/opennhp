@@ -59,6 +59,29 @@ echo "  Domain:         $DOMAIN"
 echo "  Regenerate:     $REGENERATE"
 echo ""
 
+# --- Validate NHP knock port BEFORE any AWS / file work ---
+#
+# The configure job in .github/workflows/deploy-demo-v2.yml reads the port from
+# `terraform output -raw nhp_listen_port` and exports it as NHP_SERVER_PORT,
+# so a missing value here is always an error: a default would silently render
+# configs that disagree with the security group already applied by `infra-demo`.
+# This check has to happen before the put-secret-value below — otherwise a
+# manual run without NHP_SERVER_PORT would rotate the keys in opennhp/demo
+# (the lockstep failure CLAUDE.md warns about under --regenerate) and then
+# exit before writing deploy/configs/, leaving peers out of sync.
+if [ -z "${NHP_SERVER_PORT:-}" ]; then
+  echo "  ERROR: NHP_SERVER_PORT 未设置。configure job 应当从" >&2
+  echo "         'terraform output -raw nhp_listen_port' 读取并 export；手动跑" >&2
+  echo "         请显式赋值（例如 NHP_SERVER_PORT=443 ./scripts/generate-nhp-keys.sh ...）。" >&2
+  exit 1
+fi
+case "$NHP_SERVER_PORT" in
+  ''|*[!0-9]*) echo "  ERROR: NHP_SERVER_PORT='$NHP_SERVER_PORT' 不是整数" >&2; exit 1 ;;
+esac
+if [ "$NHP_SERVER_PORT" -lt 1 ] || [ "$NHP_SERVER_PORT" -gt 65535 ]; then
+  echo "  ERROR: NHP_SERVER_PORT=$NHP_SERVER_PORT 超出 1-65535" >&2; exit 1
+fi
+
 # --- Create output directories ---
 mkdir -p "$OUTPUT_DIR/server"
 mkdir -p "$OUTPUT_DIR/ac"
@@ -98,6 +121,15 @@ EXISTING_SERVER_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server_sm2_public_k
 # failed"). Generate with openssl on first run; reuse on subsequent.
 EXISTING_DEMOAPP_KEY_ENVELOPE_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_key_envelope_key // empty')
 EXISTING_DEMOAPP_SESSION_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_session_key // empty')
+# stats.opennhp.org collector SSH keypair. The relay uses this private key
+# to pull nhp_server_xdp-YYYY-MM-DD.log files from nhp-server's
+# nhp-xdplog-export.sh forced-command script. Server-side, the matching
+# public key is appended to /home/ec2-user/.ssh/authorized_keys by the
+# deploy-server job with command=".../nhp-xdplog-export.sh",no-agent/...,
+# so the private key is read-only on a single read path: list or get <date>.
+# Ed25519 is preferred over RSA for the small line and fast verification.
+EXISTING_STATS_COLLECTOR_PRIV=$(echo "$SECRETS_JSON" | jq -r '.stats_collector_ssh_private_key // empty')
+EXISTING_STATS_COLLECTOR_PUB=$(echo "$SECRETS_JSON" | jq -r '.stats_collector_ssh_public_key // empty')
 
 # --- Generate or reuse keys ---
 generate_keys() {
@@ -247,6 +279,48 @@ fi
 echo "::add-mask::$DEMOAPP_KEY_ENVELOPE_KEY"
 echo "::add-mask::$DEMOAPP_SESSION_KEY"
 
+# stats collector SSH keypair (ed25519). Idempotent: reuse the existing pair
+# from AWS SM if both halves are present, otherwise generate a fresh one.
+# Passphrase-less key — the relay host is the only consumer and the file
+# lives at 0600 /home/ec2-user/.ssh/stats_collector_key. Force-rotate only
+# on explicit --regenerate.
+#
+# The key comment is the tag deploy-server greps for when it replaces the
+# managed authorized_keys line, so it must stay hyphenated and space-free:
+# a tag containing a space would have to survive a round trip through a
+# remote shell command.
+#
+# ssh-keygen REFUSES to write over an existing file and prompts
+# "Overwrite (y/n)?" instead. On an Actions runner stdin is not a TTY, so the
+# prompt reads EOF and ssh-keygen exits non-zero, which under `set -e` would
+# take down `configure` and with it every deploy job. Hence mktemp -d (a
+# directory that is guaranteed empty) rather than mktemp (a file that already
+# exists). Cleanup is explicit instead of a trap: this script has no EXIT trap
+# today, and adding one here would silently replace any trap a later edit
+# installs.
+STATS_COLLECTOR_KEYGEN_DIR=$(mktemp -d -t stats_collector_keygen.XXXXXX)
+STATS_COLLECTOR_KEYGEN_OUT="$STATS_COLLECTOR_KEYGEN_DIR/collector_key"
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_STATS_COLLECTOR_PRIV" || -z "$EXISTING_STATS_COLLECTOR_PUB" ]]; then
+  echo "  Generating new stats collector ed25519 keypair..." >&2
+  ssh-keygen -t ed25519 -N "" -C "stats.opennhp.org-collector" -f "$STATS_COLLECTOR_KEYGEN_OUT" >/dev/null
+  STATS_COLLECTOR_SSH_PRIVATE_KEY=$(cat "$STATS_COLLECTOR_KEYGEN_OUT")
+  STATS_COLLECTOR_SSH_PUBLIC_KEY=$(cat "$STATS_COLLECTOR_KEYGEN_OUT.pub")
+else
+  echo "  Reusing existing stats collector SSH keypair from AWS SM" >&2
+  STATS_COLLECTOR_SSH_PRIVATE_KEY="$EXISTING_STATS_COLLECTOR_PRIV"
+  STATS_COLLECTOR_SSH_PUBLIC_KEY="$EXISTING_STATS_COLLECTOR_PUB"
+fi
+rm -rf "$STATS_COLLECTOR_KEYGEN_DIR"
+# Mask the private key line-by-line at its source. ::add-mask:: only
+# applies to a single line, and an OpenSSH ed25519 key spans four or more
+# base64 body lines plus a trailing comment; masking the whole key as
+# one string redacts only the BEGIN line and prints the body lines raw
+# into the public Actions log. Mirror the line-by-line pattern used by
+# deploy-demo-v2.yml for STEALTH_CA_KEY / demo_nhp_key.
+while IFS= read -r line; do
+  [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+done <<< "$STATS_COLLECTOR_SSH_PRIVATE_KEY"
+
 echo ""
 echo "--- Key summary ---"
 echo "  Server public key (Curve25519): ${NHP_SERVER_PUBLIC_KEY:0:20}..."
@@ -282,6 +356,8 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg jsp "$NHP_JSAGENT_SM2_PUBLIC_KEY" \
   --arg dek "$DEMOAPP_KEY_ENVELOPE_KEY" \
   --arg dsk "$DEMOAPP_SESSION_KEY" \
+  --arg scp "$STATS_COLLECTOR_SSH_PRIVATE_KEY" \
+  --arg scq "$STATS_COLLECTOR_SSH_PUBLIC_KEY" \
   '. + {
     nhp_server_private_key: $sk,
     nhp_server_public_key: $sp,
@@ -296,7 +372,9 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
     nhp_jsagent_public_key: $jp,
     nhp_jsagent_sm2_public_key: $jsp,
     demoapp_key_envelope_key: $dek,
-    demoapp_session_key: $dsk
+    demoapp_session_key: $dsk,
+    stats_collector_ssh_private_key: $scp,
+    stats_collector_ssh_public_key: $scq
   }')
 
 aws secretsmanager put-secret-value \
@@ -325,6 +403,77 @@ export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY NHP_JSAGENT_SM2_PUBLIC_KEY
 export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
 export DOMAIN="$DOMAIN"
+
+# nhp-server eBPF/XDP ingress policy (server/xdp.toml). RELAY_IPS is the
+# whitelist that decides who may reach tcp/22 on the server host, so an empty
+# render is a lockout: the deploy pipeline resolves the relay's addresses and
+# fails the run before reaching this script if it cannot. Warn here too,
+# because this script is also run by hand.
+#
+# RELAY_IPS is accepted as a comma / space separated list (the pipeline passes
+# the relay's VPC private address, which is what SSH into the server actually
+# arrives from, its public address, and the VPC subnet as a prefix so that a
+# replaced relay with a new private address is still admitted) and rendered
+# into the template as a TOML array via RELAY_IPS_TOML. Quoting here rather
+# than in the template keeps the template a plain
+# `RelayIPs = [${RELAY_IPS_TOML}]` for any number of entries, and gives one
+# place to reject malformed input.
+export XDP_ENABLED="${XDP_ENABLED:-true}"
+# Keep in sync with the nhp_min_udp_len default in
+# nhp/ebpf/xdp/nhp_server_xdp.c. The daemon writes this value into the object's
+# .rodata at startup, so it is applied rather than merely recorded.
+export XDP_NHP_MIN_FRAME_BYTES="${XDP_NHP_MIN_FRAME_BYTES:-240}"
+# [NHP-SCAN] window (seconds) and Top-N; keep in sync with
+# DefaultScanReportIntervalSeconds / DefaultScanReportTopN in
+# endpoints/server/config.go. Read once at startup.
+export XDP_SCAN_REPORT_SECONDS="${XDP_SCAN_REPORT_SECONDS:-300}"
+export XDP_SCAN_TOP_N="${XDP_SCAN_TOP_N:-20}"
+export XDP_EVENT_LOG_ENABLED="${XDP_EVENT_LOG_ENABLED:-true}"
+# NHP knock 端口。单一真源是 terraform/demo 的 var.nhp_listen_port，由 configure
+# job 从 `terraform output -raw nhp_listen_port` 读出后传进来；这个脚本在没有
+# `var.nhp_listen_port` 输出的状态上不会跑 configure，所以「未设置」一定意味着
+# 错误——不允许退回任何默认值（包括历史端口 62206），因为那会让一份与 SG 不
+# 一致的安全组悄悄上线。手动跑也请显式 `NHP_SERVER_PORT=...`。
+#
+# Validation (empty / non-integer / out-of-range) lives at the top of this
+# script, BEFORE the AWS SM put-secret-value call, so a missing port fails
+# before any secret rotation. The render/export happens here, near the
+# other envsubst inputs.
+export NHP_SERVER_PORT
+echo "  NHP knock port: $NHP_SERVER_PORT"
+export RELAY_IPS="${RELAY_IPS:-}"
+
+RELAY_IPS_TOML=""
+for relay_ip in $(printf '%s' "$RELAY_IPS" | tr ',;' '  '); do
+  # Host addresses and CIDR prefixes both; the daemon parses either
+  # (ParseRelayPrefix in nhp/utils/ebpf) and matches by longest prefix.
+  if ! printf '%s' "$relay_ip" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(/[0-9]{1,2})?$'; then
+    echo "  ERROR: RELAY_IPS contains '$relay_ip', which is not an IPv4 address" >&2
+    echo "         or prefix. nhp-server's whitelist is IPv4-only; refusing to" >&2
+    echo "         render a whitelist the kernel would silently drop that entry" >&2
+    echo "         from." >&2
+    exit 1
+  fi
+  # Dedupe so passing the same address twice (e.g. a host whose public and
+  # private addresses coincide) does not render a duplicated array.
+  case "$RELAY_IPS_TOML" in
+    *"\"$relay_ip\""*) continue ;;
+  esac
+  if [ -n "$RELAY_IPS_TOML" ]; then
+    RELAY_IPS_TOML="$RELAY_IPS_TOML, \"$relay_ip\""
+  else
+    RELAY_IPS_TOML="\"$relay_ip\""
+  fi
+done
+export RELAY_IPS_TOML
+
+if [ -z "$RELAY_IPS_TOML" ]; then
+  echo "  WARNING: RELAY_IPS is empty — server/xdp.toml will render an empty" >&2
+  echo "           SSH whitelist. Deploying it would close tcp/22 on the" >&2
+  echo "           nhp-server host with no way back in short of rebuilding it." >&2
+else
+  echo "  server/xdp.toml SSH whitelist: $RELAY_IPS_TOML"
+fi
 
 # GitHub OAuth (application-side login). These come from GitHub Actions
 # Variables / Secrets set on the deploy-demo-v2 workflow, not from the

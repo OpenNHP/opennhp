@@ -24,21 +24,30 @@ func NewEngine() *Engine {
 // LoadWasm loads and instantiates a WASM module from the given byte slice.
 // It sets up the necessary host functions (including logging) and WASI environment.
 // The instantiated module is stored in the Engine for later execution.
-// Returns an error if the WASM module fails to instantiate.
-func (e *Engine) LoadWasm(wasmBytes []byte) error {
+// Returns an error if the WASM module fails to instantiate. Reloading closes
+// the previous module, including when the replacement fails to load.
+func (e *Engine) LoadWasm(wasmBytes []byte) (err error) {
+	e.Close()
 	ctx := context.Background()
 
 	r := wazero.NewRuntime(ctx)
+	defer func() {
+		if err != nil {
+			_ = r.Close(ctx)
+		}
+	}()
 
-	_, err := r.NewHostModuleBuilder("env").
+	_, err = r.NewHostModuleBuilder("env").
 		NewFunctionBuilder().WithFunc(logString).Export("log").
 		Instantiate(ctx)
 	if err != nil {
-		log.Panicln(err)
+		return err
 	}
 
 	// Instantiate WASI
-	wasi_snapshot_preview1.MustInstantiate(ctx, r)
+	if _, err = wasi_snapshot_preview1.Instantiate(ctx, r); err != nil {
+		return err
+	}
 
 	// Configure the module to initialize the reactor
 	config := wazero.NewModuleConfig().WithStartFunctions("_initialize")
@@ -59,9 +68,12 @@ func (e *Engine) LoadWasm(wasmBytes []byte) error {
 }
 
 // Close terminates the engine's resources by closing the underlying runner.
-// It should be called to clean up resources when the engine is no longer needed.
+// It is safe to call before loading or repeatedly. The runtime owns close
+// synchronization; keep module handles so concurrent calls observe it closed.
 func (e *Engine) Close() {
-	e.r.Close(e.ctx)
+	if e.r != nil {
+		_ = e.r.Close(e.ctx)
+	}
 }
 
 func (e *Engine) ReadContentFromVMMemory(memPos uint32, memLen uint32) []byte {

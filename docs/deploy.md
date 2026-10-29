@@ -342,6 +342,49 @@ sources. This reduces per-source coverage: alert on
 `nhp_server_packet_rate_cache_evictions_total`. Upstream anti-spoofing and flood
 filtering remain necessary; a bounded table cannot retain unlimited identities. IPv6 sources are budgeted
 per /64 prefix, not per address.
+### Direct connection admission
+
+`OverloadMaxAgentConnectionsPerIP` in server config sets the maximum number of direct
+unauthenticated/agent UDP tuples per source during overload (zero: 256).
+Requires restart. Tune it for shared NAT egress. Below overload, this cap is
+inactive so spoofed tuples cannot cheaply deny a chosen source. Under overload,
+a spoofed source can still consume its budget; deploy network anti-spoofing.
+Excess new tuples are dropped without evicting existing sessions; the metric
+stage is `per_ip_conn_limit`. Only configured AC/DB keys gain a control-peer
+exemption after authentication. The global connection cap still applies.
+
+`OverloadMaxAgentConnectionsPerIP` limits new admissions only after overload
+begins; it does not reclaim existing tuples. A source that connects before
+pressure can retain more than that value, up to the global cap. ForceOverload
+keeps this admission limit active continuously. IPv6 keys are individual IPs,
+not /64 networks. Static IPs in configured AC, DB and relay peers bypass only
+this per-source admission check so infrastructure can reconnect under pressure.
+Spoofed traffic can claim those addresses too; authentication and the global
+cap still apply. Peers configured only by key or hostname have no IP exemption.
+### AOP clock tolerance
+
+AOP requests now default to a 120-second maximum age, down from 600 seconds.
+Keep server and AC clocks synchronized. A stale drop reports message type,
+measured age, and the configured limit. Set `AOPRecvStalenessSeconds` in the AC
+configuration to 1..600 seconds if a deployment needs more tolerance; zero
+selects 120. Restart the AC after changes. A larger limit also widens the
+post-restart replay window. Replay and missing-key drops have metric stages
+`aop_replay` and `no_peer_pubkey`.
+
+AOP replay-cache capacity is configured with `AOPReplayCacheEntries` on the AC
+(restart required; zero selects 100,000; maximum 1,000,000). Size it for peak
+AOP packets/s times 660 seconds. Alert on
+`nhp_ac_aop_replay_cache_evictions_total`: unexpired capacity evictions shorten
+replay coverage. Expiry is lazy and memory remains bounded without a cleanup
+goroutine. TTL derives from the maximum accepted staleness plus 60 seconds.
+The AC accepts an AOP stamped from `AOPRecvStalenessSeconds` (default 120)
+behind its own clock to 300 seconds ahead. The forward bound is a protocol
+constant (`ARTRecvFutureSkewSeconds`) and is not configurable. Packets outside
+that window are dropped with a Critical log (future-skew logs are rate-limited);
+the server connection is not blocked. Before this change the accepted window was
+600 seconds behind with no forward limit, so an AC whose clock is more than 5
+minutes behind its server will drop every AOP after upgrading; synchronize
+infrastructure clocks before upgrading.
 
 ### Data object identifiers and key files
 

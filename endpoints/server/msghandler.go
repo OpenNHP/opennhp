@@ -502,6 +502,10 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 	acPeer := s.acPeerMap[acPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.acPeerMapMutex.Unlock()
 
+	if acPeer == nil {
+		return fmt.Errorf("sender is not a configured AC peer")
+	}
+
 	acConn := &ACConn{
 		ConnData:       ppd.ConnData,
 		ACPeer:         acPeer,
@@ -509,6 +513,10 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 		ACId:           acId,
 		ServiceId:      aolMsg.AuthServiceId,
 		Apps:           aolMsg.ResourceIds,
+	}
+	if !s.promoteControlConnection(ppd.ConnData, controlConnectionAC) {
+		log.Warning("server-ac(@%s@%s)[HandleACOnline] authenticated connection is no longer current", acId, addrStr)
+		return fmt.Errorf("authenticated AC connection is no longer current")
 	}
 
 	s.acConnectionMapMutex.Lock()
@@ -565,11 +573,19 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	dbPeer := s.dbPeerMap[dbPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.dbPeerMapMutex.Unlock()
 
+	if dbPeer == nil {
+		return fmt.Errorf("sender is not a configured DB peer")
+	}
+
 	dbConn := &DBConn{
 		ConnData:       ppd.ConnData,
 		DBPeer:         dbPeer,
 		DBCipherScheme: ppd.CipherScheme,
 		DBId:           dbId,
+	}
+	if !s.promoteControlConnection(ppd.ConnData, controlConnectionDB) {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] authenticated connection is no longer current", dbId, addrStr)
+		return fmt.Errorf("authenticated DB connection is no longer current")
 	}
 
 	s.dbConnectionMapMutex.Lock()
@@ -1167,7 +1183,8 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		}
 		s.relayConnCountMutex.Unlock()
 
-		conn = &UdpConn{mapKey: connKey}
+		conn = &UdpConn{mapKey: connKey, timeoutUpdate: make(chan struct{}, 1)}
+		conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 		conn.ConnData = &core.ConnectionData{
 			InitTime:          recvTime,
 			LastLocalRecvTime: recvTime,

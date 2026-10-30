@@ -1299,6 +1299,50 @@ the results with `scripts/xdp-attack-report.sh`.
 - **IPv6** only feeds the port table (the source key is 32-bit). The VPC has no
   IPv6, so this gap is academic; `V6_OTHER` in `[NHP-STAT]` is exact.
 
+### All-ports exposure mode on the AC
+
+`var.ac_open_all_ports` (`terraform/demo/variables.tf`; the `infra-demo`
+workflow input `open_ac_all_ports` sets it, and the workflow refuses `true` in a
+plan that creates or replaces `aws_instance.ac`) opens `aws_security_group.ac`
+the same way: `0.0.0.0/0` on tcp 0-21 and 23-65535, udp 0-65535 and icmp, with
+**tcp/22 still restricted to the relay SG**. The AC's XDP filter
+(`nhp/ebpf/xdp/nhp_ebpf_xdp.c`, attached by `nhp-acd` in `FilterMode = 1`) is
+then the only inbound control on everything but tcp/22.
+
+The reason is the same as on the server, and the symptom is more visible: **a
+packet the security group drops never reaches the NIC, so the filter never sees
+it and never counts it.** In the narrow posture the AC only had tcp/443 and the
+knock port reachable, so almost every scan was gone before the filter could see
+it — and the AC's column on https://stats.opennhp.org read as "the AC is not
+being attacked" rather than "the group ate the packets". The per-packet
+`[NHP-DROP]` lines and the `[NHP-STAT]` counters fill only with what actually
+reaches the NIC, and so does the `[NHP-SCAN]` port/source table once the AC's
+scan-report knobs are set.
+
+- **The pipeline opens it by default.** `open_all_ports` and
+  `open_ac_all_ports` are both ticked by default in the `infra-demo` workflow;
+  only unticking one narrows that group again. The Terraform variables keep
+  `default = false`, so a hand-run `terraform apply` is still conservative — the
+  workflow always passes the value explicitly.
+- **Order is the same as on the server: `deploy-demo-v2` first.** Confirm
+  `Verify the AC's XDP ingress filter attached` is green, then run
+  `infra-demo apply`. The workflow also refuses to widen a group whose host has
+  no XDP program attached (`Require an attached XDP filter before opening all
+  ports`).
+- **The deploy pipeline reports the posture.** `deploy-demo-v2`'s `deploy-ac`
+  job ends with `Check the AC's security group is open to the internet`, which
+  reads the group's rules through the AWS API and warns when they are still
+  narrow — the symptom (an AC column with almost nothing in it) otherwise
+  looks like a broken collector.
+- **What the AC has that the server does not:** the fail-closed netfilter
+  backstop (`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`). It
+  keeps the protected resource shut while the XDP link is detached, i.e. it
+  covers the fail-open windows the link has whenever `nhp-acd` is restarting.
+  The backstop is lifted only once the XDP program is attached.
+- **Rollback** is unticking `open_ac_all_ports` and running `infra-demo apply`.
+  The group returns exactly to tcp/443 + the knock port + tcp/22 from the relay
+  SG. Nothing on the host changes; the telemetry stays and just counts less.
+
 ### Replacing an AMI / rebuilding an instance
 
 `data.aws_ami.amazon_linux_2023` is `most_recent = true` and `aws_instance.ami`
@@ -1429,7 +1473,8 @@ nhp-serverd
         └─ xdplog-report site
              ├─ /var/www/stats/{index.html,index.json,countup.js,totalnumber.js,d/server/<day>.{html,json}}
              ├─ state -> /home/ec2-user/xdpstats/state.json  (kept OUTSIDE the web root)
-             └─ facts -> /home/ec2-user/xdpstats/facts/server/<day>.facts  (same reason)
+             ├─ facts -> /home/ec2-user/xdpstats/facts/server/<day>.facts  (same reason)
+             └─ history -> /home/ec2-user/xdpstats/history.json  (baseline for the pre-floor days)
                                                 │
                           nginx vhost (stats.conf) ─────────────► https://stats.opennhp.org/
 ```
@@ -1516,6 +1561,59 @@ removed day's attackers in the total. A day whose facts file is missing
 contributes nothing and is named in `xdpstats/collect.log` as
 `site: N day(s) contribute no source/country data (...)` — the run still
 publishes, because the packet total is unaffected.
+
+### History baseline (`history.json`)
+
+The site publishes nothing before `-since` (default `2026-10-16`) and the
+collector's cache does not reach back past the daemon's 14-day retention, so
+the totals for the days before that floor lived nowhere. A copy of the
+homepage saved while it was still current was the only carrier of them, and
+`xdplog-report history` freezes that copy into the file the site reads:
+
+```bash
+cd endpoints
+go run ./xdplog-report history \
+  -html  xdplog-report/testdata/history-page-2026-10-26.html \
+  -out   ../deploy/config-templates/xdpstats/history.json
+```
+
+- **Where it lives.** `/home/ec2-user/xdpstats/history.json` on the relay,
+  installed by `deploy-xdpstats` from
+  `deploy/config-templates/xdpstats/history.json` (0640, beside `state.json`
+  in the 0750 directory). It is **not** in the web root and the nginx vhost
+  needs no change for it.
+- **What the collector does.** `xdpstats-collect.sh` passes
+  `-history $XDPSTATS_DIR/history.json` when the file is readable and logs
+  `history snapshot in use: …`; when it is missing it logs
+  `no history snapshot at …; the site counts from its own data only`. The
+  site itself refuses to run with a `-history` path it cannot read, so a
+  snapshot that is installed but unreadable fails the timer loudly instead
+  of shrinking the published totals.
+- **A frozen day wins.** The days the snapshot lists are published from the
+  snapshot; the collector's copy of the same day is not analyzed, not
+  published and not counted. Without that, the overlapping days would be
+  counted twice and the hero total would read `7,002,040` instead of
+  `3,501,020`. The frozen rows carry `"history": true` in `index.json` and
+  a `history` chip on the homepage, and **their date is not a link**: the
+  snapshot has the day's summary, not its DROP events, so there is no
+  detail page to open. The pages the site published for those days before
+  the snapshot was installed are **not deleted** — unlinked is not
+  unpublished — they simply stop being linked.
+- **The packet total stays reproducible.** The snapshot's
+  `totals.blocked` must equal the sum of its own days' `drop_pkts`, and the
+  site refuses to load a snapshot where it does not. So the hero total is
+  still the sum of every row of `index.json`.
+- **The two union counts are added, not merged.** The snapshot's
+  `source_ips` / `countries` are the unions of the saved period; the live
+  days have their own union. The two periods' address sets were never kept
+  side by side, so the site adds them: a source active in both periods is
+  counted once in each. Both figures are therefore **lower bounds**, and
+  the homepage, `totalnumber.js` and the README all say so.
+- **Rolling it back** is removing the day from `history.json` (or the whole
+  file): the next run rewrites the homepage, the day becomes a live row
+  again and the day page is linked once more. The fingerprint of the file
+  lives in `state.json`, so any edit rewrites the index even when no log
+  changed.
 
 ### Deploy order: `infra-demo apply` comes first
 

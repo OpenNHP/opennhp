@@ -38,6 +38,14 @@ type SiteOptions struct {
 	// than this are neither rendered nor counted in the homepage total; see
 	// defaultSiteSince. Empty disables the floor.
 	Since string
+	// HistoryPath is an optional history snapshot (history.json) that seeds
+	// the site's counters and freezes the days it lists. The days it lists
+	// are published from the snapshot, not from the logs: the live copy of
+	// the same day is not analyzed, not counted and not published, so the
+	// day appears once and the totals do not double. The snapshot is the
+	// only carrier of the totals for the days before the -since floor, so a
+	// path that cannot be read is an error, never a silent fallback.
+	HistoryPath string
 }
 
 // defaultSiteSince is the first day the public site counts.
@@ -65,6 +73,13 @@ type SiteDaySummary struct {
 	BudgetExhausted  bool    `json:"budget_exhausted"`
 	UnknownReasons   bool    `json:"unknown_reasons"`
 	TopCategory      string  `json:"top_category,omitempty"`
+	// History marks a row that came from a history snapshot rather than from
+	// a log. Such a row has no detail page — the snapshot carries the day's
+	// summary, not its events — so the homepage renders its day as plain
+	// text, and pass_pkts on it means "not recorded" rather than "zero".
+	// The field is optional and omitted on live rows, so the bytes of a live
+	// row's JSON are unchanged.
+	History bool `json:"history,omitempty"`
 }
 
 // SiteDayState is the per-day fingerprint kept in state.json so unchanged
@@ -136,6 +151,14 @@ const siteRenderVersion = 1
 type SiteState struct {
 	Schema int                                `json:"schema"`
 	Days   map[string]map[string]SiteDayState `json:"days"` // days[source][day]
+	// History is the fingerprint of the history snapshot the index was last
+	// rendered from, empty when there was none. It is part of the state
+	// because the snapshot feeds the homepage's counters: a changed
+	// snapshot has to rewrite the index, or the totals would keep the
+	// baseline they had when the snapshot was first read. A state file
+	// written before this field existed decodes to the empty string and
+	// therefore asks for one rebuild, which is the right thing to do.
+	History string `json:"history,omitempty"`
 }
 
 const siteStateSchema = 1
@@ -167,6 +190,7 @@ func runSite(args []string, stdout io.Writer) error {
 	fs.BoolVar(&opts.MaskIP, "mask-ip", opts.MaskIP, "truncate source IPs in the public site (default true)")
 	fs.BoolVar(&opts.Force, "force", false, "rebuild every day even if inputs are unchanged")
 	fs.StringVar(&opts.Since, "since", opts.Since, "earliest YYYY-MM-DD day to publish (default "+defaultSiteSince+"; empty publishes all days)")
+	fs.StringVar(&opts.HistoryPath, "history", "", "optional history snapshot (JSON) seeding the site's counters and freezing the days it lists")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -186,6 +210,21 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	if opts.GeoCSV != "" && opts.GeoMMDB != "" {
 		return fmt.Errorf("-geo-csv and -geo-mmdb are mutually exclusive")
+	}
+
+	// The history snapshot is loaded before anything is written, and a
+	// snapshot that cannot be read stops the run. The snapshot is the only
+	// carrier of the totals for the days before the -since floor, so a
+	// silent fallback to counting only the site's own days would shrink the
+	// published all-time numbers by an amount nobody could audit — the
+	// exact failure this site is written against.
+	var hist *SiteHistory
+	if opts.HistoryPath != "" {
+		h, err := loadSiteHistory(opts.HistoryPath)
+		if err != nil {
+			return err
+		}
+		hist = h
 	}
 
 	if err := os.MkdirAll(opts.OutDir, 0o755); err != nil {
@@ -249,13 +288,21 @@ func runSite(args []string, stdout io.Writer) error {
 	// index would blank the public stats page, and unpublishing every day on
 	// the way there would leave a site of dead links instead. The daily cron
 	// turns this into a failed unit and a loud log line rather than either.
+	//
+	// A day the history snapshot freezes counts as publishable: it is
+	// published from the snapshot, whatever the floor says and whether the
+	// collector still has its log.
+	historyDays := 0
+	if hist != nil {
+		historyDays = len(hist.Days)
+	}
 	publishable := 0
 	for _, in := range inputs {
-		if opts.publishesDay(in.Day) {
+		if opts.publishesDay(in.Day) || (hist != nil && hist.Covers(in.Source, in.Day)) {
 			publishable++
 		}
 	}
-	if publishable == 0 && len(inputs) > 0 {
+	if publishable == 0 && historyDays == 0 && len(inputs) > 0 {
 		return fmt.Errorf("no day on or after -since %s among %d discovered input(s); refusing to publish an empty index", opts.Since, len(inputs))
 	}
 
@@ -270,7 +317,18 @@ func runSite(args []string, stdout io.Writer) error {
 	// in the hero total: a site of dead links until some later run rebuilt the
 	// index.
 	var preFloor []siteInput
+	// Days the history snapshot freezes. They are counted, not analyzed: the
+	// snapshot owns their numbers.
+	var frozen []siteInput
 	for _, in := range inputs {
+		// The freeze check comes before the floor check. A frozen day is
+		// published from the snapshot, and its detail page — if the site
+		// ever wrote one — must not be taken down by the unpublish pass
+		// below, which only knows about days the floor excludes.
+		if hist != nil && hist.Covers(in.Source, in.Day) {
+			frozen = append(frozen, in)
+			continue
+		}
 		if !opts.publishesDay(in.Day) {
 			// Below the floor: not analyzed, not written, and not in the
 			// index, so it cannot reach the homepage total either. A site that
@@ -313,7 +371,10 @@ func runSite(args []string, stdout io.Writer) error {
 	// publishes an empty index, as it always has. Like the -since refusal
 	// above, this sits above the unpublish pass: a run that is going to give
 	// up must not have taken any page down on its way out.
-	if len(summaries) == 0 && len(inputs) > 0 {
+	//
+	// A history snapshot's rows are content of their own: the index still
+	// lists them, so it is not empty and there is nothing to refuse.
+	if len(summaries) == 0 && historyDays == 0 && len(inputs) > 0 {
 		return fmt.Errorf("none of the %d discovered input(s) on or after -since %s could be read; refusing to publish an empty index", len(inputs), opts.Since)
 	}
 
@@ -348,10 +409,36 @@ func runSite(args []string, stdout io.Writer) error {
 	// facts, unioned here. Computed on every run, not only a dirty one, so a
 	// day whose facts cannot be read is reported today rather than the day
 	// some unrelated input next goes stale.
+	//
+	// Only the live days are unioned. A day the snapshot freezes is not
+	// among them, so its attackers are not counted twice: the snapshot
+	// carries that period's own totals as its baseline.
 	union := unionDayFacts(opts.StatePath, summaries)
 	if len(union.Missing) > 0 {
 		fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the all-time totals are a lower bound\n",
 			len(union.Missing), strings.Join(union.Missing, ", "))
+	}
+
+	// The index rows are the snapshot's frozen days plus the live days
+	// analyzed above. The snapshot's rows carry the `history` flag, which is
+	// what makes the homepage render their day as plain text: a frozen day
+	// has no detail page.
+	rows := make([]SiteDaySummary, 0, historyDays+len(summaries))
+	if hist != nil {
+		rows = append(rows, hist.Rows()...)
+	}
+	rows = append(rows, summaries...)
+
+	// The snapshot is part of the index's fingerprint: a changed snapshot
+	// has to rewrite the homepage, or the counters would keep the baseline
+	// they had when the snapshot was first read.
+	historyFP := hist.Fingerprint()
+	if historyFP != state.History {
+		dirty = true
+		state.History = historyFP
+	}
+	if len(frozen) > 0 {
+		fmt.Fprintf(stdout, "site: %d day(s) frozen by the history snapshot (published from it, not from the logs)\n", len(frozen))
 	}
 
 	if dirty {
@@ -360,7 +447,7 @@ func runSite(args []string, stdout io.Writer) error {
 		// must not record the removals either — the next run then rebuilds
 		// both, instead of inheriting a state that says the index is current
 		// while the site still serves links to deleted pages.
-		if err := renderIndex(opts, summaries, union); err != nil {
+		if err := renderIndex(opts, rows, union, hist); err != nil {
 			return fmt.Errorf("render index: %w", err)
 		}
 		if err := saveSiteState(opts.StatePath, state); err != nil {
@@ -818,7 +905,7 @@ func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (boo
 
 // snapshot returns a deep copy of state for change detection.
 func (s *SiteState) snapshot() SiteState {
-	out := SiteState{Schema: s.Schema, Days: map[string]map[string]SiteDayState{}}
+	out := SiteState{Schema: s.Schema, History: s.History, Days: map[string]map[string]SiteDayState{}}
 	for src, days := range s.Days {
 		cp := map[string]SiteDayState{}
 		for d, st := range days {

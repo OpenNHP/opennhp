@@ -245,13 +245,19 @@ type XdpTomlConfig struct {
 const DefaultNhpMinFrameBytes = 240
 
 // Defaults and accepted ranges for the [NHP-SCAN] knobs.
+//
+// The values live in nhp/utils/ebpf, the package the nhp-ac loads its filter
+// through, because the two daemons report the same log shape and a summary
+// window that differs between them would make the published site's
+// per-window numbers incomparable. These names are aliases, so the server's
+// own callers (and its tests) are unaffected.
 const (
-	DefaultScanReportIntervalSeconds = 300
-	DefaultScanReportTopN            = 20
-	minScanReportIntervalSeconds     = 10
-	maxScanReportIntervalSeconds     = 3600
-	minScanReportTopN                = 1
-	maxScanReportTopN                = 200
+	DefaultScanReportIntervalSeconds = utilsebpf.DefaultScanReportIntervalSeconds
+	DefaultScanReportTopN            = utilsebpf.DefaultScanReportTopN
+	minScanReportIntervalSeconds     = utilsebpf.MinScanReportIntervalSeconds
+	maxScanReportIntervalSeconds     = utilsebpf.MaxScanReportIntervalSeconds
+	minScanReportTopN                = utilsebpf.MinScanReportTopN
+	maxScanReportTopN                = utilsebpf.MaxScanReportTopN
 )
 
 // MetricsConfig configures the observability endpoint exposed by nhp-server.

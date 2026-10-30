@@ -2839,6 +2839,85 @@ jobs:
             echo "nhp-acd deployed successfully (iptables mode)"
           fi
 
+      - name: Verify the AC's XDP ingress filter attached
+        # The mirror of the server's "Verify the XDP ingress filter attached",
+        # and the check the infra-demo workflow's all-ports gate for the AC
+        # (`ac_open_all_ports`) depends on: widening the AC's security group
+        # leaves the XDP filter as the only inbound control, so the filter
+        # being attached has to be a fact the pipeline establishes, not an
+        # assumption.
+        #
+        # The pin check inside the deploy step above is not the same thing: the
+        # program is pinned before it is attached, so a pin can outlive a
+        # failed attach. Ask the kernel instead - an attached generic-mode XDP
+        # program shows up on the interface itself.
+        run: |
+          set -euo pipefail
+
+          FILTER_MODE=$(sed -n 's/^[[:space:]]*FilterMode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' ./configs/ac/config.toml | tail -1)
+          if [ "$FILTER_MODE" != "1" ]; then
+            echo "FilterMode = ${FILTER_MODE:-<unknown>} (not eBPF/XDP) - no ingress filter to verify."
+            exit 0
+          fi
+
+          if ! ssh nhp-ac "ip -details link show | grep -q xdpgeneric"; then
+            echo "::error::no XDP program attached on nhp-ac - the host is running fail-open."
+            echo "       Do not widen its security group (ac_open_all_ports) until this is green."
+            exit 1
+          fi
+
+          echo "XDP ingress filter attached on nhp-ac:"
+          ssh nhp-ac "ip -details link show | grep -B2 xdpgeneric" || true
+
+      - name: Check the AC's security group is open to the internet
+        # The AC's telemetry counts what its XDP filter drops, and the filter
+        # only ever sees a packet that reached the NIC. A security group that
+        # drops the packet first means the packet is never counted: the AC's
+        # column on stats.opennhp.org then counts only the handful of ports
+        # the narrow group allows, which reads as "the AC is not being
+        # attacked" rather than "the group ate the packets".
+        #
+        # The group is widened by the infra-demo workflow (the
+        # `open_ac_all_ports` input), not by this one, so this step cannot fix
+        # it. It reports the symptom where it is noticed and names the fix.
+        # A warning, not a failure: the AC's enforcement does not depend on
+        # the group being wide open, and this job must not fail over a
+        # Terraform-side setting.
+        run: |
+          set -euo pipefail
+
+          SG_ID=$(aws ec2 describe-security-groups \
+            --region ${{ env.AWS_REGION }} \
+            --filters "Name=tag:Name,Values=opennhp-demo-ac-sg" \
+            --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
+          if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+            echo "::warning::no security group tagged opennhp-demo-ac-sg found; cannot check the AC's ingress rules."
+            exit 0
+          fi
+
+          # One wide-open udp rule is what makes the filter see the scans;
+          # the tcp ranges and icmp follow the same posture. An AWS error
+          # reads as "not open" here, which costs a warning and never a
+          # false "all good".
+          OPEN_UDP=$(aws ec2 describe-security-groups \
+            --region ${{ env.AWS_REGION }} \
+            --group-ids "$SG_ID" --output json 2>/dev/null \
+            | jq -r '[.SecurityGroups[0].IpPermissions[]?
+                       | select(.IpProtocol == "udp" and .FromPort == 0 and .ToPort == 65535)
+                       | .IpRanges[]? | select(.CidrIp == "0.0.0.0/0")] | length' 2>/dev/null || true)
+          OPEN_UDP=${OPEN_UDP:-0}
+
+          if [ "$OPEN_UDP" = "0" ]; then
+            echo "::warning::the nhp-ac security group ($SG_ID) is NOT open to the internet."
+            echo "          The AC's XDP filter only counts packets that reach the NIC, so"
+            echo "          the scans the group drops are never counted and the AC's column"
+            echo "          on stats.opennhp.org undercounts the attacks."
+            echo "          Fix: run the 'Demo Infrastructure' workflow with action=apply,"
+            echo "          confirm=confirm and open_ac_all_ports ticked."
+          else
+            echo "nhp-ac security group ($SG_ID) is open to the internet; the XDP filter sees the scans."
+          fi
+
       - name: Cleanup
         if: always()
         run: rm -rf ~/.ssh
@@ -3778,6 +3857,17 @@ jobs:
             > /tmp/sources.conf
           scp $SSH_OPTS /tmp/sources.conf $TARGET:$REMOTE_DIR/sources.conf
           ssh $SSH_OPTS $TARGET "chmod 0640 $REMOTE_DIR/sources.conf"
+
+          # 2b. The history snapshot: the site's own numbers for the days
+          #     before it started publishing, which the collector's cache
+          #     does not reach back to. It is generated by
+          #     `xdplog-report history` from a saved copy of the homepage
+          #     and checked in, so the deploy ships the same bytes the
+          #     tests pin. It stays in $REMOTE_DIR (0750) and never in the
+          #     web root: nothing here needs to be public, and the site's
+          #     nginx vhost is not changed for it.
+          scp $SSH_OPTS repo/deploy/config-templates/xdpstats/history.json $TARGET:$REMOTE_DIR/history.json
+          ssh $SSH_OPTS $TARGET "chmod 0640 $REMOTE_DIR/history.json"
 
           # 3. Binary on PATH so the systemd unit does not hard-code a
           #    release-specific directory. Stop the timer (not the service)

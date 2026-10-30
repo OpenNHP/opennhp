@@ -265,6 +265,25 @@ tcp/22 from the relay SG; recovery of an unfiltered host is still
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
 
+**All-ports exposure on the AC (deliberate).** `aws_security_group.ac` is opened
+the same way, under `var.ac_open_all_ports` (the `infra-demo` `open_ac_all_ports`
+input), and for the same reason — only harder: a packet the security group drops
+never reaches the NIC, so the AC's XDP filter never sees it, never counts it,
+and the AC's column on stats.opennhp.org undercounts the attacks (in the narrow
+posture only tcp/443 and the knock port are reachable, so most scans are gone
+before the filter can see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by
+`nhp-acd` in `FilterMode = 1`) is the only inbound control on everything but
+tcp/22, exactly as on the server; tcp/22 stays restricted to the relay SG. What
+the AC has that the server does not is the fail-closed netfilter backstop
+(`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`), which keeps the
+protected resource shut while the XDP link is detached — i.e. it covers the
+fail-open windows the link has whenever `nhp-acd` is restarting.
+`deploy-demo-v2` establishes that the filter is attached (`Verify the AC's XDP
+ingress filter attached`) and reports whether the group is actually wide open
+(`Check the AC's security group is open to the internet`); `infra-demo` refuses
+to widen a group whose host has no XDP program attached. Both groups are open by
+default in the pipeline — untick the input to go back to the narrow posture.
+
 **Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
 unprivileged on the demo host and `443 < 1024`, the unit does not rely on
 `CAP_NET_BIND_SERVICE` — granting it would leave the daemon with a non-empty
@@ -366,6 +385,33 @@ the old index still points at. **The homepage's Source column renders `server`
 as `nhp-server`** (`sourceLabel` in `render_index.go`) while `index.json` keeps
 the raw directory name — `source` is a published field and renaming it breaks
 existing parsers.
+
+**History baseline.** `xdplog-report site -history <path>` reads a
+`history.json` snapshot: the site's own numbers for the days before the
+publishing floor, which the collector's cache does not reach back to.
+`xdplog-report history` generates that file from a saved copy of the homepage
+(`-html`) or from what the site published (`-index` + `-totals`), and refuses
+to write one whose rows do not sum to the page's own all-time total — a
+parsing slip must not freeze a wrong baseline into the site's history. The
+snapshot's days are **frozen**: the collector's copy of the same day is not
+analyzed, not published and not counted, so the overlapping days are not
+counted twice (they would read `7,002,040` instead of `3,501,020`), and the
+frozen rows carry `"history": true` in `index.json` plus a `history` chip on
+the homepage. A frozen day has no detail page — the snapshot carries the day's
+summary, not its events — so its date renders as plain text, and the pages
+the site published for those days earlier are left in place, unlinked (unlinked
+is not unpublished). `totals.blocked` must equal the sum of the snapshot's own
+days, so the hero total stays the sum of every row of `index.json`; the
+snapshot's `source_ips`/`countries` are **added** to the live period's union
+rather than merged with it (the two periods' address sets were never kept side
+by side), so both are lower bounds. A `-history` path that cannot be read
+fails the run — silently counting only the site's own days would shrink the
+published totals by an unquantifiable amount — and the file's fingerprint
+lives in `state.json`, so editing it rewrites the index. The snapshot is
+private: `/home/ec2-user/xdpstats/history.json` beside the state, never in the
+web root; `deploy-xdpstats` installs it from
+`deploy/config-templates/xdpstats/history.json` and `xdpstats-collect.sh`
+passes `-history` only when the file is readable.
 
 **Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
 that produced each day page, so bumping that constant in `site.go` re-renders

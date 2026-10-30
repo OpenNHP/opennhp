@@ -583,6 +583,22 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.localMac = utils.GetMacAddress(s.localIp)
 	// load asp resources and plugins
 	s.pluginHandlerMap = make(map[string]plugins.PluginHandler)
+	// relayPeerMap indexes the configured relay peers by public key and is
+	// owned by updateRelayPeers (config.go): the load path installs the
+	// peers read from relay.toml and the reload path swaps the map
+	// wholesale. It must therefore be created BEFORE the peer configs are
+	// loaded, never after.
+	//
+	// It used to be created in the runtime-state block further down, which
+	// silently discarded the relay peers loadPeers() had just installed:
+	// every NHP_RLY envelope was then refused by dedupeRecvRLY with
+	// ErrServerMissingPeerPubkey (it fails closed when the sender is not
+	// in this map), so the relay path stayed broken until the operator
+	// touched relay.toml and the fsnotify callback re-ran
+	// updateRelayPeers. Creating the map here keeps it non-nil for the
+	// load path (no nil-map panic when relay.toml is absent) and leaves
+	// the peers loaded from relay.toml intact.
+	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	if s.etcdConn != nil {
 		// load nhp server
 		_ = s.loadRemoteConfig()
@@ -622,7 +638,6 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
-	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.relayForwardBlockMap = make(map[string]time.Time)

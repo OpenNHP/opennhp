@@ -1,0 +1,687 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// The history snapshot's job is to carry the site's counters across a period
+// the site can no longer analyze, without double-counting the days the
+// collector still has. The tests below cover the three things that can go
+// wrong there: a snapshot that is accepted when it should be refused, a
+// frozen day that is counted twice, and a changed snapshot that does not
+// reach the homepage.
+
+// writeHistory writes a snapshot and returns its path.
+func writeHistory(t *testing.T, dir string, h SiteHistory) string {
+	t.Helper()
+	b, err := json.MarshalIndent(h, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "history.json")
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// validHistory is a small, self-consistent snapshot: two days whose DROP
+// counts add up to the baseline it claims.
+func validHistory() SiteHistory {
+	return SiteHistory{
+		Schema: historySchema,
+		Since:  "2026-10-15",
+		Totals: HistoryTotals{Blocked: 300, SourceIPs: 40, Countries: 5},
+		Days: []SiteDaySummary{
+			{Source: "server", Day: "2026-10-15", DropPkts: 100, UniqueIPs: 10, DropShare: 0.5, RestartsDetected: 1},
+			{Source: "server", Day: "2026-10-16", DropPkts: 200, UniqueIPs: 20, DropShare: 0.9},
+		},
+	}
+}
+
+func TestLoadSiteHistoryAcceptsAValidSnapshot(t *testing.T) {
+	path := writeHistory(t, t.TempDir(), validHistory())
+	h, err := loadSiteHistory(path)
+	if err != nil {
+		t.Fatalf("loadSiteHistory: %v", err)
+	}
+	if h.Since != "2026-10-15" {
+		t.Errorf("Since = %q, want 2026-10-15", h.Since)
+	}
+	if !h.Covers("server", "2026-10-15") {
+		t.Error("the snapshot does not cover server/2026-10-15")
+	}
+	if h.Covers("server", "2026-10-17") {
+		t.Error("the snapshot covers a day it does not list")
+	}
+	if h.Covers("ac", "2026-10-15") {
+		t.Error("the snapshot covers another source's day")
+	}
+	if h.Fingerprint() == "" {
+		t.Error("Fingerprint is empty")
+	}
+	// The rows are marked as coming from the snapshot: that is what makes
+	// the homepage render them without a link.
+	rows := h.Rows()
+	if len(rows) != 2 {
+		t.Fatalf("Rows() returned %d rows, want 2", len(rows))
+	}
+	for _, r := range rows {
+		if !r.History {
+			t.Errorf("row %s is not marked as history", r.Day)
+		}
+	}
+}
+
+func TestLoadSiteHistoryRejectsBadSchema(t *testing.T) {
+	h := validHistory()
+	h.Schema = 2
+	path := writeHistory(t, t.TempDir(), h)
+	_, err := loadSiteHistory(path)
+	if err == nil {
+		t.Fatal("a snapshot with the wrong schema was accepted")
+	}
+	if !strings.Contains(err.Error(), "schema") {
+		t.Errorf("error does not mention the schema: %v", err)
+	}
+}
+
+func TestLoadSiteHistoryRejectsBadDate(t *testing.T) {
+	h := validHistory()
+	h.Since = "15-10-2026"
+	path := writeHistory(t, t.TempDir(), h)
+	if _, err := loadSiteHistory(path); err == nil {
+		t.Fatal("a snapshot with an unparsable since was accepted")
+	}
+
+	h = validHistory()
+	h.Days[1].Day = "yesterday"
+	path = writeHistory(t, t.TempDir(), h)
+	if _, err := loadSiteHistory(path); err == nil {
+		t.Fatal("a snapshot with an unparsable day was accepted")
+	}
+}
+
+func TestLoadSiteHistoryRejectsDuplicateDay(t *testing.T) {
+	h := validHistory()
+	h.Days[1] = h.Days[0]
+	path := writeHistory(t, t.TempDir(), h)
+	_, err := loadSiteHistory(path)
+	if err == nil {
+		t.Fatal("a snapshot listing the same day twice was accepted")
+	}
+	if !strings.Contains(err.Error(), "twice") {
+		t.Errorf("error does not mention the duplicate: %v", err)
+	}
+}
+
+// TestLoadSiteHistoryRejectsBlockedMismatch pins the check that keeps the
+// site's headline contract true: the hero total has to be the sum of
+// index.json's drop_pkts, and the snapshot's rows are among them.
+func TestLoadSiteHistoryRejectsBlockedMismatch(t *testing.T) {
+	h := validHistory()
+	h.Totals.Blocked = 301
+	path := writeHistory(t, t.TempDir(), h)
+	_, err := loadSiteHistory(path)
+	if err == nil {
+		t.Fatal("a snapshot whose baseline does not match its days was accepted")
+	}
+	if !strings.Contains(err.Error(), "totals.blocked") {
+		t.Errorf("error does not mention totals.blocked: %v", err)
+	}
+}
+
+// TestLoadSiteHistoryMissingFileIsAnError pins the failure mode that matters
+// most: a snapshot that cannot be read must fail the run, and the run must
+// not publish anything. Falling back to counting only the site's own days
+// would shrink the published all-time numbers by an amount nobody could
+// audit.
+func TestLoadSiteHistoryMissingFileIsAnError(t *testing.T) {
+	logs, out := stageTestdata(t)
+	missing := filepath.Join(t.TempDir(), "history.json")
+
+	var buf strings.Builder
+	err := run([]string{"site", "-logs", logs, "-out", out, "-top", "20", "-history", missing}, &buf)
+	if err == nil {
+		t.Fatal("the site ran with a history snapshot that does not exist")
+	}
+	if !strings.Contains(err.Error(), "history file") {
+		t.Errorf("error does not name the history file: %v", err)
+	}
+	for _, name := range []string{"index.html", "index.json", "state.json", "totalnumber.js"} {
+		if _, err := os.Stat(filepath.Join(out, name)); err == nil {
+			t.Errorf("%s was written even though the run failed", name)
+		}
+	}
+}
+
+// TestHistoryFreezesCoveredDay is the core of the feature: a day the
+// snapshot lists is published from the snapshot, once, without a link, and
+// the live copy of the same day contributes nothing.
+func TestHistoryFreezesCoveredDay(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	// Freeze the first staged day.
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = siteDay1
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(page)
+	// The frozen day appears once, as plain text, with the history flag.
+	if got := strings.Count(body, ">"+siteDay1+"<"); got != 1 {
+		t.Errorf("%s appears %d times in the index, want 1", siteDay1, got)
+	}
+	if strings.Contains(body, `href="d/server/`+siteDay1+`.html"`) {
+		t.Errorf("the frozen day links to a detail page: it has none")
+	}
+	if !strings.Contains(body, ">history<") {
+		t.Error("the frozen day carries no history flag")
+	}
+	// The live day is still a link.
+	if !strings.Contains(body, `href="d/server/`+siteDay2+`.html"`) {
+		t.Errorf("the live day lost its detail page link")
+	}
+
+	// index.json carries the marker too, and lists the frozen day exactly
+	// once.
+	idx, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []SiteDaySummary
+	if err := json.Unmarshal(idx, &rows); err != nil {
+		t.Fatal(err)
+	}
+	frozen := 0
+	for _, r := range rows {
+		if r.Day == siteDay1 {
+			frozen++
+			if !r.History {
+				t.Errorf("index.json row %s is not marked as history", r.Day)
+			}
+			if r.DropPkts != 100 {
+				t.Errorf("index.json row %s has %d DROP packets, want the snapshot's 100", r.Day, r.DropPkts)
+			}
+		}
+	}
+	if frozen != 1 {
+		t.Errorf("the frozen day appears %d times in index.json, want 1", frozen)
+	}
+}
+
+// TestHistoryTotalsAddUp pins the counting formula: the packet total is the
+// snapshot's baseline plus the live days, and it stays reproducible by
+// summing index.json's drop_pkts.
+func TestHistoryTotalsAddUp(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = siteDay1
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	live := indexTotalFromJSON(t, out)
+	idx, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []SiteDaySummary
+	if err := json.Unmarshal(idx, &rows); err != nil {
+		t.Fatal(err)
+	}
+	var sum uint64
+	for _, r := range rows {
+		sum += r.DropPkts
+	}
+	if sum != live {
+		t.Errorf("index.json's rows add up to %d but the hero shows %d", sum, live)
+	}
+	if live <= 100 {
+		t.Errorf("the hero total is %d; the snapshot's 100 plus the live day are missing", live)
+	}
+
+	totals := readTotalNumbers(t, out)
+	if got := totals["NHP_TOTAL_ATTACK_BLOCKED"]; uint64(got) != live {
+		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want %d", got, live)
+	}
+	// The source and country baselines are added on top of the live union.
+	liveSources := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"] - hist.Totals.SourceIPs
+	if liveSources < 0 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want the baseline %d plus a live union",
+			totals["NHP_TOTAL_ATTACK_SOURCE_IPS"], hist.Totals.SourceIPs)
+	}
+	if got := totals["NHP_TOTAL_ATTACK_COUNTRIES"]; got != hist.Totals.Countries {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want the baseline %d (no geo source in the fixture)",
+			got, hist.Totals.Countries)
+	}
+}
+
+// TestHistoryFactsExcludedFromUnion pins that a frozen day's attackers are
+// not counted twice: the snapshot's baseline already accounts for that
+// period, so the live union must not include the frozen day's facts.
+//
+// The fixture's first day carries the only source addresses (the second day
+// has none), so the union without a snapshot is those two addresses and the
+// union with one is empty.
+func TestHistoryFactsExcludedFromUnion(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = siteDay1
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	hist.Totals.SourceIPs = 40
+	hist.Totals.Countries = 0
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	totals := readTotalNumbers(t, out)
+	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != 40 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 40 (the baseline plus an empty live union)", got)
+	}
+
+	// The same site without a snapshot unions the first day's two source
+	// addresses, so a frozen day's facts showing up in the union would
+	// have shown up here as 42.
+	plainLogs, plainOut := stageTestdata(t)
+	runSiteCmd(t, plainLogs, plainOut)
+	plain := readTotalNumbers(t, plainOut)
+	if plain["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 2 {
+		t.Fatalf("the fixture's live union is %d, want 2; the test's arithmetic depends on it",
+			plain["NHP_TOTAL_ATTACK_SOURCE_IPS"])
+	}
+}
+
+// TestHistorySinceComesFromSnapshot pins that the counting start is the
+// snapshot's, not the earliest row's: the snapshot is what says the site's
+// numbers begin before its first published day.
+func TestHistorySinceComesFromSnapshot(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	hist.Since = "2026-10-01"
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = siteDay1
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), "Since 2026-10-01.") {
+		t.Error("the homepage does not count from the snapshot's since date")
+	}
+	b, err := os.ReadFile(filepath.Join(out, "totalnumber.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "Counting starts: 2026-10-01 (UTC).") {
+		t.Error("totalnumber.js does not record the snapshot's counting start")
+	}
+}
+
+// TestHistoryFingerprintMarksDirty pins that a changed snapshot rewrites the
+// homepage even when no log changed. Without it the counters would keep the
+// baseline they had when the snapshot was first read.
+func TestHistoryFingerprintMarksDirty(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = siteDay1
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+	before, err := os.Stat(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A second run with nothing changed must not rewrite anything.
+	runSiteCmd(t, logs, out, "-history", path)
+	after, err := os.Stat(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Error("an unchanged run rewrote the homepage")
+	}
+
+	// Changing the snapshot's baseline has to reach the homepage.
+	hist.Totals.Blocked = 100
+	hist.Totals.SourceIPs = 4242
+	hist.Days[0].DropPkts = 100
+	writeHistory(t, filepath.Dir(path), hist)
+	runSiteCmd(t, logs, out, "-history", path)
+
+	totals := readTotalNumbers(t, out)
+	if totals["NHP_TOTAL_ATTACK_SOURCE_IPS"] < 4242 {
+		t.Errorf("the changed snapshot did not reach totalnumber.js: %d",
+			totals["NHP_TOTAL_ATTACK_SOURCE_IPS"])
+	}
+	// The fingerprint is recorded in the state, so the next run knows the
+	// index is current.
+	state := readSiteStateAt(t, filepath.Join(out, "state.json"))
+	if state.History == "" {
+		t.Error("state.json does not record the history fingerprint")
+	}
+}
+
+// TestHistoryGeneratorFromSavedPage pins the generator against the saved
+// page it was built for: the numbers the page showed, day by day.
+func TestHistoryFlagsIncludeHistory(t *testing.T) {
+	flags := flagsFor(SiteDaySummary{History: true, Partial: true})
+	if len(flags) == 0 || flags[0].Label != "history" {
+		t.Fatalf("flags = %+v, want the history flag first", flags)
+	}
+	if flags[0].Class != "tag-info" {
+		t.Errorf("the history flag's class = %q, want tag-info", flags[0].Class)
+	}
+	// A live row is unchanged: no history chip.
+	for _, f := range flagsFor(SiteDaySummary{Partial: true}) {
+		if f.Label == "history" {
+			t.Error("a live row carries the history flag")
+		}
+	}
+}
+
+// TestSiteWithoutHistoryIsUnchanged pins that a site with no snapshot looks
+// exactly as it did: no history flag, no extra note, and every day still a
+// link.
+func TestSiteWithoutHistoryIsUnchanged(t *testing.T) {
+	logs, out := stageTestdata(t)
+	runSiteCmd(t, logs, out)
+
+	page, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(page)
+	if strings.Contains(body, ">history<") {
+		t.Error("a site without a snapshot shows the history flag")
+	}
+	if strings.Contains(body, "history.json") {
+		t.Error("a site without a snapshot mentions the snapshot")
+	}
+	if !strings.Contains(body, `href="d/server/`+siteDay1+`.html"`) {
+		t.Error("a site without a snapshot lost a detail page link")
+	}
+}
+
+// TestHistorySeedSnapshotIsShipped pins the seed snapshot the deploy ships:
+// the checked-in file has to be the one the generator produces from the saved
+// page, or the two drift apart silently.
+func TestHistoryRowsAreNotPublishedTwice(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = siteDay1
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	idx, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []SiteDaySummary
+	if err := json.Unmarshal(idx, &rows); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, r := range rows {
+		seen[r.Source+"/"+r.Day]++
+	}
+	for key, n := range seen {
+		if n > 1 {
+			t.Errorf("%s appears %d times in index.json", key, n)
+		}
+	}
+	// The frozen day's packet count is the snapshot's, not the log's: the
+	// log for that day says something else entirely.
+	for _, r := range rows {
+		if r.Day == siteDay1 && r.DropPkts != 100 {
+			t.Errorf("the frozen day's count is %d, want the snapshot's 100", r.DropPkts)
+		}
+	}
+}
+func TestHistoryGeneratorFromSavedPage(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "history.json")
+	var buf strings.Builder
+	err := run([]string{"history", "-html", filepath.Join("testdata", "history-page-2026-10-26.html"), "-out", out}, &buf)
+	if err != nil {
+		t.Fatalf("history: %v\n%s", err, buf.String())
+	}
+	h, err := loadSiteHistory(out)
+	if err != nil {
+		t.Fatalf("the generated snapshot does not load: %v", err)
+	}
+	if h.Since != "2026-10-16" {
+		t.Errorf("since = %q, want 2026-10-16", h.Since)
+	}
+	if h.Totals.Blocked != 3501020 {
+		t.Errorf("totals.blocked = %d, want 3501020", h.Totals.Blocked)
+	}
+	if h.Totals.SourceIPs != 25136 {
+		t.Errorf("totals.source_ips = %d, want 25136", h.Totals.SourceIPs)
+	}
+	if h.Totals.Countries != 130 {
+		t.Errorf("totals.countries = %d, want 130", h.Totals.Countries)
+	}
+	if len(h.Days) != 11 {
+		t.Fatalf("the snapshot lists %d days, want 11", len(h.Days))
+	}
+	want := map[string]uint64{
+		"2026-10-26": 8162,
+		"2026-10-25": 554239,
+		"2026-10-24": 876945,
+		"2026-10-23": 382917,
+		"2026-10-22": 574967,
+		"2026-10-21": 358779,
+		"2026-10-20": 217022,
+		"2026-10-19": 385531,
+		"2026-10-18": 28456,
+		"2026-10-17": 24092,
+		"2026-10-16": 89910,
+	}
+	for _, d := range h.Days {
+		w, ok := want[d.Day]
+		if !ok {
+			t.Errorf("the snapshot lists an unexpected day %s", d.Day)
+			continue
+		}
+		if d.DropPkts != w {
+			t.Errorf("%s: drop_pkts = %d, want %d", d.Day, d.DropPkts, w)
+		}
+		if d.Source != "server" {
+			t.Errorf("%s: source = %q, want server", d.Day, d.Source)
+		}
+	}
+	// The flags survive the round trip: the page's chips are the only
+	// record of them the snapshot has.
+	byDay := map[string]SiteDaySummary{}
+	for _, d := range h.Days {
+		byDay[d.Day] = d
+	}
+	if !byDay["2026-10-26"].Partial {
+		t.Error("2026-10-26 lost its partial flag")
+	}
+	if byDay["2026-10-26"].RestartsDetected != 1 {
+		t.Errorf("2026-10-26: restarts_detected = %d, want 1", byDay["2026-10-26"].RestartsDetected)
+	}
+	if byDay["2026-10-25"].RestartsDetected != 0 {
+		t.Errorf("2026-10-25: restarts_detected = %d, want 0", byDay["2026-10-25"].RestartsDetected)
+	}
+	if byDay["2026-10-26"].UniqueIPs != 3125 {
+		t.Errorf("2026-10-26: unique_attack_ips = %d, want 3125", byDay["2026-10-26"].UniqueIPs)
+	}
+	if byDay["2026-10-26"].PeakHour != "2026-10-26 00:00" {
+		t.Errorf("2026-10-26: peak_hour = %q", byDay["2026-10-26"].PeakHour)
+	}
+	if byDay["2026-10-26"].TopCategory != "TCP SYN scan" {
+		t.Errorf("2026-10-26: top_category = %q", byDay["2026-10-26"].TopCategory)
+	}
+}
+
+// TestHistoryGeneratorRefusesInconsistentPage pins the generator's own
+// check: a page whose rows do not add up to its hero total is refused, so a
+// parsing slip cannot become a permanent baseline.
+func TestHistoryGeneratorRefusesInconsistentPage(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "history-page-2026-10-26.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := strings.Replace(string(b), `data-total="3501020"`, `data-total="3501021"`, 1)
+	if broken == string(b) {
+		t.Fatal("the fixture no longer carries the hero total")
+	}
+	dir := t.TempDir()
+	page := filepath.Join(dir, "page.html")
+	if err = os.WriteFile(page, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf strings.Builder
+	err = run([]string{"history", "-html", page, "-out", filepath.Join(dir, "history.json")}, &buf)
+	if err == nil {
+		t.Fatal("the generator accepted a page whose rows do not add up")
+	}
+	if !strings.Contains(err.Error(), "DROP packets") {
+		t.Errorf("error does not explain the mismatch: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
+		t.Error("a snapshot was written for a page that does not add up")
+	}
+}
+
+// TestHistoryGeneratorFromIndexJSON pins the second input path: a published
+// index.json plus the totalnumber.js beside it produce the same snapshot the
+// saved page does.
+func TestHistoryGeneratorFromIndexJSON(t *testing.T) {
+	dir := t.TempDir()
+	fromPage := filepath.Join(dir, "from-page.json")
+	var buf strings.Builder
+	if err := run([]string{"history", "-html", filepath.Join("testdata", "history-page-2026-10-26.html"), "-out", fromPage}, &buf); err != nil {
+		t.Fatalf("history -html: %v\n%s", err, buf.String())
+	}
+
+	// The index.json path needs a site to have published it, so the fixture
+	// page's own rows are rebuilt into one — the same numbers, in the
+	// machine-readable shape the site publishes.
+	page, err := os.ReadFile(filepath.Join("testdata", "history-page-2026-10-26.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hist, err := historyPageFromHTMLBytes(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := hist.Rows
+	idxBytes, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idxPath := filepath.Join(dir, "index.json")
+	if err = os.WriteFile(idxPath, idxBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	totalsPath := filepath.Join(dir, "totalnumber.js")
+	totalsBody := totalNumberJS(hist.Blocked, hist.Sources, hist.Countries, hist.Since, nil)
+	if err = os.WriteFile(totalsPath, []byte(totalsBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fromIndex := filepath.Join(dir, "from-index.json")
+	if err = run([]string{"history", "-index", idxPath, "-totals", totalsPath, "-out", fromIndex}, &buf); err != nil {
+		t.Fatalf("history -index: %v\n%s", err, buf.String())
+	}
+
+	a, err := os.ReadFile(fromPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(fromIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != string(b) {
+		t.Errorf("the two input paths disagree:\n--- page ---\n%s\n--- index ---\n%s", a, b)
+	}
+}
+
+// TestHistoryGeneratorRefusesAnIndexWithHistoryRows pins that a snapshot
+// cannot be taken from a site that already carries one: the frozen days
+// would be counted twice.
+func TestHistoryGeneratorRefusesAnIndexWithHistoryRows(t *testing.T) {
+	dir := t.TempDir()
+	idx := filepath.Join(dir, "index.json")
+	rows := []SiteDaySummary{{Source: "server", Day: "2026-10-16", DropPkts: 10, History: true}}
+	b, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(idx, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	totals := filepath.Join(dir, "totalnumber.js")
+	if err = os.WriteFile(totals, []byte(totalNumberJS(10, 1, 1, "2026-10-16", nil)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf strings.Builder
+	err = run([]string{"history", "-index", idx, "-totals", totals, "-out", filepath.Join(dir, "history.json")}, &buf)
+	if err == nil {
+		t.Fatal("the generator accepted an index that already lists history rows")
+	}
+	if !strings.Contains(err.Error(), "history rows") {
+		t.Errorf("error does not explain the problem: %v", err)
+	}
+}
+
+// TestHistoryFlagsIncludeHistory pins that the frozen rows are marked on the
+// homepage: a reader who cannot click a date deserves to know why.
+func TestHistorySeedSnapshotIsShipped(t *testing.T) {
+	seed := filepath.Join("..", "..", "deploy", "config-templates", "xdpstats", "history.json")
+	want := filepath.Join(t.TempDir(), "history.json")
+	var buf strings.Builder
+	if err := run([]string{"history", "-html", filepath.Join("testdata", "history-page-2026-10-26.html"), "-out", want}, &buf); err != nil {
+		t.Fatalf("history: %v\n%s", err, buf.String())
+	}
+	a, err := os.ReadFile(seed)
+	if err != nil {
+		t.Fatalf("the shipped snapshot is missing: %v", err)
+	}
+	b, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != string(b) {
+		t.Errorf("the shipped snapshot differs from the generated one:\n--- shipped ---\n%s\n--- generated ---\n%s", a, b)
+	}
+}
+
+// TestHistoryRowsAreNotPublishedTwice pins the failure the whole feature
+// exists to prevent: the snapshot's days and the collector's days overlap
+// exactly, and counting both would double the site's headline total.

@@ -117,6 +117,8 @@ func TestClosedSetSeriesPreInitializedToZero(t *testing.T) {
 		`nhp_server_packets_dropped_total{stage="precheck"} 0`,
 		`nhp_server_packets_dropped_total{stage="rate_limited"} 0`,
 		`nhp_server_packets_dropped_total{stage="conn_limit"} 0`,
+		`nhp_server_packets_dropped_total{stage="per_ip_conn_limit"} 0`,
+		`nhp_server_packets_dropped_total{stage="conn_duplicate"} 0`,
 		`nhp_server_packets_dropped_total{stage="parse"} 0`,
 		`nhp_server_packets_dropped_total{stage="validate"} 0`,
 		`nhp_server_packets_dropped_total{stage="decrypt"} 0`,

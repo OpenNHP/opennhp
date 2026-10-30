@@ -333,6 +333,34 @@ Log levels:
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
 
+The packet rate budget applies before structural validation, including short
+and malformed datagrams. Malformed log sampling is process-wide. Relay client
+budgets use a relay-specific namespace and cannot drain a direct client's
+budget. The 65,536-entry table prefers fully replenished entries for reuse;
+under extreme source churn it evicts the oldest entry to keep admitting new
+sources. This reduces per-source coverage: alert on
+`nhp_server_packet_rate_cache_evictions_total`. Upstream anti-spoofing and flood
+filtering remain necessary; a bounded table cannot retain unlimited identities. IPv6 sources are budgeted
+per /64 prefix, not per address.
+### Direct connection admission
+
+`OverloadMaxAgentConnectionsPerIP` in server config sets the maximum number of direct
+unauthenticated/agent UDP tuples per source during overload (zero: 256).
+Requires restart. Tune it for shared NAT egress. Below overload, this cap is
+inactive so spoofed tuples cannot cheaply deny a chosen source. Under overload,
+a spoofed source can still consume its budget; deploy network anti-spoofing.
+Excess new tuples are dropped without evicting existing sessions; the metric
+stage is `per_ip_conn_limit`. Only configured AC/DB keys gain a control-peer
+exemption after authentication. The global connection cap still applies.
+
+`OverloadMaxAgentConnectionsPerIP` limits new admissions only after overload
+begins; it does not reclaim existing tuples. A source that connects before
+pressure can retain more than that value, up to the global cap. ForceOverload
+keeps this admission limit active continuously. IPv6 keys are individual IPs,
+not /64 networks. Static IPs in configured AC, DB and relay peers bypass only
+this per-source admission check so infrastructure can reconnect under pressure.
+Spoofed traffic can claim those addresses too; authentication and the global
+cap still apply. Peers configured only by key or hostname have no IP exemption.
 ### AOP clock tolerance
 
 AOP requests now default to a 120-second maximum age, down from 600 seconds.

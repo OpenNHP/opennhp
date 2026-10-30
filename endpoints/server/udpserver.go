@@ -98,7 +98,9 @@ type UdpServer struct {
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
-	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address
+	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address or relay compound key
+	connectionsByIP          map[string]int      // direct connections per source IP
+	admissionRejections      atomic.Int64
 
 	// relayConnCount tracks how many relay-forwarded client connections
 	// each NHP_RLY peer currently has open in remoteConnectionMap. Used
@@ -115,9 +117,11 @@ type UdpServer struct {
 	acConnectionMap      map[string]*ACConn // ac connection is indexed by remote IP address
 
 	acPeerMapMutex sync.Mutex
+	acPeerIPs      map[string]struct{}      // configured static IPs, protected by acPeerMapMutex
 	acPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	relayPeerMapMutex sync.Mutex
+	relayPeerIPs      map[string]struct{}      // configured static IPs, protected by relayPeerMapMutex
 	relayPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	dbConnectionMapMutex sync.Mutex
@@ -183,6 +187,13 @@ type UdpServer struct {
 	// loop and the relay-forward handlers. See rknRateLimiter.
 	rknLimiter *rknRateLimiter
 
+	// packetLimiter is the general valid-packet gate. It deliberately lives
+	// alongside (and does not replace) rknLimiter: overload RKNs still need the
+	// tighter pre-ECDH budget enforced by the existing limiter.
+	packetLimiter        *ipRateLimiter
+	packetRateLimitDrops atomic.Int64
+	malformedPacketDrops atomic.Int64
+
 	// address association map
 	srcIpAssociatedAddrMapMutex sync.Mutex
 	srcIpAssociatedAddrMap      map[string][]*common.NetAddress // indexed by source ip
@@ -229,6 +240,7 @@ type UdpServer struct {
 
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
+	dbPeerIPs      map[string]struct{}      // configured static IPs, protected by dbPeerMapMutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	teeMapMutex sync.Mutex
@@ -245,9 +257,10 @@ type BlockAddr struct {
 }
 
 type UdpConn struct {
+	rateExempt     atomic.Bool // set only after a configured infrastructure peer authenticates
 	ConnData       *core.ConnectionData
-	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
-	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
+	isACConnection atomic.Bool // promoted only after HandleACOnline authenticates the peer
+	isDBConnection atomic.Bool // promoted only after HandleDBOnline authenticates the peer
 
 	// mapKey is the exact key under which this conn was inserted into
 	// remoteConnectionMap. For direct UDP clients it equals
@@ -270,6 +283,13 @@ type UdpConn struct {
 	// away from the true live-connection count and either tightening
 	// or relaxing MaxConnectionsPerRelay over time.
 	replaced atomic.Bool
+
+	perIPCounted bool // protected by remoteConnectionMapMutex
+	// timeoutMs/timeoutUpdate let authenticated promotion extend a direct
+	// connection's timeout without racing ConnectionData.TimeoutMs or sending on
+	// a lifecycle channel that connection teardown closes.
+	timeoutMs     atomic.Int64
+	timeoutUpdate chan struct{}
 }
 
 type ACConn struct {
@@ -598,6 +618,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.keyStore = ks
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
+	s.connectionsByIP = make(map[string]int)
 	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
@@ -610,6 +631,12 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		OverloadRknBurstPerIP,
 		OverloadRknLimiterMaxEntries,
 		OverloadRknLimiterIdleSeconds*int64(time.Second),
+	)
+	s.packetLimiter = newIPRateLimiter(
+		PacketRatePerSecondPerIP,
+		PacketRateBurstPerIP,
+		PacketRateMaxEntries,
+		PacketRateIdleSeconds*int64(time.Second),
 	)
 	s.signals.stop = make(chan struct{})
 
@@ -801,8 +828,6 @@ func (s *UdpServer) recvPacketRoutine() {
 
 	log.Debug("recvPacketRoutine started")
 
-	preCheckThreats := make(map[string]int32)
-
 	for {
 		select {
 		case <-s.signals.stop:
@@ -826,15 +851,27 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 		addrStr := remoteAddr.String()
+		ipStr := keyForAddr(remoteAddr)
 
 		// add total recv bytes
 		atomic.AddUint64(&s.stats.totalRecvBytes, uint64(n))
+
+		recvTime := time.Now().UnixNano()
+		// Charge every datagram, including malformed and undersized packets.
+		if !s.allowPacketFromIP(ipStr, recvTime) && !s.isAuthenticatedControlPlaneAddr(remoteAddr) {
+			s.device.ReleasePoolPacket(pkt)
+			s.logPacketRateLimitDrop(ipStr)
+			s.metrics.recordDroppedPacket("rate_limited")
+			continue
+		}
 
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			s.device.ReleasePoolPacket(pkt)
 			s.metrics.recordDroppedPacket("too_short")
-			log.Error("Received UDP packet from %s is too short, discard", addrStr)
+			if count := s.malformedPacketDrops.Add(1); count == 1 || count%1000 == 0 {
+				log.Warning("Received short UDP packet from %s (malformed drops: %d)", addrStr, count)
+			}
 			continue
 		}
 
@@ -849,31 +886,23 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 
-		recvTime := time.Now().UnixNano()
 		pkt.Content = pkt.Buf[:n]
 		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddrStr, pkt.Content)
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
-		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
-		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
 		if err != nil {
-			// threat plus 1
-			preCheckThreats[addrStr]++
-			if preCheckThreats[addrStr] > PreCheckThreatCountBeforeBlock {
-				s.AddBlockAddr(remoteAddr)
-			}
+			count := s.malformedPacketDrops.Add(1)
 			s.device.ReleasePoolPacket(pkt)
 			// The outermost drop — malformed magic/version, background scan
 			// traffic. It never reaches the OnPacketDropped hook (that fires
 			// inside packetToMsgRoutine), so record it here.
 			s.metrics.recordDroppedPacket("precheck")
-			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
-			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
+			if count == 1 || count%1000 == 0 {
+				log.Warning("Precheck rejected packets from %s (count %d): %v", addrStr, count, err)
+			}
 			continue
 		}
-		// clear threat
-		delete(preCheckThreats, addrStr)
 
 		// Rate-limit RKN-under-overload per source IP BEFORE the packet
 		// reaches the connection routine (and thus before the cookie-
@@ -894,6 +923,11 @@ func (s *UdpServer) recvPacketRoutine() {
 			}
 		}
 
+		// Keep per-packet info/evaluation logging after the cheap drop gates so
+		// an over-limit source cannot turn a packet flood into a logging flood.
+		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
+		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
+
 		s.remoteConnectionMapMutex.Lock()
 		conn, found := s.remoteConnectionMap[addrStr]
 		s.remoteConnectionMapMutex.Unlock()
@@ -905,20 +939,17 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		} else {
 			// create new connection if there is room
-			if !s.globalCapAdmits() {
-				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
+			if reason := s.directAdmissionReason(remoteAddr, addrStr); reason != "" {
 				s.device.ReleasePoolPacket(pkt)
-				s.metrics.recordDroppedPacket("conn_limit")
+				s.recordAdmissionRefusal(reason, addrStr)
 				continue
 			}
 
-			isACConn := pkt.HeaderType == core.NHP_AOL
-			isDBConn := pkt.HeaderType == core.NHP_DOL
 			conn = &UdpConn{
-				isACConnection: isACConn,
-				isDBConnection: isDBConn,
-				mapKey:         addrStr,
+				mapKey:        addrStr,
+				timeoutUpdate: make(chan struct{}, 1),
 			}
+			conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
 				InitTime:          recvTime,
@@ -938,17 +969,11 @@ func (s *UdpServer) recvPacketRoutine() {
 				StopSignal:           make(chan struct{}),
 			}
 
-			if conn.isACConnection {
-				conn.ConnData.TimeoutMs = DefaultACConnectionTimeoutMs
-				log.Debug("Received new ac connection from %s", addrStr)
+			if reason := s.admitDirectConnection(conn, addrStr); reason != "" {
+				s.device.ReleasePoolPacket(pkt)
+				s.recordAdmissionRefusal(reason, addrStr)
+				continue
 			}
-			if conn.isDBConnection {
-				conn.ConnData.TimeoutMs = DefaultDBConnectionTimeoutMs
-				log.Debug("Received new db connection from %s", addrStr)
-			}
-			s.remoteConnectionMapMutex.Lock()
-			s.remoteConnectionMap[addrStr] = conn
-			s.remoteConnectionMapMutex.Unlock()
 
 			conn.ConnData.ForwardInboundPacket(pkt)
 
@@ -959,6 +984,147 @@ func (s *UdpServer) recvPacketRoutine() {
 			go s.connectionRoutine(conn)
 		}
 	}
+}
+
+// admitDirectConnection refuses excess new tuples without terminating existing
+// connections. Counts and the global table change under one lock.
+func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) string {
+	s.remoteConnectionMapMutex.Lock()
+	defer s.remoteConnectionMapMutex.Unlock()
+	if reason := s.directAdmissionReasonLocked(conn.ConnData.RemoteAddr, mapKey); reason != "" {
+		return reason
+	}
+	if s.connectionsByIP == nil {
+		s.connectionsByIP = make(map[string]int)
+	}
+	conn.mapKey = mapKey
+	s.remoteConnectionMap[mapKey] = conn
+	s.connectionsByIP[conn.ConnData.RemoteAddr.IP.String()]++
+	conn.perIPCounted = true
+	return ""
+}
+
+// Preflight avoids allocating packet queues for refused traffic. Admission
+// repeats this check under the insertion lock to preserve concurrent bounds.
+func (s *UdpServer) directAdmissionReason(addr *net.UDPAddr, mapKey string) string {
+	s.remoteConnectionMapMutex.Lock()
+	defer s.remoteConnectionMapMutex.Unlock()
+	return s.directAdmissionReasonLocked(addr, mapKey)
+}
+
+func (s *UdpServer) directAdmissionReasonLocked(addr *net.UDPAddr, mapKey string) string {
+	n := len(s.remoteConnectionMap)
+	if s.device != nil && n > OverloadConnectionThreshold {
+		s.device.SetOverload(true)
+	}
+	if n >= MaxConcurrentConnection {
+		return "conn_limit"
+	}
+	if _, exists := s.remoteConnectionMap[mapKey]; exists {
+		return "conn_duplicate"
+	}
+	limit := OverloadMaxAgentConnectionsPerIP
+	if s.config != nil && s.config.OverloadMaxAgentConnectionsPerIP > 0 {
+		limit = s.config.OverloadMaxAgentConnectionsPerIP
+	}
+	ip := addr.IP.String()
+	if s.device != nil && s.device.IsOverload() && s.connectionsByIP[ip] >= limit && !s.isConfiguredInfrastructureIP(ip) {
+		return "per_ip_conn_limit"
+	}
+	return ""
+}
+
+// Configured static infrastructure IPs retain reconnect admission. This is an
+// availability exemption only: packets still require peer authentication and
+// the global connection cap applies. Spoofed traffic can also claim these IPs.
+func (s *UdpServer) isConfiguredInfrastructureIP(ip string) bool {
+	s.acPeerMapMutex.Lock()
+	_, ac := s.acPeerIPs[ip]
+	s.acPeerMapMutex.Unlock()
+	s.dbPeerMapMutex.Lock()
+	_, db := s.dbPeerIPs[ip]
+	s.dbPeerMapMutex.Unlock()
+	s.relayPeerMapMutex.Lock()
+	_, relay := s.relayPeerIPs[ip]
+	s.relayPeerMapMutex.Unlock()
+	return ac || db || relay
+}
+
+func (s *UdpServer) recordAdmissionRefusal(reason, addr string) {
+	s.metrics.recordDroppedPacket(reason)
+	drops := s.admissionRejections.Add(1)
+	if drops == 1 || drops%1000 == 0 {
+		log.Warning("Direct connection from %s refused: %s (drops: %d)", addr, reason, drops)
+	}
+}
+
+// releasePerIPCount requires remoteConnectionMapMutex.
+func (s *UdpServer) releasePerIPCount(conn *UdpConn) {
+	if !conn.perIPCounted {
+		return
+	}
+	ip := conn.ConnData.RemoteAddr.IP.String()
+	s.connectionsByIP[ip]--
+	if s.connectionsByIP[ip] <= 0 {
+		delete(s.connectionsByIP, ip)
+	}
+	conn.perIPCounted = false
+}
+
+type controlConnectionKind int
+
+const (
+	controlConnectionAC controlConnectionKind = iota
+	controlConnectionDB
+)
+
+// promoteControlConnection removes an authenticated AC/DB tuple from the
+// direct-agent fairness bucket and applies its longer infrastructure timeout.
+// Promotion is keyed by ConnectionData identity, so a stale handler cannot
+// promote a replacement that reused the same UDP tuple.
+func (s *UdpServer) promoteControlConnection(connData *core.ConnectionData, kind controlConnectionKind) bool {
+	if connData == nil || connData.RemoteAddr == nil {
+		return false
+	}
+	if kind != controlConnectionAC && kind != controlConnectionDB {
+		return false
+	}
+	mapKey := connData.RemoteAddr.String()
+	if connData.RealRemoteAddr != nil {
+		mapKey = relayConnKeyPrefix + mapKey + relayConnKeySep + connData.RealRemoteAddr.String()
+	}
+	s.remoteConnectionMapMutex.Lock()
+	conn := s.remoteConnectionMap[mapKey]
+	if conn == nil || conn.ConnData != connData {
+		s.remoteConnectionMapMutex.Unlock()
+		return false
+	}
+	s.releasePerIPCount(conn)
+	var timeout int
+	switch kind {
+	case controlConnectionAC:
+		conn.isACConnection.Store(true)
+		timeout = DefaultACConnectionTimeoutMs
+	case controlConnectionDB:
+		conn.isDBConnection.Store(true)
+		timeout = DefaultDBConnectionTimeoutMs
+	}
+	s.remoteConnectionMapMutex.Unlock()
+
+	log.Debug("Authenticated control connection %s promoted with timeout %d ms", mapKey, timeout)
+	conn.timeoutMs.Store(int64(timeout))
+	select {
+	case conn.timeoutUpdate <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+func (c *UdpConn) timeout() int {
+	if timeout := c.timeoutMs.Load(); timeout > 0 {
+		return int(timeout)
+	}
+	return c.ConnData.TimeoutMs
 }
 
 // globalCapAdmits reports whether a new direct UDP connection fits under the
@@ -990,7 +1156,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// Note on server side, before an old ac connection times out, the very ac can send new connections (due to restart or deemed connection failure)
 		// and it may come with the same remote ip but a different remote port
 		// so make sure the timeout removal here does not delete newer ac connections
-		if conn.isACConnection {
+		if conn.isACConnection.Load() {
 			var acToDelete string
 			s.acConnectionMapMutex.Lock()
 			for acId, acConn := range s.acConnectionMap {
@@ -1003,7 +1169,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			s.acConnectionMapMutex.Unlock()
 		}
 
-		if conn.isDBConnection {
+		if conn.isDBConnection.Load() {
 			var dbToDelete string
 			s.dbConnectionMapMutex.Lock()
 			for dbId, dbConn := range s.dbConnectionMap {
@@ -1045,6 +1211,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		if stillPresent {
 			delete(s.remoteConnectionMap, mapKey)
 		}
+		s.releasePerIPCount(conn)
 		// ForceOverload (debug only) keeps Overload pinned ON for the
 		// lifetime of the process, so a quiet local demo can still
 		// exercise the cookie path. Honor it here — without this guard,
@@ -1070,7 +1237,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		conn.Close()
 	}()
 
-	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimeout := time.Duration(conn.timeout()) * time.Millisecond
 	idleTimer := time.NewTimer(idleTimeout)
 	defer idleTimer.Stop()
 
@@ -1083,11 +1250,16 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
-			if conn.ConnData.TimeoutMs <= 0 {
+			conn.timeoutMs.Store(int64(conn.ConnData.TimeoutMs))
+			if conn.timeout() <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
-			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimeout = time.Duration(conn.timeout()) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
+
+		case <-conn.timeoutUpdate:
+			idleTimeout = time.Duration(conn.timeout()) * time.Millisecond
 			idleTimer.Reset(idleTimeout)
 
 		case <-idleTimer.C:
@@ -1137,7 +1309,9 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 					conn.ConnData.RealRemoteAddr.String(), conn.ConnData.RemoteAddr.String(), mapKey)
 				return
 			}
-			s.AddBlockAddr(conn.ConnData.RemoteAddr)
+			if addr := blockAddressForConnection(conn); addr != nil {
+				s.AddBlockAddr(addr)
+			}
 			return
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:

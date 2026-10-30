@@ -501,6 +501,13 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 	s.acPeerMapMutex.Lock()
 	acPeer := s.acPeerMap[acPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.acPeerMapMutex.Unlock()
+	if acPeer != nil {
+		s.markRateExempt(ppd.ConnData)
+	}
+
+	if acPeer == nil {
+		return fmt.Errorf("sender is not a configured AC peer")
+	}
 
 	acConn := &ACConn{
 		ConnData:       ppd.ConnData,
@@ -509,6 +516,10 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 		ACId:           acId,
 		ServiceId:      aolMsg.AuthServiceId,
 		Apps:           aolMsg.ResourceIds,
+	}
+	if !s.promoteControlConnection(ppd.ConnData, controlConnectionAC) {
+		log.Warning("server-ac(@%s@%s)[HandleACOnline] authenticated connection is no longer current", acId, addrStr)
+		return fmt.Errorf("authenticated AC connection is no longer current")
 	}
 
 	s.acConnectionMapMutex.Lock()
@@ -564,12 +575,23 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	s.dbPeerMapMutex.Lock()
 	dbPeer := s.dbPeerMap[dbPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.dbPeerMapMutex.Unlock()
+	if dbPeer != nil {
+		s.markRateExempt(ppd.ConnData)
+	}
+
+	if dbPeer == nil {
+		return fmt.Errorf("sender is not a configured DB peer")
+	}
 
 	dbConn := &DBConn{
 		ConnData:       ppd.ConnData,
 		DBPeer:         dbPeer,
 		DBCipherScheme: ppd.CipherScheme,
 		DBId:           dbId,
+	}
+	if !s.promoteControlConnection(ppd.ConnData, controlConnectionDB) {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] authenticated connection is no longer current", dbId, addrStr)
+		return fmt.Errorf("authenticated DB connection is no longer current")
 	}
 
 	s.dbConnectionMapMutex.Lock()
@@ -959,11 +981,14 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		return fmt.Errorf("%s relay source address", reason)
 	}
 	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
+	s.relayPeerMapMutex.Lock()
+	relayPeer := s.relayPeerMap[base64.StdEncoding.EncodeToString(ppd.RemotePubKey)]
+	s.relayPeerMapMutex.Unlock()
+	if relayPeer != nil {
+		s.markRateExempt(ppd.ConnData)
+	}
 
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
-	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
-		relayAddrStr, realAddr, len(innerBytes))
-
 	// Per-(relay, real-client) block check. connectionRoutine's
 	// relay-aware BlockSignal branch (the one that drops the
 	// relay's UDP address from AddBlockAddr's target to honor
@@ -999,6 +1024,19 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		}
 		return fmt.Errorf("relay forward blocked for %s", realAddr)
 	}
+
+	// Relay assertions must not drain a direct client's source budget.
+	rateKey := "rly|" + relayAddrStr + "|" + keyForIP(realIP)
+	if !s.allowPacketFromIP(rateKey, time.Now().UnixNano()) {
+		s.logPacketRateLimitDrop(rateKey)
+		s.metrics.recordDroppedPacket("rate_limited")
+		return fmt.Errorf("packet rate limit exceeded")
+	}
+
+	// Logged after the rate gate so a rate-limited client cannot drive
+	// one Info line per packet.
+	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
+		relayAddrStr, realAddr, len(innerBytes))
 
 	// Allocate a pool packet for the inner bytes.
 	innerPkt := s.device.AllocatePoolPacket()
@@ -1167,7 +1205,8 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		}
 		s.relayConnCountMutex.Unlock()
 
-		conn = &UdpConn{mapKey: connKey}
+		conn = &UdpConn{mapKey: connKey, timeoutUpdate: make(chan struct{}, 1)}
+		conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 		conn.ConnData = &core.ConnectionData{
 			InitTime:          recvTime,
 			LastLocalRecvTime: recvTime,

@@ -280,6 +280,16 @@ type UdpAgent struct {
 	// silently starting with a random key and empty identity.
 	allowMissingConfig bool
 
+	// configSource selects where configuration comes from. The zero value,
+	// ConfigSourceFile, preserves the historic behavior (read and watch
+	// etc/*.toml). ConfigSourceMemory disables file loading and every config
+	// watcher; set it with SetConfigSource / UseInMemoryConfig before Start.
+	configSource ConfigSource
+	// memConfig holds the base configuration supplied by UseInMemoryConfig for
+	// ConfigSourceMemory. A nil memConfig in memory mode means the caller
+	// installs the key and identity after Start (the SDK registration path).
+	memConfig *Config
+
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
 
@@ -377,12 +387,13 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 
 	var prk []byte
 	if a.config.PrivateKeyBase64 == "" {
-		// An empty private key is only acceptable in the register bootstrap
-		// flow (allowMissingConfig): use a throwaway key that ReinitWithKey
-		// replaces immediately after Start returns. For run/dhp this is a
-		// real misconfiguration — fail loudly instead of silently starting
+		// An empty private key is only acceptable when the caller installs the
+		// real key right after Start: the register bootstrap flow
+		// (allowMissingConfig) and ConfigSourceMemory (the SDK path). Both use a
+		// throwaway key that ReinitWithKey replaces immediately. For run/dhp this
+		// is a real misconfiguration, so fail loudly instead of silently starting
 		// with a random key and empty identity.
-		if !a.allowMissingConfig {
+		if !a.allowMissingConfig && a.configSource != ConfigSourceMemory {
 			log.Error("no private key configured in etc/config.toml")
 			return fmt.Errorf("no private key configured; check etc/config.toml")
 		}
@@ -524,6 +535,34 @@ func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]
 // Start. Intended only for the interactive `register` bootstrap flow.
 func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
 	a.allowMissingConfig = allow
+}
+
+// SetConfigSource selects where the agent reads configuration. Call it before
+// Start. ConfigSourceMemory disables etc/*.toml loading and every config
+// watcher, so nothing on disk can change the agent's identity, key, cipher
+// scheme, peers, or resources after it starts. Use this when the caller
+// installs the key and identity programmatically after Start (the SDK
+// registration path); to also supply the base config up front, use
+// UseInMemoryConfig. This is independent of SetAllowMissingConfig, which only
+// softens a missing-file read in the file-based `register` bootstrap.
+func (a *UdpAgent) SetConfigSource(src ConfigSource) {
+	a.configSource = src
+}
+
+// UseInMemoryConfig switches the agent to ConfigSourceMemory and supplies the
+// base configuration programmatically, so Start reads no etc/*.toml and arms no
+// watcher. Call it before Start. The config's scalar fields are copied into a
+// fresh Config (Config carries a lock and must not be copied by value); the
+// UserData map and any DHPConfig pointer are referenced, not deep-copied, so do
+// not mutate those after the call. A nil cfg selects memory mode with an empty
+// base config, for the install-after-Start path.
+func (a *UdpAgent) UseInMemoryConfig(cfg *Config) {
+	a.configSource = ConfigSourceMemory
+	if cfg == nil {
+		a.memConfig = nil
+		return
+	}
+	a.memConfig = cloneConfigData(cfg)
 }
 
 func (a *UdpAgent) SetDeviceId(devId string) {

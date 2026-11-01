@@ -29,6 +29,22 @@ var (
 	secretCreated = "/var/run/secret.created"
 )
 
+// ConfigSource selects where an agent reads its configuration.
+type ConfigSource int
+
+const (
+	// ConfigSourceFile (default) reads etc/*.toml at startup and watches those
+	// files for changes, reloading them live. This is the standalone-agent
+	// model and the zero value, so existing callers are unaffected.
+	ConfigSourceFile ConfigSource = iota
+	// ConfigSourceMemory takes configuration programmatically and never reads
+	// or watches etc/*.toml. No file watcher is armed, so a config.toml that
+	// appears later can never override an identity, key, cipher scheme, peer,
+	// or resource established in code. This is the model for SDK-managed and
+	// other embedded agents.
+	ConfigSourceMemory
+)
+
 type Config struct {
 	LogLevel            int    `json:"logLevel"`
 	DefaultCipherScheme int    `json:"defaultCipherScheme"`
@@ -176,6 +192,12 @@ type Resources struct {
 }
 
 func (a *UdpAgent) loadBaseConfig() error {
+	if a.configSource == ConfigSourceMemory {
+		// Memory mode: apply the in-memory config, read no etc/config.toml, and
+		// arm no watcher. A config.toml appearing later therefore cannot override
+		// the identity, key, or cipher scheme set in code.
+		return a.applyInMemoryBaseConfig()
+	}
 	// config.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 	if err := a.updateBaseConfig(fileName); err != nil {
@@ -190,7 +212,57 @@ func (a *UdpAgent) loadBaseConfig() error {
 	return nil
 }
 
+// cloneConfigData copies a Config's data fields into a fresh Config. Config
+// carries a lock (keyMu) and must never be copied by value, so this copies the
+// serialized fields explicitly. The UserData map and the DHPConfig pointer are
+// shared with the source, not deep-copied.
+func cloneConfigData(src *Config) *Config {
+	if src == nil {
+		return &Config{}
+	}
+	return &Config{
+		LogLevel:            src.LogLevel,
+		DefaultCipherScheme: src.DefaultCipherScheme,
+		PrivateKeyBase64:    src.PrivateKeyBase64,
+		KnockUser:           src.KnockUser,
+		DHPConfig:           src.DHPConfig,
+	}
+}
+
+// applyInMemoryBaseConfig populates the agent from the programmatic config
+// supplied via UseInMemoryConfig, mirroring the first-load branch of
+// updateBaseConfig (knock user, base config, log level) without reading a file
+// or arming a watcher. A nil memConfig yields an empty config, matching the SDK
+// path that installs the key and identity after Start. A fresh Config is built
+// each call, so a later rekey (which mutates a.config) never alters the stored
+// template and a Stop/Start restart begins from the originally supplied config.
+func (a *UdpAgent) applyInMemoryBaseConfig() error {
+	conf := cloneConfigData(a.memConfig)
+
+	a.knockUserMutex.Lock()
+	a.knockUser = &KnockUser{
+		UserId:         conf.UserId,
+		OrganizationId: conf.OrganizationId,
+		UserData:       conf.UserData,
+	}
+	a.knockUserMutex.Unlock()
+
+	a.config = conf
+	if a.log != nil {
+		a.log.SetLogLevel(conf.LogLevel)
+	}
+	return nil
+}
+
 func (a *UdpAgent) loadDHPConfig() error {
+	if a.configSource == ConfigSourceMemory {
+		// Match file mode's post-load state (a non-nil DHPConfig) without
+		// reading dhp.toml or arming a watcher.
+		if a.config != nil && a.config.DHPConfig == nil {
+			a.config.DHPConfig = &DHPConfig{}
+		}
+		return nil
+	}
 	// dhp.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
 	if err := a.updateDHPConfig(fileName); err != nil {
@@ -207,6 +279,11 @@ func (a *UdpAgent) loadDHPConfig() error {
 }
 
 func (a *UdpAgent) loadPeers() error {
+	if a.configSource == ConfigSourceMemory {
+		// Peers are added programmatically (AddServer); no server.toml is read
+		// and no watcher is armed.
+		return nil
+	}
 	// server.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
 	if err := a.updateServerPeers(fileName); err != nil {
@@ -223,6 +300,11 @@ func (a *UdpAgent) loadPeers() error {
 }
 
 func (a *UdpAgent) loadResources() error {
+	if a.configSource == ConfigSourceMemory {
+		// Resources are managed programmatically; no resource.toml is read and
+		// no watcher is armed.
+		return nil
+	}
 	// resource.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "resource.toml")
 	if err := a.updateResources(fileName); err != nil {

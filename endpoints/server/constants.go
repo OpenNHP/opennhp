@@ -6,6 +6,10 @@ const (
 	MaxConcurrentConnection     = 20480
 	OverloadConnectionThreshold = MaxConcurrentConnection * 4 / 5 // 80%
 	MaxConnectionsPerRelay      = 1024                            // per-relay-peer cap on forwarded-client fan-out
+	// OverloadMaxAgentConnectionsPerIP limits direct agent connection tuples from
+	// one source IP. Entries remain keyed by the full UDP address so replies
+	// still use the correct NAT-assigned source port.
+	OverloadMaxAgentConnectionsPerIP = 256
 
 	// MaxConcurrentHandlers bounds in-flight handler goroutines spawned
 	// per inbound NHP packet (KNK, RKN, EXT, RLY, OTP, REG, LST, DAR,
@@ -21,11 +25,19 @@ const (
 	MaxConcurrentHandlers           = 4096
 	BlockAddrRefreshRate            = 20                                   // 20 seconds
 	BlockAddrExpireTime             = 90                                   // 90 seconds
-	PreCheckThreatCountBeforeBlock  = 5                                    // block source address if packet precheck errors exceeds this count
 	DefaultAgentConnectionTimeoutMs = common.ClientSideConnectionTimeoutMs // 30 seconds to delete idle connection
 	DefaultACConnectionTimeoutMs    = common.ServerSideConnectionTimeoutMs // 300 seconds to delete idle connection
 	DefaultDBConnectionTimeoutMs    = common.ServerSideConnectionTimeoutMs // 300 seconds to delete idle connection
 	PacketQueueSizePerConnection    = 256
+)
+
+// Source budgets use IP keys (relay-prefixed for relay clients), so rotating
+// source ports cannot multiply the packet budget.
+const (
+	PacketRatePerSecondPerIP = 100
+	PacketRateBurstPerIP     = 50
+	PacketRateMaxEntries     = 65_536
+	PacketRateIdleSeconds    = 120
 )
 
 // http APIs

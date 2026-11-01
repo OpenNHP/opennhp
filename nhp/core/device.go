@@ -33,6 +33,7 @@ const (
 type PeerLookupFallbackFunc func(pubKey []byte, headerType int) bool
 
 type DeviceOptions struct {
+	AOPRecvStalenessSeconds     int // Zero uses the protocol default. Set before Start.
 	DisableAgentPeerValidation  bool
 	DisableServerPeerValidation bool
 	DisableACPeerValidation     bool

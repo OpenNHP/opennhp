@@ -856,6 +856,17 @@ jobs:
         with:
           path: repo
 
+      - name: Apply and verify CVE-2026-98432 containment
+        env:
+          TARGET: ${{ env.DEPLOY_USER }}@${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes "$TARGET" 'set -eu
+            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
+            sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
+            sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
+            sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh
+
       - name: Ensure TLS certificate + nginx on relay
         env:
           RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
@@ -1004,10 +1015,6 @@ jobs:
           name: nhp-demo-configs
           path: ./configs
 
-      # No repo checkout here: the server host no longer receives an nginx
-      # vhost or the bootstrap-tls.sh certificate script, so there is nothing
-      # to render from the working tree in this job.
-
       - name: Check this job's own SSH source is in the XDP whitelist
         # The whitelist about to be uploaded decides who may reach tcp/22 on
         # the server host, and the XDP program keeps no connection state: the
@@ -1090,6 +1097,15 @@ jobs:
             echo "       and re-run." >&2
             exit 1
           fi
+
+      - name: Apply and verify CVE-2026-98432 containment
+        run: |
+          set -euo pipefail
+          ssh nhp-server 'set -eu
+            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
+            sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
+            sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
+            sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh
 
       - name: Tear down nginx HTTP/HTTPS surface on server
         # The nhp-server's public HTTP surface (the demo login page at
@@ -1856,6 +1872,15 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: repo
+
+      - name: Apply and verify CVE-2026-98432 containment
+        run: |
+          set -euo pipefail
+          ssh nhp-ac 'set -eu
+            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
+            sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
+            sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
+            sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4

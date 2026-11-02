@@ -35,8 +35,9 @@ resource "aws_instance" "server" {
   # a running host) and would cost an unplanned nhp-server outage, taking the
   # whole demo down with it.
   user_data = templatefile("${path.module}/userdata/server.sh", {
-    deploy_path     = "/home/ec2-user/nhp-server"
-    nhp_listen_port = var.nhp_listen_port
+    kernel_mitigation_base64 = filebase64("${path.module}/../../scripts/mitigate-cve-2026-98432.sh")
+    deploy_path              = "/home/ec2-user/nhp-server"
+    nhp_listen_port          = var.nhp_listen_port
   })
 
   root_block_device {
@@ -91,7 +92,8 @@ resource "aws_instance" "ac" {
   # eBPF/TCX, the unit's capability set) is applied by the deploy-ac job in
   # .github/workflows/deploy-demo-v2.yml instead.
   user_data = templatefile("${path.module}/userdata/ac.sh", {
-    deploy_path = "/home/ec2-user/nhp-ac"
+    kernel_mitigation_base64 = filebase64("${path.module}/../../scripts/mitigate-cve-2026-98432.sh")
+    deploy_path              = "/home/ec2-user/nhp-ac"
   })
 
   root_block_device {
@@ -139,7 +141,8 @@ resource "aws_instance" "relay" {
   private_ip = var.relay_private_ip != "" ? var.relay_private_ip : null
 
   user_data = templatefile("${path.module}/userdata/relay.sh", {
-    deploy_path = "/home/ec2-user/nhp-relay"
+    kernel_mitigation_base64 = filebase64("${path.module}/../../scripts/mitigate-cve-2026-98432.sh")
+    deploy_path              = "/home/ec2-user/nhp-relay"
   })
 
   root_block_device {
@@ -156,7 +159,9 @@ resource "aws_instance" "relay" {
     # at a time. Replace the relay first only after pinning var.relay_private_ip
     # (or confirming the server's XDP whitelist covers the new address), then
     # touch the server; re-run deploy-demo-v2 afterwards.
-    ignore_changes = [ami]
+    # User-data changes must not power-cycle the SSH jump host. Existing hosts
+    # receive persistent configuration through deploy-demo-v2, as server/AC do.
+    ignore_changes = [user_data, ami]
   }
 }
 

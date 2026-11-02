@@ -1310,7 +1310,9 @@ has to SSH through that relay. With the security group wide open, the window
 between boot and the filter attaching is also an all-ports exposure.
 
 `aws_instance.server`, `.ac` and `.relay` therefore carry
-`lifecycle { ignore_changes = [ami] }` (server and ac alongside `user_data`).
+`lifecycle { ignore_changes = [user_data, ami] }`. Mirror persistent host
+configuration in each `deploy-demo-v2` host job as well as user data; edits to
+user data do not reach existing hosts.
 `most_recent` stays, so a first-time `apply` still picks the current AMI.
 Changing the AMI is now an explicit act, one host at a time:
 
@@ -1620,3 +1622,26 @@ is in the state and DNS outlives it.
 - No GeoIP enabled by default. `xdplog-report site -geo-mmdb /path/to/GeoLite2-City.mmdb`
   turns it on locally for debugging only; the systemd unit does not enable it
   unless a file is mounted at the documented location.
+
+
+## CVE-2026-98432 containment
+
+The Linux IPv4 TCP flaw is described in the [AWS security bulletin](https://aws.amazon.com/security/security-bulletins/2026-160-aws/) and [Amazon Linux CVE record](https://explore.alas.aws.amazon.com/CVE-2026-98432.html). Container rebuilds do not patch the host kernel.
+
+New-host user data and each server, AC, and relay deploy job run `scripts/mitigate-cve-2026-98432.sh`. It installs `layerv-kernel-mitigation.service`, matching the unit already installed on the live hosts. Reapplying it is safe. Verify the unit is active and enabled, `sysctl net.mptcp.enabled` is zero, and both raw PREROUTING and OUTPUT contain the comment-tagged DROP rule.
+
+The rule deliberately drops **all IPv4 packets with IP options**, including UDP and ICMP. It does not match TCP options, ordinary IPv4 headers, or IPv6. Disabling MPTCP alone is incomplete containment.
+
+Keep containment until the running kernel reported by `uname -r`, after the vendor update and reboot, is confirmed fixed against the current Amazon Linux advisory for that kernel stream. Then remove only this mitigation:
+
+```bash
+sudo systemctl disable --now layerv-kernel-mitigation.service
+for chain in PREROUTING OUTPUT; do
+  sudo iptables -w 30 -t raw -D "$chain" -m u32 --u32 '0>>24&0x0f=6:15' -m comment --comment CVE-2026-98432 -j DROP
+done
+sudo rm /etc/sysctl.d/99-layerv-cve-2026-98432.conf
+sudo rm /etc/systemd/system/layerv-kernel-mitigation.service /usr/local/sbin/layerv-kernel-mitigation
+sudo systemctl daemon-reload
+```
+
+Restore MPTCP according to the host's normal policy. Do not flush any firewall table or ipset. Removing containment before the running kernel is fixed restores exposure.

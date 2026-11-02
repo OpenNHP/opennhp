@@ -261,7 +261,7 @@ and confirm `Verify the XDP ingress filter attached` is green, then
 `infra-demo apply`, which returns the security group exactly to udp/knock-port +
 tcp/22 from the relay SG; recovery of an unfiltered host is still
 `aws ec2 reboot-instances`. `aws_instance.{server,ac,relay}` carry
-`ignore_changes = [ami]` so a new al2023 release never plans a replace; change
+`ignore_changes = [user_data, ami]` so bootstrap edits do not stop/start a live host and a new al2023 release never plans a replace; change
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
 
@@ -680,3 +680,7 @@ peer tables are redeployed in lockstep, so use sparingly.
 3. AC opens firewall, responds (`NHP_ART`) to Server
 4. Server sends acknowledgment (`NHP_ACK`) with access info to Agent
 5. Agent can now access the protected resource through AC
+
+CVE-2026-98432 containment is mirrored in all three demo userdata scripts and
+the matching `deploy-demo-v2` jobs. All three instances ignore `user_data` drift;
+keep each existing-host deploy step in sync with its new-host bootstrap.

@@ -576,6 +576,51 @@ func TestHistoryGeneratorRefusesInconsistentPage(t *testing.T) {
 	}
 }
 
+// TestHistoryGeneratorRefusesACountItCannotRead pins the bound on the counts
+// the page shows. A figure past the range of an int is not a count of source
+// addresses or of countries: converting it into an int wraps it into a number
+// the page never said, and freezing that number would publish it as the
+// site's own baseline.
+func TestHistoryGeneratorRefusesACountItCannotRead(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "history-page-2026-10-26.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		total string
+	}{
+		// 2^63 fits in a uint64 but not in an int, so converting it wraps
+		// it into a negative count.
+		{name: "past the range of an int", total: "9223372036854775808"},
+		{name: "negative", total: "-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			broken := strings.Replace(string(b), `data-total="25136"`, `data-total="`+tc.total+`"`, 1)
+			if broken == string(b) {
+				t.Fatal("the fixture no longer carries the source count")
+			}
+			dir := t.TempDir()
+			page := filepath.Join(dir, "page.html")
+			if err := os.WriteFile(page, []byte(broken), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			var buf strings.Builder
+			err := run([]string{"history", "-html", page, "-out", filepath.Join(dir, "history.json")}, &buf)
+			if err == nil {
+				t.Fatal("the generator accepted a source count it cannot read")
+			}
+			if !strings.Contains(err.Error(), "total-sources") {
+				t.Errorf("error does not name the figure: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
+				t.Error("a snapshot was written for a page whose count cannot be read")
+			}
+		})
+	}
+}
+
 // TestHistoryGeneratorFromIndexJSON pins the second input path: a published
 // index.json plus the totalnumber.js beside it produce the same snapshot the
 // saved page does.

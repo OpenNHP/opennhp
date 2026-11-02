@@ -142,23 +142,42 @@ func historyPageFromHTMLBytes(b []byte) (*historyPage, error) {
 	}
 
 	page := &historyPage{}
+	// A hero figure the page cannot say is a figure the snapshot cannot
+	// carry: the counts are a baseline the site publishes from then on, and
+	// one read as zero would quietly shrink them. The index path refuses
+	// such a figure too, so both inputs fail the same way.
+	var heroErr error
 	htmlElements(doc, func(n *html.Node) {
+		if heroErr != nil {
+			return
+		}
 		switch id := htmlAttr(n, "id"); id {
-		case "total-attacks", "total-sources", "total-countries":
+		case "total-attacks":
 			v, err := heroNumber(n)
 			if err != nil {
+				heroErr = fmt.Errorf("%s: %w", id, err)
 				return
 			}
-			switch id {
-			case "total-attacks":
-				page.Blocked = v
-			case "total-sources":
-				page.Sources = int(v)
-			case "total-countries":
-				page.Countries = int(v)
+			page.Blocked = v
+		case "total-sources":
+			v, err := heroCount(n)
+			if err != nil {
+				heroErr = fmt.Errorf("%s: %w", id, err)
+				return
 			}
+			page.Sources = v
+		case "total-countries":
+			v, err := heroCount(n)
+			if err != nil {
+				heroErr = fmt.Errorf("%s: %w", id, err)
+				return
+			}
+			page.Countries = v
 		}
 	})
+	if heroErr != nil {
+		return nil, heroErr
+	}
 
 	// The counting start lives in the note paragraph under the hero. A page
 	// without one leaves it empty, and the earliest row then names it.
@@ -205,17 +224,26 @@ func historyPageFromIndex(indexPath, totalsPath string) (*historyPage, error) {
 	page := &historyPage{Rows: rows}
 	seen := map[string]bool{}
 	for _, m := range totalNumberRe.FindAllStringSubmatch(string(tb), -1) {
-		v, err := strconv.ParseUint(m[2], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
-		}
 		switch m[1] {
 		case "BLOCKED":
+			// The packet total is the one figure that outgrows an int.
+			v, err := strconv.ParseUint(m[2], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
+			}
 			page.Blocked = v
 		case "SOURCE_IPS":
-			page.Sources = int(v)
+			v, err := historyCount(m[2])
+			if err != nil {
+				return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
+			}
+			page.Sources = v
 		case "COUNTRIES":
-			page.Countries = int(v)
+			v, err := historyCount(m[2])
+			if err != nil {
+				return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
+			}
+			page.Countries = v
 		}
 		seen[m[1]] = true
 	}
@@ -473,18 +501,57 @@ func htmlHasClass(n *html.Node, class string) bool {
 	return false
 }
 
+// heroNumberText returns the digits of one of the homepage's hero figures:
+// the counter's data-total attribute, which is the number the page counts up
+// to, or the rendered text as the fallback for a page saved with the
+// attribute stripped.
+func heroNumberText(n *html.Node) string {
+	if v := strings.TrimSpace(htmlAttr(n, "data-total")); v != "" {
+		return v
+	}
+	txt := strings.ReplaceAll(htmlText(n), ",", "")
+	return strings.TrimSpace(txt)
+}
+
 // heroNumber reads one of the homepage's hero figures. The counter's
 // data-total attribute is authoritative — it is the number the page counts
 // up to — and the rendered text is the fallback for a page saved with the
 // attribute stripped.
 func heroNumber(n *html.Node) (uint64, error) {
-	if v := strings.TrimSpace(htmlAttr(n, "data-total")); v != "" {
-		return strconv.ParseUint(v, 10, 64)
-	}
-	txt := strings.ReplaceAll(htmlText(n), ",", "")
-	txt = strings.TrimSpace(txt)
+	txt := heroNumberText(n)
 	if txt == "" {
 		return 0, nil
 	}
 	return strconv.ParseUint(txt, 10, 64)
+}
+
+// heroCount reads one of the homepage's hero figures that counts addresses
+// or countries.
+//
+// The figure is read as an int and never converted into one from a wider
+// type: a figure past the range of an int is a page that does not say what it
+// means, and converting it anyway would wrap it into a number the snapshot
+// would publish as the site's own count.
+func heroCount(n *html.Node) (int, error) {
+	txt := heroNumberText(n)
+	if txt == "" {
+		return 0, nil
+	}
+	return historyCount(txt)
+}
+
+// historyCount parses a figure that counts addresses or countries.
+//
+// It is read as an int and never converted from a wider type: a figure past
+// the range of an int is not a count, and converting it would wrap it into a
+// number the snapshot would publish as the site's own.
+func historyCount(digits string) (int, error) {
+	v, err := strconv.Atoi(digits)
+	if err != nil {
+		return 0, err
+	}
+	if v < 0 {
+		return 0, fmt.Errorf("%q is negative", digits)
+	}
+	return v, nil
 }

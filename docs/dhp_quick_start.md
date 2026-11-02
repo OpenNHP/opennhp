@@ -72,9 +72,15 @@ docker exec -it nhp-db /bin/bash
 ### 3.4 Configure DHP-related parameters
 Since agent and tee key is generated during the 1st startup, you need to configure agent public key in nhp-server for trustworthiness, tee public key in nhp-db for trustworthiness. In addition, you need to configure trusted execution environment in nhp-server for appraising attestation report.
 #### 3.4.1 Configure agent public key in nhp-server
+The DHP web console requires a bearer token on every request. nhp-agent generates it on first start in `etc/console.token` (mode 0600). In the default docker environment the agent runs as root, so read the token through the container rather than from the bind-mounted host file (a non-root host user cannot read it). Export it once for the commands below:
+```shell
+export NHP_CONSOLE_TOKEN=$(docker exec nhp-agent cat /nhp-agent/etc/console.token)
+```
+The console listens on loopback by default (`ListenAddr` in `etc/console.toml`); the docker environment binds it inside the container and publishes it on the host loopback only (`127.0.0.1:8443`).
+
 With this default docker environment, 8443 port is exposed to host for nhp-agent. So, you can access nhp-agent http endpoints from host using https://localhost:8443. You can use below curl command to get agent public key.
 ```shell
-curl --insecure https://localhost:8443/api/v1/key/agent
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/key/agent
 {"publicKey":"f+HWVbhQ6ZR3e+INU7ZSGyn3XNls5TUdbZWlPmj/1v890WLDW7RcnnbJmqqufymK+Yb99dadX+PlhK4qFYxtOg=="}
 ```
 Next, you need to configure agent public key in nhp-server.
@@ -91,7 +97,7 @@ ExpireTime = 1924991999
 ```
 After configuring the agent public key, you can check agent status with the following curl command:
 ```shell
-curl --insecure https://localhost:8443/api/v1/status/agent
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/status/agent
 {"attestationVerified":false,"running":true,"trustedByNHPDB":false,"trustedByNHPServer":true}
 ```
 You will see that trustedByNHPServer is true which means the agent is trusted by the NHP server.
@@ -101,7 +107,7 @@ You can use below curl command to get TEE attestation report.
 **Notes:** The attestation report is generated according to container information in non-TEE environment, non-TEE environment is only for test purpose.
 
 ```shell
-curl --insecure https://localhost:8443/api/v1/attestation/tee
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/attestation/tee
 {"measure":"3460bc69b9d273ad15c91074d8fd41abc5d5ccac50730d2e0495d08558848e34","serial number":"3460bc69b9d273ad15c91074d8fd41abc5d5ccac50730d2e0495d08558848e34"}
 ```
 Next, you need to configure attestation in nhp-server.
@@ -146,14 +152,14 @@ SerialNumber = "3460bc69b9d273ad15c91074d8fd41abc5d5ccac50730d2e0495d08558848e34
 ```
 After configuring the agent public key, you can check agent status with the following curl command:
 ```shell
-curl --insecure https://localhost:8443/api/v1/status/agent
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/status/agent
 {"attestationVerified":true,"running":true,"trustedByNHPDB":false,"trustedByNHPServer":true}
 ```
 You will see that attestationVerified is true which means TEE is trusted by the NHP server.
 #### 3.4.3 Configure TEE public key in nhp-db
  You can use below curl command to get TEE public key.
 ```shell
-curl --insecure https://localhost:8443/api/v1/key/tee
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/key/tee
 {"publicKey":"pup5OzTTZjddv+WBgbUBkvHuBgJoBg0DU+I2c7Qj4lHlrVM8N/Yl9F6DEnbGFBWB89xrN6VLhYAIM4Xv+mu4KA=="}
 ```
 Next, you need to configure TEE public key in nhp-db.
@@ -275,9 +281,18 @@ func findRecord(path string, accountId string) (bool, error) {
 Suppose we have built it as binary which name is `ta`.
 
 #### 4.2.2 Register trusted application
+Only trusted applications signed by an operator key are accepted. Generate an ed25519 signing key once, put its public key into `TrustedTAPublicKeys` in `docker/nhp-agent/etc/console.toml`, restart the nhp-agent process (`docker restart nhp-agent`; the console's `/api/v1/agent/restart` does not reload `console.toml`), then sign the TA:
+```shell
+openssl genpkey -algorithm ed25519 -out ta_signing.pem
+openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64   # -> TrustedTAPublicKeys
+openssl dgst -sha256 -binary ta > ta.sha256
+export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.sha256 | base64)
+```
+Keep `ta_signing.pem` off the agent host.
+
 You can use following command to register trusted application:
 ```shell
-curl --insecure --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'description=trusted application demo'
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'name=ta' --form 'language=go' --form 'entry=ta' --form 'description=trusted application demo' --form "signature=$TA_SIGNATURE"
 [
   {
     "method": "POST",
@@ -303,7 +318,7 @@ After success registration, you can get the HTTP RESTful API which is exposed by
 #### 4.2.3 Execute task
 You can invoke those exposed RESTful API to perform privacy-preserving compututation using following curl command:
 ```shell
-curl --insecure --request POST --url https://localhost:8443/api/v1/ta/ceca4572-644b-4bde-a4b6-ac6048f8fba6/verify_account --header 'content-type: application/json' --data '{"doId": "47d2b67c-ef80-45fc-814d-effd23baf788", "account_id": "62230121012345678901"}'
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/ceca4572-644b-4bde-a4b6-ac6048f8fba6/verify_account --header 'content-type: application/json' --data '{"doId": "47d2b67c-ef80-45fc-814d-effd23baf788", "account_id": "62230121012345678901"}'
 ```
 After execution, you will get response `{"account_id":"62230121012345678901","is_risk":false}` which means the account is not a risk-involved account.
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -338,6 +339,13 @@ type UdpAgent struct {
 	safeTee            atomic.Bool
 	trustedByNHPServer atomic.Bool
 	trustedByNHPDB     atomic.Bool
+
+	// DHP web console state, set once by PrepareDHPWebConsole before the
+	// console starts serving and read-only afterwards.
+	consoleConf     *ConsoleConfig
+	consoleNotices  []consoleNotice
+	consoleListener net.Listener
+	consoleServer   *http.Server
 }
 
 type UdpConn struct {

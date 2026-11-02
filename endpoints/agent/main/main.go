@@ -354,8 +354,17 @@ func runDHPApp() error {
 		return err
 	}
 
+	// Validate the console config, token, certificate and listen address
+	// before the agent starts, so a misconfiguration fails without side
+	// effects (no device, watchers or UDP traffic).
+	if err = a.PrepareDHPWebConsole(); err != nil {
+		fmt.Printf("\n  %s❌ Failed to prepare DHP web console:%s %v\n\n", colorYellow, colorReset, err)
+		return err
+	}
+
 	err = a.Start(exeDirPath, 4)
 	if err != nil {
+		a.CloseDHPWebConsole()
 		fmt.Printf("\n  %s❌ Failed to start DHP agent:%s %v\n\n", colorYellow, colorReset, err)
 		return err
 	}
@@ -363,7 +372,12 @@ func runDHPApp() error {
 	// Print DHP agent info after successful start
 	printDHPAgentInfo()
 
-	a.CreateDHPWebConsole()
+	if err = a.ServeDHPWebConsole(); err != nil {
+		fmt.Printf("\n  %s❌ Failed to start DHP web console:%s %v\n\n", colorYellow, colorReset, err)
+		a.CloseDHPWebConsole()
+		a.Stop()
+		return err
+	}
 	a.StartDHPKnockLoop()
 
 	// react to terminate signals
@@ -374,6 +388,9 @@ func runDHPApp() error {
 	<-termCh
 
 	fmt.Printf("\n  %s🛑 Shutting down DHP agent...%s\n", colorYellow, colorReset)
+	// Stop the console first so no console request (restart, key rotation,
+	// TA call) runs concurrently with the agent being torn down.
+	a.CloseDHPWebConsole()
 	a.Stop()
 	fmt.Printf("  %s✅ DHP Agent stopped gracefully%s\n\n", colorGreen, colorReset)
 

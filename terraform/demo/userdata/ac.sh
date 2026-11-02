@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Contain the kernel flaw before starting any demo listener.
-dnf install -y iptables-nft
+# Fail closed: do not start a demo listener without kernel containment.
+command -v iptables >/dev/null || dnf install -y iptables-nft
 base64 -d > /run/layerv-kernel-mitigation-bootstrap.sh <<'KERNEL_MITIGATION'
 ${kernel_mitigation_base64}
 KERNEL_MITIGATION

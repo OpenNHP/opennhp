@@ -159,7 +159,9 @@ resource "aws_instance" "relay" {
     # at a time. Replace the relay first only after pinning var.relay_private_ip
     # (or confirming the server's XDP whitelist covers the new address), then
     # touch the server; re-run deploy-demo-v2 afterwards.
-    ignore_changes = [ami]
+    # User-data changes must not power-cycle the SSH jump host. Existing hosts
+    # receive persistent configuration through deploy-demo-v2, as server/AC do.
+    ignore_changes = [user_data, ami]
   }
 }
 

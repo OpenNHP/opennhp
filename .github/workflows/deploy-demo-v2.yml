@@ -862,7 +862,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes "$TARGET" 'set -eu
-            command -v iptables >/dev/null || sudo dnf install -y iptables-nft
+            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
             sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
             sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
             sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh
@@ -1102,7 +1102,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh nhp-server 'set -eu
-            command -v iptables >/dev/null || sudo dnf install -y iptables-nft
+            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
             sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
             sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
             sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh
@@ -1877,7 +1877,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh nhp-ac 'set -eu
-            command -v iptables >/dev/null || sudo dnf install -y iptables-nft
+            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
             sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
             sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
             sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh

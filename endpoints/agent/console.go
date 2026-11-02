@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -186,7 +187,9 @@ func loadOrCreateConsoleToken(etcDir string) (string, []consoleNotice, error) {
 				tokenPath, len(token), minConsoleTokenLen)
 		}
 		var notices []consoleNotice
-		if info, statErr := os.Stat(tokenPath); statErr == nil && info.Mode().Perm()&0o077 != 0 {
+		// Windows reports 0666/0444 regardless of ACLs, so the POSIX
+		// group/other check is meaningless there.
+		if info, statErr := os.Stat(tokenPath); runtime.GOOS != "windows" && statErr == nil && info.Mode().Perm()&0o077 != 0 {
 			notices = append(notices, consoleNotice{warning: true, msg: fmt.Sprintf(
 				"DHP console token file %s is accessible by group/other (mode %v); restrict it to 0600", tokenPath, info.Mode().Perm())})
 		}

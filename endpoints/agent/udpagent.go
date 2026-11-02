@@ -369,6 +369,18 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
+	// If Start fails it returns before the agent is marked running, so a
+	// later Stop() is a no-op (see Stop). Release the config watchers that
+	// loadBaseConfig/loadDHPConfig may already have installed, or they keep
+	// firing and are orphaned when the next Start replaces the handles.
+	// StopConfigWatch closes every handle; closing an already closed
+	// watcher is a no-op.
+	defer func() {
+		if err != nil {
+			a.StopConfigWatch()
+		}
+	}()
+
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger

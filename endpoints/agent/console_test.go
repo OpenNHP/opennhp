@@ -939,3 +939,44 @@ func TestRegisterTATightensExistingTADir(t *testing.T) {
 		t.Fatalf("etc/ta mode %v after registration, want 0700 (status %d)", perm, w.Code)
 	}
 }
+
+// A Start that fails after loadBaseConfig installed its watcher (here: an
+// unparsable private key) must release the watcher itself, because the
+// agent is not running and a later Stop() is a no-op.
+func TestFailedStartReleasesConfigWatchers(t *testing.T) {
+	dir := t.TempDir()
+	etc := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(etc, "config.toml"), []byte("PrivateKeyBase64 = \"not-a-valid-key\"\nLogLevel = 5\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldAgent, oldCommon := ExeDirPath, common.ExeDirPath
+	t.Cleanup(func() {
+		ExeDirPath, common.ExeDirPath = oldAgent, oldCommon
+		baseConfigWatch, dhpConfigWatch, serverConfigWatch, resourceConfigWatch = nil, nil, nil, nil
+	})
+
+	a := &UdpAgent{}
+	if err := a.Start(dir, 5); err == nil {
+		t.Fatal("Start succeeded with an unparsable private key")
+	}
+
+	want := "file watcher for " + filepath.Join(etc, "config.toml") + " closed"
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		matches, _ := filepath.Glob(filepath.Join(dir, "logs", "*.log"))
+		for _, m := range matches {
+			if b, _ := os.ReadFile(m); bytes.Contains(b, []byte(want)) {
+				a.log.Close()
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			a.log.Close()
+			t.Fatalf("config.toml watcher was not closed after a failed Start (looked for %q)", want)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

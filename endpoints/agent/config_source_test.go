@@ -95,11 +95,12 @@ func TestUseInMemoryConfigDoesNotShareCallerConfig(t *testing.T) {
 	}
 }
 
-// TestMemoryModeRebuildsConfigFromTemplate verifies that applyInMemoryBaseConfig
-// builds a fresh Config each call, so a rekey that mutates the live config does
-// not alter the stored template and a Stop/Start restart begins from the
-// originally supplied configuration.
-func TestMemoryModeRebuildsConfigFromTemplate(t *testing.T) {
+// TestMemoryModeRebuildBuildsFreshConfig verifies applyInMemoryBaseConfig does
+// not alias the template into a.config: a rekey that mutates a.config in place
+// must not reach back into memConfig. (The template is still updated on rekey,
+// but only through ReinitWithKey's explicit updateMemConfig write, not by
+// aliasing — see TestMemoryModeRestartKeepsRekey.)
+func TestMemoryModeRebuildBuildsFreshConfig(t *testing.T) {
 	a := &UdpAgent{log: log.NewLogger("test", 0, t.TempDir(), "agent")}
 	k1 := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	a.UseInMemoryConfig(&Config{
@@ -110,23 +111,129 @@ func TestMemoryModeRebuildsConfigFromTemplate(t *testing.T) {
 	if err := a.loadBaseConfig(); err != nil {
 		t.Fatalf("loadBaseConfig: %v", err)
 	}
-	// Simulate a rekey, which mutates the live config in place.
+	if a.config == a.memConfig {
+		t.Fatal("a.config aliases the template; a rekey would mutate memConfig")
+	}
+	// A direct in-place mutation of a.config (what SetPrivateKeyMaterial does)
+	// must not touch the template.
 	k2 := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	a.config.SetPrivateKeyMaterial(base64.StdEncoding.EncodeToString(k2), common.CIPHER_SCHEME_GMSM, k2)
-
-	// The template must be untouched by the rekey.
 	if a.memConfig.PrivateKeyBase64 != base64.StdEncoding.EncodeToString(k1) ||
 		a.memConfig.DefaultCipherScheme != common.CIPHER_SCHEME_CURVE {
-		t.Fatalf("rekey mutated the stored template: %+v", a.memConfig)
+		t.Fatalf("in-place config mutation leaked into the template: %+v", a.memConfig)
+	}
+}
+
+// TestMemoryModeRestartKeepsRekey verifies the fix for the reviewer's finding 3:
+// a rekey via ReinitWithKey is recorded in the template, so a Stop/Start restart
+// (which clears a.config and rebuilds from the template) keeps the rotated key
+// and cipher scheme instead of reverting to the originally supplied one.
+func TestMemoryModeRestartKeepsRekey(t *testing.T) {
+	a := &UdpAgent{log: log.NewLogger("test", 0, t.TempDir(), "agent")}
+	k1 := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	a.UseInMemoryConfig(&Config{
+		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
+		PrivateKeyBase64:    base64.StdEncoding.EncodeToString(k1),
+	})
+	if err := a.loadBaseConfig(); err != nil {
+		t.Fatalf("loadBaseConfig: %v", err)
 	}
 
-	// A restart reloads from the template, not the rekeyed live config.
+	// Rotate the in-memory key the way ReinitWithKey records it.
+	k2 := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	k2b64 := base64.StdEncoding.EncodeToString(k2)
+	a.updateMemConfig(func(c *Config) {
+		c.PrivateKeyBase64 = k2b64
+		c.DefaultCipherScheme = common.CIPHER_SCHEME_GMSM
+	})
+
+	// Simulate a restart: clear a.config and reload from the template.
+	a.config = nil
 	if err := a.loadBaseConfig(); err != nil {
 		t.Fatalf("loadBaseConfig (restart): %v", err)
 	}
-	if a.config.PrivateKeyBase64 != base64.StdEncoding.EncodeToString(k1) ||
-		a.config.GetCipherScheme() != common.CIPHER_SCHEME_CURVE {
-		t.Fatalf("restart did not start from the original config: %+v", a.config)
+	if a.config.PrivateKeyBase64 != k2b64 || a.config.GetCipherScheme() != common.CIPHER_SCHEME_GMSM {
+		t.Fatalf("restart reverted the rekey instead of keeping it: %+v", a.config)
+	}
+}
+
+// TestMemoryModeSetKnockUserSurvivesRestart verifies SetKnockUser records the
+// identity in the template (allocating it in the nil-template SDK path), so a
+// restart does not reset knockUser to empty.
+func TestMemoryModeSetKnockUserSurvivesRestart(t *testing.T) {
+	a := &UdpAgent{log: log.NewLogger("test", 0, t.TempDir(), "agent")}
+	a.SetConfigSource(ConfigSourceMemory) // nil template, SDK install-after-Start path
+	a.knockUser = &KnockUser{}
+	a.SetKnockUser("sdk-user", "sdk-org", map[string]any{"k": "v"})
+
+	if a.memConfig == nil {
+		t.Fatal("SetKnockUser did not allocate the template in memory mode")
+	}
+
+	// Restart: clear config and reload from the template.
+	a.config = nil
+	if err := a.loadBaseConfig(); err != nil {
+		t.Fatalf("loadBaseConfig (restart): %v", err)
+	}
+	a.knockUserMutex.RLock()
+	defer a.knockUserMutex.RUnlock()
+	if a.knockUser.UserId != "sdk-user" || a.knockUser.OrganizationId != "sdk-org" {
+		t.Fatalf("restart lost the programmatic identity: %+v", a.knockUser)
+	}
+}
+
+// TestMemoryModeRotationNotSupported verifies the fix for finding 2: the
+// file-backed rotation paths refuse in memory mode instead of writing a key to
+// disk that the running agent never uses and reporting success.
+func TestMemoryModeRotationNotSupported(t *testing.T) {
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+
+	if err := a.RotateAgentKey(); err != errMemoryModeNotSupported {
+		t.Fatalf("RotateAgentKey: got %v, want errMemoryModeNotSupported", err)
+	}
+	if err := a.RotateTeeKey(); err != errMemoryModeNotSupported {
+		t.Fatalf("RotateTeeKey: got %v, want errMemoryModeNotSupported", err)
+	}
+}
+
+// TestMemoryModeStartRestartKeepsPeers verifies the fix for finding 3's peer
+// loss: a memory-mode restart keeps peers added with AddServer rather than
+// wiping serverClusterMap and skipping loadPeers.
+func TestMemoryModeStartRestartKeepsPeers(t *testing.T) {
+	dir := t.TempDir()
+	key := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	resetConfigWatches()
+
+	a := &UdpAgent{}
+	a.UseInMemoryConfig(&Config{
+		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
+		PrivateKeyBase64:    base64.StdEncoding.EncodeToString(key),
+	})
+	if err := a.Start(dir, 0); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer a.Stop()
+
+	peerKey := core.NewECDH(core.ECC_CURVE25519).PublicKeyBase64()
+	a.AddServer(&core.UdpPeer{
+		Type:         int(core.NHP_SERVER),
+		PubKeyBase64: peerKey,
+		Ip:           "203.0.113.10",
+		Port:         62206,
+	})
+	if _, ok := a.serverClusterMap[peerKey]; !ok {
+		t.Fatalf("AddServer did not register the peer")
+	}
+
+	// Simulate RestartAgent's Stop/Start without the hardcoded ExeDirPath.
+	a.Stop()
+	a.config = nil
+	if err := a.Start(dir, 0); err != nil {
+		t.Fatalf("Start (restart): %v", err)
+	}
+	if _, ok := a.serverClusterMap[peerKey]; !ok {
+		t.Fatalf("restart wiped the programmatic peer")
 	}
 }
 

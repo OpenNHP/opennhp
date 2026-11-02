@@ -285,10 +285,18 @@ type UdpAgent struct {
 	// etc/*.toml). ConfigSourceMemory disables file loading and every config
 	// watcher; set it with SetConfigSource / UseInMemoryConfig before Start.
 	configSource ConfigSource
-	// memConfig holds the base configuration supplied by UseInMemoryConfig for
-	// ConfigSourceMemory. A nil memConfig in memory mode means the caller
-	// installs the key and identity after Start (the SDK registration path).
-	memConfig *Config
+	// memConfig holds the base configuration for ConfigSourceMemory. It is the
+	// authoritative template a restart (Stop->Start, which clears a.config)
+	// rebuilds from, so it is kept current with the live programmatic state:
+	// ReinitWithKey writes the rotated key material into it and SetKnockUser
+	// writes the identity, both under memConfigMutex. Without that, a restart
+	// would revert to the originally supplied values (or an empty config when
+	// nil) and the agent would come back with a random key and empty identity.
+	// A nil memConfig at the first Start means the caller installs the key and
+	// identity afterward (the SDK registration path); the setters allocate it
+	// on first write so those later installs still survive a restart.
+	memConfig      *Config
+	memConfigMutex sync.Mutex
 
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
@@ -431,8 +439,24 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	// updateServerPeers' map-swap has a base value) and before
 	// callers like AddServer / GetFirstServerPeer touch it on
 	// agents that haven't loaded a server.toml yet.
-	a.serverClusterMap = make(map[string]*ServerCluster)
-	a.serverClusterByName = make(map[string]*ServerCluster)
+	//
+	// Memory mode has no server.toml for loadPeers to reload from, so a
+	// restart (Stop->Start) must keep the peers added programmatically via
+	// AddServer rather than wiping them. Start always builds a fresh device
+	// above, so re-register each surviving cluster's representative peer with
+	// it (the same re-add ReinitWithKey does). A nil map is the first Start.
+	if a.configSource == ConfigSourceMemory && a.serverClusterMap != nil {
+		a.serverPeerMutex.Lock()
+		for _, sc := range a.serverClusterMap {
+			if sc.representativePeer != nil {
+				a.device.AddPeer(sc.representativePeer)
+			}
+		}
+		a.serverPeerMutex.Unlock()
+	} else {
+		a.serverClusterMap = make(map[string]*ServerCluster)
+		a.serverClusterByName = make(map[string]*ServerCluster)
+	}
 
 	// load peers
 	_ = a.loadPeers()
@@ -528,6 +552,30 @@ func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]
 	a.knockUser.OrganizationId = orgId
 	a.knockUser.UserData = userData
 	a.knockUserMutex.Unlock()
+
+	// In memory mode, mirror the identity into the restart template so a
+	// Stop/Start does not revert knockUser to the originally supplied (or
+	// empty) value. No-op in file mode, where loadBaseConfig re-reads it.
+	if a.configSource == ConfigSourceMemory {
+		a.updateMemConfig(func(c *Config) {
+			c.UserId = usrId
+			c.OrganizationId = orgId
+			c.UserData = userData
+		})
+	}
+}
+
+// updateMemConfig applies mutate to the in-memory restart template under
+// memConfigMutex, allocating it on first write. It is how the live programmatic
+// setters (ReinitWithKey, SetKnockUser) keep the template current in memory
+// mode so a restart rebuilds the state the agent last held. Memory mode only.
+func (a *UdpAgent) updateMemConfig(mutate func(*Config)) {
+	a.memConfigMutex.Lock()
+	if a.memConfig == nil {
+		a.memConfig = &Config{}
+	}
+	mutate(a.memConfig)
+	a.memConfigMutex.Unlock()
 }
 
 // SetAllowMissingConfig opts the agent into tolerating a missing
@@ -558,11 +606,13 @@ func (a *UdpAgent) SetConfigSource(src ConfigSource) {
 // base config, for the install-after-Start path.
 func (a *UdpAgent) UseInMemoryConfig(cfg *Config) {
 	a.configSource = ConfigSourceMemory
+	a.memConfigMutex.Lock()
 	if cfg == nil {
 		a.memConfig = nil
-		return
+	} else {
+		a.memConfig = cloneConfigData(cfg)
 	}
-	a.memConfig = cloneConfigData(cfg)
+	a.memConfigMutex.Unlock()
 }
 
 func (a *UdpAgent) SetDeviceId(devId string) {
@@ -651,7 +701,19 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	a.recvMsgCh = newDev.DecryptedMsgQueue
 	a.deviceMutex.Unlock()
 
-	a.config.SetPrivateKeyMaterial(base64.StdEncoding.EncodeToString(privKeyBytes), cipherScheme, privKeyBytes)
+	keyB64 := base64.StdEncoding.EncodeToString(privKeyBytes)
+	a.config.SetPrivateKeyMaterial(keyB64, cipherScheme, privKeyBytes)
+
+	// In memory mode, record the rotated key in the restart template so a
+	// Stop/Start rebuilds from it instead of reverting to the key the agent
+	// was first given (or minting a random throwaway key when none was). No-op
+	// in file mode, where RotateAgentKey persists to etc/config.toml.
+	if a.configSource == ConfigSourceMemory {
+		a.updateMemConfig(func(c *Config) {
+			c.PrivateKeyBase64 = keyB64
+			c.DefaultCipherScheme = cipherScheme
+		})
+	}
 
 	// Stopping the old device closes its DecryptedMsgQueue, so the
 	// existing recvMessageRoutine (blocked on the old channel) observes a

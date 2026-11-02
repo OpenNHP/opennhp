@@ -258,6 +258,15 @@ func (a *UdpAgent) getTeePublicKey(c *gin.Context) {
 }
 
 func (a *UdpAgent) configServer(c *gin.Context) {
+	// In memory mode there is no server.toml the running agent reads, and a
+	// restart reloads peers from programmatic state, so writing the file would
+	// report success without affecting the agent. Reject it; callers manage
+	// peers with AddServer/RemoveServer instead.
+	if a.configSource == ConfigSourceMemory {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": errMemoryModeNotSupported.Error()})
+		return
+	}
+
 	var peers Peers
 
 	if err := c.BindJSON(&peers); err != nil {

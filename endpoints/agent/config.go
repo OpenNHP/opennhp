@@ -26,6 +26,15 @@ var (
 
 	errLoadConfig = fmt.Errorf("config load error")
 
+	// errMemoryModeNotSupported is returned by the file-backed config-mutation
+	// paths (key rotation, server-peer file writes) when the agent runs in
+	// ConfigSourceMemory. In memory mode there is no etc/*.toml to read or
+	// rewrite and a restart reloads from the in-memory template, so writing a
+	// file would report success while changing nothing the running agent uses.
+	// The embedding caller owns key/peer lifecycle directly (ReinitWithKey,
+	// AddServer), so these operations fail loudly instead.
+	errMemoryModeNotSupported = fmt.Errorf("operation not supported in memory config mode")
+
 	secretCreated = "/var/run/secret.created"
 )
 
@@ -230,14 +239,18 @@ func cloneConfigData(src *Config) *Config {
 }
 
 // applyInMemoryBaseConfig populates the agent from the programmatic config
-// supplied via UseInMemoryConfig, mirroring the first-load branch of
-// updateBaseConfig (knock user, base config, log level) without reading a file
-// or arming a watcher. A nil memConfig yields an empty config, matching the SDK
-// path that installs the key and identity after Start. A fresh Config is built
-// each call, so a later rekey (which mutates a.config) never alters the stored
-// template and a Stop/Start restart begins from the originally supplied config.
+// template (memConfig), mirroring the first-load branch of updateBaseConfig
+// (knock user, base config, log level) without reading a file or arming a
+// watcher. A nil memConfig yields an empty config, matching the SDK path that
+// installs the key and identity after Start. A fresh Config is built each call
+// (Config carries a lock and must not be aliased into a.config, where a rekey
+// mutates it in place), but the template itself is kept current with the live
+// state by ReinitWithKey/SetKnockUser, so a Stop/Start restart rebuilds the
+// agent with the key and identity it last held rather than reverting.
 func (a *UdpAgent) applyInMemoryBaseConfig() error {
+	a.memConfigMutex.Lock()
 	conf := cloneConfigData(a.memConfig)
+	a.memConfigMutex.Unlock()
 
 	a.knockUserMutex.Lock()
 	a.knockUser = &KnockUser{
@@ -631,6 +644,9 @@ func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, *Config, error) {
 // intentionally out of scope for encryption-at-rest (`seal`): it is always
 // written and read as plain base64, unlike the agent's own PrivateKeyBase64.
 func (a *UdpAgent) RotateTeeKey() error {
+	if a.configSource == ConfigSourceMemory {
+		return errMemoryModeNotSupported
+	}
 	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
 
 	ecdh, _, err := a.NewEcdhFromConfigFile()
@@ -646,6 +662,9 @@ func (a *UdpAgent) RotateTeeKey() error {
 }
 
 func (a *UdpAgent) RotateAgentKey() error {
+	if a.configSource == ConfigSourceMemory {
+		return errMemoryModeNotSupported
+	}
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 
 	ecdh, conf, err := a.NewEcdhFromConfigFile()

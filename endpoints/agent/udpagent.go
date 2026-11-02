@@ -549,8 +549,17 @@ func (a *UdpAgent) SetCheckResults(results map[string]any) {
 }
 
 // export Stop
+//
+// Stop is a no-op unless the agent is running. running only becomes true
+// at the very end of a successful Start, after every channel Stop closes
+// has been created, so this makes Stop safe after a failed Start (e.g. a
+// RestartAgent whose Start rejected the config) and against concurrent or
+// repeated calls — any of which would otherwise close the same channels
+// twice and panic.
 func (a *UdpAgent) Stop() {
-	a.running.Store(false)
+	if !a.running.CompareAndSwap(true, false) {
+		return
+	}
 	a.stopKnockLoop()
 	close(a.signals.stop)
 	a.device.Stop()

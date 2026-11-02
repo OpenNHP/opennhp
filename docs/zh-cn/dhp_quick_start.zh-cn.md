@@ -80,7 +80,7 @@ DHP Web 控制台的每个请求都需要携带 Bearer Token。nhp-agent 首次�
 ```shell
 export NHP_CONSOLE_TOKEN=$(docker exec nhp-agent cat /nhp-agent/etc/console.token)
 ```
-控制台默认只监听回环地址（`etc/console.toml` 中的 `ListenAddr`）；Docker 环境在容器内监听所有地址，并且只发布到主机回环地址（`127.0.0.1:8443`）。在 Docker 网络内部，控制台监听 nhp-agent 容器的所有网卡，因此 `network_default` 上的其他容器也能访问到它，但同样需要 Token。
+控制台默认只监听回环地址（`etc/console.toml` 中的 `ListenAddr`）；Docker 环境在容器内监听所有地址，并且只发布到主机回环地址（`127.0.0.1:8443`）。在 Docker 网络内部，控制台监听 nhp-agent 容器的所有网卡，因此 `network_default` 上的其他容器也能访问到它，但同样需要 Token。8443 端口只发布到宿主机回环地址，同一端口上的 DHP demo 入口也受此影响：请在 Docker 宿主机上用浏览器打开 https://localhost:8443。如果需要从其他机器访问，请在明确知情的情况下修改 `docker-compose.dhp.yaml` 中的端口映射（例如改回 `"8443:443"`），控制台仍然受 Token 保护。
 
 在此默认的 Docker 环境中，8443端口已为nhp-agent映射到主机，因此可以通过https://localhost:8443从主机访问nhp-agent的 HTTP 接口。你可以使用以下curl命令获取代理的公钥。
 

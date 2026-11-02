@@ -892,3 +892,50 @@ func TestLifecycleOpsSerializedWithShutdown(t *testing.T) {
 		}
 	}
 }
+
+// Stop must be a no-op when the agent is not running: after a failed
+// Start (e.g. a console restart whose Start rejected the config) the
+// channels Stop closes are already closed, and closing them again panics.
+func TestStopIsNoOpWhenNotRunning(t *testing.T) {
+	a := &UdpAgent{}
+	a.Stop() // never started: channels and device are nil
+	a.Stop()
+
+	stopped := &UdpAgent{}
+	stopped.signals.stop = make(chan struct{})
+	close(stopped.signals.stop) // as left behind by a previous Stop
+	stopped.Stop()              // must not close it again
+}
+
+// An etc/ta left at 0755 by an older version is tightened to 0700 on the
+// next registration (MkdirAll does not change an existing directory).
+func TestRegisterTATightensExistingTADir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions")
+	}
+	dir := t.TempDir()
+	setConsoleExeDir(t, dir)
+	taDir := filepath.Join(dir, "etc", "ta")
+	if err := os.MkdirAll(taDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(taDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	a, router := newTestConsole(t, &ConsoleConfig{trustedTAKeys: []ed25519.PublicKey{pub}})
+	a.safeTee.Store(true)
+	w := httptest.NewRecorder()
+	// Not a valid executable: starting it fails fast after the directory
+	// handling under test.
+	router.ServeHTTP(w, signedTAUpload(t, priv, []byte("not executable\n")))
+
+	info, err := os.Stat(taDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("etc/ta mode %v after registration, want 0700 (status %d)", perm, w.Code)
+	}
+}

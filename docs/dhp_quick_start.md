@@ -76,7 +76,7 @@ The DHP web console requires a bearer token on every request. nhp-agent generate
 ```shell
 export NHP_CONSOLE_TOKEN=$(docker exec nhp-agent cat /nhp-agent/etc/console.token)
 ```
-The console listens on loopback by default (`ListenAddr` in `etc/console.toml`); the docker environment binds it inside the container and publishes it on the host loopback only (`127.0.0.1:8443`). Inside the docker network the console listens on all interfaces of the nhp-agent container, so other containers on `network_default` can reach it as well; they still need the token.
+The console listens on loopback by default (`ListenAddr` in `etc/console.toml`); the docker environment binds it inside the container and publishes it on the host loopback only (`127.0.0.1:8443`). Inside the docker network the console listens on all interfaces of the nhp-agent container, so other containers on `network_default` can reach it as well; they still need the token. Port 8443 is published on the host loopback only, which also applies to the DHP demo entrypoint served on it: open https://localhost:8443 from a browser on the docker host. To reach it from another machine, change the mapping in `docker-compose.dhp.yaml` (e.g. back to `"8443:443"`) knowingly — the console stays token-protected.
 
 With this default docker environment, 8443 port is exposed to host for nhp-agent. So, you can access nhp-agent http endpoints from host using https://localhost:8443. You can use below curl command to get agent public key.
 ```shell

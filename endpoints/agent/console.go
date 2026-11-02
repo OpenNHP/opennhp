@@ -211,9 +211,9 @@ func loadOrCreateConsoleToken(etcDir string) (string, []consoleNotice, error) {
 		return "", nil, fmt.Errorf("create %s: %w", tokenPath, err)
 	}
 	if _, writeErr := f.WriteString(token + "\n"); writeErr != nil {
-		f.Close()
+		closeErr := f.Close()
 		os.Remove(tokenPath)
-		return "", nil, fmt.Errorf("write %s: %w", tokenPath, writeErr)
+		return "", nil, fmt.Errorf("write %s: %w", tokenPath, errors.Join(writeErr, closeErr))
 	}
 	// A failed Close may mean the data never reached disk; do not leave a
 	// possibly truncated token behind for the next start to accept.
@@ -240,6 +240,8 @@ func consoleAuthMiddleware(token string) gin.HandlerFunc {
 			return
 		}
 
+		// Leading/trailing whitespace is ignored on both sides (the token
+		// file is trimmed too); internal whitespace is significant.
 		got := sha256.Sum256([]byte(strings.TrimSpace(header[len(prefix):])))
 		if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 			c.Header("WWW-Authenticate", `Bearer realm="nhp-agent", error="invalid_token"`)

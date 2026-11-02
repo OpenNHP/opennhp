@@ -342,7 +342,9 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 
 	// Parse explicitly: c.PostForm swallows parse errors, which would turn
 	// an oversized upload into a misleading "missing parameters" 400.
-	if parseErr := c.Request.ParseMultipartForm(32 << 20); parseErr != nil {
+	// Keep at most 8 MiB of the upload in memory; larger parts spill to
+	// temporary files.
+	if parseErr := c.Request.ParseMultipartForm(8 << 20); parseErr != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(parseErr, &tooLarge) {
 			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": fmt.Sprintf("trusted application upload exceeds %d bytes", maxTAUploadSize)})
@@ -384,8 +386,14 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 
 	taDir := filepath.Join(ExeDirPath, "etc", "ta")
 	// Owner-only: only the agent itself needs to read or execute TAs.
+	// MkdirAll leaves an existing directory's mode alone, so tighten an
+	// etc/ta created by an older version (0755) explicitly.
 	if mkdirErr := os.MkdirAll(taDir, 0o700); mkdirErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": mkdirErr.Error()})
+		return
+	}
+	if chmodErr := os.Chmod(taDir, 0o700); chmodErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": chmodErr.Error()})
 		return
 	}
 

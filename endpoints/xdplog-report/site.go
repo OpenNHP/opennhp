@@ -561,7 +561,7 @@ type siteInput struct {
 	PageOnly bool
 }
 
-// collectSiteInputs walks <logs>/<source>/ and yields nhp_server_xdp-YYYY-MM-DD.log
+// collectSiteInputs walks <logs>/<source>/ and yields nhp_<source>_xdp-YYYY-MM-DD.log
 // and *.log.gz entries. evaluate/audit files (anything else matching nhp_server_xdp-)
 // and files with malformed dates are ignored. The input directory is expected to
 // be already filtered to whatever the collector chose to pull.
@@ -614,7 +614,7 @@ func collectSiteInputs(logsDir, outDir string) ([]siteInput, error) {
 	return out, nil
 }
 
-// collectRawInputs walks <logs>/<source>/ for raw nhp_server_xdp-*.log[.gz]
+// collectRawInputs walks <logs>/<source>/ for raw nhp_<source>_xdp-*.log[.gz]
 // files and writes them into dst keyed by "<source>/<day>".
 func collectRawInputs(logsDir string, dst map[string]siteInput) error {
 	st, err := os.Stat(logsDir)
@@ -628,7 +628,11 @@ func collectRawInputs(logsDir string, dst map[string]siteInput) error {
 	if err != nil {
 		return err
 	}
-	dateRe := regexp.MustCompile(`^nhp_server_xdp-(\d{4}-\d{2}-\d{2})\.log(?:\.gz)?$`)
+	// The prefix names the daemon that wrote the log and must agree with the
+	// directory the collector staged it under, so an AC log that lands in
+	// raw/server/ (or the reverse) is ignored instead of counted as the wrong
+	// source.
+	dateRe := regexp.MustCompile(`^nhp_(server|ac)_xdp-(\d{4}-\d{2}-\d{2})\.log(?:\.gz)?$`)
 	for _, s := range sources {
 		if !s.IsDir() {
 			continue
@@ -645,13 +649,13 @@ func collectRawInputs(logsDir string, dst map[string]siteInput) error {
 			}
 			name := e.Name()
 			m := dateRe.FindStringSubmatch(name)
-			if m == nil {
+			if m == nil || m[1] != sourceName {
 				continue
 			}
-			key := sourceName + "/" + m[1]
+			key := sourceName + "/" + m[2]
 			dst[key] = siteInput{
 				Source: sourceName,
-				Day:    m[1],
+				Day:    m[2],
 				Path:   filepath.Join(sourceDir, name),
 			}
 		}

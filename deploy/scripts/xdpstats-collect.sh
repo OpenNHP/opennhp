@@ -1,7 +1,7 @@
 #!/bin/bash
 # xdpstats-collect.sh
 #
-# Pulls nhp_server_xdp-YYYY-MM-DD.log files from nhp-server via SSH and
+# Pulls nhp_server_xdp-/nhp_ac_xdp-YYYY-MM-DD.log files from nhp-server and nhp-ac via SSH and
 # rebuilds the stats.opennhp.org static site. Driven by a systemd timer on
 # the relay host (deploy/scripts/xdpstats.timer, OnCalendar=*-*-* 00:20:00
 # UTC, Persistent=true). Run by hand with no arguments to trigger a single
@@ -12,10 +12,8 @@
 #
 #   <name> <ssh_user> <host> <log_dir>
 #
-# v1 ships with one line, "server". AC is intentionally not here: AC writes
-# per-flow accept/deny files (not nhp_server_xdp-*), and the parsing lives
-# in endpoints/xdplog-report/parse.go which still only knows the server's
-# nhp_server_xdp log layout.
+# Two lines ship: "server" (nhp_server_xdp-*) and "ac" (nhp_ac_xdp-*). The
+# log file prefix is nhp_<name>_xdp, derived from the source name.
 #
 # The collector:
 #   1. Reads sources.conf and resolves each (source) -> remote host + user.
@@ -167,6 +165,16 @@ while read -r name user host log_dir || [ -n "$name" ]; do
     continue
   fi
 
+  case "$name" in
+    server|ac) ;;
+    *)
+      log "error" "unknown source '$name' (want server or ac)"
+      any_failed=1
+      continue
+      ;;
+  esac
+  prefix="nhp_${name}_xdp"
+
   src_raw="$RAW_DIR/$name"
   mkdir -p "$src_raw"
   chmod 0700 "$src_raw"
@@ -197,7 +205,7 @@ while read -r name user host log_dir || [ -n "$name" ]; do
 
   while IFS=$'\t' read -r date size mtime; do
     case "$date" in ''|[!0-9]*) continue ;; esac
-    cache="$src_raw/nhp_server_xdp-${date}.log.gz"
+    cache="$src_raw/${prefix}-${date}.log.gz"
     # Sidecar recording the (size, mtime) the server reported for this day
     # at the moment we pulled it.
     meta="$cache.meta"
@@ -230,7 +238,7 @@ while read -r name user host log_dir || [ -n "$name" ]; do
     fi
 
     vlog "$name/$date: pulling ($reason, ${size} bytes)"
-    tmp=$(mktemp -p "$src_raw" "tmp-nhp_server_xdp-${date}-XXXXXX.log")
+    tmp=$(mktemp -p "$src_raw" "tmp-${prefix}-${date}-XXXXXX.log")
     if ! ssh "${SSH_OPTS[@]}" "$user@$host" "get $date" </dev/null >"$tmp" 2>>"$LOG_FILE"; then
       log "error" "$name/$date: ssh get failed"
       rm -f "$tmp"

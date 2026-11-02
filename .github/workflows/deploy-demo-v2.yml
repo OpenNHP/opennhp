@@ -2943,6 +2943,84 @@ jobs:
             echo "nhp-ac security group ($SG_ID) is open to the internet; the XDP filter sees the scans."
           fi
 
+      - name: Install nhp-ac-xdplog-export.sh on nhp-ac
+        # Forced-command SSH handler the relay collector uses to read the
+        # AC's daily nhp_ac_xdp-YYYY-MM-DD.log files. Same contract as the
+        # server's: only `list` and `get <YYYY-MM-DD>`. Not tied to the
+        # daemon's lifecycle, so nhp-acd is not restarted for it.
+        run: |
+          set -euo pipefail
+          REMOTE_DIR="/home/$DEPLOY_USER/nhp-ac"
+          scp repo/deploy/scripts/nhp-ac-xdplog-export.sh nhp-ac:/tmp/nhp-ac-xdplog-export.sh
+          ssh nhp-ac "mkdir -p $REMOTE_DIR/etc && install -m 0755 /tmp/nhp-ac-xdplog-export.sh $REMOTE_DIR/etc/nhp-ac-xdplog-export.sh && rm -f /tmp/nhp-ac-xdplog-export.sh"
+          echo "  installed: $REMOTE_DIR/etc/nhp-ac-xdplog-export.sh"
+
+      - name: Append stats-collector public key to authorized_keys on nhp-ac
+        # Same managed-line scheme as deploy-server (see the comments on that
+        # job's step): the key goes over as a file, the managed line is found
+        # by its trailing comment tag so rotation replaces it, and the
+        # file is replaced atomically so a truncated transfer cannot drop the
+        # deploy key.
+        env:
+          RELAY_PRIV: ${{ needs.configure.outputs.relay_private_ip }}
+        run: |
+          set -euo pipefail
+
+          STATS_PUB=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text | jq -r '.stats_collector_ssh_public_key')
+          if [ -z "$STATS_PUB" ] || [ "$STATS_PUB" = "null" ]; then
+            echo "ERROR: stats_collector_ssh_public_key missing; run scripts/generate-nhp-keys.sh" >&2
+            exit 1
+          fi
+          case "$STATS_PUB" in
+            *"stats.opennhp.org-collector") ;;
+            *)
+              echo "ERROR: stats_collector_ssh_public_key lacks the 'stats.opennhp.org-collector' comment tag" >&2
+              exit 1
+              ;;
+          esac
+          if [ -z "$RELAY_PRIV" ] || [ "$RELAY_PRIV" = "null" ]; then
+            echo "ERROR: relay_private_ip missing from configure outputs; cannot pin authorized_keys source" >&2
+            exit 1
+          fi
+
+          REMOTE_DIR="/home/$DEPLOY_USER/nhp-ac"
+          cat > /tmp/stats_ak_entry <<EOF
+          # stats.opennhp.org collector - managed by deploy-ac; rotates with opennhp/demo
+          from="$RELAY_PRIV",restrict,command="$REMOTE_DIR/etc/nhp-ac-xdplog-export.sh" $STATS_PUB
+          EOF
+          scp /tmp/stats_ak_entry nhp-ac:/tmp/stats_ak_entry
+
+          ssh nhp-ac 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          AK="$HOME/.ssh/authorized_keys"
+          TAG="stats.opennhp.org-collector"
+          ENTRY=/tmp/stats_ak_entry
+
+          TMP=$(mktemp "$HOME/.ssh/ak.XXXXXX")
+          chmod 0600 "$TMP"
+          if [ -f "$AK" ]; then
+            grep -v -e "$TAG" -e '^# stats.opennhp.org collector' "$AK" > "$TMP" || true
+          fi
+          cat "$ENTRY" >> "$TMP"
+
+          OTHERS=$(grep -cv -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$TMP" || true)
+          if [ "$OTHERS" -lt 2 ]; then
+            echo "ERROR: only $OTHERS usable key line(s) would remain in authorized_keys;" >&2
+            echo "       refusing to install (expected the terraform-managed deploy key)" >&2
+            rm -f "$TMP" "$ENTRY"
+            exit 1
+          fi
+
+          cp "$TMP" "$AK.new"
+          chmod 0600 "$AK.new"
+          mv "$AK.new" "$AK"
+          rm -f "$TMP" "$ENTRY"
+          echo "  authorized_keys now has $(wc -l < "$AK") line(s)"
+          REMOTE
+
       - name: Cleanup
         if: always()
         run: rm -rf ~/.ssh
@@ -3563,7 +3641,7 @@ jobs:
   #     installed on the relay, instead of a red curl at the very end.
   # ─────────────────────────────────────────────────────────────
   deploy-xdpstats:
-    needs: [configure, deploy-relay, deploy-jsagent, deploy-demoapp, deploy-server]
+    needs: [configure, deploy-relay, deploy-jsagent, deploy-demoapp, deploy-server, deploy-ac]
     if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
@@ -3874,10 +3952,11 @@ jobs:
           scp $SSH_OPTS repo/deploy/scripts/xdpstats-collect.sh $TARGET:$REMOTE_DIR/xdpstats-collect.sh
           ssh $SSH_OPTS $TARGET "chmod 0750 $REMOTE_DIR/xdpstats-collect.sh"
 
-          # 2. sources.conf, rendered with SERVER_PRIVATE_IP from the configure
+          # 2. sources.conf, rendered with SERVER_PRIVATE_IP and AC_PRIVATE_IP from the configure
           #    output. Same envsubst pattern used for nginx vhosts.
           export SERVER_PRIVATE_IP='${{ needs.configure.outputs.server_private_ip }}'
-          envsubst '$SERVER_PRIVATE_IP' \
+          export AC_PRIVATE_IP='${{ needs.configure.outputs.ac_private_ip }}'
+          envsubst '$SERVER_PRIVATE_IP $AC_PRIVATE_IP' \
             < repo/deploy/config-templates/xdpstats/sources.conf \
             > /tmp/sources.conf
           scp $SSH_OPTS /tmp/sources.conf $TARGET:$REMOTE_DIR/sources.conf

@@ -656,12 +656,14 @@ TXT record through the Cloudflare API and never looks up the A record.
   as zero attacks (a missing minute is not the same as "no attack in that
   minute").
 
-**Adding the AC later.** AC writes per-flow accept/deny files in a shape
-`parse.go` does not currently parse. Adding it means (1) a parser extension
-in `endpoints/xdplog-report/parse.go`, (2) a new SSH keypair +
-`authorized_keys` line on the AC host, (3) a second `<name> <user> <host>
-<log_dir>` line in `sources.conf`. The site already routes by `<source>`,
-so no `xdplog-report` change is needed once the parser and keypair exist.
+**The AC as a second source.** `sources.conf` has an `ac` line next to `server`.
+The collector derives the log prefix from the source name (`nhp_<name>_xdp`),
+`deploy-ac` installs `deploy/scripts/nhp-ac-xdplog-export.sh` and the same
+collector public key (forced command, `from=` the relay) on the AC host, and
+`deploy-xdpstats` waits for `deploy-ac` and renders `AC_PRIVATE_IP`. The site
+reads `raw/ac/nhp_ac_xdp-*.log[.gz]` and labels it `nhp-ac`; a file whose prefix
+disagrees with its directory is ignored. This depends on nhp-acd writing
+`nhp_ac_xdp-YYYY-MM-DD.log` in the server's `[NHP-DROP]` line shape.
 
 **Manual backfill.** If `xdpstats.timer` missed a window longer than the
 daemon's 14-day retention, the missing days are unrecoverable; the next

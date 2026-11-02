@@ -215,10 +215,11 @@ func group(v any) string {
 // break anyone already parsing it.
 var sourceLabels = map[string]string{
 	"server": "nhp-server",
+	"ac":     "nhp-ac",
 }
 
 // sourceLabel renders a source name for display, falling back to the raw
-// name for any source added later (the AC, when it gets a parser).
+// name for any source added later.
 func sourceLabel(name string) string {
 	if label, ok := sourceLabels[name]; ok {
 		return label

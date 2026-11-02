@@ -1186,10 +1186,12 @@ func TestSourceLabel(t *testing.T) {
 	if got := sourceLabel("server"); got != "nhp-server" {
 		t.Errorf("sourceLabel(server) = %q, want %q", got, "nhp-server")
 	}
-	// An unmapped source (the AC, once it has a parser) renders as-is rather
-	// than blanking the cell.
-	if got := sourceLabel("ac"); got != "ac" {
-		t.Errorf("sourceLabel(ac) = %q, want %q", got, "ac")
+	if got := sourceLabel("ac"); got != "nhp-ac" {
+		t.Errorf("sourceLabel(ac) = %q, want %q", got, "nhp-ac")
+	}
+	// An unmapped source renders as-is rather than blanking the cell.
+	if got := sourceLabel("relay"); got != "relay" {
+		t.Errorf("sourceLabel(relay) = %q, want %q", got, "relay")
 	}
 }
 
@@ -1993,6 +1995,34 @@ func TestGeoStaleDirection(t *testing.T) {
 	} {
 		if got := geoStale(tc.prev, tc.want); got != tc.stale {
 			t.Errorf("geoStale(%q, %q) = %v, want %v", tc.prev, tc.want, got, tc.stale)
+		}
+	}
+}
+
+// TestCollectRawInputsAcSource pins the per-source file prefix: an AC log is
+// picked up under ac/, and a log whose prefix names the other daemon is not
+// counted as this source.
+func TestCollectRawInputsAcSource(t *testing.T) {
+	logs := t.TempDir()
+	for _, f := range []string{"ac/nhp_ac_xdp-2026-10-20.log.gz", "ac/nhp_server_xdp-2026-10-21.log", "server/nhp_ac_xdp-2026-10-22.log", "server/nhp_server_xdp-2026-10-23.log"} {
+		p := filepath.Join(logs, f)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := map[string]siteInput{}
+	if err := collectRawInputs(logs, got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d inputs, want 2: %v", len(got), got)
+	}
+	for _, k := range []string{"ac/2026-10-20", "server/2026-10-23"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("missing input %s", k)
 		}
 	}
 }

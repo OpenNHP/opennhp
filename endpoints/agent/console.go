@@ -63,6 +63,7 @@ var maxTAUploadSize int64 = 256 << 20
 var (
 	errTASignatureMissing = errors.New("trusted application signature is required")
 	errTASignatureInvalid = errors.New("trusted application signature is invalid")
+	errTARevoked          = errors.New("trusted application is revoked (RevokedTADigests in etc/console.toml)")
 	errTANoTrustedKeys    = errors.New("trusted application registration is disabled: no TrustedTAPublicKeys configured in etc/console.toml")
 )
 
@@ -79,7 +80,22 @@ type ConsoleConfig struct {
 	// TA registration is refused.
 	TrustedTAPublicKeys []string `toml:"TrustedTAPublicKeys"`
 
+	// RevokedTADigests lists hex SHA-256 digests of TA binaries that must
+	// no longer be registered even though they carry a valid signature
+	// (e.g. an old, vulnerable version).
+	RevokedTADigests []string `toml:"RevokedTADigests"`
+
 	trustedTAKeys []ed25519.PublicKey
+	revokedTA     map[string]struct{}
+}
+
+// isTARevoked reports whether a TA with this SHA-256 digest is revoked.
+func (c *ConsoleConfig) isTARevoked(digest []byte) bool {
+	if c == nil {
+		return false
+	}
+	_, revoked := c.revokedTA[hex.EncodeToString(digest)]
+	return revoked
 }
 
 // loadConsoleConfig reads etc/console.toml from etcDir. A missing file yields
@@ -122,6 +138,15 @@ func loadConsoleConfig(etcDir string) (*ConsoleConfig, error) {
 			return nil, fmt.Errorf("%s: TrustedTAPublicKeys[%d] is not a base64 ed25519 public key", consoleConfigFileName, i)
 		}
 		conf.trustedTAKeys = append(conf.trustedTAKeys, ed25519.PublicKey(raw))
+	}
+
+	conf.revokedTA = make(map[string]struct{}, len(conf.RevokedTADigests))
+	for i, d := range conf.RevokedTADigests {
+		d = strings.ToLower(strings.TrimSpace(d))
+		if raw, decErr := hex.DecodeString(d); decErr != nil || len(raw) != sha256.Size {
+			return nil, fmt.Errorf("%s: RevokedTADigests[%d] is not a hex SHA-256 digest", consoleConfigFileName, i)
+		}
+		conf.revokedTA[d] = struct{}{}
 	}
 
 	return conf, nil
@@ -226,8 +251,22 @@ func consoleAuthMiddleware(token string) gin.HandlerFunc {
 	}
 }
 
-// verifyTASignature checks that sigB64 is an ed25519 signature over the
-// SHA-256 digest of the TA file by one of the trusted operator keys.
+// taSignatureContext domain-separates TA signatures: the signed message is
+// taSignatureContext || sha256(file), so a signature made with an operator
+// key for some other purpose (e.g. over a bare SHA-256 digest) is never
+// accepted as a TA signature, and the format can be versioned.
+const taSignatureContext = "opennhp-dhp-ta-v1\x00"
+
+// taSignedMessage returns the message an operator signs for a TA whose
+// file has the given SHA-256 digest.
+func taSignedMessage(digest []byte) []byte {
+	msg := make([]byte, 0, len(taSignatureContext)+len(digest))
+	msg = append(msg, taSignatureContext...)
+	return append(msg, digest...)
+}
+
+// verifyTASignature checks that sigB64 is an ed25519 signature over
+// taSignedMessage(digest) by one of the trusted operator keys.
 func verifyTASignature(trusted []ed25519.PublicKey, digest []byte, sigB64 string) error {
 	if len(trusted) == 0 {
 		return errTANoTrustedKeys
@@ -243,8 +282,9 @@ func verifyTASignature(trusted []ed25519.PublicKey, digest []byte, sigB64 string
 		return errTASignatureInvalid
 	}
 
+	msg := taSignedMessage(digest)
 	for _, pk := range trusted {
-		if ed25519.Verify(pk, digest, sig) {
+		if ed25519.Verify(pk, msg, sig) {
 			return nil
 		}
 	}

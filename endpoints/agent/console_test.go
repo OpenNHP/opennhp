@@ -168,7 +168,7 @@ func TestConsoleRejectsUnsignedTA(t *testing.T) {
 	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
 	content := []byte("#!/bin/sh\necho pwned\n")
 	digest := sha256.Sum256(content)
-	wrongSig := base64.StdEncoding.EncodeToString(ed25519.Sign(otherPriv, digest[:]))
+	wrongSig := base64.StdEncoding.EncodeToString(ed25519.Sign(otherPriv, taSignedMessage(digest[:])))
 
 	cases := []struct {
 		name string
@@ -199,7 +199,7 @@ func TestConsoleRejectsUnsignedTA(t *testing.T) {
 func TestVerifyTASignature(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	digest := sha256.Sum256([]byte("ta"))
-	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, digest[:]))
+	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, taSignedMessage(digest[:])))
 
 	if err := verifyTASignature([]ed25519.PublicKey{pub}, digest[:], sig); err != nil {
 		t.Fatalf("valid signature rejected: %v", err)
@@ -207,6 +207,13 @@ func TestVerifyTASignature(t *testing.T) {
 	other := sha256.Sum256([]byte("other"))
 	if err := verifyTASignature([]ed25519.PublicKey{pub}, other[:], sig); err == nil {
 		t.Fatalf("signature accepted for a different file")
+	}
+
+	// A signature over the bare digest (no domain-separation context) —
+	// e.g. one made with the same key for another purpose — is rejected.
+	bare := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, digest[:]))
+	if err := verifyTASignature([]ed25519.PublicKey{pub}, digest[:], bare); err == nil {
+		t.Fatalf("signature over the bare digest accepted")
 	}
 }
 
@@ -507,7 +514,7 @@ func TestConfigServerWritesValidPeersInPlace(t *testing.T) {
 func signedTAUpload(t *testing.T, priv ed25519.PrivateKey, content []byte) *http.Request {
 	t.Helper()
 	digest := sha256.Sum256(content)
-	return buildTAUpload(t, content, base64.StdEncoding.EncodeToString(ed25519.Sign(priv, digest[:])))
+	return buildTAUpload(t, content, base64.StdEncoding.EncodeToString(ed25519.Sign(priv, taSignedMessage(digest[:]))))
 }
 
 // An oversized upload is reported as 413, not as missing parameters.
@@ -799,5 +806,89 @@ func TestLookupRegisteredTARejectsDotDot(t *testing.T) {
 	digest := sha256.Sum256(content)
 	if _, _, ok := lookupRegisteredTA(taDir, idx, digest[:]); ok {
 		t.Fatal(`index entry with uuid ".." was reused`)
+	}
+}
+
+// A validly signed TA whose digest is listed in RevokedTADigests is
+// refused, and the list is validated at load time.
+func TestRevokedTADigests(t *testing.T) {
+	dir := t.TempDir()
+	setConsoleExeDir(t, dir)
+
+	content := []byte("old vulnerable ta\n")
+	digest := sha256.Sum256(content)
+
+	etc := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	cfg := fmt.Sprintf("TrustedTAPublicKeys = [%q]\nRevokedTADigests = [%q]\n",
+		base64.StdEncoding.EncodeToString(pub), strings.ToUpper(hex.EncodeToString(digest[:])))
+	if err := os.WriteFile(filepath.Join(etc, consoleConfigFileName), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	conf, err := loadConsoleConfig(etc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a, router := newTestConsole(t, conf)
+	a.safeTee.Store(true)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, signedTAUpload(t, priv, content))
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "revoked") {
+		t.Fatalf("revoked TA: got %d %s, want 403 revoked", w.Code, w.Body.String())
+	}
+	if _, statErr := os.Stat(filepath.Join(etc, "ta")); !os.IsNotExist(statErr) {
+		t.Fatal("revoked TA reached the TA directory")
+	}
+
+	if err := os.WriteFile(filepath.Join(etc, consoleConfigFileName), []byte(`RevokedTADigests = ["abc"]`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadConsoleConfig(etc); err == nil {
+		t.Fatal("malformed RevokedTADigests entry accepted")
+	}
+}
+
+// Once shutdown has begun, console restart / key rotation are refused, and
+// an in-flight one holds off the shutdown until it finishes.
+func TestLifecycleOpsSerializedWithShutdown(t *testing.T) {
+	a, router := newTestConsole(t, nil)
+
+	// An in-flight lifecycle op blocks shutdown from proceeding.
+	if !a.beginLifecycleOp(nil) {
+		t.Fatal("beginLifecycleOp refused before shutdown")
+	}
+	stopped := make(chan struct{})
+	go func() {
+		// Mirrors StopDHP's locking without stopping a real agent.
+		a.consoleLifecycleMu.Lock()
+		a.consoleStopping = true
+		a.consoleLifecycleMu.Unlock()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+		t.Fatal("shutdown proceeded while a lifecycle op was in flight")
+	case <-time.After(100 * time.Millisecond):
+	}
+	a.endLifecycleOp()
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not proceed after the lifecycle op finished")
+	}
+
+	// New ones are refused with 503.
+	for _, path := range []string{"/agent/restart", "/key/agent/rotate", "/key/tee/rotate"} {
+		req := httptest.NewRequest(http.MethodPost, serviceApiPrefix+path, nil)
+		req.Header.Set("Authorization", "Bearer "+testConsoleToken)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("POST %s during shutdown: got %d, want 503", path, w.Code)
+		}
 	}
 }

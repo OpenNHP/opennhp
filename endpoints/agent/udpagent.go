@@ -346,6 +346,12 @@ type UdpAgent struct {
 	consoleNotices  []consoleNotice
 	consoleListener net.Listener
 	consoleServer   *http.Server
+
+	// consoleLifecycleMu serializes console-triggered restarts and key
+	// rotations with each other and with StopDHP; consoleStopping (guarded
+	// by it) refuses new ones once shutdown has begun.
+	consoleLifecycleMu sync.Mutex
+	consoleStopping    bool
 }
 
 type UdpConn struct {

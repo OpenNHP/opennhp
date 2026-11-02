@@ -16,12 +16,18 @@ ListenAddr = "127.0.0.1:443"
 
 # TrustedTAPublicKeys: base64 ed25519 public keys allowed to sign trusted
 # applications (TAs). POST /api/v1/ta/register must carry a "signature" form
-# field: base64(ed25519_sign(private_key, sha256(ta_file))). With no keys
+# field: base64(ed25519_sign(private_key, "opennhp-dhp-ta-v1\0" || sha256(ta_file)))
+# (the 17-byte context string, a NUL byte, then the raw 32-byte digest). With no keys
 # configured, TA registration is refused.
 #
 # Generate an operator key pair and sign a TA with OpenSSL (3.x):
 #   openssl genpkey -algorithm ed25519 -out ta_signing.pem
 #   openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64
-#   openssl dgst -sha256 -binary ta > ta.sha256
-#   openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.sha256 | base64
+#   { printf 'opennhp-dhp-ta-v1\0'; openssl dgst -sha256 -binary ta; } > ta.msg
+#   openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.msg | base64
 TrustedTAPublicKeys = []
+
+# RevokedTADigests: hex SHA-256 digests of TA binaries that must be refused
+# even though they are validly signed (e.g. an old, vulnerable version).
+#   openssl dgst -sha256 ta
+RevokedTADigests = []

@@ -374,8 +374,7 @@ func runDHPApp() error {
 
 	if err = a.ServeDHPWebConsole(); err != nil {
 		fmt.Printf("\n  %s❌ Failed to start DHP web console:%s %v\n\n", colorYellow, colorReset, err)
-		a.CloseDHPWebConsole()
-		a.Stop()
+		a.StopDHP()
 		return err
 	}
 	a.StartDHPKnockLoop()
@@ -388,10 +387,9 @@ func runDHPApp() error {
 	<-termCh
 
 	fmt.Printf("\n  %s🛑 Shutting down DHP agent...%s\n", colorYellow, colorReset)
-	// Stop the console first so no console request (restart, key rotation,
-	// TA call) runs concurrently with the agent being torn down.
-	a.CloseDHPWebConsole()
-	a.Stop()
+	// Stops the console, waits for any in-flight console restart or key
+	// rotation, then stops the agent.
+	a.StopDHP()
 	fmt.Printf("  %s✅ DHP Agent stopped gracefully%s\n\n", colorGreen, colorReset)
 
 	return nil

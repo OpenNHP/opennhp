@@ -126,10 +126,11 @@ func (a *UdpAgent) ServeDHPWebConsole() error {
 }
 
 // CloseDHPWebConsole stops the console: it stops accepting connections and
-// waits briefly for in-flight requests (e.g. a restart or key rotation) to
-// finish, so they do not run concurrently with the agent being stopped.
-// Call it before Stop on shutdown, and on startup failure after
-// PrepareDHPWebConsole.
+// waits up to consoleShutdownTimeout for in-flight requests to finish
+// before closing their connections. It does not by itself guarantee that
+// no handler is still running afterwards — StopDHP adds that guarantee for
+// the operations that restart the agent. Use it directly only when the
+// agent has not been started (startup failure after PrepareDHPWebConsole).
 func (a *UdpAgent) CloseDHPWebConsole() {
 	if a.consoleServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), consoleShutdownTimeout)
@@ -199,6 +200,43 @@ func (a *UdpAgent) newConsoleRouter(token string) *gin.Engine {
 	return router
 }
 
+// beginLifecycleOp serializes console operations that stop and restart the
+// agent (restart, key rotation) with each other and with StopDHP. It
+// returns false, after answering 503, once the agent is shutting down. On
+// success the caller must defer endLifecycleOp.
+func (a *UdpAgent) beginLifecycleOp(c *gin.Context) bool {
+	a.consoleLifecycleMu.Lock()
+	if a.consoleStopping {
+		a.consoleLifecycleMu.Unlock()
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "agent is shutting down"})
+		return false
+	}
+	return true
+}
+
+func (a *UdpAgent) endLifecycleOp() {
+	a.consoleLifecycleMu.Unlock()
+}
+
+// StopDHP shuts down a DHP agent: it stops the console, waits for any
+// in-flight restart or key rotation to finish (however long it takes —
+// CloseDHPWebConsole's timeout only bounds connection draining), refuses
+// new ones, and then stops the agent. Without this, a console-triggered
+// RestartAgent could run Stop concurrently with the shutdown's Stop and
+// close the same channels twice.
+//
+// Other in-flight console requests (e.g. a TA call) may still be running
+// after the timeout; they do not stop or restart the agent and fail on
+// their own once it is stopped.
+func (a *UdpAgent) StopDHP() {
+	a.CloseDHPWebConsole()
+
+	a.consoleLifecycleMu.Lock()
+	defer a.consoleLifecycleMu.Unlock()
+	a.consoleStopping = true
+	a.Stop()
+}
+
 // trustedTAKeys returns the operator keys allowed to sign trusted
 // applications, or nil when the console config has not been loaded.
 func (a *UdpAgent) trustedTAKeys() []ed25519.PublicKey {
@@ -233,6 +271,9 @@ func (a *UdpAgent) verifyUploadedTA(file *multipart.FileHeader, sigB64 string) (
 
 	if err := verifyTASignature(keys, digest, sigB64); err != nil {
 		return nil, err
+	}
+	if a.consoleConf.isTARevoked(digest) {
+		return nil, errTARevoked
 	}
 	return digest, nil
 }
@@ -269,6 +310,10 @@ func lookupRegisteredTA(taDir, indexFile string, digest []byte) (uuid, fileName 
 		return "", "", false
 	}
 
+	// The stored binary is hashed here and executed later by
+	// NewTrustApplication. Anyone who can write etc/ta between the two
+	// could swap it; etc/ is trusted (it also holds the agent's keys), and
+	// etc/ta is created owner-only to keep it that way.
 	f, err := os.Open(filepath.Join(taDir, uuid, fileName))
 	if err != nil {
 		log.Warning("DHP console: trusted application index %s points to a missing binary: %v", indexFile, err)
@@ -338,7 +383,8 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	}
 
 	taDir := filepath.Join(ExeDirPath, "etc", "ta")
-	if mkdirErr := os.MkdirAll(taDir, 0755); mkdirErr != nil {
+	// Owner-only: only the agent itself needs to read or execute TAs.
+	if mkdirErr := os.MkdirAll(taDir, 0o700); mkdirErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": mkdirErr.Error()})
 		return
 	}
@@ -368,7 +414,7 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 			return
 		}
 
-		if chmodErr := os.Chmod(fullFilePath, 0755); chmodErr != nil {
+		if chmodErr := os.Chmod(fullFilePath, 0o700); chmodErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": chmodErr.Error()})
 			return
 		}
@@ -544,6 +590,11 @@ func (a *UdpAgent) getServerConfig(c *gin.Context) {
 }
 
 func (a *UdpAgent) restartAgent(c *gin.Context) {
+	if !a.beginLifecycleOp(c) {
+		return
+	}
+	defer a.endLifecycleOp()
+
 	err := a.RestartAgent()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -586,6 +637,11 @@ func (a *UdpAgent) getTeeAttestation(c *gin.Context) {
 }
 
 func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
+	if !a.beginLifecycleOp(c) {
+		return
+	}
+	defer a.endLifecycleOp()
+
 	if err := a.RotateAgentKey(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -600,6 +656,11 @@ func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
 }
 
 func (a *UdpAgent) rotateTeeKey(c *gin.Context) {
+	if !a.beginLifecycleOp(c) {
+		return
+	}
+	defer a.endLifecycleOp()
+
 	if err := a.RotateTeeKey(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

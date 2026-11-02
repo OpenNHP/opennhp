@@ -76,7 +76,7 @@ The DHP web console requires a bearer token on every request. nhp-agent generate
 ```shell
 export NHP_CONSOLE_TOKEN=$(docker exec nhp-agent cat /nhp-agent/etc/console.token)
 ```
-The console listens on loopback by default (`ListenAddr` in `etc/console.toml`); the docker environment binds it inside the container and publishes it on the host loopback only (`127.0.0.1:8443`).
+The console listens on loopback by default (`ListenAddr` in `etc/console.toml`); the docker environment binds it inside the container and publishes it on the host loopback only (`127.0.0.1:8443`). Inside the docker network the console listens on all interfaces of the nhp-agent container, so other containers on `network_default` can reach it as well; they still need the token.
 
 With this default docker environment, 8443 port is exposed to host for nhp-agent. So, you can access nhp-agent http endpoints from host using https://localhost:8443. You can use below curl command to get agent public key.
 ```shell
@@ -285,8 +285,8 @@ Only trusted applications signed by an operator key are accepted. Generate an ed
 ```shell
 openssl genpkey -algorithm ed25519 -out ta_signing.pem
 openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64   # -> TrustedTAPublicKeys
-openssl dgst -sha256 -binary ta > ta.sha256
-export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.sha256 | base64)
+{ printf 'opennhp-dhp-ta-v1\0'; openssl dgst -sha256 -binary ta; } > ta.msg   # context string + NUL + SHA-256 of the TA
+export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.msg | base64)
 ```
 Keep `ta_signing.pem` off the agent host.
 

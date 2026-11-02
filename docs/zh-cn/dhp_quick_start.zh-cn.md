@@ -80,7 +80,7 @@ DHP Web 控制台的每个请求都需要携带 Bearer Token。nhp-agent 首次�
 ```shell
 export NHP_CONSOLE_TOKEN=$(docker exec nhp-agent cat /nhp-agent/etc/console.token)
 ```
-控制台默认只监听回环地址（`etc/console.toml` 中的 `ListenAddr`）；Docker 环境在容器内监听所有地址，并且只发布到主机回环地址（`127.0.0.1:8443`）。
+控制台默认只监听回环地址（`etc/console.toml` 中的 `ListenAddr`）；Docker 环境在容器内监听所有地址，并且只发布到主机回环地址（`127.0.0.1:8443`）。在 Docker 网络内部，控制台监听 nhp-agent 容器的所有网卡，因此 `network_default` 上的其他容器也能访问到它，但同样需要 Token。
 
 在此默认的 Docker 环境中，8443端口已为nhp-agent映射到主机，因此可以通过https://localhost:8443从主机访问nhp-agent的 HTTP 接口。你可以使用以下curl命令获取代理的公钥。
 
@@ -280,8 +280,8 @@ func findRecord(path string, accountId string) (bool, error) {
 ```shell
 openssl genpkey -algorithm ed25519 -out ta_signing.pem
 openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64   # -> TrustedTAPublicKeys
-openssl dgst -sha256 -binary ta > ta.sha256
-export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.sha256 | base64)
+{ printf 'opennhp-dhp-ta-v1\0'; openssl dgst -sha256 -binary ta; } > ta.msg   # context string + NUL + SHA-256 of the TA
+export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.msg | base64)
 ```
 `ta_signing.pem` 不要放在 agent 主机上。
 

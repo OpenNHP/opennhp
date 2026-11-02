@@ -3,11 +3,11 @@ set -euo pipefail
 
 # Contain the kernel flaw before starting any demo listener.
 dnf install -y iptables-nft
-base64 -d > /tmp/layerv-kernel-mitigation.sh <<'KERNEL_MITIGATION'
+base64 -d > /run/layerv-kernel-mitigation-bootstrap.sh <<'KERNEL_MITIGATION'
 ${kernel_mitigation_base64}
 KERNEL_MITIGATION
-bash /tmp/layerv-kernel-mitigation.sh
-rm /tmp/layerv-kernel-mitigation.sh
+bash /run/layerv-kernel-mitigation-bootstrap.sh
+rm /run/layerv-kernel-mitigation-bootstrap.sh
 
 DEPLOY_PATH="${deploy_path}"
 

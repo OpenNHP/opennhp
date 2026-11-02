@@ -1310,7 +1310,9 @@ has to SSH through that relay. With the security group wide open, the window
 between boot and the filter attaching is also an all-ports exposure.
 
 `aws_instance.server`, `.ac` and `.relay` therefore carry
-`lifecycle { ignore_changes = [ami] }` (server and ac alongside `user_data`).
+`lifecycle { ignore_changes = [user_data, ami] }`. Mirror persistent host
+configuration in each `deploy-demo-v2` host job as well as user data; edits to
+user data do not reach existing hosts.
 `most_recent` stays, so a first-time `apply` still picks the current AMI.
 Changing the AMI is now an explicit act, one host at a time:
 

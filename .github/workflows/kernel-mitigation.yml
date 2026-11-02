@@ -1,0 +1,20 @@
+name: Kernel mitigation
+on:
+  pull_request:
+    paths:
+      - scripts/mitigate-cve-2026-98432.sh
+      - tests/scripts/test_cve_2026_98432_netns.py
+      - .github/workflows/kernel-mitigation.yml
+      - terraform/demo/**
+permissions:
+  contents: read
+jobs:
+  packet-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          bash -n scripts/mitigate-cve-2026-98432.sh
+          shellcheck scripts/mitigate-cve-2026-98432.sh
+          sudo python3 tests/scripts/test_cve_2026_98432_netns.py scripts/mitigate-cve-2026-98432.sh

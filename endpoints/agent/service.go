@@ -315,36 +315,70 @@ func (a *UdpAgent) trustedTAKeys() []ed25519.PublicKey {
 	return a.consoleConf.trustedTAKeys
 }
 
-// verifyUploadedTA hashes the uploaded file straight from the multipart
-// form and checks its signature, before anything is written into the TA
-// directory, made executable or started. It returns the verified SHA-256
-// digest, which is also the deduplication key for the TA.
-func (a *UdpAgent) verifyUploadedTA(file *multipart.FileHeader, sigB64 string) ([]byte, error) {
+// saveTAIndex records a registered TA in its dedup index file.
+func saveTAIndex(indexFile, fileName, taName, fileUuid string, size int64, description, language, entry string) error {
+	return utils.SaveStructAsJsonFile(indexFile, map[string]any{
+		"fileName":    fileName,
+		"name":        taName,
+		"uuid":        fileUuid,
+		"size":        size,
+		"description": description,
+		"language":    language,
+		"entry":       entry,
+	})
+}
+
+// stageUploadedTA copies the uploaded file, in a single read, into a new
+// owner-only (0600, not executable) temporary file in taDir while hashing
+// it, and returns that file's path and the SHA-256 of exactly the bytes it
+// holds. The caller verifies the digest and then either renames the staged
+// file into place or removes it; nothing is indexed, made executable or
+// started before that. Reading the multipart part only once means the bytes
+// that are verified are the bytes that are stored, even when the part was
+// spilled to a temporary file outside taDir.
+func stageUploadedTA(file *multipart.FileHeader, taDir string) (stagedPath string, digest []byte, err error) {
+	src, err := file.Open()
+	if err != nil {
+		return "", nil, err
+	}
+	defer src.Close()
+
+	dst, err := os.CreateTemp(taDir, ".upload-*")
+	if err != nil {
+		return "", nil, err
+	}
+	defer func() {
+		if err != nil {
+			os.Remove(dst.Name())
+		}
+	}()
+
+	h := sha256.New()
+	if _, err = io.Copy(dst, io.TeeReader(src, h)); err != nil {
+		dst.Close()
+		return "", nil, err
+	}
+	if err = dst.Close(); err != nil {
+		return "", nil, err
+	}
+	return dst.Name(), h.Sum(nil), nil
+}
+
+// verifyTADigest checks the operator signature over a staged TA's digest
+// and the revocation list. The digest is also the TA's deduplication key.
+func (a *UdpAgent) verifyTADigest(digest []byte, sigB64 string) error {
 	keys := a.trustedTAKeys()
 	if len(keys) == 0 {
 		// Defensive: registerTAService already refuses before parsing.
-		return nil, errTANoTrustedKeys
+		return errTANoTrustedKeys
 	}
-
-	f, err := file.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return nil, err
-	}
-	digest := h.Sum(nil)
-
 	if err := verifyTASignature(keys, digest, sigB64); err != nil {
-		return nil, err
+		return err
 	}
 	if a.consoleConf.isTARevoked(digest) {
-		return nil, errTARevoked
+		return errTARevoked
 	}
-	return digest, nil
+	return nil
 }
 
 // isPlainPathElement reports whether name is a single, ordinary path
@@ -439,13 +473,6 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		return
 	}
 
-	digest, verifyErr := a.verifyUploadedTA(file, c.PostForm("signature"))
-	if verifyErr != nil {
-		log.Warning("DHP console: rejected trusted application upload %q from %s: %v", file.Filename, c.Request.RemoteAddr, verifyErr)
-		c.JSON(http.StatusForbidden, gin.H{"error": verifyErr.Error()})
-		return
-	}
-
 	// Never let a client-supplied name escape the per-upload directory.
 	fileName := filepath.Base(file.Filename)
 	if !isPlainPathElement(fileName) {
@@ -466,12 +493,27 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		return
 	}
 
+	// Stage the upload once and verify the digest of the staged bytes. The
+	// staged file is removed on every path except a successful rename into
+	// <uuid>/ (a dedup hit, a rejection or any error deletes it).
+	stagedPath, digest, stageErr := stageUploadedTA(file, taDir)
+	if stageErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": stageErr.Error()})
+		return
+	}
+	defer os.Remove(stagedPath) // no-op once renamed into place
+
+	if verifyErr := a.verifyTADigest(digest, c.PostForm("signature")); verifyErr != nil {
+		log.Warning("DHP console: rejected trusted application upload %q from %s: %v", file.Filename, c.Request.RemoteAddr, verifyErr)
+		c.JSON(http.StatusForbidden, gin.H{"error": verifyErr.Error()})
+		return
+	}
+
 	// Deduplicate by the SHA-256 that was just verified, never by MD5: an
 	// MD5 match could otherwise swap in a different (e.g. pre-signature,
 	// unsigned) binary that was registered earlier. Index files are named
-	// "sha256-<hex>", so legacy MD5-named entries are never matched. The
-	// lookup happens before anything is written, so re-registering a known
-	// TA costs no disk I/O.
+	// "sha256-<hex>", so legacy MD5-named entries are never matched. On a
+	// hit the staged copy is simply discarded.
 	//
 	// Hold taRegisterMu from the dedup lookup through the index write, so
 	// two concurrent uploads of the same binary cannot both miss the index
@@ -493,14 +535,27 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 				return uuidErr
 			}
 
-			fullFilePath := filepath.Join(taDir, fileUuid, fileName)
-			if saveErr := c.SaveUploadedFile(file, fullFilePath); saveErr != nil {
-				return saveErr
+			// Move the verified, staged bytes into place. Any failure from
+			// here until the index is written removes the new <uuid>/
+			// directory, so nothing unindexed is left behind in etc/ta.
+			uuidDir := filepath.Join(taDir, fileUuid)
+			fullFilePath := filepath.Join(uuidDir, fileName)
+			if mkErr := os.Mkdir(uuidDir, 0o700); mkErr != nil {
+				return mkErr
 			}
-
+			if renameErr := os.Rename(stagedPath, fullFilePath); renameErr != nil {
+				os.RemoveAll(uuidDir)
+				return renameErr
+			}
 			if chmodErr := os.Chmod(fullFilePath, 0o700); chmodErr != nil {
+				os.RemoveAll(uuidDir)
 				return chmodErr
 			}
+			if indexErr := saveTAIndex(indexFile, fileName, taName, fileUuid, file.Size, description, language, entry); indexErr != nil {
+				os.RemoveAll(uuidDir)
+				return indexErr
+			}
+			return nil
 		}
 
 		// save file information into the index file, no matter the file exists or not.
@@ -508,15 +563,7 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		// language/entry are unsigned metadata and execution never depends
 		// on them (the stored uuid/fileName are run). Keep it that way, or
 		// bring them under the signature first.
-		return utils.SaveStructAsJsonFile(indexFile, map[string]any{
-			"fileName":    fileName,
-			"name":        taName,
-			"uuid":        fileUuid,
-			"size":        file.Size,
-			"description": description,
-			"language":    language,
-			"entry":       entry,
-		})
+		return saveTAIndex(indexFile, fileName, taName, fileUuid, file.Size, description, language, entry)
 	}()
 	if storeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": storeErr.Error()})
@@ -618,6 +665,11 @@ func (a *UdpAgent) configServer(c *gin.Context) {
 	// server.toml is the agent's trust anchor (nhp-server public keys and
 	// addresses) and is hot-reloaded by the config watcher, so reject
 	// anything the loader itself would reject instead of persisting it.
+	//
+	// normalizeClusters also rewrites the request in place (e.g. migrates
+	// the legacy single-server form, Hostname/Ip/Port at the top level,
+	// into Instances), and it is the normalized form that is written, so a
+	// POST may change the shape, not the meaning, of server.toml.
 	if err := normalizeClusters(peers.Servers, log.Warning); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

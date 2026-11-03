@@ -191,8 +191,8 @@ func TestConsoleRejectsUnsignedTA(t *testing.T) {
 		if w.Code != http.StatusForbidden {
 			t.Errorf("%s: got %d, want 403 (%s)", tc.name, w.Code, w.Body.String())
 		}
-		if _, err := os.Stat(filepath.Join(ExeDirPath, "etc", "ta")); !os.IsNotExist(err) {
-			t.Errorf("%s: TA directory was created for a rejected upload", tc.name)
+		if left := taDirEntries(t, filepath.Join(ExeDirPath, "etc", "ta")); len(left) != 0 {
+			t.Errorf("%s: rejected upload left %v in the TA directory", tc.name, left)
 		}
 	}
 }
@@ -967,8 +967,8 @@ func TestRevokedTADigests(t *testing.T) {
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "revoked") {
 		t.Fatalf("revoked TA: got %d %s, want 403 revoked", w.Code, w.Body.String())
 	}
-	if _, statErr := os.Stat(filepath.Join(etc, "ta")); !os.IsNotExist(statErr) {
-		t.Fatal("revoked TA reached the TA directory")
+	if left := taDirEntries(t, filepath.Join(etc, "ta")); len(left) != 0 {
+		t.Fatalf("revoked TA left %v in the TA directory", left)
 	}
 
 	if err := os.WriteFile(filepath.Join(etc, consoleConfigFileName), []byte(`RevokedTADigests = ["abc"]`+"\n"), 0o600); err != nil {
@@ -1225,5 +1225,91 @@ func TestKeyReadWaitsForRestart(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("key read did not complete after the restart finished")
+	}
+}
+
+// taDirEntries lists what is in the TA directory; a missing directory is
+// empty. A rejected upload may leave the (owner-only) directory itself
+// behind, since uploads are staged in it, but nothing inside it.
+func taDirEntries(t *testing.T, taDir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(taDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// The staged file holds exactly the uploaded bytes, its digest is theirs,
+// and it is owner-only and not executable until it is renamed into place.
+func TestStageUploadedTA(t *testing.T) {
+	taDir := t.TempDir()
+	content := bytes.Repeat([]byte("staged ta "), 1000)
+	req := buildTAUpload(t, content, "sig")
+	if err := req.ParseMultipartForm(1 << 10); err != nil { // force a spill to disk
+		t.Fatal(err)
+	}
+	_, fh, err := req.FormFile("file")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	staged, digest, err := stageUploadedTA(fh, taDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(staged) != taDir {
+		t.Fatalf("staged outside the TA directory: %s", staged)
+	}
+	got, err := os.ReadFile(staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sha256.Sum256(content)
+	if !bytes.Equal(got, content) || !bytes.Equal(digest, want[:]) {
+		t.Fatal("staged bytes or digest do not match the upload")
+	}
+	if runtime.GOOS != "windows" {
+		st, _ := os.Stat(staged)
+		if st.Mode().Perm() != 0o600 {
+			t.Fatalf("staged file mode %v, want 0600", st.Mode().Perm())
+		}
+	}
+}
+
+// A store that fails after the new <uuid>/ directory is created removes it
+// and the staged upload, leaving nothing unindexed in the TA directory.
+func TestRegisterTAFailedStoreCleansUp(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("relies on POSIX directory permissions")
+	}
+	dir := t.TempDir()
+	setConsoleExeDir(t, dir)
+	taDir := filepath.Join(dir, "etc", "ta")
+	content := []byte("store fails\n")
+	digest := sha256.Sum256(content)
+	// Make the index write fail: a directory where the index file goes.
+	if err := os.MkdirAll(filepath.Join(taDir, "sha256-"+hex.EncodeToString(digest[:]), "blocker"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	a, router := newTestConsole(t, &ConsoleConfig{trustedTAKeys: []ed25519.PublicKey{pub}})
+	a.safeTee.Store(true)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, signedTAUpload(t, priv, content))
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("failed store: got %d, want 500 (%s)", w.Code, w.Body.String())
+	}
+	left := taDirEntries(t, taDir)
+	if len(left) != 1 || left[0] != "sha256-"+hex.EncodeToString(digest[:]) {
+		t.Fatalf("failed store left %v in the TA directory, want only the blocker", left)
 	}
 }

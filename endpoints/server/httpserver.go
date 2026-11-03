@@ -31,6 +31,8 @@ type HttpServer struct {
 	httpServer *http.Server
 	ginEngine  *gin.Engine
 	listenAddr *net.TCPAddr
+	config     *HttpConfig
+	storage    *storageState
 
 	wg      sync.WaitGroup
 	running atomic.Bool
@@ -49,6 +51,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 	log.Info("==================================================")
 
 	hs.udpServer = us
+	hs.config = hc
 
 	ipStr := hc.HttpListenIp
 	var netIP net.IP

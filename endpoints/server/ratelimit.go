@@ -120,7 +120,16 @@ func keyForIP(ip net.IP) string {
 // dropped. nowNanos is passed in (not read from the clock here) so the
 // limiter is deterministic under test.
 func (r *rknRateLimiter) allow(addr *net.UDPAddr, nowNanos int64) bool {
-	key := keyForAddr(addr)
+	if addr == nil {
+		return r.allowIP(nil, nowNanos)
+	}
+	return r.allowIP(addr.IP, nowNanos)
+}
+
+// allowIP is allow keyed directly by a source IP (for callers that are not
+// UDP, e.g. the HTTP /storage API).
+func (r *rknRateLimiter) allowIP(ip net.IP, nowNanos int64) bool {
+	key := keyForIP(ip)
 	if key == "" {
 		// No usable source IP — fail closed (drop). A packet with no
 		// resolvable source can't be rate-accounted, and admitting it

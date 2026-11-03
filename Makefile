@@ -293,6 +293,9 @@ endif
 endif
 
 
+# Build the SDK from an explicit file list, not the ./core/main directory:
+# core/main/sdk_testhooks.go holds Go wrappers that the SDK tests need (test
+# files cannot use cgo) and must not be linked into the shipped library.
 devicesdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), linux)

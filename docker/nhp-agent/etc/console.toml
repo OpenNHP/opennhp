@@ -1,0 +1,45 @@
+# DHP web console (nhp-agentd dhp) configuration.
+#
+# Every console route requires "Authorization: Bearer <token>". The token is
+# read from etc/console.token, which nhp-agentd generates (mode 0600) on first
+# start if it does not exist. Delete the file and restart the nhp-agentd
+# process to rotate it.
+#
+# This file and console.token are read once at process start. Changes take
+# effect only after restarting the nhp-agentd process: in this docker stack,
+# stop it (Ctrl+C in the shell it runs in) and run `/nhp-agent/nhp-agentd dhp`
+# again. `docker restart nhp-agent` alone is NOT enough: the container's
+# command is `tail -f /dev/null`, so the daemon is not started again.
+# POST /api/v1/agent/restart restarts the agent's internals only and does NOT
+# reload them.
+
+# ListenAddr: host:port the HTTPS console binds to. Defaults to loopback.
+# Only bind a non-loopback address behind a network boundary you control.
+# docker: bind all interfaces inside the container; docker-compose.dhp.yaml
+# publishes the port on the host loopback only (127.0.0.1:8443).
+ListenAddr = "0.0.0.0:443"
+
+# TrustedTAPublicKeys: base64 ed25519 public keys allowed to sign trusted
+# applications (TAs). POST /api/v1/ta/register must carry a "signature" form
+# field: base64(ed25519_sign(private_key, "opennhp-dhp-ta-v1\0" || sha256(ta_file)))
+# (the 17-byte context string, a NUL byte, then the raw 32-byte digest). With no keys
+# configured, TA registration is refused. Only the file is signed: the name,
+# description, language and entry form fields are unsigned, informational
+# metadata (the agent executes the stored, verified file) and are replaced by
+# the latest registration of the same file.
+#
+# Generate an operator key pair and sign a TA with OpenSSL (3.x):
+#   openssl genpkey -algorithm ed25519 -out ta_signing.pem
+#   openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64
+#   { printf 'opennhp-dhp-ta-v1\0'; openssl dgst -sha256 -binary ta; } > ta.msg
+#   openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.msg | base64
+TrustedTAPublicKeys = []
+
+# RevokedTADigests: hex SHA-256 digests of TA binaries that must be refused
+# even though they are validly signed (e.g. an old, vulnerable version).
+# Revocation applies to registration only: a TA that is already registered
+# keeps running until the nhp-agentd process is restarted (TAs are not
+# reloaded from etc/ta at startup), and the new list itself only takes effect
+# on that restart.
+#   openssl dgst -sha256 ta
+RevokedTADigests = []

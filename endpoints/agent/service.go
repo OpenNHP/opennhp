@@ -1,7 +1,17 @@
 package agent
 
 import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,7 +22,6 @@ import (
 	"github.com/gin-gonic/gin"
 	toml "github.com/pelletier/go-toml/v2"
 
-	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -26,6 +35,10 @@ var (
 	}{m: make(map[string]map[string]gin.HandlerFunc)}
 
 	serviceApiPrefix = "/api/v1"
+
+	// writeServerConfigFile writes server.toml in place; a variable so tests
+	// can widen the truncate-then-write window.
+	writeServerConfigFile = os.WriteFile
 )
 
 func (a *UdpAgent) CheckAgentSafeOrNot(targetPaths ...string) gin.HandlerFunc {
@@ -43,21 +56,142 @@ func (a *UdpAgent) CheckAgentSafeOrNot(targetPaths ...string) gin.HandlerFunc {
 	}
 }
 
-func (a *UdpAgent) CreateDHPWebConsole() {
+// PrepareDHPWebConsole loads the console configuration and bearer token,
+// loads the TLS certificate and binds the listener, without serving yet.
+// Call it before Start so a bad console.toml, a missing certificate or a
+// port already in use stops the agent before it touches the network.
+func (a *UdpAgent) PrepareDHPWebConsole() error {
+	etcDir := filepath.Join(ExeDirPath, "etc")
+
+	conf, err := loadConsoleConfig(etcDir)
+	if err != nil {
+		return fmt.Errorf("DHP console: %w", err)
+	}
+	token, notices, err := loadOrCreateConsoleToken(etcDir)
+	if err != nil {
+		return fmt.Errorf("DHP console: %w", err)
+	}
+	cert, err := tls.LoadX509KeyPair(
+		filepath.Join(etcDir, "certs", "server.crt"),
+		filepath.Join(etcDir, "certs", "server.key"),
+	)
+	if err != nil {
+		return fmt.Errorf("DHP console: load TLS certificate: %w", err)
+	}
+	ln, err := net.Listen("tcp", conf.ListenAddr)
+	if err != nil {
+		return fmt.Errorf("DHP console: listen on %s: %w", conf.ListenAddr, err)
+	}
+
+	a.consoleConf = conf
+	a.consoleNotices = notices
+	a.consoleListener = ln
+	a.consoleServer = &http.Server{
+		Handler:           a.newConsoleRouter(token),
+		ReadHeaderTimeout: 10 * time.Second,
+		// Reap idle keep-alive connections. ReadTimeout/WriteTimeout are
+		// deliberately unset: they would cut off slow TA uploads and
+		// long-running TA calls.
+		IdleTimeout: 2 * time.Minute,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+	}
+	return nil
+}
+
+// ServeDHPWebConsole starts serving on the listener bound by
+// PrepareDHPWebConsole. Call it once the agent has started, so no request
+// is handled against a half-initialized agent.
+func (a *UdpAgent) ServeDHPWebConsole() error {
+	if a.consoleServer == nil || a.consoleListener == nil {
+		return errors.New("DHP console: PrepareDHPWebConsole has not been called")
+	}
+
+	id := time.Now().Format("2006-01-02 15:04:05")
+	log.Info("==================================================")
+	log.Info("===  DHP Web Console (%s) started on %s  ===", id, a.consoleListener.Addr())
+	log.Info("==================================================")
+	for _, n := range a.consoleNotices {
+		n.log()
+	}
+	if len(a.consoleConf.trustedTAKeys) == 0 {
+		log.Warning("DHP console: no TrustedTAPublicKeys configured, trusted application registration is disabled")
+	}
+
+	srv, ln := a.consoleServer, a.consoleListener
+	failed := make(chan error, 1)
+	a.consoleFailed = failed
+	go func() {
+		if err := srv.ServeTLS(ln, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("DHP console stopped: %v", err)
+			failed <- err
+		}
+	}()
+	return nil
+}
+
+// ConsoleFailed returns a channel that receives an error if the console
+// server stops on its own after ServeDHPWebConsole, i.e. for any reason
+// other than CloseDHPWebConsole. The console is the only way to configure
+// a DHP agent, so the caller should shut the agent down rather than keep
+// it running unmanageable. It returns nil (which blocks forever in a
+// select) before ServeDHPWebConsole.
+func (a *UdpAgent) ConsoleFailed() <-chan error {
+	return a.consoleFailed
+}
+
+// CloseDHPWebConsole stops the console: it stops accepting connections and
+// waits up to consoleShutdownTimeout for in-flight requests to finish
+// before closing their connections. It does not by itself guarantee that
+// no handler is still running afterwards — StopDHP adds that guarantee for
+// the operations that restart the agent. Use it directly only when the
+// agent has not been started (startup failure after PrepareDHPWebConsole).
+func (a *UdpAgent) CloseDHPWebConsole() {
+	if a.consoleServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), consoleShutdownTimeout)
+		defer cancel()
+		if err := a.consoleServer.Shutdown(ctx); err != nil {
+			_ = a.consoleServer.Close()
+		}
+	}
+	if a.consoleListener != nil {
+		_ = a.consoleListener.Close()
+	}
+}
+
+// newConsoleRouter builds the console router. Every route, including the
+// dynamic TA routes dispatched from NoRoute, sits behind the bearer-token
+// middleware; the TEE posture check runs only after authentication.
+func (a *UdpAgent) newConsoleRouter(token string) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
+	// gin's path-fixing redirects run before any middleware, so an
+	// unauthenticated "POST /api/v1/agent/restart/" would get a 307 to the
+	// real route instead of a 401, letting callers map routes without a
+	// token. Unauthenticated requests must always get 401.
+	router.RedirectTrailingSlash = false
+	router.RedirectFixedPath = false
 
+	router.Use(consoleAuthMiddleware(token))
+	router.Use(limitConsoleBody)
 	router.Use(a.CheckAgentSafeOrNot(taApiPrefix))
 
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "config/server"), a.configServer)
 	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "config/server"), a.getServerConfig)
 
-	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent"), a.getAgentPublicKey)
-	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee"), a.getTeePublicKey)
+	// The key reads need the loaded agent config; the rest of the console
+	// (config, restart, key rotation, status, attestation) keeps working
+	// while the agent is stopped, e.g. after a failed restart, so the
+	// operator can fix the config and restart again.
+	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent"), a.holdRunningAgent, a.getAgentPublicKey)
+	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee"), a.holdRunningAgent, a.getTeePublicKey)
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent/rotate"), a.rotateAgentKey)
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee/rotate"), a.rotateTeeKey)
 
-	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "agent/restart"), a.restartAgent)
+	// State-changing: POST only, so a cross-site GET cannot trigger it.
+	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "agent/restart"), a.restartAgent)
 
 	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "status/agent"), a.getTeeStatus)
 
@@ -76,6 +210,15 @@ func (a *UdpAgent) CreateDHPWebConsole() {
 		// Check if we have a handler for this method and path
 		if methodRoutes, ok := routes.m[method]; ok {
 			if handler, ok := methodRoutes[path]; ok {
+				// TA calls go through the agent's device (data access
+				// refresh), so they need a running agent. Unlike the key
+				// reads they do not hold the lifecycle lock for the call:
+				// a TA call has no timeout, and holding it would let one
+				// stuck TA block every restart and process shutdown. A TA
+				// call that overlaps a restart is best-effort and may fail.
+				if !a.checkRunningAgent(c) {
+					return
+				}
 				handler(c)
 				return
 			}
@@ -85,21 +228,285 @@ func (a *UdpAgent) CreateDHPWebConsole() {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Route not found"})
 	})
 
-	go func() {
-		id := time.Now().Format("2006-01-02 15:04:05")
-		log.Info("==================================================")
-		log.Info("===  DHP Web Console (%s) started  ===", id)
-		log.Info("==================================================")
+	return router
+}
 
-		if err := router.RunTLS(
-			":443", filepath.Join(common.ExeDirPath, "etc", "certs", "server.crt"), filepath.Join(common.ExeDirPath, "etc", "certs", "server.key"),
-		); err != nil {
-			panic(err)
+// beginLifecycleOp serializes console operations that stop and restart the
+// agent (restart, key rotation) with each other and with StopDHP. It
+// returns false, after answering 503, once the agent is shutting down. On
+// success the caller must defer endLifecycleOp.
+func (a *UdpAgent) beginLifecycleOp(c *gin.Context) bool {
+	a.consoleLifecycleMu.Lock()
+	if a.consoleStopping {
+		a.consoleLifecycleMu.Unlock()
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "agent is shutting down"})
+		return false
+	}
+	return true
+}
+
+func (a *UdpAgent) endLifecycleOp() {
+	a.consoleLifecycleMu.Unlock()
+}
+
+// holdRunningAgent is middleware for short handlers that read the loaded
+// agent config. It answers 503 while the agent is stopped (after a failed
+// restart a.config is nil: RestartAgent clears it before Start) and
+// otherwise holds the lifecycle read lock until the handler returns, so a
+// concurrent restart or key rotation cannot clear a.config between the
+// check and the use. It must not be used for long-running handlers: a
+// restart, and StopDHP, wait for the read lock to be released.
+func (a *UdpAgent) holdRunningAgent(c *gin.Context) {
+	a.consoleLifecycleMu.RLock()
+	defer a.consoleLifecycleMu.RUnlock()
+	if !a.IsRunning() {
+		abortAgentStopped(c)
+		return
+	}
+	c.Next()
+}
+
+// checkRunningAgent answers 503 and returns false while the agent is
+// stopped or a restart is in progress. It only holds the lifecycle read
+// lock for the check itself.
+func (a *UdpAgent) checkRunningAgent(c *gin.Context) bool {
+	a.consoleLifecycleMu.RLock()
+	running := a.IsRunning()
+	a.consoleLifecycleMu.RUnlock()
+	if !running {
+		abortAgentStopped(c)
+	}
+	return running
+}
+
+func abortAgentStopped(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+		"error":   "agent is stopped",
+		"running": false,
+	})
+}
+
+// respondRestartFailed answers a failed RestartAgent (restart or key
+// rotation). RestartAgent stops the old instance before Start, so the agent
+// is now down while the console keeps serving: say so, rather than leaving
+// the operator to assume the old instance is still up. The (global) logger
+// is deliberately left open: this process keeps running and logging, and
+// the next Start replaces and closes it.
+func (a *UdpAgent) respondRestartFailed(c *gin.Context, op string, err error) {
+	log.Error("DHP console: %s requested by %s failed while restarting, agent is stopped: %v", op, c.Request.RemoteAddr, err)
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error":   err.Error(),
+		"running": false,
+		"msg":     op + " failed; the agent is now stopped. Fix the configuration and restart again",
+	})
+}
+
+// StopDHP shuts down a DHP agent: it stops the console, waits for any
+// in-flight restart or key rotation to finish (however long it takes —
+// CloseDHPWebConsole's timeout only bounds connection draining), refuses
+// new ones, and then stops the agent. Without this, a console-triggered
+// RestartAgent could run Stop concurrently with the shutdown's Stop and
+// close the same channels twice.
+//
+// Other in-flight console requests (e.g. a TA call) may still be running
+// after the timeout; they do not stop or restart the agent and fail on
+// their own once it is stopped.
+func (a *UdpAgent) StopDHP() {
+	a.CloseDHPWebConsole()
+
+	a.consoleLifecycleMu.Lock()
+	defer a.consoleLifecycleMu.Unlock()
+	a.consoleStopping = true
+	a.Stop()
+}
+
+// trustedTAKeys returns the operator keys allowed to sign trusted
+// applications, or nil when the console config has not been loaded.
+func (a *UdpAgent) trustedTAKeys() []ed25519.PublicKey {
+	if a.consoleConf == nil {
+		return nil
+	}
+	return a.consoleConf.trustedTAKeys
+}
+
+// saveTAIndex records a registered TA in its dedup index file.
+func saveTAIndex(indexFile, fileName, taName, fileUuid string, size int64, description, language, entry string) error {
+	return utils.SaveStructAsJsonFile(indexFile, map[string]any{
+		"fileName":    fileName,
+		"name":        taName,
+		"uuid":        fileUuid,
+		"size":        size,
+		"description": description,
+		"language":    language,
+		"entry":       entry,
+	})
+}
+
+// stageUploadedTA copies the uploaded file, in a single read, into a new
+// owner-only (0600, not executable) temporary file in taDir while hashing
+// it, and returns that file's path, its size and the SHA-256 of exactly
+// the bytes it holds. The caller verifies the digest and then either renames the staged
+// file into place or removes it; nothing is indexed, made executable or
+// started before that. Reading the multipart part only once means the bytes
+// that are verified are the bytes that are stored, even when the part was
+// spilled to a temporary file outside taDir.
+func stageUploadedTA(file *multipart.FileHeader, taDir string) (stagedPath string, size int64, digest []byte, err error) {
+	src, err := file.Open()
+	if err != nil {
+		return "", 0, nil, err
+	}
+	defer src.Close()
+
+	dst, err := os.CreateTemp(taDir, ".upload-*")
+	if err != nil {
+		return "", 0, nil, err
+	}
+	defer func() {
+		if err != nil {
+			os.Remove(dst.Name())
 		}
 	}()
+
+	h := sha256.New()
+	if size, err = io.Copy(dst, io.TeeReader(src, h)); err != nil {
+		dst.Close()
+		return "", 0, nil, err
+	}
+	if err = dst.Close(); err != nil {
+		return "", 0, nil, err
+	}
+	return dst.Name(), size, h.Sum(nil), nil
+}
+
+// verifyTADigest checks the operator signature over a staged TA's digest
+// and the revocation list. The digest is also the TA's deduplication key.
+func (a *UdpAgent) verifyTADigest(digest []byte, sigB64 string) error {
+	keys := a.trustedTAKeys()
+	if len(keys) == 0 {
+		// Defensive: registerTAService already refuses before parsing.
+		return errTANoTrustedKeys
+	}
+	if err := verifyTASignature(keys, digest, sigB64); err != nil {
+		return err
+	}
+	if a.consoleConf.isTARevoked(digest) {
+		return errTARevoked
+	}
+	return nil
+}
+
+// isPlainPathElement reports whether name is a single, ordinary path
+// element: non-empty, containing no path separator, and not "." or "..".
+// (filepath.Base alone is not enough: it returns ".", ".." and "/"
+// unchanged.)
+func isPlainPathElement(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	// Reject both separators on every platform (a "..\\x" name is a plain
+	// file on Linux but a traversal if etc/ta is ever copied to Windows),
+	// and control characters including NUL.
+	for _, r := range name {
+		if r == '/' || r == '\\' || r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// limitConsoleBody caps the request body of every console route at
+// maxConsoleBodySize, except TA registration, which applies its own,
+// larger maxTAUploadSize (wrapping it here as well would cap uploads at
+// the smaller limit).
+func limitConsoleBody(c *gin.Context) {
+	if c.Request.URL.Path != taApiPrefix+"/register" {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxConsoleBodySize)
+	}
+}
+
+// bindConsoleJSON decodes a JSON request body, answering 413 when it
+// exceeds maxConsoleBodySize and 400 when it is malformed.
+func bindConsoleJSON(c *gin.Context, v any) bool {
+	err := c.ShouldBindJSON(v)
+	if err == nil {
+		return true
+	}
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": fmt.Sprintf("request body exceeds %d bytes", maxConsoleBodySize)})
+		return false
+	}
+	c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	return false
+}
+
+// lookupRegisteredTA resolves a dedup index entry to the stored binary. It
+// only reports reuse when the entry is well formed and the stored file
+// still exists and still hashes to the verified digest; anything else
+// (missing, cleaned up, corrupt or tampered with) is treated as a fresh
+// upload, whose index write then repairs the entry.
+func lookupRegisteredTA(taDir, indexFile string, digest []byte) (uuid, fileName string, ok bool) {
+	if _, err := os.Stat(indexFile); err != nil {
+		return "", "", false
+	}
+
+	fileInfo, err := utils.LoadJsonFileAsStruct(indexFile)
+	if err != nil {
+		log.Warning("DHP console: ignoring unreadable trusted application index %s: %v", indexFile, err)
+		return "", "", false
+	}
+	info, _ := fileInfo.(map[string]any)
+	uuid, _ = info["uuid"].(string)
+	fileName, _ = info["fileName"].(string)
+	if !isPlainPathElement(uuid) || !isPlainPathElement(fileName) {
+		log.Warning("DHP console: ignoring malformed trusted application index %s", indexFile)
+		return "", "", false
+	}
+
+	// The stored binary is hashed here and executed later by
+	// NewTrustApplication. Anyone who can write etc/ta between the two
+	// could swap it; etc/ is trusted (it also holds the agent's keys), and
+	// etc/ta is created owner-only to keep it that way.
+	f, err := os.Open(filepath.Join(taDir, uuid, fileName))
+	if err != nil {
+		log.Warning("DHP console: trusted application index %s points to a missing binary: %v", indexFile, err)
+		return "", "", false
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil || !bytes.Equal(h.Sum(nil), digest) {
+		log.Warning("DHP console: stored binary for %s no longer matches its digest, re-registering", indexFile)
+		return "", "", false
+	}
+
+	return uuid, fileName, true
 }
 
 func (a *UdpAgent) registerTAService(c *gin.Context) {
+	// Refuse before reading the (up to maxTAUploadSize) body when no
+	// signing keys are configured — the default — so the request cannot be
+	// used to make the agent spool large uploads to disk for nothing.
+	if len(a.trustedTAKeys()) == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": errTANoTrustedKeys.Error()})
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxTAUploadSize)
+
+	// Parse explicitly: c.PostForm swallows parse errors, which would turn
+	// an oversized upload into a misleading "missing parameters" 400.
+	// Keep at most 8 MiB of the upload in memory; larger parts spill to
+	// temporary files.
+	if parseErr := c.Request.ParseMultipartForm(8 << 20); parseErr != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(parseErr, &tooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": fmt.Sprintf("trusted application upload exceeds %d bytes", maxTAUploadSize)})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": parseErr.Error()})
+		return
+	}
+
 	description := c.PostForm("description")
 	language := c.PostForm("language")
 	entry := c.PostForm("entry")
@@ -116,64 +523,104 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		return
 	}
 
+	// Never let a client-supplied name escape the per-upload directory.
+	fileName := filepath.Base(file.Filename)
+	if !isPlainPathElement(fileName) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
+		return
+	}
+
 	taDir := filepath.Join(ExeDirPath, "etc", "ta")
-	if mkdirErr := os.MkdirAll(taDir, 0755); mkdirErr != nil {
+	// Owner-only: only the agent itself needs to read or execute TAs.
+	// MkdirAll leaves an existing directory's mode alone, so tighten an
+	// etc/ta created by an older version (0755) explicitly.
+	if mkdirErr := os.MkdirAll(taDir, 0o700); mkdirErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": mkdirErr.Error()})
 		return
 	}
-
-	fileUuid, err := utils.GenerateUUIDv4()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	fullFilePath := filepath.Join(taDir, fileUuid, file.Filename)
-	if saveErr := c.SaveUploadedFile(file, fullFilePath); saveErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": saveErr.Error()})
-		return
-	}
-
-	if chmodErr := os.Chmod(fullFilePath, 0755); chmodErr != nil {
+	if chmodErr := os.Chmod(taDir, 0o700); chmodErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": chmodErr.Error()})
 		return
 	}
 
-	// calculate the md5sum of the file
-	md5sum, err := utils.Md5sum(fullFilePath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Stage the upload once and verify the digest of the staged bytes. The
+	// staged file is removed on every path except a successful rename into
+	// <uuid>/ (a dedup hit, a rejection or any error deletes it).
+	stagedPath, stagedSize, digest, stageErr := stageUploadedTA(file, taDir)
+	if stageErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": stageErr.Error()})
+		return
+	}
+	defer os.Remove(stagedPath) // no-op once renamed into place
+
+	if verifyErr := a.verifyTADigest(digest, c.PostForm("signature")); verifyErr != nil {
+		log.Warning("DHP console: rejected trusted application upload %q from %s: %v", file.Filename, c.Request.RemoteAddr, verifyErr)
+		c.JSON(http.StatusForbidden, gin.H{"error": verifyErr.Error()})
 		return
 	}
 
-	_, err = os.Stat(filepath.Join(taDir, md5sum))
-	if err == nil { // corresponding trusted application has been uploaded.
-		os.Remove(fullFilePath)
-		os.Remove(filepath.Join(taDir, fileUuid))
+	// Deduplicate by the SHA-256 that was just verified, never by MD5: an
+	// MD5 match could otherwise swap in a different (e.g. pre-signature,
+	// unsigned) binary that was registered earlier. Index files are named
+	// "sha256-<hex>", so legacy MD5-named entries are never matched. On a
+	// hit the staged copy is simply discarded.
+	//
+	// Hold taRegisterMu from the dedup lookup through the index write, so
+	// two concurrent uploads of the same binary cannot both miss the index
+	// and each store (and index) their own copy.
+	var fileUuid string
+	storeErr := func() error {
+		a.taRegisterMu.Lock()
+		defer a.taRegisterMu.Unlock()
 
-		fileInfo, loadErr := utils.LoadJsonFileAsStruct(filepath.Join(taDir, md5sum))
-		if loadErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": loadErr.Error()})
-			return
+		indexFile := filepath.Join(taDir, "sha256-"+hex.EncodeToString(digest))
+		storedUuid, storedName, reuse := lookupRegisteredTA(taDir, indexFile, digest)
+		if reuse {
+			// Run the binary that is actually stored under the previous uuid.
+			fileUuid, fileName = storedUuid, storedName
+		} else {
+			var uuidErr error
+			fileUuid, uuidErr = utils.GenerateUUIDv4()
+			if uuidErr != nil {
+				return uuidErr
+			}
+
+			// Move the verified, staged bytes into place. Any failure from
+			// here until the index is written removes the new <uuid>/
+			// directory, so nothing unindexed is left behind in etc/ta.
+			uuidDir := filepath.Join(taDir, fileUuid)
+			fullFilePath := filepath.Join(uuidDir, fileName)
+			if mkErr := os.Mkdir(uuidDir, 0o700); mkErr != nil {
+				return mkErr
+			}
+			if renameErr := os.Rename(stagedPath, fullFilePath); renameErr != nil {
+				os.RemoveAll(uuidDir)
+				return renameErr
+			}
+			if chmodErr := os.Chmod(fullFilePath, 0o700); chmodErr != nil {
+				os.RemoveAll(uuidDir)
+				return chmodErr
+			}
+			if indexErr := saveTAIndex(indexFile, fileName, taName, fileUuid, stagedSize, description, language, entry); indexErr != nil {
+				os.RemoveAll(uuidDir)
+				return indexErr
+			}
+			return nil
 		}
-		fileUuid = fileInfo.(map[string]any)["uuid"].(string)
-	}
 
-	// save file information into the file which name is md5sum, no matter the file exists or not.
-	if writeErr := utils.SaveStructAsJsonFile(filepath.Join(taDir, md5sum), map[string]any{
-		"fileName":    file.Filename,
-		"name":        taName,
-		"uuid":        fileUuid,
-		"size":        file.Size,
-		"description": description,
-		"language":    language,
-		"entry":       entry,
-	}); writeErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": writeErr.Error()})
+		// save file information into the index file, no matter the file exists or not.
+		// Only the file is covered by the signature; name/description/
+		// language/entry are unsigned metadata and execution never depends
+		// on them (the stored uuid/fileName are run). Keep it that way, or
+		// bring them under the signature first.
+		return saveTAIndex(indexFile, fileName, taName, fileUuid, stagedSize, description, language, entry)
+	}()
+	if storeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": storeErr.Error()})
 		return
 	}
 
-	ta, err := NewTrustApplication(fileUuid, language, filepath.Join(taDir, fileUuid, file.Filename))
+	ta, err := NewTrustApplication(fileUuid, language, filepath.Join(taDir, fileUuid, fileName))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -203,8 +650,7 @@ func (a *UdpAgent) callFunction(c *gin.Context) {
 
 	var body map[string]any
 
-	if err := c.BindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !bindConsoleJSON(c, &body) {
 		return
 	}
 
@@ -260,26 +706,63 @@ func (a *UdpAgent) getTeePublicKey(c *gin.Context) {
 func (a *UdpAgent) configServer(c *gin.Context) {
 	var peers Peers
 
-	if err := c.BindJSON(&peers); err != nil {
+	if !bindConsoleJSON(c, &peers) {
+		return
+	}
+
+	// server.toml is the agent's trust anchor (nhp-server public keys and
+	// addresses) and is hot-reloaded by the config watcher, so reject
+	// anything the loader itself would reject instead of persisting it.
+	//
+	// normalizeClusters also rewrites the request in place (e.g. migrates
+	// the legacy single-server form, Hostname/Ip/Port at the top level,
+	// into Instances), and it is the normalized form that is written, so a
+	// POST may change the shape, not the meaning, of server.toml.
+	if err := normalizeClusters(peers.Servers, log.Warning); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	for _, cfg := range peers.Servers {
+		if _, err := buildCluster(cfg); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
 
+	// Encode fully before touching the file, so an encoding error cannot
+	// leave server.toml truncated.
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(peers); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Write in place (as before) and let the existing file watcher apply
+	// it. A rename-based atomic replace is deliberately not used: on
+	// kqueue platforms (macOS) it ends the watcher's loop, silently
+	// disabling hot reload, and calling updateServerPeers from here would
+	// race RestartAgent, which closes the watcher while it swaps the
+	// device. What keeps the watcher from loading a half-written file is
+	// its debounce: it reloads 100ms after the *last* event, and the whole
+	// (small) file is written by a single WriteFile right after the
+	// truncate. A truncated prefix can itself be valid TOML, so the
+	// loader's validation alone would not catch every case — although an
+	// empty file (no [[Servers]]) is refused by the loader
+	// (updateServerPeers -> normalizeClusters), so a truncate observed on
+	// its own can never be hot-loaded as an empty trust anchor.
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
-
-	file, err := os.Create(fileName)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	defer file.Close()
-
-	encoder := toml.NewEncoder(file)
-	if err := encoder.Encode(peers); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// The mode only applies if the file does not exist yet; an existing
+	// server.toml keeps its permissions. Serialize concurrent writers: the
+	// truncate+write of two requests must not interleave.
+	a.serverConfigWriteMu.Lock()
+	writeErr := writeServerConfigFile(fileName, buf.Bytes(), 0o600)
+	a.serverConfigWriteMu.Unlock()
+	if writeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": writeErr.Error()})
 		return
 	}
 
+	log.Info("DHP console: server peer config rewritten by %s (%d servers)", c.Request.RemoteAddr, len(peers.Servers))
 	c.JSON(http.StatusOK, gin.H{"msg": "successfully configure nhp server info in agent"})
 }
 
@@ -303,9 +786,14 @@ func (a *UdpAgent) getServerConfig(c *gin.Context) {
 }
 
 func (a *UdpAgent) restartAgent(c *gin.Context) {
-	err := a.RestartAgent()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if !a.beginLifecycleOp(c) {
+		return
+	}
+	defer a.endLifecycleOp()
+
+	if err := a.RestartAgent(); err != nil {
+		a.respondRestartFailed(c, "agent restart", err)
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"msg": "successfully restart agent"})
@@ -344,13 +832,18 @@ func (a *UdpAgent) getTeeAttestation(c *gin.Context) {
 }
 
 func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
+	if !a.beginLifecycleOp(c) {
+		return
+	}
+	defer a.endLifecycleOp()
+
 	if err := a.RotateAgentKey(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	if err := a.RestartAgent(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		a.respondRestartFailed(c, "agent key rotation", err)
 		return
 	}
 
@@ -358,13 +851,18 @@ func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
 }
 
 func (a *UdpAgent) rotateTeeKey(c *gin.Context) {
+	if !a.beginLifecycleOp(c) {
+		return
+	}
+	defer a.endLifecycleOp()
+
 	if err := a.RotateTeeKey(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	if err := a.RestartAgent(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		a.respondRestartFailed(c, "TEE key rotation", err)
 		return
 	}
 

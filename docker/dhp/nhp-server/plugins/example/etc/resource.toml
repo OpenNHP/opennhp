@@ -1,9 +1,10 @@
 # DHP local docker demo plugin resource mapping.
 # Override of docker/nhp-server/plugins/example/etc/resource.toml for the DHP
 # stack (docker-compose.dhp.yaml), which exposes the nhp-agent/nginx entrypoint
-# on host port 8443 (ports: "8443:443") instead of the standard :443. The
-# browser therefore reaches the resource at https://localhost:8443, so the
-# redirect/Hostname must carry the :8443 suffix.
+# on host port 8443, bound to the host loopback only
+# (ports: "127.0.0.1:8443:443"), instead of the standard :443. The browser on
+# the docker host therefore reaches the resource at https://localhost:8443, so
+# the redirect/Hostname must carry the :8443 suffix.
 ["demo"]
 SkipAuth = true
 OpenTime = 15

@@ -403,7 +403,7 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	var prk []byte
 	if a.config.PrivateKeyBase64 == "" {
 		// Fail loudly unless the caller installs the real key after Start.
-		if err := a.checkMissingPrivateKey(); err != nil {
+		if err = a.checkMissingPrivateKey(); err != nil {
 			return err
 		}
 		log.Warning("no private key configured; starting with a throwaway key until ReinitWithKey installs the real one")

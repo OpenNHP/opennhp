@@ -505,7 +505,10 @@ const sm4KeySize = 16
 // silently zero-padded, and a nonce of the wrong size is refused instead of
 // making Seal/Open panic.
 func sm4AeadInputs(key *C.uchar, keyLen C.int, nonce *C.uchar, nonceLen C.int) (stdcipher.AEAD, []byte, error) {
-	if keyLen < sm4KeySize || key == nil {
+	if key == nil {
+		return nil, nil, fmt.Errorf("key: NULL buffer with length %d", int(keyLen))
+	}
+	if keyLen < sm4KeySize {
 		return nil, nil, fmt.Errorf("key: need at least %d bytes, got %d", sm4KeySize, int(keyLen))
 	}
 	var aeadKey [core.SymmetricKeySize]byte
@@ -515,7 +518,10 @@ func sm4AeadInputs(key *C.uchar, keyLen C.int, nonce *C.uchar, nonceLen C.int) (
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create AEAD: %w", err)
 	}
-	if int(nonceLen) != aead.NonceSize() || nonce == nil {
+	if nonce == nil {
+		return nil, nil, fmt.Errorf("nonce: NULL buffer with length %d", int(nonceLen))
+	}
+	if int(nonceLen) != aead.NonceSize() {
 		return nil, nil, fmt.Errorf("nonce: need %d bytes, got %d", aead.NonceSize(), int(nonceLen))
 	}
 	return aead, C.GoBytes(unsafe.Pointer(nonce), nonceLen), nil

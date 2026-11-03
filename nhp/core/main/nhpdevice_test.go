@@ -163,6 +163,17 @@ func TestSM4AeadValidatesInputs(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
+
+	// A NULL key or nonce is reported as such, not as a length problem
+	// ("need at least 16 bytes, got 16").
+	for name, res := range map[string]sdkResult{
+		"key":   testSM4Encrypt(nil, len(key), nonce, len(nonce), plain, len(plain), aad, len(aad)),
+		"nonce": testSM4Decrypt(key, len(key), nil, len(nonce), enc.out, len(enc.out), aad, len(aad)),
+	} {
+		if res.code == 0 || !strings.Contains(res.msg, name+": NULL buffer") {
+			t.Errorf("NULL %s: got %d %q", name, res.code, res.msg)
+		}
+	}
 }
 
 // Any panic inside an exported function is reported as

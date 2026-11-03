@@ -243,6 +243,12 @@ type UdpServer struct {
 	dbPeerIPs      map[string]struct{}      // configured static IPs, protected by dbPeerMapMutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
+	// storageNonces is the /storage replay cache. It lives here rather than
+	// on the HttpServer, which an http.toml change rebuilds, so that a
+	// restart does not reopen the replay window.
+	storageNonces     *nonceCache
+	storageNoncesOnce sync.Once
+
 	teeMapMutex sync.Mutex
 	teeMap      map[string]*TeeAttestationReport // indexed by tee's measure
 

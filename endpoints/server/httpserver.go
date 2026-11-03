@@ -32,6 +32,8 @@ type HttpServer struct {
 	httpServer *http.Server
 	ginEngine  *gin.Engine
 	listenAddr *net.TCPAddr
+	config     *HttpConfig
+	storage    *storageState
 
 	// trustedProxies is the resolved HttpConfig.TrustedProxies list, kept
 	// so knockSourceIP can tell "no proxy is configured" from "a proxy is"
@@ -57,6 +59,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 	log.Info("==================================================")
 
 	hs.udpServer = us
+	hs.config = hc
 
 	ipStr := hc.HttpListenIp
 	var netIP net.IP

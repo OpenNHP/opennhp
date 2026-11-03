@@ -444,6 +444,15 @@ type HttpConfig struct {
 	// *overwrites* the forwarding headers and the listener is bound where
 	// nothing else can reach it. See applyTrustedProxies in httpserver.go.
 	TrustedProxies []string
+
+	// /storage API (ZTDO upload by nhp-db, download by agents). Read when
+	// the HTTP server starts. Uploads and metadata require a request
+	// signed with an nhp-db key listed in db.toml; downloads stay anonymous
+	// (the object URL carries a random UUID and a ZTDO is encrypted).
+	EnableStorage               *bool // default true
+	StorageMaxUploadMB          int   // largest accepted upload; default 20480
+	StorageMinFreeMB            int   // free space an upload must leave on the upload volume; default 1024
+	StorageMaxConcurrentUploads int   // uploads in progress at once; default 4
 }
 
 type Peers struct {

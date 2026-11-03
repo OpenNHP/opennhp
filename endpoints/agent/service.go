@@ -167,8 +167,12 @@ func (a *UdpAgent) newConsoleRouter(token string) *gin.Engine {
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "config/server"), a.configServer)
 	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "config/server"), a.getServerConfig)
 
-	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent"), a.getAgentPublicKey)
-	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee"), a.getTeePublicKey)
+	// The key reads need the loaded agent config; the rest of the console
+	// (config, restart, key rotation, status, attestation) keeps working
+	// while the agent is stopped, e.g. after a failed restart, so the
+	// operator can fix the config and restart again.
+	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent"), a.requireRunningAgent, a.getAgentPublicKey)
+	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee"), a.requireRunningAgent, a.getTeePublicKey)
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent/rotate"), a.rotateAgentKey)
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee/rotate"), a.rotateTeeKey)
 
@@ -192,6 +196,11 @@ func (a *UdpAgent) newConsoleRouter(token string) *gin.Engine {
 		// Check if we have a handler for this method and path
 		if methodRoutes, ok := routes.m[method]; ok {
 			if handler, ok := methodRoutes[path]; ok {
+				// TA calls go through the agent's device (data access
+				// refresh), so they need a running agent.
+				if a.requireRunningAgent(c); c.IsAborted() {
+					return
+				}
 				handler(c)
 				return
 			}
@@ -220,6 +229,34 @@ func (a *UdpAgent) beginLifecycleOp(c *gin.Context) bool {
 
 func (a *UdpAgent) endLifecycleOp() {
 	a.consoleLifecycleMu.Unlock()
+}
+
+// requireRunningAgent answers 503 for handlers that read the loaded agent
+// config or use its device while the agent is stopped. After a failed
+// restart a.config is nil (RestartAgent clears it before Start), and those
+// handlers would otherwise panic.
+func (a *UdpAgent) requireRunningAgent(c *gin.Context) {
+	if !a.IsRunning() {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "agent is stopped",
+			"running": false,
+		})
+	}
+}
+
+// respondRestartFailed answers a failed RestartAgent (restart or key
+// rotation). RestartAgent stops the old instance before Start, so the agent
+// is now down while the console keeps serving: say so, rather than leaving
+// the operator to assume the old instance is still up. The (global) logger
+// is deliberately left open: this process keeps running and logging, and
+// the next Start replaces and closes it.
+func (a *UdpAgent) respondRestartFailed(c *gin.Context, op string, err error) {
+	log.Error("DHP console: %s requested by %s failed while restarting, agent is stopped: %v", op, c.Request.RemoteAddr, err)
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error":   err.Error(),
+		"running": false,
+		"msg":     op + " failed; the agent is now stopped. Fix the configuration and restart again",
+	})
 }
 
 // StopDHP shuts down a DHP agent: it stops the console, waits for any
@@ -619,19 +656,8 @@ func (a *UdpAgent) restartAgent(c *gin.Context) {
 	}
 	defer a.endLifecycleOp()
 
-	err := a.RestartAgent()
-	if err != nil {
-		// RestartAgent stopped the old instance before Start failed, so the
-		// agent is now down while the console keeps serving. Say so, rather
-		// than leaving the operator to assume the old instance is still up.
-		// The (global) logger is deliberately left open: this process keeps
-		// running and logging, and the next Start replaces and closes it.
-		log.Error("DHP console: agent restart requested by %s failed, agent is stopped: %v", c.Request.RemoteAddr, err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   err.Error(),
-			"running": false,
-			"msg":     "agent restart failed; the agent is now stopped. Fix the configuration and restart again",
-		})
+	if err := a.RestartAgent(); err != nil {
+		a.respondRestartFailed(c, "agent restart", err)
 		return
 	}
 
@@ -682,7 +708,7 @@ func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
 	}
 
 	if err := a.RestartAgent(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		a.respondRestartFailed(c, "agent key rotation", err)
 		return
 	}
 
@@ -701,7 +727,7 @@ func (a *UdpAgent) rotateTeeKey(c *gin.Context) {
 	}
 
 	if err := a.RestartAgent(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		a.respondRestartFailed(c, "TEE key rotation", err)
 		return
 	}
 

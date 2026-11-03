@@ -1146,4 +1146,44 @@ func TestConsoleFailedRestartReportsStopped(t *testing.T) {
 	if a.IsRunning() {
 		t.Fatal("agent reports running after a failed restart")
 	}
+
+	// a.config is nil now. Handlers that need the loaded config or the
+	// device answer 503 instead of panicking; dynamic TA routes too.
+	taPath := taApiPrefix + "/test-stopped-fn"
+	routes.Lock()
+	if routes.m[http.MethodPost] == nil {
+		routes.m[http.MethodPost] = make(map[string]gin.HandlerFunc)
+	}
+	routes.m[http.MethodPost][taPath] = func(c *gin.Context) { t.Error("TA handler ran while the agent is stopped") }
+	routes.Unlock()
+	t.Cleanup(func() {
+		routes.Lock()
+		delete(routes.m[http.MethodPost], taPath)
+		routes.Unlock()
+	})
+	a.safeTee.Store(true)
+	for _, r := range []struct{ method, path string }{
+		{http.MethodGet, serviceApiPrefix + "/key/agent"},
+		{http.MethodGet, serviceApiPrefix + "/key/tee"},
+		{http.MethodPost, taPath},
+	} {
+		req := httptest.NewRequest(r.method, r.path, nil)
+		req.Header.Set("Authorization", "Bearer "+testConsoleToken)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s %s with the agent stopped: got %d, want 503 (%s)", r.method, r.path, w.Code, w.Body.String())
+		}
+	}
+
+	// The routes needed to recover stay reachable.
+	for _, path := range []string{"/status/agent", "/config/server"} {
+		req := httptest.NewRequest(http.MethodGet, serviceApiPrefix+path, nil)
+		req.Header.Set("Authorization", "Bearer "+testConsoleToken)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code == http.StatusServiceUnavailable {
+			t.Errorf("GET %s is gated while the agent is stopped; it must stay usable for recovery", path)
+		}
+	}
 }

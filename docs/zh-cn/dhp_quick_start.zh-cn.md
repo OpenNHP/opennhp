@@ -276,7 +276,7 @@ func findRecord(path string, accountId string) (bool, error) {
 假设我们已将其编译为名为 `ta` 的二进制文件。
 
 #### 4.2.2 注册可信应用
-只有经过运维密钥签名的可信应用才会被接受。先生成一次 ed25519 签名密钥，把公钥写入 `docker/nhp-agent/etc/console.toml` 的 `TrustedTAPublicKeys` 并重启 nhp-agent 进程（`docker restart nhp-agent`；控制台的 `/api/v1/agent/restart` 不会重新加载 `console.toml`），然后对 TA 签名：
+只有经过运维密钥签名的可信应用才会被接受。先生成一次 ed25519 签名密钥，把公钥写入 `docker/nhp-agent/etc/console.toml` 的 `TrustedTAPublicKeys` 并重启 nhp-agentd 进程：在 3.2 节运行它的终端里按 Ctrl+C 停止，再重新执行 `/nhp-agent/nhp-agentd dhp`。只执行 `docker restart nhp-agent` 不够，因为容器不会自动启动 nhp-agentd（重启容器后需要再执行一遍 3.2 节）；控制台的 `/api/v1/agent/restart` 也不会重新加载 `console.toml`。然后对 TA 签名：
 ```shell
 openssl genpkey -algorithm ed25519 -out ta_signing.pem
 openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64   # -> TrustedTAPublicKeys

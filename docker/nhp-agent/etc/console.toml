@@ -6,9 +6,12 @@
 # process to rotate it.
 #
 # This file and console.token are read once at process start. Changes take
-# effect only after restarting the nhp-agentd process (e.g. systemctl
-# restart, or `docker restart nhp-agent`); POST /api/v1/agent/restart
-# restarts the agent's internals only and does NOT reload them.
+# effect only after restarting the nhp-agentd process: in this docker stack,
+# stop it (Ctrl+C in the shell it runs in) and run `/nhp-agent/nhp-agentd dhp`
+# again. `docker restart nhp-agent` alone is NOT enough: the container's
+# command is `tail -f /dev/null`, so the daemon is not started again.
+# POST /api/v1/agent/restart restarts the agent's internals only and does NOT
+# reload them.
 
 # ListenAddr: host:port the HTTPS console binds to. Defaults to loopback.
 # Only bind a non-loopback address behind a network boundary you control.

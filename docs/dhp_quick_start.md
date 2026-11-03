@@ -281,7 +281,7 @@ func findRecord(path string, accountId string) (bool, error) {
 Suppose we have built it as binary which name is `ta`.
 
 #### 4.2.2 Register trusted application
-Only trusted applications signed by an operator key are accepted. Generate an ed25519 signing key once, put its public key into `TrustedTAPublicKeys` in `docker/nhp-agent/etc/console.toml`, restart the nhp-agent process (`docker restart nhp-agent`; the console's `/api/v1/agent/restart` does not reload `console.toml`), then sign the TA:
+Only trusted applications signed by an operator key are accepted. Generate an ed25519 signing key once, put its public key into `TrustedTAPublicKeys` in `docker/nhp-agent/etc/console.toml`, restart the nhp-agentd process: stop it (Ctrl+C in the shell from section 3.2) and run `/nhp-agent/nhp-agentd dhp` again. `docker restart nhp-agent` alone is not enough, because the container does not start nhp-agentd by itself (re-run section 3.2 after it), and the console's `/api/v1/agent/restart` does not reload `console.toml`. Then sign the TA:
 ```shell
 openssl genpkey -algorithm ed25519 -out ta_signing.pem
 openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64   # -> TrustedTAPublicKeys

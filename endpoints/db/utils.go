@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/common/storageauth"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -284,6 +285,10 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	signedAs, signErr := a.signStorageRequest(req, body.Bytes())
+	if signErr != nil {
+		return "", fmt.Errorf("could not sign upload request: %v", signErr)
+	}
 
 	client := &http.Client{
 		Timeout: 120 * time.Minute,
@@ -295,6 +300,11 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", fmt.Errorf("nhp-server refused the upload signature (401): its db.toml must list this nhp-db's public key %s, "+
+			"of the same scheme (curve25519 or SM2) as the nhp-server key in this nhp-db's server.toml, and the clocks must agree within %s",
+			signedAs, storageauth.MaxClockSkew)
+	}
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 
@@ -383,4 +393,44 @@ func (pr *ProgressReader) displayProgress(percent int) {
 
 	fmt.Printf("\r[%s] %3d%%  %.2f/%.2f MB",
 		string(bar), percent, uploadedMB, totalMB)
+}
+
+// signStorageRequest authenticates a request to the nhp-server /storage
+// API with this nhp-db's NHP key (see package storageauth), covering body,
+// which must be the request's whole body. The scheme follows the server's
+// public key in server.toml: a 32-byte key means curve25519, a 64-byte key
+// SM2; the server must list this nhp-db's key of the same scheme in its
+// db.toml. It returns the public key it signed as.
+func (a *UdpDevice) signStorageRequest(req *http.Request, body []byte) (string, error) {
+	serverPeer := a.GetServerPeer()
+	if serverPeer == nil {
+		return "", fmt.Errorf("no nhp-server configured")
+	}
+	serverPub := serverPeer.PublicKey()
+
+	var scheme int
+	var selfPub string
+	switch len(serverPub) {
+	case core.PublicKeySize:
+		scheme, selfPub = common.CIPHER_SCHEME_CURVE, a.device.PublicKeyBase64()
+	case core.PublicKeySizeEx:
+		scheme, selfPub = common.CIPHER_SCHEME_GMSM, a.device.PublicKeyExBase64()
+	default:
+		return "", fmt.Errorf("unexpected nhp-server public key size %d", len(serverPub))
+	}
+	ecdh := a.device.GetEcdhByCipherScheme(scheme)
+	if ecdh == nil {
+		return "", fmt.Errorf("no local key for the server's scheme")
+	}
+	secret := ecdh.SharedSecret(serverPub)
+	if secret == nil {
+		return "", fmt.Errorf("ECDH with the nhp-server key failed")
+	}
+
+	sr, err := storageauth.NewRequest(req.Method, req.URL.Path, body, selfPub)
+	if err != nil {
+		return "", err
+	}
+	sr.SetHeaders(req.Header, storageauth.Sign(secret, sr))
+	return selfPub, nil
 }

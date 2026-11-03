@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -404,5 +405,168 @@ func TestStorageFullNonceCacheIs503(t *testing.T) {
 	f.sign(t, md, time.Now())
 	if w := f.serve(md); w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("got %d, want 503", w.Code)
+	}
+}
+
+// The reservation shrinks as the file is written, since the filesystem's
+// free space already accounts for written bytes; whatever is left (the
+// multipart overhead, or a failed upload) is given back on release.
+func TestUploadReservationShrinksAsWritten(t *testing.T) {
+	st := &storageState{}
+	other, _ := st.reserve(100) // another upload in progress
+	r, total := st.reserve(1000)
+	if total != 1100 {
+		t.Fatalf("total reserved %d, want 1100", total)
+	}
+	if _, err := r.Write(make([]byte, 400)); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.reservedBytes.Load(); got != 700 {
+		t.Fatalf("after writing 400 bytes: %d reserved, want 700", got)
+	}
+	// Writing past the declared size never releases more than was claimed.
+	if _, err := r.Write(make([]byte, 5000)); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.reservedBytes.Load(); got != 100 {
+		t.Fatalf("after overrunning: %d reserved, want the other upload's 100", got)
+	}
+	r.release()
+	other.release()
+	if got := st.reservedBytes.Load(); got != 0 {
+		t.Fatalf("after release: %d reserved, want 0", got)
+	}
+}
+
+// The replay cache belongs to the UdpServer, so rebuilding the HTTP server
+// (an http.toml change) does not let a recent signed request be replayed.
+func TestStorageNonceCacheSurvivesHttpRestart(t *testing.T) {
+	f := newStorageFixture(t, common.CIPHER_SCHEME_CURVE, nil)
+	md := httptest.NewRequest(http.MethodGet, "/storage/metadata/x", nil)
+	f.sign(t, md, time.Now())
+	replay := md.Clone(md.Context())
+	if w := f.serve(md); w.Code == http.StatusUnauthorized {
+		t.Fatalf("first request: got %d", w.Code)
+	}
+
+	restarted := &HttpServer{ginEngine: gin.New(), udpServer: f.hs.udpServer}
+	restarted.initStorageRouter()
+	w := httptest.NewRecorder()
+	restarted.ginEngine.ServeHTTP(w, replay)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("replay after an HTTP restart: got %d, want 401", w.Code)
+	}
+}
+
+// Malformed authentication headers are refused, whatever is wrong.
+func TestStorageRejectsMalformedAuthHeaders(t *testing.T) {
+	f := newStorageFixture(t, common.CIPHER_SCHEME_CURVE, nil)
+	for name, mutate := range map[string]func(h http.Header){
+		"no signature":    func(h http.Header) { h.Del(storageauth.HeaderSignature) },
+		"bad timestamp":   func(h http.Header) { h.Set(storageauth.HeaderTimestamp, "yesterday") },
+		"bad nonce":       func(h http.Header) { h.Set(storageauth.HeaderNonce, "short") },
+		"bad body digest": func(h http.Header) { h.Set(storageauth.HeaderBodyHash, "zz") },
+		"key not base64":  func(h http.Header) { h.Set(storageauth.HeaderPublicKey, "!!!") },
+		"key of wrong size": func(h http.Header) {
+			h.Set(storageauth.HeaderPublicKey, base64.StdEncoding.EncodeToString([]byte("short key")))
+		},
+		"signature mismatch": func(h http.Header) {
+			h.Set(storageauth.HeaderSignature, base64.StdEncoding.EncodeToString(make([]byte, 32)))
+		},
+	} {
+		md := httptest.NewRequest(http.MethodGet, "/storage/metadata/x", nil)
+		f.sign(t, md, time.Now())
+		mutate(md.Header)
+		if w := f.serve(md); w.Code != http.StatusUnauthorized {
+			t.Errorf("%s: got %d, want 401", name, w.Code)
+		}
+	}
+}
+
+// Authenticated requests that are not well-formed uploads are refused
+// before anything is stored.
+func TestStorageUploadRejectsMalformedBodies(t *testing.T) {
+	f := newStorageFixture(t, common.CIPHER_SCHEME_CURVE, nil)
+
+	// A signed upload with no body reaches the handler and gets 411. (A body
+	// sent without Content-Length is refused earlier, with 401: its digest
+	// cannot match the empty one a zero length implies.)
+	noBody := httptest.NewRequest(http.MethodPost, "/storage/upload", nil)
+	f.sign(t, noBody, time.Now())
+	if w := f.serve(noBody); w.Code != http.StatusLengthRequired {
+		t.Errorf("no body: got %d, want 411", w.Code)
+	}
+
+	notMultipart := httptest.NewRequest(http.MethodPost, "/storage/upload", strings.NewReader("plain body"))
+	notMultipart.Header.Set("Content-Type", "text/plain")
+	f.sign(t, notMultipart, time.Now())
+	if w := f.serve(notMultipart); w.Code != http.StatusBadRequest {
+		t.Errorf("not multipart: got %d, want 400", w.Code)
+	}
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	_ = mw.WriteField("other", "value")
+	_ = mw.Close()
+	noFile := httptest.NewRequest(http.MethodPost, "/storage/upload", bytes.NewReader(body.Bytes()))
+	noFile.Header.Set("Content-Type", mw.FormDataContentType())
+	f.sign(t, noFile, time.Now())
+	if w := f.serve(noFile); w.Code != http.StatusBadRequest {
+		t.Errorf("no file part: got %d, want 400", w.Code)
+	}
+
+	for _, name := range []string{"a:b.ztdo", "nul\x00.ztdo"} {
+		r := uploadRequest(t, name, []byte("x"))
+		f.sign(t, r, time.Now())
+		if w := f.serve(r); w.Code != http.StatusBadRequest {
+			t.Errorf("file name %q: got %d, want 400", name, w.Code)
+		}
+	}
+
+	if objs := storedObjects(t); len(objs) != 0 {
+		t.Fatalf("malformed uploads left %v", objs)
+	}
+
+	missing := httptest.NewRequest(http.MethodGet, "/storage/metadata/no-such-object", nil)
+	f.sign(t, missing, time.Now())
+	if w := f.serve(missing); w.Code != http.StatusNotFound {
+		t.Errorf("metadata of a missing object: got %d, want 404", w.Code)
+	}
+}
+
+// An upload of a file that is already stored returns the stored object and
+// removes the duplicate copy.
+func TestStorageUploadDeduplicates(t *testing.T) {
+	f := newStorageFixture(t, common.CIPHER_SCHEME_CURVE, nil)
+	var uuids []string
+	for i := 0; i < 2; i++ {
+		r := uploadRequest(t, "same.ztdo", []byte("identical content"))
+		f.sign(t, r, time.Now())
+		w := f.serve(r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("upload %d: got %d %s", i, w.Code, w.Body.String())
+		}
+		var resp struct {
+			UUID string `json:"uuid"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		uuids = append(uuids, resp.UUID)
+	}
+	if uuids[0] != uuids[1] {
+		t.Fatalf("duplicate upload got a new object: %v", uuids)
+	}
+	if objs := storedObjects(t); len(objs) != 1 {
+		t.Fatalf("duplicate upload left %v", objs)
+	}
+}
+
+func TestIsPlainStorageName(t *testing.T) {
+	for name, want := range map[string]bool{
+		"data.ztdo": true, "报告.ztdo": true,
+		"": false, ".": false, "..": false, "a/b": false, `a\b`: false, "a:b": false, "a\x00b": false, "a\x7fb": false,
+	} {
+		if got := isPlainStorageName(name); got != want {
+			t.Errorf("isPlainStorageName(%q) = %v, want %v", name, got, want)
+		}
 	}
 }

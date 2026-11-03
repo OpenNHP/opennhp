@@ -49,7 +49,11 @@ func (hs *HttpServer) initStorageRouter() {
 		log.Info("storage API disabled (EnableStorage = false)")
 		return
 	}
-	hs.storage = newStorageState(hs.config)
+	nonces := newNonceCache(storageNonceMaxEntries)
+	if hs.udpServer != nil {
+		nonces = hs.udpServer.storageNonceCache()
+	}
+	hs.storage = newStorageState(hs.config, nonces)
 	st := hs.storage
 
 	g := hs.ginEngine.Group("/storage")
@@ -81,12 +85,13 @@ func (hs *HttpServer) initStorageRouter() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create storage directory failed"})
 			return
 		}
-		// Count the uploads already in progress against the free space too,
-		// or several could each pass the check against the same space.
-		reserved := st.reservedBytes.Add(total)
-		defer st.reservedBytes.Add(-total)
+		// Count what the uploads in progress have yet to write against the
+		// free space too, or several could each pass the check against the
+		// same space.
+		reservation, reserved := st.reserve(total)
+		defer reservation.release()
 		if free, ok := diskFreeBytes(storeRoot); ok && free-reserved < st.minFreeBytes {
-			log.Warning("storage: refusing a %d-byte upload, %d bytes free on the upload volume, %d reserved by uploads in progress", total, free, reserved-total)
+			log.Warning("storage: refusing a %d-byte upload, %d bytes free on the upload volume, %d more claimed by uploads in progress", total, free, reserved-total)
 			c.JSON(http.StatusInsufficientStorage, gin.H{"error": "insufficient storage"})
 			return
 		}
@@ -150,7 +155,7 @@ func (hs *HttpServer) initStorageRouter() {
 		}
 
 		md5Hash := md5.New()
-		written, copyErr := io.Copy(io.MultiWriter(out, md5Hash), part)
+		written, copyErr := io.Copy(io.MultiWriter(out, md5Hash, reservation), part)
 		closeErr := out.Close()
 		if copyErr == nil {
 			// Read the rest of the body (the closing boundary) so the
@@ -288,14 +293,15 @@ func (hs *HttpServer) initStorageRouter() {
 }
 
 // isPlainStorageName reports whether name is usable as a stored file name:
-// one path element, not "." or "..", no separator of any platform and no
-// control characters.
+// one path element, not "." or "..", no separator of any platform, no ':'
+// (an NTFS alternate data stream, a drive prefix) and no control
+// characters.
 func isPlainStorageName(name string) bool {
 	if name == "" || name == "." || name == ".." {
 		return false
 	}
 	for _, r := range name {
-		if r == '/' || r == '\\' || r < 0x20 || r == 0x7f {
+		if r == '/' || r == '\\' || r == ':' || r < 0x20 || r == 0x7f {
 			return false
 		}
 	}

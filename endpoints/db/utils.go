@@ -232,6 +232,7 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	_ = testReq.Body.Close()
 
 	if testReq.StatusCode == http.StatusBadRequest {
 		httpHost = fmt.Sprintf("https://%s/", a.GetServerPeer().Host())

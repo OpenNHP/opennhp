@@ -50,7 +50,14 @@ type storageState struct {
 	now            func() time.Time
 }
 
-func newStorageState(hc *HttpConfig) *storageState {
+// storageNonceCache returns the server's /storage replay cache, creating it
+// on first use.
+func (s *UdpServer) storageNonceCache() *nonceCache {
+	s.storageNoncesOnce.Do(func() { s.storageNonces = newNonceCache(storageNonceMaxEntries) })
+	return s.storageNonces
+}
+
+func newStorageState(hc *HttpConfig, nonces *nonceCache) *storageState {
 	maxMB, minFreeMB, slots := defaultStorageMaxUploadMB, defaultStorageMinFreeMB, defaultStorageMaxConcurrentUploads
 	if hc != nil {
 		if hc.StorageMaxUploadMB > 0 {
@@ -68,9 +75,38 @@ func newStorageState(hc *HttpConfig) *storageState {
 		minFreeBytes:   int64(minFreeMB) << 20,
 		uploadSlots:    make(chan struct{}, slots),
 		limiter:        newRknRateLimiter(storageRatePerSec, storageRateBurst, storageRateEntries, int64(storageRateIdle)),
-		nonces:         newNonceCache(storageNonceMaxEntries),
+		nonces:         nonces,
 		now:            time.Now,
 	}
+}
+
+// uploadReservation holds an upload's claim on free space: the bytes it
+// declared and has not written yet. The filesystem's free space already
+// drops by what has been written, so the claim shrinks as the file grows.
+type uploadReservation struct {
+	st        *storageState
+	remaining int64
+}
+
+// reserve claims n bytes and returns the claim and the total reserved by
+// all uploads in progress, this one included.
+func (st *storageState) reserve(n int64) (*uploadReservation, int64) {
+	return &uploadReservation{st: st, remaining: n}, st.reservedBytes.Add(n)
+}
+
+// Write releases the part of the claim that p has now used on disk. It is
+// meant to sit beside the file in an io.MultiWriter and never fails.
+func (r *uploadReservation) Write(p []byte) (int, error) {
+	n := min(int64(len(p)), r.remaining)
+	r.remaining -= n
+	r.st.reservedBytes.Add(-n)
+	return len(p), nil
+}
+
+// release gives back whatever is left of the claim.
+func (r *uploadReservation) release() {
+	r.st.reservedBytes.Add(-r.remaining)
+	r.remaining = 0
 }
 
 // storageEnabled reports whether the /storage API is mounted: on unless

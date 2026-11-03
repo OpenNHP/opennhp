@@ -383,13 +383,24 @@ func runDHPApp() error {
 	termCh := make(chan os.Signal, 1)
 	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
 
-	// block until terminated
-	<-termCh
+	// Block until terminated, or until the web console stops on its own:
+	// it is the only way to configure a DHP agent, so exit (non-zero, so a
+	// supervisor can restart the process) rather than keep running
+	// unmanageable.
+	var consoleErr error
+	select {
+	case <-termCh:
+	case consoleErr = <-a.ConsoleFailed():
+		fmt.Printf("\n  %s❌ DHP web console stopped:%s %v\n", colorYellow, colorReset, consoleErr)
+	}
 
 	fmt.Printf("\n  %s🛑 Shutting down DHP agent...%s\n", colorYellow, colorReset)
 	// Stops the console, waits for any in-flight console restart or key
 	// rotation, then stops the agent.
 	a.StopDHP()
+	if consoleErr != nil {
+		return fmt.Errorf("DHP web console stopped: %w", consoleErr)
+	}
 	fmt.Printf("  %s✅ DHP Agent stopped gracefully%s\n\n", colorGreen, colorReset)
 
 	return nil

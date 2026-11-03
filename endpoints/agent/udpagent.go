@@ -346,6 +346,9 @@ type UdpAgent struct {
 	consoleNotices  []consoleNotice
 	consoleListener net.Listener
 	consoleServer   *http.Server
+	// consoleFailed receives the error if the console server stops on its
+	// own after ServeDHPWebConsole (anything but a shutdown).
+	consoleFailed chan error
 
 	// consoleLifecycleMu serializes console-triggered restarts and key
 	// rotations with each other and with StopDHP (write lock);

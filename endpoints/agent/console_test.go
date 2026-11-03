@@ -35,7 +35,9 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 )
 
-const testConsoleToken = "test-console-token"
+// At least minConsoleTokenLen, like any token the console would accept
+// from a file.
+const testConsoleToken = "test-console-token-0123456789abcdef"
 
 func newTestConsole(t *testing.T, conf *ConsoleConfig) (*UdpAgent, http.Handler) {
 	t.Helper()
@@ -1263,7 +1265,7 @@ func TestStageUploadedTA(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	staged, digest, err := stageUploadedTA(fh, taDir)
+	staged, size, digest, err := stageUploadedTA(fh, taDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1275,7 +1277,7 @@ func TestStageUploadedTA(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := sha256.Sum256(content)
-	if !bytes.Equal(got, content) || !bytes.Equal(digest, want[:]) {
+	if !bytes.Equal(got, content) || !bytes.Equal(digest, want[:]) || size != int64(len(content)) {
 		t.Fatal("staged bytes or digest do not match the upload")
 	}
 	if runtime.GOOS != "windows" {
@@ -1349,5 +1351,46 @@ func TestConsoleBodySizeLimit(t *testing.T) {
 	router.ServeHTTP(w, signedTAUpload(t, priv, bytes.Repeat([]byte("t"), 8<<10)))
 	if w.Code == http.StatusRequestEntityTooLarge || w.Code == http.StatusForbidden || w.Code == http.StatusBadRequest {
 		t.Fatalf("TA upload above the console-wide cap: got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// If the console server stops on its own after it started serving,
+// ConsoleFailed reports it; a deliberate CloseDHPWebConsole does not.
+func TestConsoleFailedReportsUnexpectedStop(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		stop       func(a *UdpAgent)
+		wantFailed bool
+	}{
+		{"listener lost", func(a *UdpAgent) { a.consoleListener.Close() }, true},
+		{"closed on shutdown", func(a *UdpAgent) { a.CloseDHPWebConsole() }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			setConsoleExeDir(t, dir)
+			writeSelfSignedCert(t, dir)
+			writeConsoleListenAddr(t, dir, "127.0.0.1:0")
+
+			a := &UdpAgent{}
+			if a.ConsoleFailed() != nil {
+				t.Fatal("ConsoleFailed is non-nil before the console serves")
+			}
+			if err := startConsole(a); err != nil {
+				t.Fatalf("console start: %v", err)
+			}
+			t.Cleanup(a.CloseDHPWebConsole)
+
+			tc.stop(a)
+			select {
+			case err := <-a.ConsoleFailed():
+				if !tc.wantFailed {
+					t.Fatalf("deliberate shutdown reported as a failure: %v", err)
+				}
+			case <-time.After(500 * time.Millisecond):
+				if tc.wantFailed {
+					t.Fatal("console stopping on its own was not reported")
+				}
+			}
+		})
 	}
 }

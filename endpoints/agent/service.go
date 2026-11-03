@@ -121,12 +121,25 @@ func (a *UdpAgent) ServeDHPWebConsole() error {
 	}
 
 	srv, ln := a.consoleServer, a.consoleListener
+	failed := make(chan error, 1)
+	a.consoleFailed = failed
 	go func() {
 		if err := srv.ServeTLS(ln, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("DHP console stopped: %v", err)
+			failed <- err
 		}
 	}()
 	return nil
+}
+
+// ConsoleFailed returns a channel that receives an error if the console
+// server stops on its own after ServeDHPWebConsole, i.e. for any reason
+// other than CloseDHPWebConsole. The console is the only way to configure
+// a DHP agent, so the caller should shut the agent down rather than keep
+// it running unmanageable. It returns nil (which blocks forever in a
+// select) before ServeDHPWebConsole.
+func (a *UdpAgent) ConsoleFailed() <-chan error {
+	return a.consoleFailed
 }
 
 // CloseDHPWebConsole stops the console: it stops accepting connections and
@@ -331,22 +344,22 @@ func saveTAIndex(indexFile, fileName, taName, fileUuid string, size int64, descr
 
 // stageUploadedTA copies the uploaded file, in a single read, into a new
 // owner-only (0600, not executable) temporary file in taDir while hashing
-// it, and returns that file's path and the SHA-256 of exactly the bytes it
-// holds. The caller verifies the digest and then either renames the staged
+// it, and returns that file's path, its size and the SHA-256 of exactly
+// the bytes it holds. The caller verifies the digest and then either renames the staged
 // file into place or removes it; nothing is indexed, made executable or
 // started before that. Reading the multipart part only once means the bytes
 // that are verified are the bytes that are stored, even when the part was
 // spilled to a temporary file outside taDir.
-func stageUploadedTA(file *multipart.FileHeader, taDir string) (stagedPath string, digest []byte, err error) {
+func stageUploadedTA(file *multipart.FileHeader, taDir string) (stagedPath string, size int64, digest []byte, err error) {
 	src, err := file.Open()
 	if err != nil {
-		return "", nil, err
+		return "", 0, nil, err
 	}
 	defer src.Close()
 
 	dst, err := os.CreateTemp(taDir, ".upload-*")
 	if err != nil {
-		return "", nil, err
+		return "", 0, nil, err
 	}
 	defer func() {
 		if err != nil {
@@ -355,14 +368,14 @@ func stageUploadedTA(file *multipart.FileHeader, taDir string) (stagedPath strin
 	}()
 
 	h := sha256.New()
-	if _, err = io.Copy(dst, io.TeeReader(src, h)); err != nil {
+	if size, err = io.Copy(dst, io.TeeReader(src, h)); err != nil {
 		dst.Close()
-		return "", nil, err
+		return "", 0, nil, err
 	}
 	if err = dst.Close(); err != nil {
-		return "", nil, err
+		return "", 0, nil, err
 	}
-	return dst.Name(), h.Sum(nil), nil
+	return dst.Name(), size, h.Sum(nil), nil
 }
 
 // verifyTADigest checks the operator signature over a staged TA's digest
@@ -533,7 +546,7 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	// Stage the upload once and verify the digest of the staged bytes. The
 	// staged file is removed on every path except a successful rename into
 	// <uuid>/ (a dedup hit, a rejection or any error deletes it).
-	stagedPath, digest, stageErr := stageUploadedTA(file, taDir)
+	stagedPath, stagedSize, digest, stageErr := stageUploadedTA(file, taDir)
 	if stageErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": stageErr.Error()})
 		return
@@ -588,7 +601,7 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 				os.RemoveAll(uuidDir)
 				return chmodErr
 			}
-			if indexErr := saveTAIndex(indexFile, fileName, taName, fileUuid, file.Size, description, language, entry); indexErr != nil {
+			if indexErr := saveTAIndex(indexFile, fileName, taName, fileUuid, stagedSize, description, language, entry); indexErr != nil {
 				os.RemoveAll(uuidDir)
 				return indexErr
 			}
@@ -600,7 +613,7 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		// language/entry are unsigned metadata and execution never depends
 		// on them (the stored uuid/fileName are run). Keep it that way, or
 		// bring them under the signature first.
-		return saveTAIndex(indexFile, fileName, taName, fileUuid, file.Size, description, language, entry)
+		return saveTAIndex(indexFile, fileName, taName, fileUuid, stagedSize, description, language, entry)
 	}()
 	if storeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": storeErr.Error()})

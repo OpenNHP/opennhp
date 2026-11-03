@@ -493,6 +493,19 @@ func futureSkewCached(deviceType int, peerType int, msgType int) bool {
 	return false
 }
 
+// peerRoleAllowed reports whether a pool peer registered as actual may send
+// a message whose header type implies the expected role. NHP and DHP
+// agents are one family: DHP agents are listed in the same agent peer
+// table as NHP agents. A peer registered without a type (NHP_NO_DEVICE)
+// is not checked, so callers that add untyped peers keep working.
+func peerRoleAllowed(expected, actual int) bool {
+	if actual == NHP_NO_DEVICE || actual == expected {
+		return true
+	}
+	isAgent := func(t int) bool { return t == NHP_AGENT || t == DHP_AGENT }
+	return isAgent(expected) && isAgent(actual)
+}
+
 func (ppd *PacketParserData) validatePeer() (err error) {
 	// evolve chain hash ChainHash0 -> ChainHash1
 	ppd.chainHash.Write(ppd.deviceEcdh.PublicKey())
@@ -605,6 +618,18 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		if peer.IsExpired() {
 			log.Error("validatePeer: %s peer expired, pubkey=%s", peerDeviceTypeName, peerPkBase64)
 			err = ErrPeerExpired
+			return err
+		}
+
+		// The peer pool is keyed by public key alone and holds every role
+		// a device knows (an nhp-server keeps agents, ACs, relays and DBs
+		// together), so a registered key must also be registered for the
+		// role this message type implies. Otherwise any registered agent
+		// key could, for example, send NHP_DRG as if it were an nhp-db.
+		if !peerRoleAllowed(peerDeviceType, peer.DeviceType()) {
+			log.Error("validatePeer: peer role mismatch, %s expects a %s peer but pubkey=%s is registered as %s",
+				HeaderTypeToString(ppd.HeaderType), peerDeviceTypeName, peerPkBase64, DeviceTypeToString(peer.DeviceType()))
+			err = ErrPeerRoleMismatch
 			return err
 		}
 

@@ -11,13 +11,21 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 )
 
+const testOwner = "owner-db-public-key"
+
+// testDRG is a registration that SaveZdtoConfig accepts: it carries a
+// smart policy.
+func testDRG(doId string) *common.DRGMsg {
+	return &common.DRGMsg{DoId: doId, DbId: "db-1", Spo: common.SmartPolicy{Policy: "cG9saWN5"}}
+}
+
 func TestZdtoConfigRejectsInvalidDoID(t *testing.T) {
 	originalExeDir := ExeDirPath
 	ExeDirPath = t.TempDir()
 	t.Cleanup(func() { ExeDirPath = originalExeDir })
 
 	invalidDoID := "foo/../../../bar"
-	if err := SaveZdtoConfig(&common.DRGMsg{DoId: invalidDoID}); !errors.Is(err, common.ErrInvalidDoID) {
+	if err := SaveZdtoConfig(testDRG(invalidDoID), testOwner); !errors.Is(err, common.ErrInvalidDoID) {
 		t.Fatalf("SaveZdtoConfig error = %v, want ErrInvalidDoID", err)
 	} else if err.Error() != common.ErrInvalidDoID.Error() {
 		t.Fatalf("SaveZdtoConfig reflected rejected input: %q", err)
@@ -40,8 +48,8 @@ func TestZdtoConfigValidDoIDRoundTrip(t *testing.T) {
 	ExeDirPath = t.TempDir()
 	t.Cleanup(func() { ExeDirPath = originalExeDir })
 
-	want := &common.DRGMsg{DoId: "550e8400-e29b-41d4-a716-446655440000"}
-	if err := SaveZdtoConfig(want); err != nil {
+	want := testDRG("550e8400-e29b-41d4-a716-446655440000")
+	if err := SaveZdtoConfig(want, testOwner); err != nil {
 		t.Fatalf("SaveZdtoConfig returned %v", err)
 	}
 	got, err := ReadZdtoConfig(want.DoId)
@@ -79,14 +87,16 @@ func TestZdtoConfigConcurrentUpdatesRemainReadable(t *testing.T) {
 	ExeDirPath = t.TempDir()
 	t.Cleanup(func() { ExeDirPath = old })
 	const id = "concurrent-update"
-	if err := SaveZdtoConfig(&common.DRGMsg{DoId: id, AccessUrl: "original"}); err != nil {
+	first := testDRG(id)
+	first.AccessUrl = "original"
+	if err := SaveZdtoConfig(first, testOwner); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
 			for range 10 {
-				if err := SaveZdtoConfig(&common.DRGMsg{DoId: id}); err != nil {
+				if err := SaveZdtoConfig(testDRG(id), testOwner); err != nil {
 					t.Error(err)
 					return
 				}
@@ -109,7 +119,7 @@ func TestZdtoConfigRenameFailureRemovesTemporaryFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "data-object.json"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveZdtoConfig(&common.DRGMsg{DoId: "object"}); !errors.Is(err, errSaveConfigFailed) {
+	if err := SaveZdtoConfig(testDRG("object"), testOwner); !errors.Is(err, errSaveConfigFailed) {
 		t.Fatalf("save error = %v", err)
 	}
 	files, err := filepath.Glob(filepath.Join(dir, ".data-*.json"))

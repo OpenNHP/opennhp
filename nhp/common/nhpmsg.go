@@ -220,6 +220,11 @@ type DRGMsg struct {
 	AccessUrl      string      `json:"accessUrl"`      // Data access URL (empty indicates offline transfer)
 	AccessByNHP    bool        `json:"accessByNHP"`    // Require NHP handshake before accessing URL (optional if accessUrl empty)
 	Spo            SmartPolicy `json:"spo"`
+	// OwnerPublicKey is set by nhp-server when it stores the object: the
+	// authenticated NHP public key of the nhp-db that registered it. Only
+	// that nhp-db may update the object. A value sent by the nhp-db is
+	// ignored.
+	OwnerPublicKey string `json:"ownerPublicKey,omitempty"`
 }
 
 type DAKMsg struct {

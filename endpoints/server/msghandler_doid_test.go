@@ -82,6 +82,9 @@ func TestReadZdtoConfigScrubsFilesystemPath(t *testing.T) {
 	}
 }
 
+// SaveZdtoConfig serializes writers (zdtoConfigMu), so this checks that a
+// reader never sees a missing or partially written config while updates
+// are being published.
 func TestZdtoConfigConcurrentUpdatesRemainReadable(t *testing.T) {
 	old := ExeDirPath
 	ExeDirPath = t.TempDir()

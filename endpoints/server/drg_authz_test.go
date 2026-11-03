@@ -138,3 +138,39 @@ func writeRawZdto(t *testing.T, msg *common.DRGMsg) {
 		t.Fatal(err)
 	}
 }
+
+// A stored object that exists but cannot be read is not treated as a new
+// object: otherwise any nhp-db could take it over by registering the same
+// DoId while the file is corrupt or temporarily unreadable.
+func TestZdtoConfigUnreadableObjectFailsClosed(t *testing.T) {
+	old := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = old })
+	const id = "corrupt-object"
+
+	if err := SaveZdtoConfig(testDRG(id), "db-a"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(ExeDirPath, "etc", "ztdo", "data-"+id+".json")
+	if err := os.WriteFile(path, []byte(`{"doId": "corrupt-obj`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	takeover := testDRG(id)
+	takeover.Spo.Policy = "b3RoZXI="
+	if err := SaveZdtoConfig(takeover, "db-b"); !errors.Is(err, errSaveConfigFailed) {
+		t.Fatalf("takeover of a corrupt object: got %v, want errSaveConfigFailed", err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != `{"doId": "corrupt-obj` {
+		t.Fatal("the corrupt object was overwritten")
+	}
+
+	// A truly new object is still accepted, and a missing one reads as
+	// not found.
+	if _, err := ReadZdtoConfig("never-registered"); !errors.Is(err, errZdtoNotFound) || !errors.Is(err, errReadConfigFailed) {
+		t.Fatalf("missing object: got %v, want errZdtoNotFound wrapping errReadConfigFailed", err)
+	}
+	if err := SaveZdtoConfig(testDRG("never-registered"), "db-b"); err != nil {
+		t.Fatalf("new object: %v", err)
+	}
+}

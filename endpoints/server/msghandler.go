@@ -23,8 +23,13 @@ import (
 
 var (
 	errReadConfigFailed = errors.New("ztdo config read failed")
+	// errZdtoNotFound is the one read failure that means "no such object".
+	// It wraps errReadConfigFailed so callers that only check that still
+	// see a read failure.
+	errZdtoNotFound     = fmt.Errorf("%w: not found", errReadConfigFailed)
 	errSaveConfigFailed = errors.New("ztdo config save failed")
 	errNotDBPeer        = errors.New("sender is not an nhp-db listed in db.toml")
+	errUnauthorized     = errors.New("unauthorized")
 	errNotObjectOwner   = errors.New("data object is owned by another nhp-db")
 	errDbIdChange       = errors.New("data object dbId cannot be changed")
 	errEmptyPolicy      = errors.New("data object must carry a smart policy")
@@ -803,7 +808,8 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 	if owner, authErr := s.authorizeDRGSender(ppd.RemotePubKey); authErr != nil {
 		log.Warning("server-db(DoId=%q,trx=#%d@%s)[HandleDHPDRGMessage] rejected: %v (pubkey=%s)",
 			common.TruncateDoIDForLog(doId), transactionId, addrStr, authErr, base64.StdEncoding.EncodeToString(ppd.RemotePubKey))
-		err = authErr
+		// The sender gets a generic answer; the reason is in the log.
+		err = errUnauthorized
 	} else {
 		err = SaveZdtoConfig(aolMsg, owner)
 	}
@@ -894,7 +900,13 @@ var zdtoConfigMu sync.Mutex
 // authenticated public key is owner. A new object records owner; an
 // existing one may only be updated by its owner and keeps its dbId. An
 // object stored before owners were recorded is claimed by the first
-// update whose dbId matches the stored one.
+// update whose dbId matches the stored one. A stored object that cannot be
+// read (corrupt, unreadable) is never treated as new: that would let any
+// nhp-db take it over.
+//
+// The owner is the nhp-db's NHP public key, so an nhp-db that rotates its
+// key can no longer update the objects it registered; recover by clearing
+// or replacing "ownerPublicKey" in etc/ztdo/data-<doId>.json.
 func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 	objectId := drgMsg.DoId
 	if err := common.ValidateDoID(objectId); err != nil {
@@ -916,7 +928,9 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 	zdtoConfigMu.Lock()
 	defer zdtoConfigMu.Unlock()
 
-	if existingDrgMsg, err := ReadZdtoConfig(objectId); err == nil {
+	existingDrgMsg, readErr := ReadZdtoConfig(objectId)
+	switch {
+	case readErr == nil:
 		if existingDrgMsg.OwnerPublicKey != "" && existingDrgMsg.OwnerPublicKey != owner {
 			log.Warning("server[SaveZdtoConfig] rejected DoId=%q update by %s: %v", common.TruncateDoIDForLog(objectId), owner, errNotObjectOwner)
 			return errNotObjectOwner
@@ -932,7 +946,13 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 		if drgMsg.AccessUrl == "" { // provider update access url
 			drgMsg.AccessUrl = existingDrgMsg.AccessUrl
 		}
-
+	case errors.Is(readErr, errZdtoNotFound):
+		// a new object
+	default:
+		// Fail closed: an object that exists but cannot be read keeps its
+		// owner until an operator repairs it.
+		log.Error("server[SaveZdtoConfig] rejected DoId=%q update by %s: stored object unreadable: %v", common.TruncateDoIDForLog(objectId), owner, readErr)
+		return errSaveConfigFailed
 	}
 
 	// The owner is the authenticated sender, never what the message says.
@@ -987,9 +1007,9 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Debug("server[ReadZdtoConfig] DoId=%q not found: %v", common.TruncateDoIDForLog(doId), err)
-		} else {
-			log.Error("server[ReadZdtoConfig] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
+			return common.DRGMsg{}, errZdtoNotFound
 		}
+		log.Error("server[ReadZdtoConfig] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
 		return common.DRGMsg{}, errReadConfigFailed
 	}
 	defer func() { _ = file.Close() }()

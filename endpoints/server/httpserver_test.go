@@ -1,16 +1,25 @@
 package server
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 // LoadFilesRecursively walks a directory and parses every .html/.tmpl file
@@ -186,6 +195,20 @@ func TestHttpServerStartRefusesBadTrustedProxies(t *testing.T) {
 	if hs.IsRunning() {
 		t.Fatal("HttpServer is running after Start refused the config")
 	}
+	// The refusal happens after signals.stop is allocated but before
+	// http.Server is built and before wg.Add, so nothing should have been
+	// bound or spawned. Stop() is the safety net for that: it returns early
+	// on a non-running server, so this must not hang or nil-panic.
+	if hs.httpServer != nil {
+		t.Fatal("Start built an http.Server before refusing the config")
+	}
+	done := make(chan struct{})
+	go func() { hs.Stop(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop blocked on a server that never started; Start leaked a goroutine or a listener")
+	}
 }
 
 // handleHttpOpenResource must refuse an unparsable source address instead of
@@ -319,5 +342,136 @@ func TestTrustedProxiesPendingIgnoresAStoppedServer(t *testing.T) {
 	var nilServer *HttpServer
 	if nilServer.trustedProxiesPending([]string{"127.0.0.1"}) {
 		t.Fatal("trustedProxiesPending on a nil HttpServer reported a pending change")
+	}
+}
+
+// writeSelfSignedTLSPair writes a throwaway cert/key pair under dir and
+// returns their paths relative to it, in the shape http.toml uses.
+func writeSelfSignedTLSPair(t *testing.T, dir string) (certRel, keyRel string) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "nhp-server-test"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+
+	certRel, keyRel = filepath.Join("cert", "cert.pem"), filepath.Join("cert", "cert.key")
+	if err := os.MkdirAll(filepath.Join(dir, "cert"), 0o755); err != nil {
+		t.Fatalf("mkdir cert: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, certRel),
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, keyRel),
+		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	return certRel, keyRel
+}
+
+// A TLS listener must report itself running, exactly as a plain HTTP one does.
+//
+// Start's TLS branch returns from inside its own `if`, so a running.Store at
+// the end of the function is reached only on the plain HTTP path. Everything
+// that manages a live listener keys off that flag, and EnableTLS = true is
+// what the shipped http.toml files ship: without it, EnableHttp = false never
+// stops the listener, every reload binds onto a port already in use, and
+// trustedProxiesPending can never report a pending proxy-list change.
+func TestHttpServerStartMarksATLSListenerRunning(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	certRel, keyRel := writeSelfSignedTLSPair(t, dir)
+	prevExeDir := ExeDirPath
+	ExeDirPath = dir
+	t.Cleanup(func() { ExeDirPath = prevExeDir })
+
+	us := &UdpServer{
+		listenAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0},
+		log:        log.NewLogger("test", 0, dir, "server"),
+	}
+	hs := &HttpServer{}
+	err := hs.Start(us, &HttpConfig{
+		EnableHttp:     true,
+		EnableTLS:      true,
+		HttpListenIp:   "127.0.0.1",
+		HttpListenPort: 0,
+		TLSCertFile:    certRel,
+		TLSKeyFile:     keyRel,
+		TrustedProxies: []string{"127.0.0.1"},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(hs.Stop)
+
+	if !hs.IsRunning() {
+		t.Fatal("a TLS listener reports IsRunning() == false; Stop, updateHttpConfig and " +
+			"trustedProxiesPending all key off this flag")
+	}
+
+	// The whole point of the flag for this PR: a proxy-list change on a live
+	// TLS listener has to be reported as pending.
+	if !hs.trustedProxiesPending(nil) {
+		t.Fatal("removing the only trusted proxy was not reported as pending on a TLS listener")
+	}
+	if hs.trustedProxiesPending([]string{"127.0.0.1"}) {
+		t.Fatal("an unchanged list was reported as pending on a TLS listener")
+	}
+
+	// Stop has to actually stop it, which it also refuses to do when the flag
+	// is unset -- that is what made the documented EnableHttp cycle a no-op.
+	hs.Stop()
+	if hs.IsRunning() {
+		t.Fatal("Stop left the TLS listener running")
+	}
+}
+
+// Same assertion for the plain HTTP path, so a future edit cannot fix one and
+// regress the other.
+func TestHttpServerStartMarksAPlainListenerRunning(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	us := &UdpServer{
+		listenAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0},
+		log:        log.NewLogger("test", 0, dir, "server"),
+	}
+	hs := &HttpServer{}
+	if err := hs.Start(us, &HttpConfig{
+		EnableHttp:     true,
+		HttpListenIp:   "127.0.0.1",
+		HttpListenPort: 0,
+		TrustedProxies: []string{"127.0.0.1"},
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(hs.Stop)
+
+	if !hs.IsRunning() {
+		t.Fatal("a plain HTTP listener reports IsRunning() == false")
+	}
+	if !hs.trustedProxiesPending(nil) {
+		t.Fatal("removing the only trusted proxy was not reported as pending")
+	}
+	hs.Stop()
+	if hs.IsRunning() {
+		t.Fatal("Stop left the plain HTTP listener running")
 	}
 }

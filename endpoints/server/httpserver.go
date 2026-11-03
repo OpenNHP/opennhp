@@ -106,6 +106,24 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		IdleTimeout:  time.Duration(hc.IdleTimeoutMs) * time.Millisecond,
 	}
 
+	// Mark the server running before either listener goroutine starts, not
+	// after -- the TLS branch below returns from inside its own `if`, so a
+	// store placed at the end of the function is reached only on the plain
+	// HTTP path. Everything that manages a live listener keys off this flag:
+	// Stop returns early without it, updateHttpConfig reads IsRunning to
+	// decide whether to restart, and trustedProxiesPending uses it to decide
+	// whether a proxy-list edit is still pending. Leaving it unset for a TLS
+	// listener meant EnableHttp = false never stopped it, each reload bound a
+	// second listener onto a port already in use, and the "TrustedProxies
+	// changed" warning never fired -- for the configuration the shipped
+	// http.toml files actually ship (EnableTLS = true).
+	//
+	// The flag means "this HttpServer owns a listener goroutine", which is
+	// true from here on in all three paths (TLS, TLS with missing cert files
+	// falling through, plain HTTP). The store also orders the trustedProxies
+	// write above ahead of any cross-goroutine read of it.
+	hs.running.Store(true)
+
 	hs.wg.Add(1)
 	if hc.EnableTLS {
 		certFilePath := filepath.Join(ExeDirPath, hc.TLSCertFile)
@@ -137,7 +155,6 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		}
 	}()
 
-	hs.running.Store(true)
 	return nil
 }
 
@@ -532,6 +549,13 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	// into host/port, and a plugin is free to write req.SrcIp itself; either way
 	// an unparsable value would reach the AC as the source of an ipset entry.
 	// Refuse here so the denial is audited with a reason rather than handed on.
+	//
+	// net.ParseIP also rejects a zone-scoped address such as fe80::1%eth0,
+	// which RemoteIP() can return for a link-local peer. That is deliberate:
+	// the zone names an interface on *this* host and means nothing to the AC,
+	// which is a different machine, so the rule it built from one would at
+	// best not parse and at worst match something else. A link-local client
+	// has no route to a remote AC's protected resources anyway.
 	if net.ParseIP(srcIp) == nil {
 		err = common.ErrInvalidIpAddress
 		ackMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()

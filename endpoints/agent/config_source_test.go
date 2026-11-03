@@ -472,3 +472,70 @@ func TestRotateHandlersNotSupportedInMemoryMode(t *testing.T) {
 		}
 	}
 }
+
+// TestMemoryModeAddResourceSurvivesRestart verifies AddResource works in memory
+// mode, where no resource.toml loader creates the knock-target map, and that
+// the resource survives a restart.
+func TestMemoryModeAddResourceSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	key := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	resetConfigWatches()
+
+	a := &UdpAgent{}
+	a.UseInMemoryConfig(&Config{
+		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
+		PrivateKeyBase64:    base64.StdEncoding.EncodeToString(key),
+	})
+	if err := a.Start(dir, 0); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer a.Stop()
+
+	peerKey := core.NewECDH(core.ECC_CURVE25519).PublicKeyBase64()
+	a.AddServer(&core.UdpPeer{
+		Type:         int(core.NHP_SERVER),
+		PubKeyBase64: peerKey,
+		Ip:           "203.0.113.10",
+		Port:         62206,
+	})
+	res := &KnockResource{AuthServiceId: "example", ResourceId: "demo", ServerPubKey: peerKey}
+	if err := a.AddResource(res); err != nil {
+		t.Fatalf("AddResource: %v", err)
+	}
+
+	a.Stop()
+	a.config = nil
+	if err := a.Start(dir, 0); err != nil {
+		t.Fatalf("Start (restart): %v", err)
+	}
+	if a.FindKnockTarget("example", "demo") == nil {
+		t.Fatal("restart dropped the programmatic resource")
+	}
+}
+
+// TestMemoryModeKeepsStartLogLevel verifies that with no supplied config the
+// log level passed to Start stands, instead of the empty config's zero value
+// (silent), so the throwaway-key warning reaches the log.
+func TestMemoryModeKeepsStartLogLevel(t *testing.T) {
+	dir := t.TempDir()
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+	if err := a.Start(dir, 4); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	a.Stop() // closes the log so its contents are flushed
+
+	files, _ := filepath.Glob(filepath.Join(dir, "logs", "*"))
+	var logs strings.Builder
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		logs.Write(b)
+	}
+	if !strings.Contains(logs.String(), "throwaway key") {
+		t.Fatalf("throwaway-key warning was not logged; log:\n%s", logs.String())
+	}
+}

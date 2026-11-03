@@ -250,6 +250,7 @@ func cloneConfigData(src *Config) *Config {
 func (a *UdpAgent) applyInMemoryBaseConfig() error {
 	a.memConfigMutex.Lock()
 	conf := cloneConfigData(a.memConfig)
+	supplied := a.memConfigSupplied
 	a.memConfigMutex.Unlock()
 
 	a.knockUserMutex.Lock()
@@ -261,7 +262,9 @@ func (a *UdpAgent) applyInMemoryBaseConfig() error {
 	a.knockUserMutex.Unlock()
 
 	a.config = conf
-	if a.log != nil {
+	// Only a supplied config sets the log level. Without one LogLevel is just
+	// the zero value (silent), and Start's logLevel must stand.
+	if a.log != nil && supplied {
 		a.log.SetLogLevel(conf.LogLevel)
 	}
 	return nil
@@ -315,7 +318,14 @@ func (a *UdpAgent) loadPeers() error {
 func (a *UdpAgent) loadResources() error {
 	if a.configSource == ConfigSourceMemory {
 		// Resources are managed programmatically; no resource.toml is read and
-		// no watcher is armed.
+		// no watcher is armed. AddResource still needs the map that
+		// updateResources creates in file mode; keep an existing one so a
+		// restart does not drop added resources.
+		a.knockTargetMapMutex.Lock()
+		if a.knockTargetMap == nil {
+			a.knockTargetMap = make(map[string]*KnockTarget)
+		}
+		a.knockTargetMapMutex.Unlock()
 		return nil
 	}
 	// resource.toml

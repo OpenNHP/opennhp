@@ -288,7 +288,7 @@ openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64   # -
 { printf 'opennhp-dhp-ta-v1\0'; openssl dgst -sha256 -binary ta; } > ta.msg   # context string + NUL + SHA-256 of the TA
 export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.msg | base64)
 ```
-Keep `ta_signing.pem` off the agent host.
+Generate and keep `ta_signing.pem` on a separate signing machine, not on the agent's host. In this demo, keep it at least outside `docker/nhp-agent/`, which is bind-mounted into the agent container.
 
 The signature covers the TA file only; `name`, `description`, `language` and `entry` are unsigned metadata (the agent runs the stored, verified file). To stop accepting a signed TA, add its SHA-256 (`openssl dgst -sha256 ta`) to `RevokedTADigests` in `console.toml` and restart the nhp-agentd process. Revocation blocks registration, and the restart is also what unloads a TA that is already running.
 

@@ -196,14 +196,7 @@ func (hs *HttpServer) IsRunning() bool {
 // reset to "trust nobody" and refuse to bind at all, which the operator sees
 // immediately instead of discovering it from a mis-attributed AC rule.
 func (hs *HttpServer) applyTrustedProxies(proxies []string) error {
-	trimmed := make([]string, 0, len(proxies))
-	for _, proxy := range proxies {
-		proxy = strings.TrimSpace(proxy)
-		if len(proxy) == 0 {
-			continue
-		}
-		trimmed = append(trimmed, proxy)
-	}
+	trimmed := normalizeTrustedProxies(proxies)
 
 	if len(trimmed) == 0 {
 		hs.trustedProxies = nil
@@ -227,6 +220,52 @@ func (hs *HttpServer) applyTrustedProxies(proxies []string) error {
 	hs.trustedProxies = trimmed
 	log.Info("http knock: trusting forwarding headers from %d configured proxy origin(s)", len(trimmed))
 	return nil
+}
+
+// normalizeTrustedProxies drops blank entries and surrounding whitespace so
+// a configured list and a running list compare equal when they say the same
+// thing. It does not validate: that is gin's job in SetTrustedProxies, which
+// is the only place an entry is accepted or refused.
+func normalizeTrustedProxies(proxies []string) []string {
+	trimmed := make([]string, 0, len(proxies))
+	for _, proxy := range proxies {
+		proxy = strings.TrimSpace(proxy)
+		if len(proxy) == 0 {
+			continue
+		}
+		trimmed = append(trimmed, proxy)
+	}
+	return trimmed
+}
+
+// trustedProxiesPending reports whether a running listener is still enforcing
+// a different proxy list than the one now configured.
+//
+// updateHttpConfig does not restart a listener that is already running, so an
+// edit to TrustedProxies alone changes s.httpConfig while the live engine
+// keeps the list it started with. For most fields that lag is merely
+// confusing; this one grants trust, so an operator who deletes a proxy to
+// stop trusting it would be reading a config that says the proxy is gone from
+// a process that still believes it. Callers log that rather than let it pass
+// silently; applying it takes the documented EnableHttp false/true cycle.
+//
+// Safe to call from another goroutine: trustedProxies is written by
+// applyTrustedProxies before Start stores the running flag, and that atomic
+// store orders the write ahead of the Load below.
+func (hs *HttpServer) trustedProxiesPending(configured []string) bool {
+	if hs == nil || !hs.running.Load() {
+		return false
+	}
+	want := normalizeTrustedProxies(configured)
+	if len(want) != len(hs.trustedProxies) {
+		return true
+	}
+	for i := range want {
+		if want[i] != hs.trustedProxies[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // knockSourceIP returns the address a knock is attributed to: the address the

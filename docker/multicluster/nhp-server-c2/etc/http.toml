@@ -37,5 +37,7 @@ TLSKeyFile = "cert/cert.key"
 # An entry that does not parse refuses the whole list and the HTTP server does
 # not start, rather than leaving a trust list nobody wrote.
 # Like the other fields here, a change takes effect only when the HTTP server
-# restarts (set EnableHttp = false, then back to true).
+# restarts (set EnableHttp = false, then back to true). Editing the file alone
+# does not revoke trust from a running listener; the daemon logs a Critical
+# line when the configured list and the running one disagree.
 TrustedProxies = []

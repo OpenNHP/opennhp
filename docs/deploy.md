@@ -246,7 +246,19 @@ For high-availability deployments, consider:
         simply connect to the listener directly and set the header themselves.
 
    An entry that does not parse refuses the whole list and the HTTP server
-   does not start, rather than leaving a trust list nobody wrote.
+   does not start, rather than leaving a trust list nobody wrote. The same
+   applies to an `http.toml` that fails to decode at all: the HTTP listener
+   stays down instead of starting from a half-decoded config. The UDP knock
+   service is driven by `config.toml` and is unaffected, and the file is still
+   watched, so fixing it recovers without a restart.
+
+   **Changing `TrustedProxies` needs an HTTP server restart.** Editing the
+   file updates what the daemon reads, but it does not restart a listener
+   that is already running, so the live engine keeps the list it started
+   with — a removed proxy keeps being trusted until then. Cycle
+   `EnableHttp = false`, then back to `true`, the same way the other fields in
+   `http.toml` are applied. The daemon logs a `[Critical]` line when it sees
+   the two disagree, so the gap is visible rather than silent.
 
 ### 4.3 Deployment Checklist
 

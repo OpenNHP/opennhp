@@ -275,3 +275,49 @@ func TestKnockSourceIPOverRealConnection(t *testing.T) {
 		})
 	}
 }
+
+// A TrustedProxies edit does not reach a listener that is already running:
+// updateHttpConfig only starts a server when there isn't one, so the live
+// engine keeps the list it was started with. That is what
+// trustedProxiesPending detects, so the caller can say so instead of letting
+// an operator believe a removed proxy stopped being trusted.
+func TestTrustedProxiesPending(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		started    []string
+		configured []string
+		want       bool
+	}{
+		{"unchanged", []string{"127.0.0.1"}, []string{"127.0.0.1"}, false},
+		{"unchanged but reformatted", []string{"127.0.0.1"}, []string{"  127.0.0.1  ", ""}, false},
+		{"proxy removed", []string{"127.0.0.1"}, nil, true},
+		{"proxy added", nil, []string{"127.0.0.1"}, true},
+		{"proxy replaced", []string{"127.0.0.1"}, []string{"10.0.0.0/8"}, true},
+		{"entry appended", []string{"127.0.0.1"}, []string{"127.0.0.1", "::1"}, true},
+		{"same entries reordered", []string{"127.0.0.1", "::1"}, []string{"::1", "127.0.0.1"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hs := newTestHttpServer(t, tc.started)
+			hs.running.Store(true)
+			t.Cleanup(func() { hs.running.Store(false) })
+
+			if got := hs.trustedProxiesPending(tc.configured); got != tc.want {
+				t.Fatalf("trustedProxiesPending(%v) with a listener started on %v = %v, want %v",
+					tc.configured, tc.started, got, tc.want)
+			}
+		})
+	}
+}
+
+// Nothing is pending when no listener is running: the next Start applies the
+// configured list outright, so reporting a difference would be noise.
+func TestTrustedProxiesPendingIgnoresAStoppedServer(t *testing.T) {
+	hs := newTestHttpServer(t, []string{"127.0.0.1"})
+	if hs.trustedProxiesPending(nil) {
+		t.Fatal("trustedProxiesPending reported a pending change on a server that is not running")
+	}
+	var nilServer *HttpServer
+	if nilServer.trustedProxiesPending([]string{"127.0.0.1"}) {
+		t.Fatal("trustedProxiesPending on a nil HttpServer reported a pending change")
+	}
+}

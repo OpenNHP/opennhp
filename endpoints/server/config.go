@@ -546,11 +546,15 @@ func (s *UdpServer) loadHttpConfig() error {
 		}
 		// Decode into a fresh HttpConfig on every reload. go-toml v2 does not
 		// zero fields the new document omits, so reusing one struct across
-		// reloads lets a deleted key keep the value it had two files ago. For
-		// most fields that is merely confusing; for TrustedProxies it is the
-		// fail-open this field exists to close -- an operator who deletes the
-		// line to stop trusting a proxy would keep trusting it, with nothing
-		// in the log to say so. Same reasoning as loadBaseConfig above.
+		// reloads lets a deleted key keep the value it had two files ago --
+		// for TrustedProxies, a proxy the operator just removed would be read
+		// back as still configured, and would then be handed to the next
+		// listener that starts. Same reasoning as loadBaseConfig above.
+		//
+		// This fixes what the daemon *reads*. It does not revoke trust from a
+		// listener that is already running: updateHttpConfig does not restart
+		// one, so the live engine keeps its list until EnableHttp is cycled.
+		// That gap is logged rather than silent -- see trustedProxiesPending.
 		var newConf HttpConfig
 		if unmarshalErr := toml.Unmarshal(newContent, &newConf); unmarshalErr != nil {
 			log.Error("failed to unmarshal http config on reload, keeping the running config: %v", unmarshalErr)
@@ -892,10 +896,14 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 // Loopback binds are not a conflict: the program is attached to the host's
 // default-route interface, so traffic to 127.0.0.1 never reaches it.
 func (s *UdpServer) xdpServiceConflict() string {
-	if port, enabled := s.GetHttpPort(); enabled {
-		if !isLoopbackListenAddr(s.httpConfig.HttpListenIp) {
+	// One Load for both the port and the address: dereferencing s.httpConfig
+	// again after GetHttpPort could read a newer config and report a listener
+	// nobody ever bound.
+	conf := s.httpConfig.Load()
+	if port, enabled := s.GetHttpPort(); enabled && conf != nil {
+		if !isLoopbackListenAddr(conf.HttpListenIp) {
 			return fmt.Sprintf("the HTTP knock listener is enabled on %s:%d",
-				listenAddrForLog(s.httpConfig.HttpListenIp), port)
+				listenAddrForLog(conf.HttpListenIp), port)
 		}
 	}
 	if s.config != nil && s.config.Metrics.Enabled && !isLoopbackListenAddr(s.config.Metrics.ListenIp) {
@@ -1489,6 +1497,14 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 			if err != nil {
 				return err
 			}
+		} else if s.httpServer.trustedProxiesPending(httpConf.TrustedProxies) {
+			// The listener is already up and this call does not restart it, so
+			// the engine keeps the proxy list it started with. Say so: for
+			// every other field the lag is cosmetic, but this one decides
+			// whether a caller can choose the source IP the AC opens a rule
+			// for, and an operator who just removed a proxy has every reason
+			// to believe the removal took effect.
+			log.Critical("TrustedProxies changed in the HTTP config but the running listener still enforces the list it started with. The new list takes effect only after the HTTP server restarts: set EnableHttp = false, then back to true. Until then X-Forwarded-For / X-Real-IP are still believed from the previous origins.")
 		}
 	} else {
 		// stop http server
@@ -1498,7 +1514,7 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 		}
 	}
 
-	s.httpConfig = &httpConf
+	s.httpConfig.Store(&httpConf)
 	return err
 }
 

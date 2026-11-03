@@ -225,9 +225,9 @@ func TestXdpServiceConflictNamesListenersTheFilterWouldBlackHole(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &UdpServer{
-				config:     &Config{ListenPort: 62206, Metrics: tc.metrics},
-				httpConfig: tc.http,
+				config: &Config{ListenPort: 62206, Metrics: tc.metrics},
 			}
+			s.httpConfig.Store(tc.http)
 			got := s.xdpServiceConflict()
 			if tc.wantConflict && got == "" {
 				t.Error("xdpServiceConflict = \"\", want a conflict")
@@ -408,9 +408,9 @@ func TestLoadXdpConfigDropsPrivilegesOnAListenerConflict(t *testing.T) {
 	dropXdpLoaderPrivileges = func(attached bool) { calls = append(calls, attached) }
 
 	s := &UdpServer{
-		config:     &Config{ListenPort: 62206},
-		httpConfig: &HttpConfig{EnableHttp: true, HttpListenIp: "0.0.0.0", HttpListenPort: 443},
+		config: &Config{ListenPort: 62206},
 	}
+	s.httpConfig.Store(&HttpConfig{EnableHttp: true, HttpListenIp: "0.0.0.0", HttpListenPort: 443})
 	if s.startXdpFilter(&XdpTomlConfig{Enabled: true, RelayIPs: []string{"10.0.1.0/24"}}, 1) {
 		t.Fatal("startXdpFilter attached in front of a wildcard HTTP listener")
 	}

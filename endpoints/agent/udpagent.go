@@ -386,16 +386,12 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	a.log = log.NewLogger("NHP-Agent", logLevel, filepath.Join(ExeDirPath, "logs"), "agent")
 	log.SetGlobalLogger(a.log)
 	// A failed Start leaves the agent stopped, and Stop is then a no-op, so
-	// release what this Start opened: its log and, in file mode, the config
-	// watchers the loaders armed. Memory mode arms none, and closing the
-	// package-global watchers there would close another agent's. The global
-	// logger still points at the closed log, so global log calls are dropped
-	// until the next Start, the same as after Stop.
+	// release what this Start opened: its config watchers and its log. The
+	// global logger still points at the closed log, so global log calls are
+	// dropped until the next Start, the same as after Stop.
 	defer func() {
 		if err != nil {
-			if a.configSource != ConfigSourceMemory {
-				a.StopConfigWatch()
-			}
+			a.stopOwnConfigWatch()
 			a.log.Close()
 		}
 	}()
@@ -641,11 +637,12 @@ func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
 // registration path); a restart fails until ReinitWithKey has installed the
 // key. To also supply the base config up front, use UseInMemoryConfig. This is
 // independent of SetAllowMissingConfig, which only softens a missing-file read
-// in the file-based `register` bootstrap. The config watchers are package
-// globals, so Stop on a memory-mode agent also closes the watchers of any
-// file-mode agent in the same process. Memory mode covers agent config only:
-// the DHP web console still reads its TLS certificate from etc/certs and
-// stores trusted applications under etc/ta.
+// in the file-based `register` bootstrap. A memory-mode agent never closes the
+// package-global config watchers, so stopping it leaves a file-mode agent's
+// live reload alone. Agents in one process still share the global logger:
+// each Start replaces it and closes the previous agent's log. Memory mode
+// covers agent config only: the DHP web console still reads its TLS
+// certificate from etc/certs and stores trusted applications under etc/ta.
 func (a *UdpAgent) SetConfigSource(src ConfigSource) {
 	a.configSource = src
 }
@@ -688,7 +685,7 @@ func (a *UdpAgent) Stop() {
 	a.stopKnockLoop()
 	close(a.signals.stop)
 	a.device.Stop()
-	a.StopConfigWatch()
+	a.stopOwnConfigWatch()
 	a.wg.Wait()
 	close(a.sendMsgCh)
 	// Deliberately NOT closing knockTargetMapUpdated. Its only consumer
@@ -771,7 +768,10 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	// the current one-shot register flow — ReinitWithKey runs right after
 	// Start() while senders are idle, and a.device is never rewritten
 	// afterward. If ReinitWithKey is ever called with active traffic, those
-	// readers must also take deviceMutex.
+	// readers must also take deviceMutex. For the same reason it must not run
+	// concurrently with Stop or RestartAgent: the running check above is not
+	// held across the swap, so a Stop in between would stop the old device
+	// twice.
 	a.deviceMutex.Lock()
 	oldDev := a.device
 	a.device = newDev

@@ -2,12 +2,14 @@ package agent
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -271,12 +273,10 @@ func TestMemoryModeStartIgnoresConfigFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "etc"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	// A config.toml that, in file mode, would set a different identity/scheme.
-	onDisk := "" +
-		"logLevel = 0\n" +
-		"defaultCipherScheme = 1\n" +
-		"privateKey = \"\"\n" +
-		"UserId = \"from-file\"\n"
+	// A config.toml that, in file mode, would set a different key, identity and
+	// scheme.
+	onDisk := fmt.Sprintf("LogLevel = 0\nDefaultCipherScheme = %d\nPrivateKeyBase64 = %q\nUserId = \"from-file\"\n",
+		common.CIPHER_SCHEME_GMSM, core.NewECDH(core.ECC_CURVE25519).PrivateKeyBase64())
 	if err := os.WriteFile(filepath.Join(dir, "etc", "config.toml"), []byte(onDisk), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +623,7 @@ func TestFailedStartReleasesFileModeResources(t *testing.T) {
 	}
 	// No private key and no register opt-in, so Start fails after the loaders
 	// have armed their watchers.
-	if err := os.WriteFile(filepath.Join(dir, "etc", "config.toml"), []byte("logLevel = 4\nprivateKey = \"\"\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "etc", "config.toml"), []byte("LogLevel = 4\nPrivateKeyBase64 = \"\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	resetConfigWatches()
@@ -657,4 +657,58 @@ func TestSetKnockUserBeforeStart(t *testing.T) {
 	if a.knockUser.UserId != "early-user" || a.knockUser.OrganizationId != "early-org" {
 		t.Fatalf("identity set before Start was lost: %+v", a.knockUser)
 	}
+}
+
+// TestMemoryModeStopKeepsFileModeWatchers verifies that a memory-mode agent's
+// teardown leaves the package-global config watchers alone, so a file-mode
+// agent in the same process keeps reloading its config. The file-mode watcher
+// is armed with loadBaseConfig rather than a second Start: Start swaps the
+// package-global logger, which races with a running agent's goroutines.
+func TestMemoryModeStopKeepsFileModeWatchers(t *testing.T) {
+	resetConfigWatches()
+	fileDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(fileDir, "etc"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(fileDir, "etc", "config.toml")
+	fileKey := core.NewECDH(core.ECC_CURVE25519).PrivateKeyBase64()
+	writeConfig := func(user string) {
+		cfg := fmt.Sprintf("LogLevel = 0\nDefaultCipherScheme = %d\nPrivateKeyBase64 = %q\nUserId = %q\n",
+			common.CIPHER_SCHEME_CURVE, fileKey, user)
+		if err := os.WriteFile(cfgPath, []byte(cfg), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userId := func(a *UdpAgent) string {
+		a.knockUserMutex.RLock()
+		defer a.knockUserMutex.RUnlock()
+		return a.knockUser.UserId
+	}
+
+	prevDir := ExeDirPath
+	ExeDirPath = fileDir
+	defer func() { ExeDirPath = prevDir }()
+
+	writeConfig("before")
+	fileAgent := &UdpAgent{log: log.NewLogger("test", 0, t.TempDir(), "agent")}
+	if err := fileAgent.loadBaseConfig(); err != nil {
+		t.Fatalf("file-mode loadBaseConfig: %v", err)
+	}
+	defer fileAgent.StopConfigWatch()
+	if got := userId(fileAgent); got != "before" {
+		t.Fatalf("file-mode agent did not load its config: UserId %q", got)
+	}
+
+	// The teardown Stop and a failed Start run, on a memory-mode agent.
+	memAgent := &UdpAgent{}
+	memAgent.SetConfigSource(ConfigSourceMemory)
+	memAgent.stopOwnConfigWatch()
+
+	writeConfig("after")
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if userId(fileAgent) == "after" {
+			return
+		}
+	}
+	t.Fatal("file-mode agent stopped reloading its config after a memory-mode teardown")
 }

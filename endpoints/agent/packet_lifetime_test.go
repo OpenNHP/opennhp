@@ -13,10 +13,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-var (
-	packetLifetimeLoggerOnce sync.Once
-	packetLifetimeLogger     *log.Logger
-)
+var packetLifetimeLogger *log.Logger
 
 // TestTransactionCompletionCannotRecyclePacketWhileUDPSendIsBlocked fences
 // the ownership boundary between core's local transaction and UdpAgent's
@@ -31,10 +28,11 @@ var (
 // pkt.Content, and make the pending UDP write send an empty datagram (as well as
 // race under load).
 func TestTransactionCompletionCannotRecyclePacketWhileUDPSendIsBlocked(t *testing.T) {
-	packetLifetimeLoggerOnce.Do(func() {
-		packetLifetimeLogger = log.NewLogger("", log.LogLevelSilent, "", "")
-		log.SetGlobalLogger(packetLifetimeLogger)
-	})
+	// Install the logger on every run, not once per process: other tests in
+	// this package call UdpAgent.Start, which replaces the global logger, so a
+	// repeated run (-count=2) would otherwise hook a logger nothing calls.
+	packetLifetimeLogger = log.NewLogger("", log.LogLevelSilent, "", "")
+	log.SetGlobalLogger(packetLifetimeLogger)
 	enteredSend := make(chan struct{})
 	releaseSend := make(chan struct{})
 	var enteredOnce, releaseOnce sync.Once

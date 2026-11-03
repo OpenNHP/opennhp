@@ -636,6 +636,15 @@ func (a *UdpAgent) StopConfigWatch() {
 	}
 }
 
+// stopOwnConfigWatch is the teardown both Stop and a failed Start use. The
+// watchers are package globals and only a file-mode agent arms them, so a
+// memory-mode agent leaves them alone rather than closing a file-mode agent's.
+func (a *UdpAgent) stopOwnConfigWatch() {
+	if a.configSource != ConfigSourceMemory {
+		a.StopConfigWatch()
+	}
+}
+
 // NewEcdhFromConfigFile reads and parses etc/config.toml, returning both a
 // fresh ECDH keypair derived from its cipher scheme and the parsed Config
 // itself — RotateAgentKey needs the latter to check whether the current key

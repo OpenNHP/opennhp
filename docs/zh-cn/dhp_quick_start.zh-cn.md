@@ -76,10 +76,16 @@ docker exec -it nhp-db /bin/bash
 由于代理和 TEE 密钥在首次启动时生成，因此需要在nhp-server中配置代理公钥以建立信任，在nhp-db中配置TEE公钥以建立信任。此外，还需要在nhp-server中配置受信任的执行环境，用于评估远程证明报告。
 
 #### 3.4.1 配置agent公钥到nhp-server
+DHP Web 控制台的每个请求都需要携带 Bearer Token。nhp-agent 首次启动时会在 `etc/console.token`（权限 0600）中生成该 Token。默认 Docker 环境中 agent 以 root 运行，宿主机上的非 root 用户无法直接读取挂载出来的文件，因此请通过容器读取。执行下面的命令前先导出：
+```shell
+export NHP_CONSOLE_TOKEN=$(docker exec nhp-agent cat /nhp-agent/etc/console.token)
+```
+控制台默认只监听回环地址（`etc/console.toml` 中的 `ListenAddr`）；Docker 环境在容器内监听所有地址，并且只发布到主机回环地址（`127.0.0.1:8443`）。在 Docker 网络内部，控制台监听 nhp-agent 容器的所有网卡，因此 `network_default` 上的其他容器也能访问到它，但同样需要 Token。8443 端口只发布到宿主机回环地址，同一端口上的 DHP demo 入口也受此影响：请在 Docker 宿主机上用浏览器打开 https://localhost:8443。如果需要从其他机器访问，请在明确知情的情况下修改 `docker-compose.dhp.yaml` 中的端口映射（例如改回 `"8443:443"`），控制台仍然受 Token 保护。
+
 在此默认的 Docker 环境中，8443端口已为nhp-agent映射到主机，因此可以通过https://localhost:8443从主机访问nhp-agent的 HTTP 接口。你可以使用以下curl命令获取代理的公钥。
 
 ```shell
-curl --insecure https://localhost:8443/api/v1/key/agent
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/key/agent
 {"publicKey":"f+HWVbhQ6ZR3e+INU7ZSGyn3XNls5TUdbZWlPmj/1v890WLDW7RcnnbJmqqufymK+Yb99dadX+PlhK4qFYxtOg=="}
 ```
 接下来，配置agent公钥在nhp-server中。
@@ -96,7 +102,7 @@ ExpireTime = 1924991999
 ```
 配置完代理公钥后，你可以使用以下curl命令检查代理状态：
 ```shell
-curl --insecure https://localhost:8443/api/v1/status/agent
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/status/agent
 {"attestationVerified":false,"running":true,"trustedByNHPDB":false,"trustedByNHPServer":true}
 ```
 你将看到`trustedByNHPServer`为`true`，这表示该代理已被 NHP 服务器信任。
@@ -106,7 +112,7 @@ curl --insecure https://localhost:8443/api/v1/status/agent
 **注意：**该远程证明报告是在非 TEE 环境下根据容器信息生成，非TEE环境仅用于测试目的。
 
 ```shell
-curl --insecure https://localhost:8443/api/v1/attestation/tee
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/attestation/tee
 {"measure":"3460bc69b9d273ad15c91074d8fd41abc5d5ccac50730d2e0495d08558848e34","serial number":"3460bc69b9d273ad15c91074d8fd41abc5d5ccac50730d2e0495d08558848e34"}
 ```
 接下来，你需要在nhp-server中配置远程证明信息。
@@ -141,14 +147,14 @@ SerialNumber = "3460bc69b9d273ad15c91074d8fd41abc5d5ccac50730d2e0495d08558848e34
 ```
 配置代理公钥后，你可以使用以下curl命令检查代理状态：
 ```shell
-curl --insecure https://localhost:8443/api/v1/status/agent
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/status/agent
 {"attestationVerified":true,"running":true,"trustedByNHPDB":false,"trustedByNHPServer":true}
 ```
 你将看到`attestationVerified`为`true`，这表示TEE已被NHP服务器信任。
 #### 3.4.3 配置TEE公钥到nhp-db
 你可以使用以下curl命令获取TEE公钥。
 ```shell
-curl --insecure https://localhost:8443/api/v1/key/tee
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" https://localhost:8443/api/v1/key/tee
 {"publicKey":"pup5OzTTZjddv+WBgbUBkvHuBgJoBg0DU+I2c7Qj4lHlrVM8N/Yl9F6DEnbGFBWB89xrN6VLhYAIM4Xv+mu4KA=="}
 ```
 接下来，你需要在nhp-db中配置TEE公钥。
@@ -270,9 +276,22 @@ func findRecord(path string, accountId string) (bool, error) {
 假设我们已将其编译为名为 `ta` 的二进制文件。
 
 #### 4.2.2 注册可信应用
+只有经过运维密钥签名的可信应用才会被接受。先生成一次 ed25519 签名密钥，把公钥写入 `docker/nhp-agent/etc/console.toml` 的 `TrustedTAPublicKeys` 并重启 nhp-agentd 进程：在 3.2 节运行它的终端里按 Ctrl+C 停止，再重新执行 `/nhp-agent/nhp-agentd dhp`。只执行 `docker restart nhp-agent` 不够，因为容器不会自动启动 nhp-agentd（重启容器后需要再执行一遍 3.2 节）；控制台的 `/api/v1/agent/restart` 也不会重新加载 `console.toml`。然后对 TA 签名：
+```shell
+openssl genpkey -algorithm ed25519 -out ta_signing.pem
+openssl pkey -in ta_signing.pem -pubout -outform DER | tail -c 32 | base64   # -> TrustedTAPublicKeys
+{ printf 'opennhp-dhp-ta-v1\0'; openssl dgst -sha256 -binary ta; } > ta.msg   # context string + NUL + SHA-256 of the TA
+export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.msg | base64)
+```
+`ta_signing.pem` 应在单独的签名机器上生成和保存，不要放在 agent 所在的主机上。在本 demo 中，至少不要放在 `docker/nhp-agent/` 目录下，因为该目录会挂载进 agent 容器。
+
+签名只覆盖 TA 文件本身；`name`、`description`、`language`、`entry` 是未签名的描述信息（agent 执行的是已存储、已校验的文件）。如需不再接受某个已签名的 TA，把它的 SHA-256（`openssl dgst -sha256 ta`）加入 `console.toml` 的 `RevokedTADigests` 并重启 nhp-agentd 进程。吊销只拦截注册；已经在运行的 TA 也要靠这次进程重启才会被卸载。
+
+如果是从接受未签名 TA 的旧版本升级，请在 nhp-agentd 停止时删除 `etc/ta/` 下的旧内容（本 demo 中为 `docker/nhp-agent/etc/ta/`）。新版本不会加载或匹配这些旧文件：启动时不会重新加载 TA，索引文件也改为按 `sha256-<hex>` 命名，不再用 MD5。删除它们是为了不让未签名的程序及其对组/其他用户可读的 `0755` 权限留在磁盘上。
+
 你可以使用以下命令来注册可信应用：
 ```shell
-curl --insecure --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'description=trusted application demo'
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'name=ta' --form 'language=go' --form 'entry=ta' --form 'description=trusted application demo' --form "signature=$TA_SIGNATURE"
 [
   {
     "method": "POST",
@@ -298,7 +317,7 @@ curl --insecure --request POST --url https://localhost:8443/api/v1/ta/register -
 #### 4.2.3 执行任务
 你可以使用以下curl命令调用这些暴露的RESTful API来执行隐私保护计算：
 ```shell
-curl --insecure --request POST --url https://localhost:8443/api/v1/ta/ceca4572-644b-4bde-a4b6-ac6048f8fba6/verify_account --header 'content-type: application/json' --data '{"doId": "47d2b67c-ef80-45fc-814d-effd23baf788", "account_id": "62230121012345678901"}'
+curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/ceca4572-644b-4bde-a4b6-ac6048f8fba6/verify_account --header 'content-type: application/json' --data '{"doId": "47d2b67c-ef80-45fc-814d-effd23baf788", "account_id": "62230121012345678901"}'
 ```
 执行后，你将收到响应 `{"account_id":"62230121012345678901","is_risk":false}`，表示该账户不是涉险账户。
 

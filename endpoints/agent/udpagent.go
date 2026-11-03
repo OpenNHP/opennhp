@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -338,6 +339,35 @@ type UdpAgent struct {
 	safeTee            atomic.Bool
 	trustedByNHPServer atomic.Bool
 	trustedByNHPDB     atomic.Bool
+
+	// DHP web console state, set once by PrepareDHPWebConsole before the
+	// console starts serving and read-only afterwards.
+	consoleConf     *ConsoleConfig
+	consoleNotices  []consoleNotice
+	consoleListener net.Listener
+	consoleServer   *http.Server
+	// consoleFailed receives the error if the console server stops on its
+	// own after ServeDHPWebConsole (anything but a shutdown).
+	consoleFailed chan error
+
+	// consoleLifecycleMu serializes console-triggered restarts and key
+	// rotations with each other and with StopDHP (write lock);
+	// consoleStopping (guarded by it) refuses new ones once shutdown has
+	// begun. Console handlers that read the loaded agent config take the
+	// read lock, so a restart cannot clear a.config under them.
+	consoleLifecycleMu sync.RWMutex
+	consoleStopping    bool
+
+	// serverConfigWriteMu serializes POST /config/server so two overlapping
+	// in-place writes of server.toml cannot interleave (A truncate, B
+	// truncate, A write, B write would leave B's content followed by A's
+	// tail, which can still parse and be hot-reloaded). It is separate from
+	// consoleLifecycleMu so a config write never waits on a long restart.
+	serverConfigWriteMu sync.Mutex
+	// taRegisterMu makes the TA dedup lookup and the index write in
+	// POST /ta/register one step, so two concurrent uploads of the same
+	// binary cannot both miss the index and each store their own copy.
+	taRegisterMu sync.Mutex
 }
 
 type UdpConn struct {
@@ -355,6 +385,26 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
+	// If Start fails it returns before the agent is marked running, so a
+	// later Stop() is a no-op (see Stop). Release the config watchers that
+	// loadBaseConfig/loadDHPConfig may already have installed, or they keep
+	// firing and are orphaned when the next Start replaces the handles.
+	// StopConfigWatch closes every handle; closing an already closed
+	// watcher is a no-op.
+	//
+	// Everything else a failed Start may leave allocated: only the logger.
+	// Every error return comes before core.NewDevice (which allocates
+	// nothing when it returns nil), and nothing after device.Start() can
+	// fail, so no device or packet goroutines are left behind. The logger is
+	// the process-wide global one and is deliberately kept open: the process
+	// keeps running and logging (e.g. the console after a failed restart),
+	// and the next Start's SetGlobalLogger closes it.
+	defer func() {
+		if err != nil {
+			a.StopConfigWatch()
+		}
+	}()
+
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -535,8 +585,17 @@ func (a *UdpAgent) SetCheckResults(results map[string]any) {
 }
 
 // export Stop
+//
+// Stop is a no-op unless the agent is running. running only becomes true
+// at the very end of a successful Start, after every channel Stop closes
+// has been created, so this makes Stop safe after a failed Start (e.g. a
+// RestartAgent whose Start rejected the config) and against concurrent or
+// repeated calls — any of which would otherwise close the same channels
+// twice and panic.
 func (a *UdpAgent) Stop() {
-	a.running.Store(false)
+	if !a.running.CompareAndSwap(true, false) {
+		return
+	}
 	a.stopKnockLoop()
 	close(a.signals.stop)
 	a.device.Stop()

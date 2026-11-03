@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -280,6 +281,30 @@ type UdpAgent struct {
 	// silently starting with a random key and empty identity.
 	allowMissingConfig bool
 
+	// configSource selects where configuration comes from. The zero value,
+	// ConfigSourceFile, preserves the historic behavior (read and watch
+	// etc/*.toml). ConfigSourceMemory disables file loading and every config
+	// watcher; set it with SetConfigSource / UseInMemoryConfig before Start.
+	configSource ConfigSource
+	// memConfig holds the base configuration for ConfigSourceMemory. It is the
+	// authoritative template a restart (Stop->Start, which clears a.config)
+	// rebuilds from, so it is kept current with the live programmatic state:
+	// ReinitWithKey writes the rotated key material into it and SetKnockUser
+	// writes the identity, both under memConfigMutex. Without that, a restart
+	// would revert to the originally supplied values (or an empty config when
+	// nil) and the agent would come back with a random key and empty identity.
+	// A nil memConfig at the first Start means the caller installs the key and
+	// identity afterward (the SDK registration path); the setters allocate it
+	// on first write so those later installs still survive a restart.
+	memConfig      *Config
+	memConfigMutex sync.Mutex
+	// memConfigSupplied is true when UseInMemoryConfig got a non-nil config.
+	// memConfig alone cannot tell, since SetKnockUser/ReinitWithKey allocate it.
+	memConfigSupplied bool
+	// startedOnce is set after the first successful Start, so a restart can be
+	// told apart from it (see checkMissingPrivateKey).
+	startedOnce bool
+
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
 
@@ -360,6 +385,16 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	// init logger
 	a.log = log.NewLogger("NHP-Agent", logLevel, filepath.Join(ExeDirPath, "logs"), "agent")
 	log.SetGlobalLogger(a.log)
+	// A failed Start leaves the agent stopped, and Stop is then a no-op, so
+	// release what this Start opened: its config watchers and its log. The
+	// global logger still points at the closed log, so global log calls are
+	// dropped until the next Start, the same as after Stop.
+	defer func() {
+		if err != nil {
+			a.stopOwnConfigWatch()
+			a.log.Close()
+		}
+	}()
 
 	log.Info("=========================================================")
 	log.Info("=== NHP-Agent %s started                           ===", version.Version)
@@ -377,15 +412,11 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 
 	var prk []byte
 	if a.config.PrivateKeyBase64 == "" {
-		// An empty private key is only acceptable in the register bootstrap
-		// flow (allowMissingConfig): use a throwaway key that ReinitWithKey
-		// replaces immediately after Start returns. For run/dhp this is a
-		// real misconfiguration — fail loudly instead of silently starting
-		// with a random key and empty identity.
-		if !a.allowMissingConfig {
-			log.Error("no private key configured in etc/config.toml")
-			return fmt.Errorf("no private key configured; check etc/config.toml")
+		// Fail loudly unless the caller installs the real key after Start.
+		if err = a.checkMissingPrivateKey(); err != nil {
+			return err
 		}
+		log.Warning("no private key configured; starting with a throwaway key until ReinitWithKey installs the real one")
 		prk = core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	} else {
 		var sealed bool
@@ -420,8 +451,27 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	// updateServerPeers' map-swap has a base value) and before
 	// callers like AddServer / GetFirstServerPeer touch it on
 	// agents that haven't loaded a server.toml yet.
-	a.serverClusterMap = make(map[string]*ServerCluster)
-	a.serverClusterByName = make(map[string]*ServerCluster)
+	//
+	// Memory mode has no server.toml for loadPeers to reload from, so a
+	// restart (Stop->Start) must keep the peers added programmatically via
+	// AddServer rather than wiping them. Start always builds a fresh device
+	// above, so re-register each surviving cluster's representative peer with
+	// it (the same re-add ReinitWithKey does). A nil map is the first Start.
+	// Re-adding only the representative peer is enough because AddServer
+	// builds single-instance clusters; multi-instance clusters come only from
+	// server.toml, which memory mode never loads.
+	if a.configSource == ConfigSourceMemory && a.serverClusterMap != nil {
+		a.serverPeerMutex.Lock()
+		for _, sc := range a.serverClusterMap {
+			if peer := sc.RepresentativePeer(); peer != nil {
+				a.device.AddPeer(peer)
+			}
+		}
+		a.serverPeerMutex.Unlock()
+	} else {
+		a.serverClusterMap = make(map[string]*ServerCluster)
+		a.serverClusterByName = make(map[string]*ServerCluster)
+	}
 
 	// load peers
 	_ = a.loadPeers()
@@ -466,6 +516,32 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 
 	time.Sleep(1000 * time.Millisecond)
 
+	a.startedOnce = true
+	return nil
+}
+
+// checkMissingPrivateKey reports whether Start may run on a throwaway key that
+// ReinitWithKey replaces later. File mode allows it only for the register
+// bootstrap (allowMissingConfig). Memory mode allows it only on the first Start
+// with no supplied config; an empty key in a supplied config, or a restart
+// before ReinitWithKey, is a caller bug that would otherwise knock silently
+// with a random key.
+func (a *UdpAgent) checkMissingPrivateKey() error {
+	if a.configSource != ConfigSourceMemory {
+		if a.allowMissingConfig {
+			return nil
+		}
+		log.Error("no private key configured in etc/config.toml")
+		return fmt.Errorf("no private key configured; check etc/config.toml")
+	}
+	if a.memConfigSupplied {
+		log.Error("no private key in the config passed to UseInMemoryConfig")
+		return fmt.Errorf("no private key configured; UseInMemoryConfig was given a config with an empty PrivateKeyBase64")
+	}
+	if a.startedOnce {
+		log.Error("no private key installed before restart; call ReinitWithKey, then restart")
+		return fmt.Errorf("no private key configured; call ReinitWithKey, then restart")
+	}
 	return nil
 }
 
@@ -513,10 +589,37 @@ func (a *UdpAgent) StopKnockLoop() {
 
 func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]any) {
 	a.knockUserMutex.Lock()
+	if a.knockUser == nil { // called before Start
+		a.knockUser = &KnockUser{}
+	}
 	a.knockUser.UserId = usrId
 	a.knockUser.OrganizationId = orgId
 	a.knockUser.UserData = userData
 	a.knockUserMutex.Unlock()
+
+	// In memory mode, mirror the identity into the restart template so a
+	// Stop/Start does not revert knockUser to the originally supplied (or
+	// empty) value. No-op in file mode, where loadBaseConfig re-reads it.
+	if a.configSource == ConfigSourceMemory {
+		a.updateMemConfig(func(c *Config) {
+			c.UserId = usrId
+			c.OrganizationId = orgId
+			c.UserData = maps.Clone(userData)
+		})
+	}
+}
+
+// updateMemConfig applies mutate to the in-memory restart template under
+// memConfigMutex, allocating it on first write. It is how the live programmatic
+// setters (ReinitWithKey, SetKnockUser) keep the template current in memory
+// mode so a restart rebuilds the state the agent last held. Memory mode only.
+func (a *UdpAgent) updateMemConfig(mutate func(*Config)) {
+	a.memConfigMutex.Lock()
+	if a.memConfig == nil {
+		a.memConfig = &Config{}
+	}
+	mutate(a.memConfig)
+	a.memConfigMutex.Unlock()
 }
 
 // SetAllowMissingConfig opts the agent into tolerating a missing
@@ -524,6 +627,44 @@ func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]
 // Start. Intended only for the interactive `register` bootstrap flow.
 func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
 	a.allowMissingConfig = allow
+}
+
+// SetConfigSource selects where the agent reads configuration. Call it before
+// Start. ConfigSourceMemory disables etc/*.toml loading and every config
+// watcher, so nothing on disk can change the agent's identity, key, cipher
+// scheme, peers, or resources after it starts. Use this when the caller
+// installs the key and identity programmatically after Start (the SDK
+// registration path); a restart fails until ReinitWithKey has installed the
+// key. To also supply the base config up front, use UseInMemoryConfig. This is
+// independent of SetAllowMissingConfig, which only softens a missing-file read
+// in the file-based `register` bootstrap. A memory-mode agent never closes the
+// package-global config watchers, so stopping it leaves a file-mode agent's
+// live reload alone. Agents in one process still share the global logger:
+// each Start replaces it and closes the previous agent's log. Memory mode
+// covers agent config only: the DHP web console still reads its TLS
+// certificate from etc/certs and stores trusted applications under etc/ta.
+func (a *UdpAgent) SetConfigSource(src ConfigSource) {
+	a.configSource = src
+}
+
+// UseInMemoryConfig switches the agent to ConfigSourceMemory and supplies the
+// base configuration programmatically, so Start reads no etc/*.toml and arms no
+// watcher. Call it before Start. The config is copied into a fresh Config
+// (Config carries a lock and must not be copied by value), including UserData
+// and DHPConfig, so later changes to cfg do not reach the agent. UserData is
+// copied shallowly, so values nested inside it are still shared. A non-nil cfg
+// must set PrivateKeyBase64 or Start fails. A nil cfg selects memory mode with
+// an empty base config, for the install-after-Start path.
+func (a *UdpAgent) UseInMemoryConfig(cfg *Config) {
+	a.configSource = ConfigSourceMemory
+	a.memConfigMutex.Lock()
+	if cfg == nil {
+		a.memConfig = nil
+	} else {
+		a.memConfig = cloneConfigData(cfg)
+	}
+	a.memConfigSupplied = cfg != nil
+	a.memConfigMutex.Unlock()
 }
 
 func (a *UdpAgent) SetDeviceId(devId string) {
@@ -536,11 +677,15 @@ func (a *UdpAgent) SetCheckResults(results map[string]any) {
 
 // export Stop
 func (a *UdpAgent) Stop() {
-	a.running.Store(false)
+	// No-op unless running: a failed restart leaves the agent already stopped,
+	// and a second teardown would close closed channels and panic.
+	if !a.running.Swap(false) {
+		return
+	}
 	a.stopKnockLoop()
 	close(a.signals.stop)
 	a.device.Stop()
-	a.StopConfigWatch()
+	a.stopOwnConfigWatch()
 	a.wg.Wait()
 	close(a.sendMsgCh)
 	// Deliberately NOT closing knockTargetMapUpdated. Its only consumer
@@ -586,10 +731,28 @@ func (a *UdpAgent) PrivateKeyBase64() string {
 // ReinitWithKey stops the current device, creates a new one from the given
 // private key bytes, and re-adds all known server peers. Call this after
 // Start() when a fresh key pair has been generated for registration.
+//
+// On a stopped agent (for example after a failed restart) there is no device
+// to swap, and stopping the old one again would panic. In memory mode the key
+// is recorded in the restart template instead, so the next Start comes up on
+// it; file mode has no template and returns an error.
 func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
+	// NewDevice also validates the key; it starts nothing until Start, so the
+	// stopped path can simply drop it.
 	newDev := core.NewDevice(core.NHP_AGENT, privKeyBytes, nil)
 	if newDev == nil {
 		return fmt.Errorf("failed to create device from new key")
+	}
+	keyB64 := base64.StdEncoding.EncodeToString(privKeyBytes)
+	if !a.running.Load() {
+		if a.configSource != ConfigSourceMemory {
+			return fmt.Errorf("agent is not running")
+		}
+		a.updateMemConfig(func(c *Config) {
+			c.PrivateKeyBase64 = keyB64
+			c.DefaultCipherScheme = cipherScheme
+		})
+		return nil
 	}
 	newDev.Start()
 
@@ -605,14 +768,28 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	// the current one-shot register flow — ReinitWithKey runs right after
 	// Start() while senders are idle, and a.device is never rewritten
 	// afterward. If ReinitWithKey is ever called with active traffic, those
-	// readers must also take deviceMutex.
+	// readers must also take deviceMutex. For the same reason it must not run
+	// concurrently with Stop or RestartAgent: the running check above is not
+	// held across the swap, so a Stop in between would stop the old device
+	// twice.
 	a.deviceMutex.Lock()
 	oldDev := a.device
 	a.device = newDev
 	a.recvMsgCh = newDev.DecryptedMsgQueue
 	a.deviceMutex.Unlock()
 
-	a.config.SetPrivateKeyMaterial(base64.StdEncoding.EncodeToString(privKeyBytes), cipherScheme, privKeyBytes)
+	a.config.SetPrivateKeyMaterial(keyB64, cipherScheme, privKeyBytes)
+
+	// In memory mode, record the rotated key in the restart template so a
+	// Stop/Start rebuilds from it instead of reverting to the key the agent
+	// was first given (or minting a random throwaway key when none was). No-op
+	// in file mode, where RotateAgentKey persists to etc/config.toml.
+	if a.configSource == ConfigSourceMemory {
+		a.updateMemConfig(func(c *Config) {
+			c.PrivateKeyBase64 = keyB64
+			c.DefaultCipherScheme = cipherScheme
+		})
+	}
 
 	// Stopping the old device closes its DecryptedMsgQueue, so the
 	// existing recvMessageRoutine (blocked on the old channel) observes a

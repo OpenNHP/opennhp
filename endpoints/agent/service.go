@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -258,6 +259,15 @@ func (a *UdpAgent) getTeePublicKey(c *gin.Context) {
 }
 
 func (a *UdpAgent) configServer(c *gin.Context) {
+	// In memory mode there is no server.toml the running agent reads, and a
+	// restart reloads peers from programmatic state, so writing the file would
+	// report success without affecting the agent. Reject it; callers manage
+	// peers with AddServer/RemoveServer instead.
+	if a.configSource == ConfigSourceMemory {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": errMemoryModeNotSupported.Error()})
+		return
+	}
+
 	var peers Peers
 
 	if err := c.BindJSON(&peers); err != nil {
@@ -284,6 +294,13 @@ func (a *UdpAgent) configServer(c *gin.Context) {
 }
 
 func (a *UdpAgent) getServerConfig(c *gin.Context) {
+	// Same as configServer: in memory mode server.toml is not what the agent
+	// runs on, so reporting it as the live config would be wrong.
+	if a.configSource == ConfigSourceMemory {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": errMemoryModeNotSupported.Error()})
+		return
+	}
+
 	var peers Peers
 
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
@@ -306,6 +323,7 @@ func (a *UdpAgent) restartAgent(c *gin.Context) {
 	err := a.RestartAgent()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return // don't also send the success response
 	}
 
 	c.JSON(http.StatusOK, gin.H{"msg": "successfully restart agent"})
@@ -343,9 +361,18 @@ func (a *UdpAgent) getTeeAttestation(c *gin.Context) {
 	})
 }
 
+// rotateErrStatus maps a rotation error to its HTTP status: 501 for the
+// memory-mode refusal, matching the /config/server handlers, else 500.
+func rotateErrStatus(err error) int {
+	if errors.Is(err, errMemoryModeNotSupported) {
+		return http.StatusNotImplemented
+	}
+	return http.StatusInternalServerError
+}
+
 func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
 	if err := a.RotateAgentKey(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(rotateErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 
@@ -359,7 +386,7 @@ func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
 
 func (a *UdpAgent) rotateTeeKey(c *gin.Context) {
 	if err := a.RotateTeeKey(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(rotateErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 

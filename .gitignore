@@ -6,6 +6,8 @@
 *.dylib
 # Compiled Go plugin binaries (examples)
 examples/server_plugin/basic/basic
+# Stray compiled daemon binary from `go build` in endpoints/
+/endpoints/main
 .*
 !.vitepress/
 !.github/

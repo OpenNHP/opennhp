@@ -95,3 +95,23 @@ func TestValidatePeerBindsRole(t *testing.T) {
 		})
 	}
 }
+
+// The pool holds one peer per key: a key added in a second role replaces
+// the first (AddPeer warns about it), so it keeps only the role added last.
+func TestAddPeerKeyHoldsOneRole(t *testing.T) {
+	d := NewDevice(NHP_SERVER, sentinelPrivateKey(33), nil)
+	if d == nil {
+		t.Fatal("NewDevice failed")
+	}
+	t.Cleanup(d.Stop)
+	key := NewECDH(ECC_CURVE25519).PublicKeyBase64()
+	d.AddPeer(&UdpPeer{PubKeyBase64: key, Type: NHP_AGENT})
+	d.AddPeer(&UdpPeer{PubKeyBase64: key, Type: NHP_DB})
+	pk := (&UdpPeer{PubKeyBase64: key}).PublicKey()
+	if got := d.LookupPeer(pk).DeviceType(); got != NHP_DB {
+		t.Fatalf("key kept role %s, want the last one added (%s)", DeviceTypeToString(got), DeviceTypeToString(NHP_DB))
+	}
+	if peerRoleAllowed(NHP_AGENT, d.LookupPeer(pk).DeviceType()) {
+		t.Fatal("the replaced agent role is still accepted")
+	}
+}

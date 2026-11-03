@@ -26,13 +26,14 @@ var (
 	// errZdtoNotFound is the one read failure that means "no such object".
 	// It wraps errReadConfigFailed so callers that only check that still
 	// see a read failure.
-	errZdtoNotFound     = fmt.Errorf("%w: not found", errReadConfigFailed)
-	errSaveConfigFailed = errors.New("ztdo config save failed")
-	errNotDBPeer        = errors.New("sender is not an nhp-db listed in db.toml")
-	errUnauthorized     = errors.New("unauthorized")
-	errNotObjectOwner   = errors.New("data object is owned by another nhp-db")
-	errDbIdChange       = errors.New("data object dbId cannot be changed")
-	errEmptyPolicy      = errors.New("data object must carry a smart policy")
+	errZdtoNotFound      = fmt.Errorf("%w: not found", errReadConfigFailed)
+	errSaveConfigFailed  = errors.New("ztdo config save failed")
+	errNotDBPeer         = errors.New("sender is not an nhp-db listed in db.toml")
+	errUnauthorized      = errors.New("unauthorized")
+	errAttestationFailed = errors.New("attestation verification failed")
+	errNotObjectOwner    = errors.New("data object is owned by another nhp-db")
+	errDbIdChange        = errors.New("data object dbId cannot be changed")
+	errEmptyPolicy       = errors.New("data object must carry a smart policy")
 
 	// lastRelayForwardBlockLog rate-limits the per-packet Critical
 	// emitted by HandleRelayForward when the (relay, real-client)
@@ -723,6 +724,15 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = zdtoReadErrorForAgent(err)
+	} else if config.Spo.Policy == "" {
+		// An object stored before registration required a policy. Answer
+		// the agent instead of letting its transaction time out, and tell
+		// the operator which object needs its policy re-registered.
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] DoId=%q has no smart policy; attestation refused, re-register the object with a policy",
+			transactionId, addrStr, common.TruncateDoIDForLog(doId))
+		dagMsg.DoId = doId
+		dagMsg.ErrCode = 1
+		dagMsg.ErrMsg = errAttestationFailed.Error()
 	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
 		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attestation: %s", transactionId, addrStr, attErr.Error())
 		return attErr

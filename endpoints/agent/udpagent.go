@@ -388,6 +388,14 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	// firing and are orphaned when the next Start replaces the handles.
 	// StopConfigWatch closes every handle; closing an already closed
 	// watcher is a no-op.
+	//
+	// Everything else a failed Start may leave allocated: only the logger.
+	// Every error return comes before core.NewDevice (which allocates
+	// nothing when it returns nil), and nothing after device.Start() can
+	// fail, so no device or packet goroutines are left behind. The logger is
+	// the process-wide global one and is deliberately kept open: the process
+	// keeps running and logging (e.g. the console after a failed restart),
+	// and the next Start's SetGlobalLogger closes it.
 	defer func() {
 		if err != nil {
 			a.StopConfigWatch()

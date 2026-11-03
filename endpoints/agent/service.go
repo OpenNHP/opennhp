@@ -646,7 +646,10 @@ func (a *UdpAgent) configServer(c *gin.Context) {
 	// its debounce: it reloads 100ms after the *last* event, and the whole
 	// (small) file is written by a single WriteFile right after the
 	// truncate. A truncated prefix can itself be valid TOML, so the
-	// loader's validation alone would not catch it.
+	// loader's validation alone would not catch every case — although an
+	// empty file (no [[Servers]]) is refused by the loader
+	// (updateServerPeers -> normalizeClusters), so a truncate observed on
+	// its own can never be hot-loaded as an empty trust anchor.
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
 	// The mode only applies if the file does not exist yet; an existing
 	// server.toml keeps its permissions. Serialize concurrent writers: the

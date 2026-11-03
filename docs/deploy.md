@@ -224,6 +224,30 @@ For high-availability deployments, consider:
    - Consider eBPF/XDP mode (`FilterMode = 1`) for high-performance packet filtering
    - Restrict management interfaces to internal networks only
 
+4. **Reverse Proxy and the Knock Source IP**
+
+   The source address NHP-Server derives from an HTTP knock is what it asks
+   NHP-AC to open a firewall rule for, so it must not be something the caller
+   can choose. `TrustedProxies` in `http.toml` controls this and defaults to
+   empty, meaning the `X-Forwarded-For` / `X-Real-IP` headers are ignored and
+   the TCP peer address is used.
+
+   - **No reverse proxy**: leave `TrustedProxies = []`. Nothing else to do.
+   - **Behind a reverse proxy**: all three of the following, or none of them.
+     1. List the proxy in `TrustedProxies` (addresses or CIDR prefixes, e.g.
+        `TrustedProxies = ["127.0.0.1"]`).
+     2. Make the proxy **overwrite** the forwarding header rather than append
+        to it — nginx: `proxy_set_header X-Forwarded-For $remote_addr;`, *not*
+        `$proxy_add_x_forwarded_for`, which passes the client's own value
+        through to the left of yours and hands the choice back.
+     3. Bind the listener where only the proxy can reach it
+        (`HttpListenIp = "127.0.0.1"` for a same-host proxy). Trusting a proxy
+        while the listener also answers on a public address means a caller can
+        simply connect to the listener directly and set the header themselves.
+
+   An entry that does not parse refuses the whole list and the HTTP server
+   does not start, rather than leaving a trust list nobody wrote.
+
 ### 4.3 Deployment Checklist
 
 **Pre-deployment:**

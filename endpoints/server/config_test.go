@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -469,7 +470,10 @@ func TestShippedHttpConfigs_TrustNoProxy(t *testing.T) {
 			path := filepath.Join(root, rel)
 			data, err := os.ReadFile(path)
 			if err != nil {
-				t.Skipf("cannot read %s: %v", path, err)
+				// Fatal, not Skip: these paths are fixed by the repo layout,
+				// so an unreadable one means a file moved and this regression
+				// check stopped covering it rather than that it passed.
+				t.Fatalf("cannot read %s: %v", path, err)
 			}
 			var conf HttpConfig
 			if err := toml.Unmarshal(data, &conf); err != nil {
@@ -508,5 +512,176 @@ func TestHttpConfig_TrustedProxiesRoundTripsThroughTOML(t *testing.T) {
 	}
 	if len(absent.TrustedProxies) != 0 {
 		t.Fatalf("TrustedProxies = %v with the key absent, want empty", absent.TrustedProxies)
+	}
+}
+
+// writeHttpToml writes etc/http.toml under a temporary ExeDirPath and returns
+// the file path. The caller is responsible for restoring ExeDirPath.
+func writeHttpToml(t *testing.T, dir, body string) string {
+	t.Helper()
+	etc := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", etc, err)
+	}
+	path := filepath.Join(etc, "http.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	return path
+}
+
+// Deleting TrustedProxies from http.toml must stop trusting the proxy.
+//
+// go-toml v2, like encoding/json, leaves struct fields the document does not
+// mention untouched, so the reload watcher has to decode into a fresh
+// HttpConfig. Decoding into one struct reused across reloads would let the
+// list from an earlier file survive an edit that removes the key -- an
+// operator who deletes the line to stop trusting a proxy would keep trusting
+// it, which is precisely the fail-open the field exists to close.
+//
+// EnableHttp stays false throughout so no listener is bound; the assertion is
+// on the config the reload leaves behind.
+func TestLoadHttpConfig_ReloadWithoutTrustedProxiesClearsTheList(t *testing.T) {
+	dir := t.TempDir()
+	prevExeDir := ExeDirPath
+	ExeDirPath = dir
+	t.Cleanup(func() {
+		ExeDirPath = prevExeDir
+		if httpConfigWatch != nil {
+			_ = httpConfigWatch.Close()
+			httpConfigWatch = nil
+		}
+	})
+
+	path := writeHttpToml(t, dir, "EnableHttp = false\nTrustedProxies = [\"10.0.0.0/8\"]\n")
+
+	s := &UdpServer{}
+	if err := s.loadHttpConfig(); err != nil {
+		t.Fatalf("loadHttpConfig: %v", err)
+	}
+	if got := s.httpConfig.TrustedProxies; len(got) != 1 || got[0] != "10.0.0.0/8" {
+		t.Fatalf("after the initial load TrustedProxies = %v, want [10.0.0.0/8]", got)
+	}
+
+	// Same file, key removed. This is the documented way to stop trusting a
+	// proxy, so the reload must land on an empty list.
+	if err := os.WriteFile(path, []byte("EnableHttp = false\n"), 0o600); err != nil {
+		t.Fatalf("rewrite %s: %v", path, err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if len(s.httpConfig.TrustedProxies) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after a reload that removed the key TrustedProxies = %v, want empty; "+
+				"the watcher must decode into a fresh HttpConfig", s.httpConfig.TrustedProxies)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// The same reload path must also pick up a list that changed rather than one
+// that was deleted, so the fresh-struct decode is not just zeroing everything.
+func TestLoadHttpConfig_ReloadReplacesTrustedProxies(t *testing.T) {
+	dir := t.TempDir()
+	prevExeDir := ExeDirPath
+	ExeDirPath = dir
+	t.Cleanup(func() {
+		ExeDirPath = prevExeDir
+		if httpConfigWatch != nil {
+			_ = httpConfigWatch.Close()
+			httpConfigWatch = nil
+		}
+	})
+
+	path := writeHttpToml(t, dir, "EnableHttp = false\nTrustedProxies = [\"10.0.0.0/8\"]\n")
+
+	s := &UdpServer{}
+	if err := s.loadHttpConfig(); err != nil {
+		t.Fatalf("loadHttpConfig: %v", err)
+	}
+
+	if err := os.WriteFile(path, []byte("EnableHttp = false\nTrustedProxies = [\"127.0.0.1\"]\n"), 0o600); err != nil {
+		t.Fatalf("rewrite %s: %v", path, err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		got := s.httpConfig.TrustedProxies
+		if len(got) == 1 && got[0] == "127.0.0.1" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after a reload that replaced the key TrustedProxies = %v, want [127.0.0.1]", got)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A malformed http.toml must not leave a half-decoded config applied: go-toml
+// v2 populates the fields ahead of the error and stops, so applying the result
+// would start a listener from settings nobody wrote.
+func TestLoadHttpConfig_MalformedFileIsNotApplied(t *testing.T) {
+	dir := t.TempDir()
+	prevExeDir := ExeDirPath
+	ExeDirPath = dir
+	t.Cleanup(func() {
+		ExeDirPath = prevExeDir
+		if httpConfigWatch != nil {
+			_ = httpConfigWatch.Close()
+			httpConfigWatch = nil
+		}
+	})
+
+	writeHttpToml(t, dir, "TrustedProxies = [\"10.0.0.0/8\"]\nEnableHttp = true\nthis is not toml\n")
+
+	s := &UdpServer{}
+	if err := s.loadHttpConfig(); err != nil {
+		t.Fatalf("loadHttpConfig: %v", err)
+	}
+	if s.httpConfig != nil {
+		t.Fatalf("a malformed http.toml was applied as %+v, want no config", s.httpConfig)
+	}
+	if s.httpServer != nil {
+		t.Fatal("a malformed http.toml started an HTTP server")
+	}
+}
+
+// The etcd config path decodes a fresh ServerEtcdConfig per call and bails on
+// a decode error, so it does not carry a stale TrustedProxies across reloads
+// the way loadHttpConfig's watcher used to. Confirm both halves, since the
+// field is now a security property and the next person to touch this function
+// should find out from a test rather than from a mis-attributed AC rule.
+func TestUpdateEtcdConfig_HttpTrustedProxiesDoesNotPersistAcrossReloads(t *testing.T) {
+	s := &UdpServer{}
+
+	withList := "[HttpConfig]\nEnableHttp = false\nTrustedProxies = [\"10.0.0.0/8\"]\n"
+	if err := s.updateEtcdConfig([]byte(withList), false); err != nil {
+		t.Fatalf("updateEtcdConfig: %v", err)
+	}
+	if got := s.httpConfig.TrustedProxies; len(got) != 1 || got[0] != "10.0.0.0/8" {
+		t.Fatalf("TrustedProxies = %v after the first load, want [10.0.0.0/8]", got)
+	}
+
+	withoutList := "[HttpConfig]\nEnableHttp = false\n"
+	if err := s.updateEtcdConfig([]byte(withoutList), false); err != nil {
+		t.Fatalf("updateEtcdConfig: %v", err)
+	}
+	if got := s.httpConfig.TrustedProxies; len(got) != 0 {
+		t.Fatalf("TrustedProxies = %v after a reload that removed the key, want empty", got)
+	}
+
+	// A document that does not decode must leave the running config alone
+	// rather than apply a half-decoded one.
+	if err := s.updateEtcdConfig([]byte(withList), false); err != nil {
+		t.Fatalf("updateEtcdConfig: %v", err)
+	}
+	if err := s.updateEtcdConfig([]byte("[HttpConfig]\nthis is not toml\n"), false); err == nil {
+		t.Fatal("updateEtcdConfig on a malformed document = nil, want an error")
+	}
+	if got := s.httpConfig.TrustedProxies; len(got) != 1 || got[0] != "10.0.0.0/8" {
+		t.Fatalf("TrustedProxies = %v after a refused reload, want the running [10.0.0.0/8]", got)
 	}
 }

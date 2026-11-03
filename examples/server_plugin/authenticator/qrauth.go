@@ -384,12 +384,29 @@ func (s *QRAuthService) cleanupExpiredSessions() {
 	}
 }
 
+// clientSourceIP returns the address this request is attributed to: the one
+// recorded on the QR session and checked again when the session is verified.
+//
+// It is ctx.ClientIP(), and that is only safe because nhp-serverd calls
+// SetTrustedProxies on the engine this plugin is served from (see
+// applyTrustedProxies in endpoints/server/httpserver.go). With no proxy
+// configured, gin ignores X-Forwarded-For / X-Real-IP and ClientIP() is the
+// TCP peer.
+//
+// If you lift this code into an engine of your own, configure the trust there
+// too. A bare gin.New() trusts every peer, which means the caller chooses this
+// value by setting a header -- and here that value gates whether a verify
+// attempt is accepted for the session (CWE-348).
+func clientSourceIP(ctx *gin.Context) string {
+	return ctx.ClientIP()
+}
+
 // HandleQRGenerate handles QR code generation
 func HandleQRGenerate(ctx *gin.Context, resId string) {
 	service := GetQRAuthService()
 
 	aspId := "authenticator"
-	srcIp := ctx.ClientIP()
+	srcIp := clientSourceIP(ctx)
 
 	// Build server URL
 	scheme := "https"
@@ -543,7 +560,7 @@ func HandleQRVerify(ctx *gin.Context) {
 	}
 
 	// Verify session
-	err = service.VerifySession(qrData.SessionID, qrData.Token, req.OTPCode, ctx.ClientIP(), req.DeviceInfo)
+	err = service.VerifySession(qrData.SessionID, qrData.Token, req.OTPCode, clientSourceIP(ctx), req.DeviceInfo)
 	if err != nil {
 		ctx.JSON(http.StatusOK, QRVerifyResponse{
 			Success: false,

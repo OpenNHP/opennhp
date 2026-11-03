@@ -522,21 +522,41 @@ func (s *UdpServer) loadHttpConfig() error {
 	}
 	var httpConf HttpConfig
 	if unmarshalErr := toml.Unmarshal(content, &httpConf); unmarshalErr != nil {
-		log.Error("failed to unmarshal http config: %v", unmarshalErr)
-	}
-	if err = s.updateHttpConfig(httpConf); err != nil {
-		// ignore error
-		_ = err
+		// Do not apply a half-decoded struct. go-toml v2 stops at the first
+		// error with the fields ahead of it already populated, so what is left
+		// is a configuration nobody wrote -- and TrustedProxies is now one of
+		// the fields that could be in it. Leaving the HTTP listener down until
+		// the file is fixed is the lesser outcome; the UDP knock service is
+		// driven by config.toml and is unaffected. The watcher is still
+		// installed below, so repairing the file recovers without a restart.
+		log.Error("failed to unmarshal http config, the HTTP server will not start: %v", unmarshalErr)
+	} else if err = s.updateHttpConfig(httpConf); err != nil {
+		// updateHttpConfig has already logged why (a TrustedProxies list that
+		// does not parse, or a listener the attached XDP filter would
+		// black-hole). Carry on without the HTTP surface rather than failing
+		// the daemon.
+		log.Error("http config was not applied: %v", err)
 	}
 
 	httpConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("http config: %s has been updated", fileName)
-		if content, err = s.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &httpConf); err == nil {
-				_ = s.updateHttpConfig(httpConf)
-			}
+		newContent, loadErr := s.loadConfigFile(fileName)
+		if loadErr != nil {
+			return
 		}
-
+		// Decode into a fresh HttpConfig on every reload. go-toml v2 does not
+		// zero fields the new document omits, so reusing one struct across
+		// reloads lets a deleted key keep the value it had two files ago. For
+		// most fields that is merely confusing; for TrustedProxies it is the
+		// fail-open this field exists to close -- an operator who deletes the
+		// line to stop trusting a proxy would keep trusting it, with nothing
+		// in the log to say so. Same reasoning as loadBaseConfig above.
+		var newConf HttpConfig
+		if unmarshalErr := toml.Unmarshal(newContent, &newConf); unmarshalErr != nil {
+			log.Error("failed to unmarshal http config on reload, keeping the running config: %v", unmarshalErr)
+			return
+		}
+		_ = s.updateHttpConfig(newConf)
 	})
 	return nil
 }

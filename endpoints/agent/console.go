@@ -61,6 +61,12 @@ const (
 // A variable only so tests can lower it.
 var maxTAUploadSize int64 = 256 << 20
 
+// maxConsoleBodySize caps the request body of every other console route
+// (JSON: the server peer table, TA call parameters). The console server
+// sets no ReadTimeout (TA uploads may be slow), so without a cap a token
+// holder could stream an arbitrarily large JSON body into memory.
+var maxConsoleBodySize int64 = 1 << 20
+
 var (
 	errTASignatureMissing = errors.New("trusted application signature is required")
 	errTASignatureInvalid = errors.New("trusted application signature is invalid")

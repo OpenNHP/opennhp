@@ -910,6 +910,8 @@ func TestIsPlainPathElement(t *testing.T) {
 	for name, want := range map[string]bool{
 		"ta": true, "prev-uuid": true, "a.b": true,
 		"": false, ".": false, "..": false, "a/b": false, "../x": false, "/": false,
+		`..\\evil`: false, `a\\b`: false, "a\x00b": false, "a\nb": false, "a\x7fb": false, "\x01": false,
+		"ta-v1.2_x86": true,
 	} {
 		if got := isPlainPathElement(name); got != want {
 			t.Errorf("isPlainPathElement(%q) = %v, want %v", name, got, want)
@@ -1311,5 +1313,41 @@ func TestRegisterTAFailedStoreCleansUp(t *testing.T) {
 	left := taDirEntries(t, taDir)
 	if len(left) != 1 || left[0] != "sha256-"+hex.EncodeToString(digest[:]) {
 		t.Fatalf("failed store left %v in the TA directory, want only the blocker", left)
+	}
+}
+
+// Every console route except TA registration caps its body at
+// maxConsoleBodySize and answers 413; TA registration keeps its own,
+// larger cap.
+func TestConsoleBodySizeLimit(t *testing.T) {
+	dir := t.TempDir()
+	setConsoleExeDir(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, "etc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := maxConsoleBodySize
+	maxConsoleBodySize = 1 << 10
+	t.Cleanup(func() { maxConsoleBodySize = old })
+
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	a, router := newTestConsole(t, &ConsoleConfig{trustedTAKeys: []ed25519.PublicKey{pub}})
+	a.safeTee.Store(true)
+
+	big := `{"Servers":[{"Name":"` + strings.Repeat("x", 4<<10) + `"}]}`
+	req := httptest.NewRequest(http.MethodPost, serviceApiPrefix+"/config/server", strings.NewReader(big))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testConsoleToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized config/server body: got %d, want 413 (%s)", w.Code, w.Body.String())
+	}
+
+	// A TA larger than the console-wide cap is still accepted for
+	// verification (it fails later only because it is not executable).
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, signedTAUpload(t, priv, bytes.Repeat([]byte("t"), 8<<10)))
+	if w.Code == http.StatusRequestEntityTooLarge || w.Code == http.StatusForbidden || w.Code == http.StatusBadRequest {
+		t.Fatalf("TA upload above the console-wide cap: got %d (%s)", w.Code, w.Body.String())
 	}
 }

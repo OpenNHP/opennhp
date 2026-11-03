@@ -162,6 +162,7 @@ func (a *UdpAgent) newConsoleRouter(token string) *gin.Engine {
 	router.RedirectFixedPath = false
 
 	router.Use(consoleAuthMiddleware(token))
+	router.Use(limitConsoleBody)
 	router.Use(a.CheckAgentSafeOrNot(taApiPrefix))
 
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "config/server"), a.configServer)
@@ -386,8 +387,44 @@ func (a *UdpAgent) verifyTADigest(digest []byte, sigB64 string) error {
 // (filepath.Base alone is not enough: it returns ".", ".." and "/"
 // unchanged.)
 func isPlainPathElement(name string) bool {
-	return name != "" && name != "." && name != ".." &&
-		!strings.ContainsRune(name, '/') && !strings.ContainsRune(name, filepath.Separator)
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	// Reject both separators on every platform (a "..\\x" name is a plain
+	// file on Linux but a traversal if etc/ta is ever copied to Windows),
+	// and control characters including NUL.
+	for _, r := range name {
+		if r == '/' || r == '\\' || r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// limitConsoleBody caps the request body of every console route at
+// maxConsoleBodySize, except TA registration, which applies its own,
+// larger maxTAUploadSize (wrapping it here as well would cap uploads at
+// the smaller limit).
+func limitConsoleBody(c *gin.Context) {
+	if c.Request.URL.Path != taApiPrefix+"/register" {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxConsoleBodySize)
+	}
+}
+
+// bindConsoleJSON decodes a JSON request body, answering 413 when it
+// exceeds maxConsoleBodySize and 400 when it is malformed.
+func bindConsoleJSON(c *gin.Context, v any) bool {
+	err := c.ShouldBindJSON(v)
+	if err == nil {
+		return true
+	}
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": fmt.Sprintf("request body exceeds %d bytes", maxConsoleBodySize)})
+		return false
+	}
+	c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	return false
 }
 
 // lookupRegisteredTA resolves a dedup index entry to the stored binary. It
@@ -600,8 +637,7 @@ func (a *UdpAgent) callFunction(c *gin.Context) {
 
 	var body map[string]any
 
-	if err := c.BindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !bindConsoleJSON(c, &body) {
 		return
 	}
 
@@ -657,8 +693,7 @@ func (a *UdpAgent) getTeePublicKey(c *gin.Context) {
 func (a *UdpAgent) configServer(c *gin.Context) {
 	var peers Peers
 
-	if err := c.BindJSON(&peers); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !bindConsoleJSON(c, &peers) {
 		return
 	}
 

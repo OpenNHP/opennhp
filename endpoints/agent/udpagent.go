@@ -348,9 +348,11 @@ type UdpAgent struct {
 	consoleServer   *http.Server
 
 	// consoleLifecycleMu serializes console-triggered restarts and key
-	// rotations with each other and with StopDHP; consoleStopping (guarded
-	// by it) refuses new ones once shutdown has begun.
-	consoleLifecycleMu sync.Mutex
+	// rotations with each other and with StopDHP (write lock);
+	// consoleStopping (guarded by it) refuses new ones once shutdown has
+	// begun. Console handlers that read the loaded agent config take the
+	// read lock, so a restart cannot clear a.config under them.
+	consoleLifecycleMu sync.RWMutex
 	consoleStopping    bool
 
 	// serverConfigWriteMu serializes POST /config/server so two overlapping

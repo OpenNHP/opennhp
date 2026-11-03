@@ -1187,3 +1187,43 @@ func TestConsoleFailedRestartReportsStopped(t *testing.T) {
 		}
 	}
 }
+
+// A key read must not interleave with a restart: it waits for the
+// lifecycle lock and then sees the restart's outcome. Here the "restart"
+// fails, so the read gets 503 rather than reading a.config mid-teardown.
+func TestKeyReadWaitsForRestart(t *testing.T) {
+	a, router := newTestConsole(t, nil)
+	a.config = &Config{}
+	a.running.Store(true)
+
+	a.consoleLifecycleMu.Lock() // a restart is in progress
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		req := httptest.NewRequest(http.MethodGet, serviceApiPrefix+"/key/agent", nil)
+		req.Header.Set("Authorization", "Bearer "+testConsoleToken)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		done <- w
+	}()
+
+	select {
+	case w := <-done:
+		a.consoleLifecycleMu.Unlock()
+		t.Fatalf("key read completed during a restart: %d %s", w.Code, w.Body.String())
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// The restart stops the agent, clears the config and fails to start.
+	a.running.Store(false)
+	a.config = nil
+	a.consoleLifecycleMu.Unlock()
+
+	select {
+	case w := <-done:
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("key read after a failed restart: got %d, want 503 (%s)", w.Code, w.Body.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("key read did not complete after the restart finished")
+	}
+}

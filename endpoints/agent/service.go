@@ -171,8 +171,8 @@ func (a *UdpAgent) newConsoleRouter(token string) *gin.Engine {
 	// (config, restart, key rotation, status, attestation) keeps working
 	// while the agent is stopped, e.g. after a failed restart, so the
 	// operator can fix the config and restart again.
-	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent"), a.requireRunningAgent, a.getAgentPublicKey)
-	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee"), a.requireRunningAgent, a.getTeePublicKey)
+	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent"), a.holdRunningAgent, a.getAgentPublicKey)
+	router.GET(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee"), a.holdRunningAgent, a.getTeePublicKey)
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/agent/rotate"), a.rotateAgentKey)
 	router.POST(fmt.Sprintf("%s/%s", serviceApiPrefix, "key/tee/rotate"), a.rotateTeeKey)
 
@@ -197,8 +197,12 @@ func (a *UdpAgent) newConsoleRouter(token string) *gin.Engine {
 		if methodRoutes, ok := routes.m[method]; ok {
 			if handler, ok := methodRoutes[path]; ok {
 				// TA calls go through the agent's device (data access
-				// refresh), so they need a running agent.
-				if a.requireRunningAgent(c); c.IsAborted() {
+				// refresh), so they need a running agent. Unlike the key
+				// reads they do not hold the lifecycle lock for the call:
+				// a TA call has no timeout, and holding it would let one
+				// stuck TA block every restart and process shutdown. A TA
+				// call that overlaps a restart is best-effort and may fail.
+				if !a.checkRunningAgent(c) {
 					return
 				}
 				handler(c)
@@ -231,17 +235,41 @@ func (a *UdpAgent) endLifecycleOp() {
 	a.consoleLifecycleMu.Unlock()
 }
 
-// requireRunningAgent answers 503 for handlers that read the loaded agent
-// config or use its device while the agent is stopped. After a failed
-// restart a.config is nil (RestartAgent clears it before Start), and those
-// handlers would otherwise panic.
-func (a *UdpAgent) requireRunningAgent(c *gin.Context) {
+// holdRunningAgent is middleware for short handlers that read the loaded
+// agent config. It answers 503 while the agent is stopped (after a failed
+// restart a.config is nil: RestartAgent clears it before Start) and
+// otherwise holds the lifecycle read lock until the handler returns, so a
+// concurrent restart or key rotation cannot clear a.config between the
+// check and the use. It must not be used for long-running handlers: a
+// restart, and StopDHP, wait for the read lock to be released.
+func (a *UdpAgent) holdRunningAgent(c *gin.Context) {
+	a.consoleLifecycleMu.RLock()
+	defer a.consoleLifecycleMu.RUnlock()
 	if !a.IsRunning() {
-		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
-			"error":   "agent is stopped",
-			"running": false,
-		})
+		abortAgentStopped(c)
+		return
 	}
+	c.Next()
+}
+
+// checkRunningAgent answers 503 and returns false while the agent is
+// stopped or a restart is in progress. It only holds the lifecycle read
+// lock for the check itself.
+func (a *UdpAgent) checkRunningAgent(c *gin.Context) bool {
+	a.consoleLifecycleMu.RLock()
+	running := a.IsRunning()
+	a.consoleLifecycleMu.RUnlock()
+	if !running {
+		abortAgentStopped(c)
+	}
+	return running
+}
+
+func abortAgentStopped(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+		"error":   "agent is stopped",
+		"running": false,
+	})
 }
 
 // respondRestartFailed answers a failed RestartAgent (restart or key
@@ -476,6 +504,10 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		}
 
 		// save file information into the index file, no matter the file exists or not.
+		// Only the file is covered by the signature; name/description/
+		// language/entry are unsigned metadata and execution never depends
+		// on them (the stored uuid/fileName are run). Keep it that way, or
+		// bring them under the signature first.
 		return utils.SaveStructAsJsonFile(indexFile, map[string]any{
 			"fileName":    fileName,
 			"name":        taName,

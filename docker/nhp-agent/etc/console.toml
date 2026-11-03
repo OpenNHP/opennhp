@@ -23,7 +23,10 @@ ListenAddr = "0.0.0.0:443"
 # applications (TAs). POST /api/v1/ta/register must carry a "signature" form
 # field: base64(ed25519_sign(private_key, "opennhp-dhp-ta-v1\0" || sha256(ta_file)))
 # (the 17-byte context string, a NUL byte, then the raw 32-byte digest). With no keys
-# configured, TA registration is refused.
+# configured, TA registration is refused. Only the file is signed: the name,
+# description, language and entry form fields are unsigned, informational
+# metadata (the agent executes the stored, verified file) and are replaced by
+# the latest registration of the same file.
 #
 # Generate an operator key pair and sign a TA with OpenSSL (3.x):
 #   openssl genpkey -algorithm ed25519 -out ta_signing.pem
@@ -34,5 +37,9 @@ TrustedTAPublicKeys = []
 
 # RevokedTADigests: hex SHA-256 digests of TA binaries that must be refused
 # even though they are validly signed (e.g. an old, vulnerable version).
+# Revocation applies to registration only: a TA that is already registered
+# keeps running until the nhp-agentd process is restarted (TAs are not
+# reloaded from etc/ta at startup), and the new list itself only takes effect
+# on that restart.
 #   openssl dgst -sha256 ta
 RevokedTADigests = []

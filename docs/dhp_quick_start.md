@@ -290,6 +290,8 @@ export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.
 ```
 Keep `ta_signing.pem` off the agent host.
 
+The signature covers the TA file only; `name`, `description`, `language` and `entry` are unsigned metadata (the agent runs the stored, verified file). To stop accepting a signed TA, add its SHA-256 (`openssl dgst -sha256 ta`) to `RevokedTADigests` in `console.toml` and restart the nhp-agentd process. Revocation blocks registration, and the restart is also what unloads a TA that is already running.
+
 You can use following command to register trusted application:
 ```shell
 curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'name=ta' --form 'language=go' --form 'entry=ta' --form 'description=trusted application demo' --form "signature=$TA_SIGNATURE"

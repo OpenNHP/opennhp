@@ -285,6 +285,8 @@ export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.
 ```
 `ta_signing.pem` 不要放在 agent 主机上。
 
+签名只覆盖 TA 文件本身；`name`、`description`、`language`、`entry` 是未签名的描述信息（agent 执行的是已存储、已校验的文件）。如需不再接受某个已签名的 TA，把它的 SHA-256（`openssl dgst -sha256 ta`）加入 `console.toml` 的 `RevokedTADigests` 并重启 nhp-agentd 进程。吊销只拦截注册；已经在运行的 TA 也要靠这次进程重启才会被卸载。
+
 你可以使用以下命令来注册可信应用：
 ```shell
 curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'name=ta' --form 'language=go' --form 'entry=ta' --form 'description=trusted application demo' --form "signature=$TA_SIGNATURE"

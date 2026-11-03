@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"net"
@@ -31,6 +32,13 @@ type HttpServer struct {
 	httpServer *http.Server
 	ginEngine  *gin.Engine
 	listenAddr *net.TCPAddr
+
+	// trustedProxies is the resolved HttpConfig.TrustedProxies list, kept
+	// so knockSourceIP can tell "no proxy is configured" from "a proxy is"
+	// without re-reading gin's engine state. Empty means the forwarding
+	// headers are never consulted. Written once in Start, before the
+	// listener goroutine starts, and read-only afterwards.
+	trustedProxies []string
 
 	wg      sync.WaitGroup
 	running atomic.Bool
@@ -75,6 +83,10 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 
 	gin.SetMode(gin.ReleaseMode)
 	hs.ginEngine = gin.New()
+	if err := hs.applyTrustedProxies(hc.TrustedProxies); err != nil {
+		log.Error("refusing to start the HTTP knock listener: %v", err)
+		return err
+	}
 	store := cookie.NewStore([]byte("nhpstore"))
 	hs.ginEngine.Use(sessions.Sessions("nhpsessions", store))
 	hs.ginEngine.Use(corsMiddleware())
@@ -153,6 +165,84 @@ func (hs *HttpServer) IsRunning() bool {
 	return hs.running.Load()
 }
 
+// applyTrustedProxies pins which network origins nhp-serverd will believe
+// X-Forwarded-For / X-Real-IP from, and must run before any handler does.
+//
+// gin.New() leaves Engine.trustedProxies at the package default of
+// 0.0.0.0/0 + ::/0 with ForwardedByClientIP on, so ctx.ClientIP() returns a
+// *caller-supplied* address for every request that carries a forwarding
+// header. That value is not cosmetic here: the plugin routes put it in
+// HttpKnockRequest.SrcIp and handleHttpOpenResource hands it to the AC as the
+// source address of the firewall rule it opens, so trusting every peer lets
+// any caller that can authenticate to a plugin open the resource for an
+// address of their choosing and file the access against it (CWE-348).
+//
+// The default is therefore to trust nobody: with the list empty, ClientIP()
+// degenerates to the TCP peer and the headers are inert. An operator who
+// actually terminates TLS in a reverse proxy names that proxy in
+// HttpConfig.TrustedProxies, and the proxy must *overwrite* the forwarding
+// headers rather than append to them (nginx: `proxy_set_header
+// X-Forwarded-For $remote_addr`, which deploy/nginx/server.conf.template
+// does) — $proxy_add_x_forwarded_for would carry the client's own value
+// through and hand the spoof back.
+//
+// A list that does not parse is a hard failure rather than a partial trust:
+// gin's SetTrustedProxies installs the prefix it managed to parse *before*
+// the bad entry and returns the error alongside it, so an engine left in that
+// state would silently trust whichever proxies happened to sort first. We
+// reset to "trust nobody" and refuse to bind at all, which the operator sees
+// immediately instead of discovering it from a mis-attributed AC rule.
+func (hs *HttpServer) applyTrustedProxies(proxies []string) error {
+	trimmed := make([]string, 0, len(proxies))
+	for _, proxy := range proxies {
+		proxy = strings.TrimSpace(proxy)
+		if len(proxy) == 0 {
+			continue
+		}
+		trimmed = append(trimmed, proxy)
+	}
+
+	if len(trimmed) == 0 {
+		hs.trustedProxies = nil
+		// nil (not an empty slice) is gin's own "no proxy is trusted" value.
+		if err := hs.ginEngine.SetTrustedProxies(nil); err != nil {
+			return fmt.Errorf("failed to disable proxy header trust: %w", err)
+		}
+		log.Info("http knock: TrustedProxies is empty, forwarding headers are ignored and the TCP peer address is used as the knock source")
+		return nil
+	}
+
+	if err := hs.ginEngine.SetTrustedProxies(trimmed); err != nil {
+		// Undo the partially-installed prefix before reporting.
+		if resetErr := hs.ginEngine.SetTrustedProxies(nil); resetErr != nil {
+			log.Error("http knock: failed to reset proxy header trust after a bad TrustedProxies list: %v", resetErr)
+		}
+		hs.trustedProxies = nil
+		return fmt.Errorf("invalid TrustedProxies entry in http.toml: %w", err)
+	}
+
+	hs.trustedProxies = trimmed
+	log.Info("http knock: trusting forwarding headers from %d configured proxy origin(s)", len(trimmed))
+	return nil
+}
+
+// knockSourceIP returns the address a knock is attributed to: the address the
+// AC rule is opened for, the one the plugin authenticates, and the one the
+// audit ledger records.
+//
+// With no trusted proxy configured this is the TCP peer, unconditionally —
+// ctx.RemoteIP() rather than ctx.ClientIP(), so the answer does not depend on
+// gin's engine still being in the state applyTrustedProxies left it in. Only
+// once an operator has named a proxy does ClientIP()'s forwarding-header walk
+// come into play, and then only for requests that actually arrive from one of
+// those origins.
+func (hs *HttpServer) knockSourceIP(ctx *gin.Context) string {
+	if len(hs.trustedProxies) == 0 {
+		return ctx.RemoteIP()
+	}
+	return ctx.ClientIP()
+}
+
 // LoadFilesRecursively loads HTML and template files recursively from the specified directory and adds them to the given gin.Engine.
 // It walks through the directory and its subdirectories, and for each file with a .html or .tmpl extension, it reads the file content,
 // creates a new template with the file path as the template name, and parses the content into the template.
@@ -228,7 +318,7 @@ func (hs *HttpServer) initRouter() {
 		req := &common.HttpKnockRequest{
 			AuthServiceId: aspId,
 			DeviceId:      ctx.Request.UserAgent(),
-			SrcIp:         ctx.ClientIP(),
+			SrcIp:         hs.knockSourceIP(ctx),
 			Url:           ctx.Request.URL,
 		}
 
@@ -258,7 +348,7 @@ func (hs *HttpServer) initRouter() {
 			AuthServiceId: aspId,
 			ResourceId:    resId,
 			DeviceId:      ctx.Request.UserAgent(),
-			SrcIp:         ctx.ClientIP(),
+			SrcIp:         hs.knockSourceIP(ctx),
 			Url:           ctx.Request.URL,
 		}
 		hs.legacyAuthWithAspPlugin(ctx, req)
@@ -282,6 +372,11 @@ func (hs *HttpServer) initRouter() {
 				return
 			}
 
+			// NOTE before re-enabling: a `srcip` query parameter is caller-
+			// supplied in exactly the way X-Forwarded-For was (CWE-348), and it
+			// ends up as the source of an AC rule. Take the address from
+			// hs.knockSourceIP(ctx) and treat any value in the URL as a request
+			// to be authorized against the token, never as the answer.
 			req := &common.HttpRefreshRequest{
 				Token: token,
 				SrcIp: ctx.Query("srcip"),
@@ -389,6 +484,19 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		}
 		s.auditEvent("knock", severity, fields)
 	}()
+
+	// The source address is what the AC turns into a firewall rule, so it has
+	// to be an address. knockSourceIP returns "" when RemoteAddr does not split
+	// into host/port, and a plugin is free to write req.SrcIp itself; either way
+	// an unparsable value would reach the AC as the source of an ipset entry.
+	// Refuse here so the denial is audited with a reason rather than handed on.
+	if net.ParseIP(srcIp) == nil {
+		err = common.ErrInvalidIpAddress
+		ackMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
+		ackMsg.ErrMsg = err.Error()
+		log.Error("httpserver-agent(%s#%s)[handleHttpOpenResource] refusing to open a resource for an unparsable source address %q", knkMsg.UserId, knkMsg.DeviceId, srcIp)
+		return
+	}
 
 	if len(res.Resources) == 0 {
 		err = common.ErrResourceNotFound

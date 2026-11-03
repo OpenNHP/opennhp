@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pelletier/go-toml/v2"
+
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 )
@@ -435,5 +437,76 @@ func TestUpdateBaseConfig_AttestationSchemeReloadSticksToCSV(t *testing.T) {
 	if got != string(verifier.SchemeCSV) {
 		t.Fatalf("resolved scheme must stay at SchemeCSV after a follow-up reload; got %q, want %q",
 			got, verifier.SchemeCSV)
+	}
+}
+
+// Every shipped http.toml must parse, and none of them may name a trusted
+// proxy. The shipped files bind 0.0.0.0, so a non-empty list there would make
+// the spoofable-source-IP case (CWE-348) reachable by connecting to the
+// listener directly, past whatever proxy the list describes. Operators opt in
+// per deployment; the repo never ships the opt-in.
+func TestShippedHttpConfigs_TrustNoProxy(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	root := cwd
+	for i := 0; i < 5; i++ {
+		if _, err := os.Stat(filepath.Join(root, "docker", "nhp-server", "etc", "http.toml")); err == nil {
+			break
+		}
+		root = filepath.Dir(root)
+	}
+
+	for _, rel := range []string{
+		"endpoints/server/main/etc/http.toml",
+		"docker/nhp-server/etc/http.toml",
+		"docker/nhp-server/etc2/http.toml",
+		"docker/multicluster/nhp-server-c2/etc/http.toml",
+		"deploy/config-templates/server/http.toml",
+	} {
+		t.Run(rel, func(t *testing.T) {
+			path := filepath.Join(root, rel)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Skipf("cannot read %s: %v", path, err)
+			}
+			var conf HttpConfig
+			if err := toml.Unmarshal(data, &conf); err != nil {
+				t.Fatalf("unmarshal %s: %v", rel, err)
+			}
+			if len(conf.TrustedProxies) != 0 {
+				t.Fatalf("%s sets TrustedProxies = %v; shipped configs must trust no proxy", rel, conf.TrustedProxies)
+			}
+		})
+	}
+}
+
+// The TOML key has to reach the field: a typo in the struct tag or the shipped
+// comment block would leave TrustedProxies silently empty, which fails safe
+// but would also make the opt-in impossible to actually use.
+func TestHttpConfig_TrustedProxiesRoundTripsThroughTOML(t *testing.T) {
+	var conf HttpConfig
+	if err := toml.Unmarshal([]byte("TrustedProxies = [\"127.0.0.1\", \"10.1.0.0/16\"]\n"), &conf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := []string{"127.0.0.1", "10.1.0.0/16"}
+	if len(conf.TrustedProxies) != len(want) {
+		t.Fatalf("TrustedProxies = %v, want %v", conf.TrustedProxies, want)
+	}
+	for i := range want {
+		if conf.TrustedProxies[i] != want[i] {
+			t.Fatalf("TrustedProxies = %v, want %v", conf.TrustedProxies, want)
+		}
+	}
+
+	// A file with no TrustedProxies key at all must leave the list empty,
+	// not inherit anything.
+	var absent HttpConfig
+	if err := toml.Unmarshal([]byte("EnableHttp = true\n"), &absent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(absent.TrustedProxies) != 0 {
+		t.Fatalf("TrustedProxies = %v with the key absent, want empty", absent.TrustedProxies)
 	}
 }

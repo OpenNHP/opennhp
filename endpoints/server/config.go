@@ -435,6 +435,15 @@ type HttpConfig struct {
 	ReadTimeoutMs  int
 	WriteTimeoutMs int
 	IdleTimeoutMs  int
+	// TrustedProxies lists the network origins (IPv4/IPv6 addresses or CIDR
+	// prefixes) whose X-Forwarded-For / X-Real-IP headers the HTTP knock
+	// module believes. Absent or empty means none, which is the right answer
+	// for every deployment that is not actually behind a reverse proxy: the
+	// knock source then comes from the TCP peer and cannot be chosen by the
+	// caller. Listing a proxy here only makes sense when that proxy
+	// *overwrites* the forwarding headers and the listener is bound where
+	// nothing else can reach it. See applyTrustedProxies in httpserver.go.
+	TrustedProxies []string
 }
 
 type Peers struct {

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -360,9 +361,18 @@ func (a *UdpAgent) getTeeAttestation(c *gin.Context) {
 	})
 }
 
+// rotateErrStatus maps a rotation error to its HTTP status: 501 for the
+// memory-mode refusal, matching the /config/server handlers, else 500.
+func rotateErrStatus(err error) int {
+	if errors.Is(err, errMemoryModeNotSupported) {
+		return http.StatusNotImplemented
+	}
+	return http.StatusInternalServerError
+}
+
 func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
 	if err := a.RotateAgentKey(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(rotateErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 
@@ -376,7 +386,7 @@ func (a *UdpAgent) rotateAgentKey(c *gin.Context) {
 
 func (a *UdpAgent) rotateTeeKey(c *gin.Context) {
 	if err := a.RotateTeeKey(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(rotateErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 

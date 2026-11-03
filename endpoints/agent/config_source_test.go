@@ -449,3 +449,26 @@ func TestGetServerConfigNotSupportedInMemoryMode(t *testing.T) {
 		t.Fatalf("file mode did not serve etc/server.toml: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// TestRotateHandlersNotSupportedInMemoryMode verifies both rotate endpoints
+// answer the memory-mode refusal with 501, like the /config/server handlers.
+func TestRotateHandlersNotSupportedInMemoryMode(t *testing.T) {
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+
+	gin.SetMode(gin.TestMode)
+	for name, h := range map[string]gin.HandlerFunc{
+		"rotateAgentKey": a.rotateAgentKey,
+		"rotateTeeKey":   a.rotateTeeKey,
+	} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		h(c)
+		if w.Code != http.StatusNotImplemented {
+			t.Fatalf("%s status: got %d want %d", name, w.Code, http.StatusNotImplemented)
+		}
+		if !strings.Contains(w.Body.String(), errMemoryModeNotSupported.Error()) {
+			t.Fatalf("%s body: %s", name, w.Body.String())
+		}
+	}
+}

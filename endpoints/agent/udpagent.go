@@ -352,6 +352,17 @@ type UdpAgent struct {
 	// by it) refuses new ones once shutdown has begun.
 	consoleLifecycleMu sync.Mutex
 	consoleStopping    bool
+
+	// serverConfigWriteMu serializes POST /config/server so two overlapping
+	// in-place writes of server.toml cannot interleave (A truncate, B
+	// truncate, A write, B write would leave B's content followed by A's
+	// tail, which can still parse and be hot-reloaded). It is separate from
+	// consoleLifecycleMu so a config write never waits on a long restart.
+	serverConfigWriteMu sync.Mutex
+	// taRegisterMu makes the TA dedup lookup and the index write in
+	// POST /ta/register one step, so two concurrent uploads of the same
+	// binary cannot both miss the index and each store their own copy.
+	taRegisterMu sync.Mutex
 }
 
 type UdpConn struct {

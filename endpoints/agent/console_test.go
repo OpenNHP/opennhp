@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -508,6 +509,132 @@ func TestConfigServerWritesValidPeersInPlace(t *testing.T) {
 	var peers Peers
 	if err := toml.Unmarshal(content, &peers); err != nil || len(peers.Servers) != 1 {
 		t.Fatalf("written server.toml does not round-trip: %v (%q)", err, content)
+	}
+}
+
+// Overlapping POST /config/server requests must not interleave their
+// in-place writes: the file left behind is exactly one request's body.
+func TestConfigServerConcurrentWritesDoNotInterleave(t *testing.T) {
+	dir := t.TempDir()
+	setConsoleExeDir(t, dir)
+	etc := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, router := newTestConsole(t, nil)
+
+	// Truncate, pause, then write, with the short body pausing longer: two
+	// unserialized requests then always end as "long write, then short
+	// write over it", which leaves the short body followed by the long
+	// one's tail.
+	old := writeServerConfigFile
+	writeServerConfigFile = func(name string, data []byte, perm os.FileMode) error {
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+		if err != nil {
+			return err
+		}
+		if len(data) < 1024 {
+			time.Sleep(20 * time.Millisecond)
+		} else {
+			time.Sleep(5 * time.Millisecond)
+		}
+		_, err = f.Write(data)
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+		return err
+	}
+	t.Cleanup(func() { writeServerConfigFile = old })
+
+	const pub = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
+	// A long body (many instances) and a short one, so an interleaving
+	// would leave the short body followed by the long one's tail.
+	var long strings.Builder
+	for i := 0; i < 200; i++ {
+		if i > 0 {
+			long.WriteString(",")
+		}
+		fmt.Fprintf(&long, `{"Ip":"10.0.%d.%d","Port":62206}`, i/250, i%250+1)
+	}
+	bodies := []string{
+		`{"Servers":[{"Name":"long","PubKeyBase64":"` + pub + `","Instances":[` + long.String() + `]}]}`,
+		`{"Servers":[{"Name":"short","PubKeyBase64":"` + pub + `","Instances":[{"Ip":"127.0.0.1","Port":62206}]}]}`,
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		for _, body := range bodies {
+			wg.Add(1)
+			go func(body string) {
+				defer wg.Done()
+				req := httptest.NewRequest(http.MethodPost, serviceApiPrefix+"/config/server", bytes.NewBufferString(body))
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Authorization", "Bearer "+testConsoleToken)
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, req)
+				if w.Code != http.StatusOK {
+					t.Errorf("config write: got %d (%s)", w.Code, w.Body.String())
+				}
+			}(body)
+		}
+	}
+	wg.Wait()
+
+	content, err := os.ReadFile(filepath.Join(etc, "server.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var peers Peers
+	if err := toml.Unmarshal(content, &peers); err != nil || len(peers.Servers) != 1 {
+		t.Fatalf("server.toml is not a single request's body: %v (%q)", err, content)
+	}
+	want := map[string]int{"long": 200, "short": 1}[peers.Servers[0].Name]
+	if got := len(peers.Servers[0].Instances); got != want {
+		t.Fatalf("server.toml mixes two writes: %q has %d instances, want %d", peers.Servers[0].Name, got, want)
+	}
+}
+
+// Concurrent uploads of the same signed TA must store a single copy: the
+// dedup lookup and the index write happen as one step.
+func TestRegisterTAConcurrentUploadsStoreOneCopy(t *testing.T) {
+	dir := t.TempDir()
+	setConsoleExeDir(t, dir)
+	taDir := filepath.Join(dir, "etc", "ta")
+
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	a, router := newTestConsole(t, &ConsoleConfig{trustedTAKeys: []ed25519.PublicKey{pub}})
+	a.safeTee.Store(true)
+
+	// Not a valid executable: starting it fails fast after it is stored
+	// and indexed, so the test never runs anything real.
+	content := []byte("not an executable, concurrent\n")
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		req := signedTAUpload(t, priv, content)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			router.ServeHTTP(httptest.NewRecorder(), req)
+		}()
+	}
+	wg.Wait()
+
+	entries, err := os.ReadDir(taDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var copies []string
+	for _, e := range entries {
+		if e.IsDir() {
+			copies = append(copies, e.Name())
+		}
+	}
+	if len(copies) != 1 {
+		t.Fatalf("concurrent uploads stored %d copies (%v), want 1", len(copies), copies)
+	}
+	digest := sha256.Sum256(content)
+	if got := readTAIndexUUID(t, filepath.Join(taDir, "sha256-"+hex.EncodeToString(digest[:]))); got != copies[0] {
+		t.Fatalf("index points at %q, stored copy is %q", got, copies[0])
 	}
 }
 

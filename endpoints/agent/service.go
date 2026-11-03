@@ -35,6 +35,10 @@ var (
 	}{m: make(map[string]map[string]gin.HandlerFunc)}
 
 	serviceApiPrefix = "/api/v1"
+
+	// writeServerConfigFile writes server.toml in place; a variable so tests
+	// can widen the truncate-then-write window.
+	writeServerConfigFile = os.WriteFile
 )
 
 func (a *UdpAgent) CheckAgentSafeOrNot(targetPaths ...string) gin.HandlerFunc {
@@ -403,42 +407,50 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	// "sha256-<hex>", so legacy MD5-named entries are never matched. The
 	// lookup happens before anything is written, so re-registering a known
 	// TA costs no disk I/O.
-	indexFile := filepath.Join(taDir, "sha256-"+hex.EncodeToString(digest))
-	fileUuid, storedName, reuse := lookupRegisteredTA(taDir, indexFile, digest)
-	if reuse {
-		// Run the binary that is actually stored under the previous uuid.
-		fileName = storedName
-	} else {
-		var uuidErr error
-		fileUuid, uuidErr = utils.GenerateUUIDv4()
-		if uuidErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": uuidErr.Error()})
-			return
+	//
+	// Hold taRegisterMu from the dedup lookup through the index write, so
+	// two concurrent uploads of the same binary cannot both miss the index
+	// and each store (and index) their own copy.
+	var fileUuid string
+	storeErr := func() error {
+		a.taRegisterMu.Lock()
+		defer a.taRegisterMu.Unlock()
+
+		indexFile := filepath.Join(taDir, "sha256-"+hex.EncodeToString(digest))
+		storedUuid, storedName, reuse := lookupRegisteredTA(taDir, indexFile, digest)
+		if reuse {
+			// Run the binary that is actually stored under the previous uuid.
+			fileUuid, fileName = storedUuid, storedName
+		} else {
+			var uuidErr error
+			fileUuid, uuidErr = utils.GenerateUUIDv4()
+			if uuidErr != nil {
+				return uuidErr
+			}
+
+			fullFilePath := filepath.Join(taDir, fileUuid, fileName)
+			if saveErr := c.SaveUploadedFile(file, fullFilePath); saveErr != nil {
+				return saveErr
+			}
+
+			if chmodErr := os.Chmod(fullFilePath, 0o700); chmodErr != nil {
+				return chmodErr
+			}
 		}
 
-		fullFilePath := filepath.Join(taDir, fileUuid, fileName)
-		if saveErr := c.SaveUploadedFile(file, fullFilePath); saveErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": saveErr.Error()})
-			return
-		}
-
-		if chmodErr := os.Chmod(fullFilePath, 0o700); chmodErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": chmodErr.Error()})
-			return
-		}
-	}
-
-	// save file information into the index file, no matter the file exists or not.
-	if writeErr := utils.SaveStructAsJsonFile(indexFile, map[string]any{
-		"fileName":    fileName,
-		"name":        taName,
-		"uuid":        fileUuid,
-		"size":        file.Size,
-		"description": description,
-		"language":    language,
-		"entry":       entry,
-	}); writeErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": writeErr.Error()})
+		// save file information into the index file, no matter the file exists or not.
+		return utils.SaveStructAsJsonFile(indexFile, map[string]any{
+			"fileName":    fileName,
+			"name":        taName,
+			"uuid":        fileUuid,
+			"size":        file.Size,
+			"description": description,
+			"language":    language,
+			"entry":       entry,
+		})
+	}()
+	if storeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": storeErr.Error()})
 		return
 	}
 
@@ -568,9 +580,13 @@ func (a *UdpAgent) configServer(c *gin.Context) {
 	// loader's validation alone would not catch it.
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
 	// The mode only applies if the file does not exist yet; an existing
-	// server.toml keeps its permissions.
-	if err := os.WriteFile(fileName, buf.Bytes(), 0o600); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// server.toml keeps its permissions. Serialize concurrent writers: the
+	// truncate+write of two requests must not interleave.
+	a.serverConfigWriteMu.Lock()
+	writeErr := writeServerConfigFile(fileName, buf.Bytes(), 0o600)
+	a.serverConfigWriteMu.Unlock()
+	if writeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": writeErr.Error()})
 		return
 	}
 

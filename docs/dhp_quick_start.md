@@ -183,6 +183,8 @@ cd /nhp-db
 ```
 If the message `Successfully register or update data object which doId is <doId>.` is printed, it means the data resource has been published successfully.
 
+In `online` mode nhp-db uploads the ZTDO to nhp-server's `/storage` API, signing the upload with its own NHP key. nhp-server accepts it only if its `etc/db.toml` lists that nhp-db public key, of the same scheme (curve25519 or SM2) as the nhp-server key in the nhp-db's `etc/server.toml`, and if the two clocks agree within 5 minutes. The docker demo is already set up this way. nhp-db and nhp-server must be upgraded together: an older nhp-db sends unsigned uploads, which are refused with 401. Agents download ZTDOs without credentials, as before. Upload limits and the `EnableStorage` switch are documented in nhp-server's `etc/http.toml`.
+
 ### 4.2 Requesting data resource
 #### 4.2.1 Write and Compile trusted application
 To enable easy and unified communication with the trusted application, we use the Model Context Protocol (MCP). This means the trusted application is implemented as an MCP server, while the client, built into the NHP Agent, acts as the MCP client to communicate with the trusted application. Since the MCP framework is supported by almost all programming languages, implementing a trusted application in any language is easy and straightforward.

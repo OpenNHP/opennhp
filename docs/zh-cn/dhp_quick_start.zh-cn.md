@@ -178,6 +178,8 @@ cd /nhp-db
 ```
 如果出现信息`Successfully register or update data object which doId is <doId>.`，表示数据资源已成功发布。
 
+`online` 模式下，nhp-db 会把 ZTDO 上传到 nhp-server 的 `/storage` 接口，并用自己的 NHP 密钥对上传请求签名。nhp-server 只接受满足以下条件的上传：其 `etc/db.toml` 中登记了该 nhp-db 的公钥，且该公钥与 nhp-db `etc/server.toml` 中 nhp-server 公钥属于同一算法（curve25519 或 SM2）；双方时钟误差在 5 分钟以内。Docker 演示环境已按此配置好。nhp-db 与 nhp-server 需要同时升级：旧版 nhp-db 发出的上传没有签名，会被拒绝（401）。agent 下载 ZTDO 仍然不需要凭据。上传限额和 `EnableStorage` 开关见 nhp-server 的 `etc/http.toml`。
+
 ### 4.2 请求数据资源
 #### 4.2.1 编写和编译可信应用
 为了实现与可信应用的简便且统一的通信，我们采用了模型上下文协议（Model Context Protocol，简称 MCP）。这意味着可信应用被实现为MCP服务器，而内置于NHP Agent中的客户端则作为MCP客户端与可信应用进行通信。由于MCP框架几乎支持所有编程语言，因此使用任何语言实现可信应用都十分简单和直接。

@@ -231,7 +231,7 @@ func TestHandleHttpOpenResourceAcceptsParsableSourceIP(t *testing.T) {
 
 // End-to-end through a real listener: the synthesized contexts above assume
 // gin resolves trust through hs.ginEngine, this one proves it on a request
-// that actually travelled over TCP. The probe handler stands in for the
+// that actually traveled over TCP. The probe handler stands in for the
 // plugin routes, which build HttpKnockRequest.SrcIp the same way.
 func TestKnockSourceIPOverRealConnection(t *testing.T) {
 	for _, tc := range []struct {

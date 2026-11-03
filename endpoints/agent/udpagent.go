@@ -385,6 +385,20 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	// init logger
 	a.log = log.NewLogger("NHP-Agent", logLevel, filepath.Join(ExeDirPath, "logs"), "agent")
 	log.SetGlobalLogger(a.log)
+	// A failed Start leaves the agent stopped, and Stop is then a no-op, so
+	// release what this Start opened: its log and, in file mode, the config
+	// watchers the loaders armed. Memory mode arms none, and closing the
+	// package-global watchers there would close another agent's. The global
+	// logger still points at the closed log, so global log calls are dropped
+	// until the next Start, the same as after Stop.
+	defer func() {
+		if err != nil {
+			if a.configSource != ConfigSourceMemory {
+				a.StopConfigWatch()
+			}
+			a.log.Close()
+		}
+	}()
 
 	log.Info("=========================================================")
 	log.Info("=== NHP-Agent %s started                           ===", version.Version)
@@ -447,11 +461,14 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	// AddServer rather than wiping them. Start always builds a fresh device
 	// above, so re-register each surviving cluster's representative peer with
 	// it (the same re-add ReinitWithKey does). A nil map is the first Start.
+	// Re-adding only the representative peer is enough because AddServer
+	// builds single-instance clusters; multi-instance clusters come only from
+	// server.toml, which memory mode never loads.
 	if a.configSource == ConfigSourceMemory && a.serverClusterMap != nil {
 		a.serverPeerMutex.Lock()
 		for _, sc := range a.serverClusterMap {
-			if sc.representativePeer != nil {
-				a.device.AddPeer(sc.representativePeer)
+			if peer := sc.RepresentativePeer(); peer != nil {
+				a.device.AddPeer(peer)
 			}
 		}
 		a.serverPeerMutex.Unlock()
@@ -526,8 +543,8 @@ func (a *UdpAgent) checkMissingPrivateKey() error {
 		return fmt.Errorf("no private key configured; UseInMemoryConfig was given a config with an empty PrivateKeyBase64")
 	}
 	if a.startedOnce {
-		log.Error("no private key installed before restart; call ReinitWithKey after the first Start")
-		return fmt.Errorf("no private key configured; ReinitWithKey was not called before restart")
+		log.Error("no private key installed before restart; call ReinitWithKey, then restart")
+		return fmt.Errorf("no private key configured; call ReinitWithKey, then restart")
 	}
 	return nil
 }
@@ -576,6 +593,9 @@ func (a *UdpAgent) StopKnockLoop() {
 
 func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]any) {
 	a.knockUserMutex.Lock()
+	if a.knockUser == nil { // called before Start
+		a.knockUser = &KnockUser{}
+	}
 	a.knockUser.UserId = usrId
 	a.knockUser.OrganizationId = orgId
 	a.knockUser.UserData = userData
@@ -623,7 +643,9 @@ func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
 // independent of SetAllowMissingConfig, which only softens a missing-file read
 // in the file-based `register` bootstrap. The config watchers are package
 // globals, so Stop on a memory-mode agent also closes the watchers of any
-// file-mode agent in the same process.
+// file-mode agent in the same process. Memory mode covers agent config only:
+// the DHP web console still reads its TLS certificate from etc/certs and
+// stores trusted applications under etc/ta.
 func (a *UdpAgent) SetConfigSource(src ConfigSource) {
 	a.configSource = src
 }
@@ -712,10 +734,28 @@ func (a *UdpAgent) PrivateKeyBase64() string {
 // ReinitWithKey stops the current device, creates a new one from the given
 // private key bytes, and re-adds all known server peers. Call this after
 // Start() when a fresh key pair has been generated for registration.
+//
+// On a stopped agent (for example after a failed restart) there is no device
+// to swap, and stopping the old one again would panic. In memory mode the key
+// is recorded in the restart template instead, so the next Start comes up on
+// it; file mode has no template and returns an error.
 func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
+	// NewDevice also validates the key; it starts nothing until Start, so the
+	// stopped path can simply drop it.
 	newDev := core.NewDevice(core.NHP_AGENT, privKeyBytes, nil)
 	if newDev == nil {
 		return fmt.Errorf("failed to create device from new key")
+	}
+	keyB64 := base64.StdEncoding.EncodeToString(privKeyBytes)
+	if !a.running.Load() {
+		if a.configSource != ConfigSourceMemory {
+			return fmt.Errorf("agent is not running")
+		}
+		a.updateMemConfig(func(c *Config) {
+			c.PrivateKeyBase64 = keyB64
+			c.DefaultCipherScheme = cipherScheme
+		})
+		return nil
 	}
 	newDev.Start()
 
@@ -738,7 +778,6 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	a.recvMsgCh = newDev.DecryptedMsgQueue
 	a.deviceMutex.Unlock()
 
-	keyB64 := base64.StdEncoding.EncodeToString(privKeyBytes)
 	a.config.SetPrivateKeyMaterial(keyB64, cipherScheme, privKeyBytes)
 
 	// In memory mode, record the rotated key in the restart template so a

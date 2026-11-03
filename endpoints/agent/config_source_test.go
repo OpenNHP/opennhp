@@ -325,7 +325,6 @@ func TestMemoryModeSuppliedConfigRequiresKey(t *testing.T) {
 		KnockUser:           KnockUser{UserId: "from-code"},
 	})
 	err := a.Start(t.TempDir(), 0)
-	a.log.Close()
 	if err == nil {
 		t.Fatal("Start succeeded with an empty key in a supplied in-memory config")
 	}
@@ -351,7 +350,6 @@ func TestMemoryModeRestartRequiresInstalledKey(t *testing.T) {
 	a.Stop()
 	a.config = nil
 	err := a.Start(dir, 0)
-	a.log.Close()
 	if err == nil {
 		t.Fatal("restart succeeded with no key installed")
 	}
@@ -398,7 +396,6 @@ func TestRestartHandlerReportsFailureOnly(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	a.restartAgent(c) // no key installed, so the restart fails
-	a.log.Close()
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status: got %d want %d", w.Code, http.StatusInternalServerError)
@@ -427,7 +424,6 @@ func TestStopAfterFailedRestartIsSafe(t *testing.T) {
 		t.Fatal("second restart succeeded with no key installed")
 	}
 	a.Stop()
-	a.log.Close()
 }
 
 // TestGetServerConfigNotSupportedInMemoryMode verifies GET /config/server
@@ -557,5 +553,108 @@ func TestMemoryModeKeepsStartLogLevel(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "throwaway key") {
 		t.Fatalf("throwaway-key warning was not logged; log:\n%s", logs.String())
+	}
+}
+
+// TestMemoryModeReinitAfterFailedRestart verifies the recovery the restart
+// error points to: after a failed restart, ReinitWithKey records the key
+// instead of panicking on the stopped device, and the next restart comes up
+// on that key.
+func TestMemoryModeReinitAfterFailedRestart(t *testing.T) {
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+	if err := a.Start(t.TempDir(), 0); err != nil {
+		t.Fatalf("first Start with no config: %v", err)
+	}
+	if err := a.RestartAgent(); err == nil {
+		t.Fatal("restart succeeded with no key installed")
+	}
+
+	// A bad key is rejected on the stopped path too, and leaves the template
+	// without a key.
+	if err := a.ReinitWithKey([]byte{1, 2, 3}, common.CIPHER_SCHEME_CURVE); err == nil {
+		t.Fatal("ReinitWithKey accepted an invalid key on a stopped agent")
+	}
+	if a.memConfig != nil && a.memConfig.PrivateKeyBase64 != "" {
+		t.Fatal("rejected key was recorded in the template")
+	}
+
+	key := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	wantPub := core.ECDHFromKey(core.ECC_CURVE25519, key).PublicKeyBase64()
+	if err := a.ReinitWithKey(key, common.CIPHER_SCHEME_CURVE); err != nil {
+		t.Fatalf("ReinitWithKey on a stopped agent: %v", err)
+	}
+	if err := a.RestartAgent(); err != nil {
+		t.Fatalf("restart after ReinitWithKey: %v", err)
+	}
+	defer a.Stop()
+	if got := a.PublicKeyBase64(); got != wantPub {
+		t.Fatalf("restart did not come up on the installed key: got %q want %q", got, wantPub)
+	}
+}
+
+// TestReinitWithKeyStoppedFileModeErrors verifies ReinitWithKey refuses on a
+// stopped file-mode agent, which has no template to record the key in.
+func TestReinitWithKeyStoppedFileModeErrors(t *testing.T) {
+	a := &UdpAgent{}
+	key := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	if err := a.ReinitWithKey(key, common.CIPHER_SCHEME_CURVE); err == nil {
+		t.Fatal("ReinitWithKey succeeded on a stopped file-mode agent")
+	}
+}
+
+// TestFailedStartReleasesFileModeResources verifies a failed file-mode Start
+// closes the config watchers and log it opened. Before, each failed Start
+// left about nine file descriptors open, and repeated /agent/restart calls
+// piled them up.
+func TestFailedStartReleasesFileModeResources(t *testing.T) {
+	if _, err := os.ReadDir("/dev/fd"); err != nil {
+		t.Skip("no /dev/fd on this platform")
+	}
+	openFDs := func() int {
+		entries, _ := os.ReadDir("/dev/fd")
+		return len(entries)
+	}
+
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "etc"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// No private key and no register opt-in, so Start fails after the loaders
+	// have armed their watchers.
+	if err := os.WriteFile(filepath.Join(dir, "etc", "config.toml"), []byte("logLevel = 4\nprivateKey = \"\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	resetConfigWatches()
+
+	before := openFDs()
+	for i := 0; i < 5; i++ {
+		if err := (&UdpAgent{}).Start(dir, 4); err == nil {
+			t.Fatal("Start succeeded with no private key")
+		}
+	}
+	if grown := openFDs() - before; grown > 2 {
+		t.Fatalf("5 failed Starts left %d file descriptors open", grown)
+	}
+}
+
+// TestSetKnockUserBeforeStart verifies SetKnockUser no longer dereferences a
+// nil knockUser before Start, and that in memory mode the identity carries
+// into the first Start.
+func TestSetKnockUserBeforeStart(t *testing.T) {
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+	a.SetKnockUser("early-user", "early-org", nil)
+
+	if err := a.Start(t.TempDir(), 0); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer a.Stop()
+	a.knockUserMutex.RLock()
+	defer a.knockUserMutex.RUnlock()
+	if a.knockUser.UserId != "early-user" || a.knockUser.OrganizationId != "early-org" {
+		t.Fatalf("identity set before Start was lost: %+v", a.knockUser)
 	}
 }

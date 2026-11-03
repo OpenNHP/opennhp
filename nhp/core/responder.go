@@ -626,6 +626,10 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		// together), so a registered key must also be registered for the
 		// role this message type implies. Otherwise any registered agent
 		// key could, for example, send NHP_DRG as if it were an nhp-db.
+		//
+		// Deliberately after the pool lookup and never retried through
+		// PeerLookupFallback above: a key the static pool knows in another
+		// role is refused, not handed to the fallback (keep this order).
 		if !peerRoleAllowed(peerDeviceType, peer.DeviceType()) {
 			log.Error("validatePeer: peer role mismatch, %s expects a %s peer but pubkey=%s is registered as %s",
 				HeaderTypeToString(ppd.HeaderType), peerDeviceTypeName, peerPkBase64, DeviceTypeToString(peer.DeviceType()))

@@ -174,3 +174,19 @@ func TestZdtoConfigUnreadableObjectFailsClosed(t *testing.T) {
 		t.Fatalf("new object: %v", err)
 	}
 }
+
+// Agents get one message for every ZTDO read failure, so they cannot tell
+// a missing object from an unreadable one; other errors pass through.
+func TestZdtoReadErrorForAgent(t *testing.T) {
+	for name, err := range map[string]error{
+		"missing":    errZdtoNotFound,
+		"unreadable": errReadConfigFailed,
+	} {
+		if got := zdtoReadErrorForAgent(err); got != errReadConfigFailed.Error() {
+			t.Errorf("%s: got %q, want %q", name, got, errReadConfigFailed.Error())
+		}
+	}
+	if got := zdtoReadErrorForAgent(common.ErrInvalidDoID); got != common.ErrInvalidDoID.Error() {
+		t.Errorf("invalid DoId: got %q", got)
+	}
+}

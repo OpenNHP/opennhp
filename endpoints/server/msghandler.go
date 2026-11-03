@@ -658,7 +658,7 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 	if err != nil {
 		dsaMsg.DoId = doId
 		dsaMsg.ErrCode = 1
-		dsaMsg.ErrMsg = err.Error()
+		dsaMsg.ErrMsg = zdtoReadErrorForAgent(err)
 	} else {
 		dsaMsg.DoId = doId
 		dsaMsg.SpoId = config.Spo.PolicyId
@@ -722,7 +722,7 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%q) failed: %v", transactionId, addrStr, common.TruncateDoIDForLog(doId), err)
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
-		dagMsg.ErrMsg = err.Error()
+		dagMsg.ErrMsg = zdtoReadErrorForAgent(err)
 	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
 		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attestation: %s", transactionId, addrStr, attErr.Error())
 		return attErr
@@ -939,6 +939,12 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 			log.Warning("server[SaveZdtoConfig] rejected DoId=%q update by %s: %v", common.TruncateDoIDForLog(objectId), owner, errDbIdChange)
 			return errDbIdChange
 		}
+		if existingDrgMsg.OwnerPublicKey == "" {
+			// dbId is not authenticated, so record who claimed a legacy
+			// object: an operator can audit the claim and correct it.
+			log.Warning("server[SaveZdtoConfig] DoId=%q (dbId %q) had no recorded owner; claimed by nhp-db %s",
+				common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner)
+		}
 
 		// alway keep original date source type
 		drgMsg.DataSourceType = existingDrgMsg.DataSourceType
@@ -992,6 +998,18 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 	}
 
 	return nil
+}
+
+// zdtoReadErrorForAgent is the error text sent to an agent for a failed
+// ReadZdtoConfig. Every read failure gets the same message, so an agent
+// cannot tell a missing object from an unreadable one (and clients that
+// match the message keep working); other errors, such as an invalid DoId,
+// pass through.
+func zdtoReadErrorForAgent(err error) string {
+	if errors.Is(err, errReadConfigFailed) {
+		return errReadConfigFailed.Error()
+	}
+	return err.Error()
 }
 
 // read data-<doId>.json to DRGMsg Object

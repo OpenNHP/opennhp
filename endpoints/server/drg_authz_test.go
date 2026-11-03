@@ -190,3 +190,15 @@ func TestZdtoReadErrorForAgent(t *testing.T) {
 		t.Errorf("invalid DoId: got %q", got)
 	}
 }
+
+// DAK answers do not tell one nhp-db whether a DoId exists or who owns it.
+func TestDRGErrorForSender(t *testing.T) {
+	for name, err := range map[string]error{"owned by another": errNotObjectOwner, "dbId change": errDbIdChange} {
+		if got := drgErrorForSender(err); got != errUnauthorized.Error() {
+			t.Errorf("%s: got %q, want %q", name, got, errUnauthorized.Error())
+		}
+	}
+	if got := drgErrorForSender(errEmptyPolicy); got != errEmptyPolicy.Error() {
+		t.Errorf("the sender's own mistake should pass through, got %q", got)
+	}
+}

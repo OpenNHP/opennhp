@@ -829,7 +829,7 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 
 	if err != nil {
 		errCode = 1
-		errMsg = err.Error()
+		errMsg = drgErrorForSender(err)
 	}
 
 	aakMsg := &common.DAKMsg{
@@ -1008,6 +1008,18 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 	}
 
 	return nil
+}
+
+// drgErrorForSender is the error text sent back in a DAK. Refusals that
+// depend on another nhp-db's object (it exists and has another owner, or
+// another dbId) get the same generic answer as an unauthorized sender, so
+// one nhp-db cannot probe which DoIds exist or who owns them; the reason
+// is in the server log. Errors about the sender's own request pass through.
+func drgErrorForSender(err error) string {
+	if errors.Is(err, errNotObjectOwner) || errors.Is(err, errDbIdChange) {
+		return errUnauthorized.Error()
+	}
+	return err.Error()
 }
 
 // zdtoReadErrorForAgent is the error text sent to an agent for a failed

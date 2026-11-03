@@ -313,11 +313,23 @@ func TestTrustedProxiesPending(t *testing.T) {
 	}{
 		{"unchanged", []string{"127.0.0.1"}, []string{"127.0.0.1"}, false},
 		{"unchanged but reformatted", []string{"127.0.0.1"}, []string{"  127.0.0.1  ", ""}, false},
+		// A bare address and its host prefix admit the same peer, and
+		// isTrustedProxy tests every entry, so neither spelling nor order
+		// changes who is trusted. Warning about these would spend the
+		// Critical line's credibility on edits that change nothing.
+		{"bare address spelled as a host prefix", []string{"127.0.0.1"}, []string{"127.0.0.1/32"}, false},
+		{"v6 bare address spelled as a host prefix", []string{"::1"}, []string{"::1/128"}, false},
+		{"equivalent prefix spelling", []string{"10.0.0.0/8"}, []string{"10.0.0.0/8"}, false},
+		{"same entries reordered", []string{"127.0.0.1", "::1"}, []string{"::1", "127.0.0.1"}, false},
+		{"duplicate entry", []string{"127.0.0.1"}, []string{"127.0.0.1", "127.0.0.1"}, false},
 		{"proxy removed", []string{"127.0.0.1"}, nil, true},
 		{"proxy added", nil, []string{"127.0.0.1"}, true},
 		{"proxy replaced", []string{"127.0.0.1"}, []string{"10.0.0.0/8"}, true},
 		{"entry appended", []string{"127.0.0.1"}, []string{"127.0.0.1", "::1"}, true},
-		{"same entries reordered", []string{"127.0.0.1", "::1"}, []string{"::1", "127.0.0.1"}, true},
+		{"prefix widened", []string{"10.0.0.0/16"}, []string{"10.0.0.0/8"}, true},
+		// A list gin would refuse is not equal to anything; report it rather
+		// than guess.
+		{"configured list does not parse", []string{"127.0.0.1"}, []string{"relay.opennhp.org"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hs := newTestHttpServer(t, tc.started)
@@ -474,4 +486,78 @@ func TestHttpServerStartMarksAPlainListenerRunning(t *testing.T) {
 	if hs.IsRunning() {
 		t.Fatal("Stop left the plain HTTP listener running")
 	}
+}
+
+// A listener whose bind fails asynchronously must not keep claiming to be
+// running. updateHttpConfig only builds a replacement when IsRunning is
+// false, so a server stuck at true after a failed bind serves nothing and is
+// never retried: the daemon stays dark until someone cycles EnableHttp.
+// Clearing the flag lets the next http.toml reload retry, so freeing the port
+// is enough to recover.
+func TestHttpServerClearsRunningWhenTheBindFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// Occupy a port, then point the server at it.
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer occupied.Close()
+	port := occupied.Addr().(*net.TCPAddr).Port
+
+	dir := t.TempDir()
+	us := &UdpServer{
+		listenAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0},
+		log:        log.NewLogger("test", 0, dir, "server"),
+	}
+	hs := &HttpServer{}
+	if err := hs.Start(us, &HttpConfig{
+		EnableHttp:     true,
+		HttpListenIp:   "127.0.0.1",
+		HttpListenPort: port,
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(hs.Stop)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for hs.IsRunning() {
+		if time.Now().After(deadline) {
+			t.Fatal("HttpServer still reports IsRunning() after the bind failed; " +
+				"updateHttpConfig will never build a replacement")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A clean Stop must not go through the failure path: ListenAndServe returns
+// http.ErrServerClosed then, and treating that as a failure would have the
+// listener goroutine race Stop's own bookkeeping.
+func TestHttpServerStopIsNotTreatedAsAFailedBind(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	us := &UdpServer{
+		listenAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0},
+		log:        log.NewLogger("test", 0, dir, "server"),
+	}
+	hs := &HttpServer{}
+	if err := hs.Start(us, &HttpConfig{
+		EnableHttp:     true,
+		HttpListenIp:   "127.0.0.1",
+		HttpListenPort: 0,
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !hs.IsRunning() {
+		t.Fatal("the listener never came up")
+	}
+	hs.Stop()
+	if hs.IsRunning() {
+		t.Fatal("Stop left the listener running")
+	}
+	// Stop drains hs.wg, so the listener goroutine has already returned and
+	// any store it was going to make has happened. A second Stop must be a
+	// no-op rather than closing signals.stop twice.
+	hs.Stop()
 }

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,9 +123,13 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 	// true from here on in all three paths (TLS, TLS with missing cert files
 	// falling through, plain HTTP). The store also orders the trustedProxies
 	// write above ahead of any cross-goroutine read of it.
+	// wg.Add before the flag, not after: Stop observes running, then blocks on
+	// wg.Wait(). Storing the flag first leaves a window where a Stop from the
+	// etcd watcher could sail past a counter this goroutine has not yet
+	// incremented. The order below makes that impossible.
+	hs.wg.Add(1)
 	hs.running.Store(true)
 
-	hs.wg.Add(1)
 	if hc.EnableTLS {
 		certFilePath := filepath.Join(ExeDirPath, hc.TLSCertFile)
 		keyFilePath := filepath.Join(ExeDirPath, hc.TLSKeyFile)
@@ -137,7 +142,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 				var err = hs.httpServer.ListenAndServeTLS(certFilePath, keyFilePath)
 				if err != nil && err != http.ErrServerClosed {
 					log.Error("https server close error: %v", err)
-					//panic(err)
+					hs.listenerFailed(err)
 				}
 			}()
 
@@ -151,7 +156,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		var err = hs.httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Error("http server close error: %v", err)
-			//panic(err)
+			hs.listenerFailed(err)
 		}
 	}()
 
@@ -183,6 +188,24 @@ func (hs *HttpServer) Stop() {
 
 func (hs *HttpServer) IsRunning() bool {
 	return hs.running.Load()
+}
+
+// listenerFailed clears the running flag after ListenAndServe{,TLS} returns
+// something other than a clean shutdown -- a port already in use, an
+// unreadable key, a fatal accept error.
+//
+// Without this, a bind that fails asynchronously leaves an HttpServer that
+// claims to be running and serves nothing: updateHttpConfig sees IsRunning
+// and never builds a replacement, so the daemon stays dark until someone
+// cycles EnableHttp. Clearing it lets the next http.toml reload retry the
+// bind, so freeing the port is enough to recover.
+//
+// Only reached on the error path. A Stop-initiated shutdown returns
+// http.ErrServerClosed and must not land here, or Stop's own bookkeeping
+// would race with this store.
+func (hs *HttpServer) listenerFailed(err error) {
+	hs.running.Store(false)
+	log.Error("HttpServer (%s) is no longer listening; the next http config reload will retry: %v", hs.id, err)
 }
 
 // applyTrustedProxies pins which network origins nhp-serverd will believe
@@ -255,8 +278,39 @@ func normalizeTrustedProxies(proxies []string) []string {
 	return trimmed
 }
 
+// trustedProxyPrefixes resolves a list the way gin's prepareTrustedCIDRs does
+// -- a bare address becomes a host prefix -- and returns the result as a set.
+//
+// A set of prefixes, rather than the strings, is what "the same trust" means:
+// "127.0.0.1" and "127.0.0.1/32" admit exactly the same peer, and reordering
+// a list changes nothing, because isTrustedProxy tests every entry. Comparing
+// raw strings would announce a pending change for either edit.
+//
+// ok is false when an entry does not parse. Such a list is not equal to
+// anything -- gin would refuse it outright -- so callers treat that as a
+// difference rather than guessing.
+func trustedProxyPrefixes(proxies []string) (map[netip.Prefix]struct{}, bool) {
+	set := make(map[netip.Prefix]struct{}, len(proxies))
+	for _, proxy := range normalizeTrustedProxies(proxies) {
+		if strings.Contains(proxy, "/") {
+			prefix, err := netip.ParsePrefix(proxy)
+			if err != nil {
+				return nil, false
+			}
+			set[prefix.Masked()] = struct{}{}
+			continue
+		}
+		addr, err := netip.ParseAddr(proxy)
+		if err != nil {
+			return nil, false
+		}
+		set[netip.PrefixFrom(addr, addr.BitLen())] = struct{}{}
+	}
+	return set, true
+}
+
 // trustedProxiesPending reports whether a running listener is still enforcing
-// a different proxy list than the one now configured.
+// a different set of proxy origins than the one now configured.
 //
 // updateHttpConfig does not restart a listener that is already running, so an
 // edit to TrustedProxies alone changes s.httpConfig while the live engine
@@ -266,6 +320,11 @@ func normalizeTrustedProxies(proxies []string) []string {
 // a process that still believes it. Callers log that rather than let it pass
 // silently; applying it takes the documented EnableHttp false/true cycle.
 //
+// The comparison is on resolved prefixes so the warning only fires when the
+// set of admitted peers actually differs. A line that cried wolf over
+// "127.0.0.1" becoming "127.0.0.1/32" would be worth less when it fires for
+// real, and it repeats on every reload for as long as the mismatch stands.
+//
 // Safe to call from another goroutine: trustedProxies is written by
 // applyTrustedProxies before Start stores the running flag, and that atomic
 // store orders the write ahead of the Load below.
@@ -273,12 +332,18 @@ func (hs *HttpServer) trustedProxiesPending(configured []string) bool {
 	if hs == nil || !hs.running.Load() {
 		return false
 	}
-	want := normalizeTrustedProxies(configured)
-	if len(want) != len(hs.trustedProxies) {
+	want, wantOK := trustedProxyPrefixes(configured)
+	// The running list parsed once already, in applyTrustedProxies, so a
+	// failure here would mean the two disagree about what gin accepts.
+	running, runningOK := trustedProxyPrefixes(hs.trustedProxies)
+	if !wantOK || !runningOK {
 		return true
 	}
-	for i := range want {
-		if want[i] != hs.trustedProxies[i] {
+	if len(want) != len(running) {
+		return true
+	}
+	for prefix := range want {
+		if _, found := running[prefix]; !found {
 			return true
 		}
 	}

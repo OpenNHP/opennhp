@@ -1107,3 +1107,43 @@ func TestFailedStartReleasesConfigWatchers(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// A failed console restart leaves the agent stopped; the 500 must say so.
+func TestConsoleFailedRestartReportsStopped(t *testing.T) {
+	dir := t.TempDir()
+	etc := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(etc, "config.toml"), []byte("PrivateKeyBase64 = \"not-a-valid-key\"\nLogLevel = 5\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldAgent, oldCommon := ExeDirPath, common.ExeDirPath
+	ExeDirPath, common.ExeDirPath = dir, dir
+	a, router := newTestConsole(t, nil)
+	t.Cleanup(func() {
+		if a.log != nil {
+			a.log.Close()
+		}
+		ExeDirPath, common.ExeDirPath = oldAgent, oldCommon
+		baseConfigWatch, dhpConfigWatch, serverConfigWatch, resourceConfigWatch = nil, nil, nil, nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, serviceApiPrefix+"/agent/restart", nil)
+	req.Header.Set("Authorization", "Bearer "+testConsoleToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("restart with a bad config: got %d, want 500 (%s)", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["running"] != false || !strings.Contains(fmt.Sprint(resp["msg"]), "stopped") {
+		t.Fatalf("failed restart response does not report the agent as stopped: %s", w.Body.String())
+	}
+	if a.IsRunning() {
+		t.Fatal("agent reports running after a failed restart")
+	}
+}

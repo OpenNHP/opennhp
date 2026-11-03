@@ -621,7 +621,17 @@ func (a *UdpAgent) restartAgent(c *gin.Context) {
 
 	err := a.RestartAgent()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// RestartAgent stopped the old instance before Start failed, so the
+		// agent is now down while the console keeps serving. Say so, rather
+		// than leaving the operator to assume the old instance is still up.
+		// The (global) logger is deliberately left open: this process keeps
+		// running and logging, and the next Start replaces and closes it.
+		log.Error("DHP console: agent restart requested by %s failed, agent is stopped: %v", c.Request.RemoteAddr, err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   err.Error(),
+			"running": false,
+			"msg":     "agent restart failed; the agent is now stopped. Fix the configuration and restart again",
+		})
 		return
 	}
 

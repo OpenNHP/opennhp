@@ -49,3 +49,6 @@ deploy/configs/
 # (web/dist is embedded by the Docker/CI build, not committed)
 demoapp/data/
 demoapp/web/dist/
+
+# DHP console bearer tokens generated at first start
+**/etc/console.token

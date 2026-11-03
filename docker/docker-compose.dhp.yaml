@@ -27,7 +27,7 @@ services:
       - ./nhp-server/etc/:/nhp-server/etc/:rw
       - ./nhp-server/logs/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
-      # DHP override: entrypoint is exposed on host :8443 (see "8443:443" below),
+      # DHP override: entrypoint is exposed on host :8443 (see "127.0.0.1:8443:443" below),
       # so the demo resource redirects to https://localhost:8443 (not :443).
       - ./dhp/nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
 
@@ -63,7 +63,8 @@ services:
     restart: always
     #command: []
     ports:
-      - "8443:443"
+      # Console is token-authenticated; publish on host loopback only.
+      - "127.0.0.1:8443:443"
     networks:
       network_default:
         ipv4_address: 177.7.0.8

@@ -14,6 +14,8 @@
 
 # ListenAddr: host:port the HTTPS console binds to. Defaults to loopback.
 # Only bind a non-loopback address behind a network boundary you control.
+# 443 is a privileged port: when nhp-agentd does not run as root, use a port
+# of 1024 or above (e.g. "127.0.0.1:8443"), or startup fails to bind it.
 ListenAddr = "127.0.0.1:443"
 
 # TrustedTAPublicKeys: base64 ed25519 public keys allowed to sign trusted

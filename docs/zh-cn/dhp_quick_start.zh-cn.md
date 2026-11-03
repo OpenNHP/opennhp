@@ -287,6 +287,8 @@ export TA_SIGNATURE=$(openssl pkeyutl -sign -inkey ta_signing.pem -rawin -in ta.
 
 签名只覆盖 TA 文件本身；`name`、`description`、`language`、`entry` 是未签名的描述信息（agent 执行的是已存储、已校验的文件）。如需不再接受某个已签名的 TA，把它的 SHA-256（`openssl dgst -sha256 ta`）加入 `console.toml` 的 `RevokedTADigests` 并重启 nhp-agentd 进程。吊销只拦截注册；已经在运行的 TA 也要靠这次进程重启才会被卸载。
 
+如果是从接受未签名 TA 的旧版本升级，请在 nhp-agentd 停止时删除 `etc/ta/` 下的旧内容（本 demo 中为 `docker/nhp-agent/etc/ta/`）。新版本不会加载或匹配这些旧文件：启动时不会重新加载 TA，索引文件也改为按 `sha256-<hex>` 命名，不再用 MD5。删除它们是为了不让未签名的程序及其对组/其他用户可读的 `0755` 权限留在磁盘上。
+
 你可以使用以下命令来注册可信应用：
 ```shell
 curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'name=ta' --form 'language=go' --form 'entry=ta' --form 'description=trusted application demo' --form "signature=$TA_SIGNATURE"

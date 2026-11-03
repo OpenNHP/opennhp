@@ -292,6 +292,8 @@ Generate and keep `ta_signing.pem` on a separate signing machine, not on the age
 
 The signature covers the TA file only; `name`, `description`, `language` and `entry` are unsigned metadata (the agent runs the stored, verified file). To stop accepting a signed TA, add its SHA-256 (`openssl dgst -sha256 ta`) to `RevokedTADigests` in `console.toml` and restart the nhp-agentd process. Revocation blocks registration, and the restart is also what unloads a TA that is already running.
 
+When upgrading from a version that accepted unsigned TAs, delete the old contents of `etc/ta/` (in this demo `docker/nhp-agent/etc/ta/`) while nhp-agentd is stopped. The new version never loads or matches them, since TAs are not reloaded at startup and its index files are named `sha256-<hex>`, not by MD5. Deleting them keeps unsigned binaries, and their group/other-readable `0755` modes, from lingering on disk.
+
 You can use following command to register trusted application:
 ```shell
 curl --insecure -H "Authorization: Bearer $NHP_CONSOLE_TOKEN" --request POST --url https://localhost:8443/api/v1/ta/register --header 'content-type: multipart/form-data' --form file=@ta --form 'name=ta' --form 'language=go' --form 'entry=ta' --form 'description=trusted application demo' --form "signature=$TA_SIGNATURE"

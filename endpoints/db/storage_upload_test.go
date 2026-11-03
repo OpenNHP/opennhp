@@ -152,12 +152,15 @@ func TestSignStorageRequestNeedsUsableServerKey(t *testing.T) {
 	db := core.NewDevice(core.NHP_DB, core.NewECDH(core.ECC_CURVE25519).PrivateKey(), nil)
 	req, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/storage/upload", nil)
 
-	if _, err := (&UdpDevice{device: db}).signStorageRequest(req, nil); err == nil {
+	a := &UdpDevice{device: db}
+	if _, err := a.signStorageRequest(req, nil, nil); err == nil {
 		t.Fatal("signed without an nhp-server peer")
 	}
+	if _, err := a.UploadFileToNHPServer(writeUploadFile(t)); err == nil {
+		t.Fatal("uploaded without an nhp-server peer")
+	}
 	bad := &core.UdpPeer{PubKeyBase64: base64.StdEncoding.EncodeToString([]byte("not a key"))}
-	a := &UdpDevice{device: db, serverPeerMap: map[string]*core.UdpPeer{"x": bad}}
-	if _, err := a.signStorageRequest(req, nil); err == nil {
+	if _, err := a.signStorageRequest(req, nil, bad); err == nil {
 		t.Fatal("signed for a server key of the wrong size")
 	}
 }
@@ -168,11 +171,35 @@ func TestSignStorageRequestTimestamp(t *testing.T) {
 	handler := &fakeStorageServer{}
 	a, base := newUploadDevice(t, common.CIPHER_SCHEME_CURVE, handler)
 	req, _ := http.NewRequest(http.MethodPost, base+"storage/upload", strings.NewReader("x"))
-	if _, err := a.signStorageRequest(req, []byte("x")); err != nil {
+	if _, err := a.signStorageRequest(req, []byte("x"), a.GetServerPeer()); err != nil {
 		t.Fatal(err)
 	}
 	ts, err := strconv.ParseInt(req.Header.Get(storageauth.HeaderTimestamp), 10, 64)
 	if err != nil || time.Since(time.Unix(ts, 0)).Abs() > time.Minute {
 		t.Fatalf("timestamp %q is not current", req.Header.Get(storageauth.HeaderTimestamp))
+	}
+}
+
+// With several nhp-servers in server.toml, the upload is signed for the
+// server it is sent to. GetServerPeer ranges over a map, so picking the
+// peer more than once used to pair one server's address with another's key.
+func TestUploadFileToNHPServerSignsForTheServerItContacts(t *testing.T) {
+	handler := &fakeStorageServer{}
+	a, _ := newUploadDevice(t, common.CIPHER_SCHEME_CURVE, handler)
+	// Add servers that are listed but unreachable and have other keys.
+	for i := 0; i < 4; i++ {
+		other := core.NewDevice(core.NHP_SERVER, core.NewECDH(core.ECC_CURVE25519).PrivateKey(), nil)
+		pub := other.PublicKeyBase64()
+		a.serverPeerMap[pub] = &core.UdpPeer{PubKeyBase64: pub, Ip: "127.0.0.1", Port: 1}
+	}
+	// Every upload that reaches the test server must carry a valid
+	// signature for it; uploads that pick an unreachable server fail to
+	// connect, which is not what this test is about.
+	for i := 0; i < 40; i++ {
+		handler.checked = false
+		_, err := a.UploadFileToNHPServer(writeUploadFile(t))
+		if handler.checked && err != nil {
+			t.Fatalf("upload to the test server was refused: %v", err)
+		}
 	}
 }

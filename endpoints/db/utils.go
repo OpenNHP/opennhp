@@ -227,7 +227,14 @@ func (a *AppParams) LoadMetadataAsStruct() (map[string]any, error) {
 }
 
 func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
-	httpHost := fmt.Sprintf("http://%s/", a.GetServerPeer().Host())
+	// Pick the nhp-server once: GetServerPeer ranges over a map, so with
+	// several servers in server.toml separate calls can return different
+	// ones, and the upload must be signed for the server it is sent to.
+	serverPeer := a.GetServerPeer()
+	if serverPeer == nil {
+		return "", fmt.Errorf("no nhp-server configured")
+	}
+	httpHost := fmt.Sprintf("http://%s/", serverPeer.Host())
 	testReq, err := http.Get(httpHost) //nolint:gosec // G107: URL constructed from configured server peer
 	if err != nil {
 		return "", err
@@ -235,7 +242,7 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	_ = testReq.Body.Close()
 
 	if testReq.StatusCode == http.StatusBadRequest {
-		httpHost = fmt.Sprintf("https://%s/", a.GetServerPeer().Host())
+		httpHost = fmt.Sprintf("https://%s/", serverPeer.Host())
 	}
 
 	file, err := os.Open(filePath)
@@ -287,7 +294,7 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	signedAs, signErr := a.signStorageRequest(req, body.Bytes())
+	signedAs, signErr := a.signStorageRequest(req, body.Bytes(), serverPeer)
 	if signErr != nil {
 		return "", fmt.Errorf("could not sign upload request: %v", signErr)
 	}
@@ -402,12 +409,12 @@ func (pr *ProgressReader) displayProgress(percent int) {
 
 // signStorageRequest authenticates a request to the nhp-server /storage
 // API with this nhp-db's NHP key (see package storageauth), covering body,
-// which must be the request's whole body. The scheme follows the server's
-// public key in server.toml: a 32-byte key means curve25519, a 64-byte key
-// SM2; the server must list this nhp-db's key of the same scheme in its
-// db.toml. It returns the public key it signed as.
-func (a *UdpDevice) signStorageRequest(req *http.Request, body []byte) (string, error) {
-	serverPeer := a.GetServerPeer()
+// which must be the request's whole body. serverPeer must be the server the
+// request is sent to: the signature is bound to its key. The scheme follows
+// that key: a 32-byte key means curve25519, a 64-byte key SM2; the server
+// must list this nhp-db's key of the same scheme in its db.toml. It returns
+// the public key it signed as.
+func (a *UdpDevice) signStorageRequest(req *http.Request, body []byte, serverPeer *core.UdpPeer) (string, error) {
 	if serverPeer == nil {
 		return "", fmt.Errorf("no nhp-server configured")
 	}

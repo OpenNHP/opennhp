@@ -31,8 +31,9 @@ const (
 	storageRateIdle    = 10 * time.Minute
 
 	// A nonce is remembered for twice the clock skew window, which covers
-	// every timestamp the window can still accept.
-	storageNonceTTL        = 2 * storageauth.MaxClockSkew
+	// every timestamp the window can still accept, plus a margin for the
+	// second-granular timestamps and the inclusive window bounds.
+	storageNonceTTL        = 2*storageauth.MaxClockSkew + time.Minute
 	storageNonceMaxEntries = 100000
 
 	storageCallerKey   = "storageCaller"   // gin context key: the nhp-db public key

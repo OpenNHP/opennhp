@@ -466,7 +466,10 @@ func TestStorageRejectsMalformedAuthHeaders(t *testing.T) {
 		"bad timestamp":   func(h http.Header) { h.Set(storageauth.HeaderTimestamp, "yesterday") },
 		"bad nonce":       func(h http.Header) { h.Set(storageauth.HeaderNonce, "short") },
 		"bad body digest": func(h http.Header) { h.Set(storageauth.HeaderBodyHash, "zz") },
-		"key not base64":  func(h http.Header) { h.Set(storageauth.HeaderPublicKey, "!!!") },
+		"upper-case digest": func(h http.Header) {
+			h.Set(storageauth.HeaderBodyHash, strings.ToUpper(h.Get(storageauth.HeaderBodyHash)))
+		},
+		"key not base64": func(h http.Header) { h.Set(storageauth.HeaderPublicKey, "!!!") },
 		"key of wrong size": func(h http.Header) {
 			h.Set(storageauth.HeaderPublicKey, base64.StdEncoding.EncodeToString([]byte("short key")))
 		},

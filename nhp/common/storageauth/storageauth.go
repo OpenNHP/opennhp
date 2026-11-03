@@ -73,13 +73,12 @@ func BodyHash(body []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ValidBodyHash reports whether s has the form BodyHash produces.
+// ValidBodyHash reports whether s has the form BodyHash produces (lower-case
+// hex). The server compares the digest it computes with this string, so an
+// upper-case one is refused before any of the body is read rather than
+// after all of it.
 func ValidBodyHash(s string) bool {
-	if len(s) != 2*sha256.Size {
-		return false
-	}
-	_, err := hex.DecodeString(s)
-	return err == nil
+	return isLowerHex(s, 2*sha256.Size)
 }
 
 // NewRequest fills in a timestamp, a fresh nonce and the body digest.
@@ -111,11 +110,21 @@ func NewNonce() (string, error) {
 
 // ValidNonce reports whether s has the form NewNonce produces.
 func ValidNonce(s string) bool {
-	if len(s) != 2*nonceBytes {
+	return isLowerHex(s, 2*nonceBytes)
+}
+
+// isLowerHex reports whether s is n lower-case hex digits: the only form
+// these values are produced in, so the server can compare them as strings.
+func isLowerHex(s string, n int) bool {
+	if len(s) != n {
 		return false
 	}
-	_, err := hex.DecodeString(s)
-	return err == nil
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (r Request) canonical() []byte {

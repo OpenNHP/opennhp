@@ -2,6 +2,7 @@ package storageauth
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -67,9 +68,22 @@ func TestValidNonce(t *testing.T) {
 		"0123":                              false,
 		"zz23456789abcdef0123456789abcdef":  false,
 		"0123456789abcdef0123456789abcdef0": false,
+		"0123456789ABCDEF0123456789abcdef":  false,
 	} {
 		if got := ValidNonce(s); got != want {
 			t.Errorf("ValidNonce(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
+
+func TestValidBodyHash(t *testing.T) {
+	h := BodyHash([]byte("x"))
+	if !ValidBodyHash(h) || !ValidBodyHash(EmptyBodySHA256) {
+		t.Fatal("BodyHash output refused")
+	}
+	for _, s := range []string{"", h[:10], h + "0", strings.ToUpper(h), "g" + h[1:]} {
+		if ValidBodyHash(s) {
+			t.Errorf("ValidBodyHash(%q) = true", s)
 		}
 	}
 }

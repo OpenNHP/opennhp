@@ -82,6 +82,17 @@ func errorCode(err error) C.int {
 	return -1
 }
 
+// errorMessage is the errMsg reported to the C caller for err. A panic the
+// core recovered itself comes back as core.ErrRuntimePanic carrying the
+// full panic value and stack trace; on the decrypt path an unauthenticated
+// packet can trigger that, so only the short description is reported.
+func errorMessage(err error) string {
+	if errors.Is(err, core.ErrRuntimePanic) {
+		return "runtime panic encountered"
+	}
+	return err.Error()
+}
+
 // cBytes copies a caller-supplied (pointer, length) buffer into Go memory
 // after checking it: the length must not be negative or above max (max < 0
 // means no upper bound), and a NULL pointer is only accepted with length 0.
@@ -270,7 +281,7 @@ func nhp_device_encrypt_data(handle uintptr, msgType C.int, peerPbk *C.uchar, pe
 
 	mad, err := device.MsgToPacket(md)
 	if err != nil {
-		setError(&resultPtr.errCode, &resultPtr.errMsg, errorCode(err), err.Error())
+		setError(&resultPtr.errCode, &resultPtr.errMsg, errorCode(err), errorMessage(err))
 	} else {
 		resultPtr.transactionId = C.ulonglong(mad.TransactionId)
 		resultPtr.packet = (*C.uchar)(C.CBytes(mad.BasePacket.Content))
@@ -338,7 +349,7 @@ func nhp_device_decrypt_packet(handle uintptr, packet *C.uchar, packetLen C.int,
 	ppd, err := device.PacketToMsg(pd)
 
 	if err != nil {
-		setError(&resultPtr.errCode, &resultPtr.errMsg, errorCode(err), err.Error())
+		setError(&resultPtr.errCode, &resultPtr.errMsg, errorCode(err), errorMessage(err))
 	} else {
 		resultPtr.msgType = C.int(ppd.HeaderType)
 		if ppd.HeaderType != core.NHP_KPL {

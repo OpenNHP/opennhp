@@ -7,6 +7,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -50,7 +52,7 @@ func TestDecryptMalformedPacketReturnsError(t *testing.T) {
 			t.Errorf("%s: malformed packet decrypted successfully", name)
 		}
 		// It must be an ordinary error code, not a panic caught by the
-		// recover guard (which only exists as a last line of defence).
+		// recover guard (which only exists as a last line of defense).
 		if res.code == testErrRuntimePanic {
 			t.Errorf("%s: handled by panicking: %s", name, res.msg)
 		}
@@ -227,5 +229,19 @@ func TestInitCopiesCallerKey(t *testing.T) {
 	if res.code != testErrDeviceAlreadyCreated {
 		t.Fatalf("re-init with the same key after the caller reused its buffer: got %d (%s), want %d",
 			res.code, res.msg, testErrDeviceAlreadyCreated)
+	}
+}
+
+// A panic the core recovers itself must not hand its stack trace to the C
+// caller: on the decrypt path an unauthenticated packet can trigger it.
+func TestErrorMessageHidesCorePanicDetails(t *testing.T) {
+	core.ErrRuntimePanic.SetExtraError(errors.New("!!!recovered from panic: boom\ngoroutine 1 [running]:\nmain.secret()"))
+	t.Cleanup(func() { core.ErrRuntimePanic.SetExtraError(nil) })
+
+	if msg := errorMessage(core.ErrRuntimePanic); strings.Contains(msg, "goroutine") || strings.Contains(msg, "boom") {
+		t.Fatalf("core panic details reach the C caller: %q", msg)
+	}
+	if msg := errorMessage(errors.New("packet total size is incorrect")); msg != "packet total size is incorrect" {
+		t.Fatalf("ordinary error message changed: %q", msg)
 	}
 }

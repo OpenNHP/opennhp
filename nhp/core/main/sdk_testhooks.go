@@ -8,8 +8,10 @@ import "C"
 import "unsafe"
 
 // Go-typed wrappers around the exported C ABI, for nhpdevice_test.go: test
-// files cannot use cgo directly. The Makefile builds the shared library
-// from main.go and nhpdevice.go only, so none of this is shipped.
+// files cannot use cgo directly. The Makefile's devicesdk target builds the
+// shared library from main.go and nhpdevice.go only, so none of this is
+// shipped; keep it that way (building the ./core/main directory would link
+// these unexported wrappers in, though the C ABI would not change).
 
 // sdkResult is what a test needs from any of the C result structs.
 type sdkResult struct {

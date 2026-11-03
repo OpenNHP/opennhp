@@ -26,8 +26,8 @@ var (
 
 	errLoadConfig = fmt.Errorf("config load error")
 
-	// errMemoryModeNotSupported is returned by the file-backed config-mutation
-	// paths (key rotation, server-peer file writes) when the agent runs in
+	// errMemoryModeNotSupported is returned by the file-backed config paths
+	// (key rotation, server-peer file reads and writes) when the agent runs in
 	// ConfigSourceMemory. In memory mode there is no etc/*.toml to read or
 	// rewrite and a restart reloads from the in-memory template, so writing a
 	// file would report success while changing nothing the running agent uses.

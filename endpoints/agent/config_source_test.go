@@ -409,3 +409,43 @@ func TestStopAfterFailedRestartIsSafe(t *testing.T) {
 	a.Stop()
 	a.log.Close()
 }
+
+// TestGetServerConfigNotSupportedInMemoryMode verifies GET /config/server
+// returns 501 in memory mode instead of reporting an etc/server.toml the agent
+// does not use, while file mode still serves the file.
+func TestGetServerConfigNotSupportedInMemoryMode(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "etc"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	bait := "[[Servers]]\nName = \"from-file\"\nPubKeyBase64 = \"bait-pubkey-from-disk\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "etc", "server.toml"), []byte(bait), 0600); err != nil {
+		t.Fatal(err)
+	}
+	prev := ExeDirPath
+	ExeDirPath = dir
+	defer func() { ExeDirPath = prev }()
+
+	gin.SetMode(gin.TestMode)
+	get := func(a *UdpAgent) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		a.getServerConfig(c)
+		return w
+	}
+
+	mem := &UdpAgent{}
+	mem.SetConfigSource(ConfigSourceMemory)
+	w := get(mem)
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("memory mode status: got %d want %d", w.Code, http.StatusNotImplemented)
+	}
+	if strings.Contains(w.Body.String(), "bait-pubkey-from-disk") {
+		t.Fatalf("memory mode served etc/server.toml: %s", w.Body.String())
+	}
+
+	w = get(&UdpAgent{})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "bait-pubkey-from-disk") {
+		t.Fatalf("file mode did not serve etc/server.toml: %d %s", w.Code, w.Body.String())
+	}
+}

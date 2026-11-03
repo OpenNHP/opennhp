@@ -293,6 +293,13 @@ func (a *UdpAgent) configServer(c *gin.Context) {
 }
 
 func (a *UdpAgent) getServerConfig(c *gin.Context) {
+	// Same as configServer: in memory mode server.toml is not what the agent
+	// runs on, so reporting it as the live config would be wrong.
+	if a.configSource == ConfigSourceMemory {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": errMemoryModeNotSupported.Error()})
+		return
+	}
+
 	var peers Peers
 
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")

@@ -67,6 +67,32 @@ typedef struct _NhpEncryptParams {
     unsigned char cookie[NHP_COOKIE_SIZE]; 
 } NhpEncryptParams;
 
+/*
+ * Results (NhpResult, NhpEncryptResult, NhpDecryptResult):
+ * - Always release a result with its nhp_free_* function; the free
+ *   functions accept NULL.
+ * - When errCode != 0, every output field other than errCode and errMsg is
+ *   undefined: do not read it (it may be set or NULL). errMsg is a short
+ *   description and may be NULL.
+ * - ERR_NHP_SDK_RUNTIME_PANIC means an internal error was caught inside the
+ *   SDK; the host process keeps running.
+ *
+ * Input limits (violations return an error code; nothing is read):
+ * - Every length must be >= 0, and a NULL buffer is only accepted with
+ *   length 0.
+ * - nhp_device_encrypt_data: peerPbkLen <= NHP_PUBLIC_KEY_SIZE (64; 32 for
+ *   curve25519, 64 for SM2); dataLen <= 1 MiB.
+ * - nhp_device_decrypt_packet: 0 < packetLen <= 4096, and packets shorter
+ *   than an NHP header are rejected; any length violation returns
+ *   ERR_NHP_INCORRECT_PACKET_SIZE.
+ * - nhp_sm4_aead_encrypt / nhp_sm4_aead_decrypt: keyLen >= 16 (only the
+ *   first 16 bytes are used; shorter keys are refused, not padded) and
+ *   nonceLen == 12; errCode is 1 for any failure.
+ *
+ * Handles returned by nhp_device_init are opaque, never 0, and never reused
+ * after nhp_device_close.
+ */
+
 typedef struct _NhpEncryptResult {
     int errCode;                        // Error code
     int packetLen;                      // Packet length

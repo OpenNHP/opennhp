@@ -6,7 +6,7 @@ package main
 import "C"
 
 import (
-	"crypto/cipher"
+	stdcipher "crypto/cipher"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	core "github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
 )
 
 // The device registry is shared by every thread of the host process.
@@ -316,9 +317,14 @@ func nhp_device_decrypt_packet(handle uintptr, packet *C.uchar, packetLen C.int,
 	}
 
 	// The packet comes from the network, before the peer is authenticated.
-	// Bound it by what a receive buffer can hold; RecvPrecheck (inside
-	// PacketToMsg) rejects one that is too short for its header.
+	// Bound it by what a receive buffer can hold and by the smallest NHP
+	// header (curve.HeaderSize, i.e. Packet.MinimalLength), so every
+	// length problem reports ERR_NHP_INCORRECT_PACKET_SIZE. RecvPrecheck
+	// (inside PacketToMsg) still checks the scheme's full header size.
 	content, err := cBytes("packet", packet, packetLen, core.PacketBufferSize)
+	if err == nil && len(content) < curve.HeaderSize {
+		err = fmt.Errorf("packet: length %d is shorter than an NHP header (%d)", len(content), curve.HeaderSize)
+	}
 	if err != nil {
 		setError(&resultPtr.errCode, &resultPtr.errMsg, C.ERR_NHP_INCORRECT_PACKET_SIZE, err.Error())
 		return resultPtr
@@ -432,10 +438,10 @@ func nhp_sm4_aead_encrypt(key *C.uchar, keyLen C.int, nonce *C.uchar, nonceLen C
 	}
 
 	buf := make([]byte, 0, len(plainBytes)+aead.Overhead())
-	cipher := aead.Seal(buf, nonceBytes, plainBytes, aad)
+	sealed := aead.Seal(buf, nonceBytes, plainBytes, aad)
 
-	resultPtr.packet = (*C.uchar)(C.CBytes(cipher))
-	resultPtr.packetLen = C.int(len(cipher))
+	resultPtr.packet = (*C.uchar)(C.CBytes(sealed))
+	resultPtr.packetLen = C.int(len(sealed))
 	return resultPtr
 }
 
@@ -498,7 +504,7 @@ const sm4KeySize = 16
 // builds the AEAD. A key shorter than 16 bytes is refused instead of being
 // silently zero-padded, and a nonce of the wrong size is refused instead of
 // making Seal/Open panic.
-func sm4AeadInputs(key *C.uchar, keyLen C.int, nonce *C.uchar, nonceLen C.int) (cipher.AEAD, []byte, error) {
+func sm4AeadInputs(key *C.uchar, keyLen C.int, nonce *C.uchar, nonceLen C.int) (stdcipher.AEAD, []byte, error) {
 	if keyLen < sm4KeySize || key == nil {
 		return nil, nil, fmt.Errorf("key: need at least %d bytes, got %d", sm4KeySize, int(keyLen))
 	}

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	core "github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
 )
 
 func newTestDevice(t *testing.T) uintptr {
@@ -77,6 +78,9 @@ func TestDecryptRejectsBadBuffers(t *testing.T) {
 	}{
 		"negative length":  {[]byte{1, 2, 3}, -1},
 		"NULL with length": {nil, 16},
+		"empty":            {[]byte{}, 0},
+		"short":            {[]byte{1, 2, 3}, 3},
+		"one below header": {make([]byte, curve.HeaderSize-1), curve.HeaderSize - 1},
 		"over buffer size": {make([]byte, core.PacketBufferSize+1), core.PacketBufferSize + 1},
 	} {
 		res := testDecrypt(handle, tc.pkt, tc.n)

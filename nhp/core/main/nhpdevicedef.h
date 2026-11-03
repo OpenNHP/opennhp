@@ -82,8 +82,9 @@ typedef struct _NhpEncryptParams {
  *   length 0.
  * - nhp_device_encrypt_data: peerPbkLen <= NHP_PUBLIC_KEY_SIZE (64; 32 for
  *   curve25519, 64 for SM2); dataLen <= 1 MiB.
- * - nhp_device_decrypt_packet: 0 < packetLen <= 4096; packets shorter than
- *   an NHP header are rejected.
+ * - nhp_device_decrypt_packet: 0 < packetLen <= 4096, and packets shorter
+ *   than an NHP header are rejected; any length violation returns
+ *   ERR_NHP_INCORRECT_PACKET_SIZE.
  * - nhp_sm4_aead_encrypt / nhp_sm4_aead_decrypt: keyLen >= 16 (only the
  *   first 16 bytes are used; shorter keys are refused, not padded) and
  *   nonceLen == 12; errCode is 1 for any failure.

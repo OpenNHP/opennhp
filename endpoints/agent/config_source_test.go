@@ -2,9 +2,14 @@ package agent
 
 import (
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
@@ -286,4 +291,121 @@ func TestMemoryModeStartIgnoresConfigFile(t *testing.T) {
 	if gotUser != "from-code" {
 		t.Fatalf("identity came from file: got %q", gotUser)
 	}
+}
+
+// TestMemoryModeSuppliedConfigRequiresKey verifies that a config handed to
+// UseInMemoryConfig with an empty key fails Start instead of knocking with a
+// throwaway key, and that SetAllowMissingConfig does not widen memory mode.
+func TestMemoryModeSuppliedConfigRequiresKey(t *testing.T) {
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetAllowMissingConfig(true)
+	a.UseInMemoryConfig(&Config{
+		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
+		KnockUser:           KnockUser{UserId: "from-code"},
+	})
+	err := a.Start(t.TempDir(), 0)
+	a.log.Close()
+	if err == nil {
+		t.Fatal("Start succeeded with an empty key in a supplied in-memory config")
+	}
+	if a.device != nil {
+		t.Fatal("Start created a device despite refusing the empty key")
+	}
+}
+
+// TestMemoryModeRestartRequiresInstalledKey verifies the install-after-Start
+// contract: the first Start with no config runs on a throwaway key, but a
+// restart before ReinitWithKey fails instead of coming back with a different
+// random key.
+func TestMemoryModeRestartRequiresInstalledKey(t *testing.T) {
+	dir := t.TempDir()
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+	if err := a.Start(dir, 0); err != nil {
+		t.Fatalf("first Start with no config: %v", err)
+	}
+	a.SetKnockUser("sdk-user", "sdk-org", nil) // allocates memConfig, still no key
+
+	a.Stop()
+	a.config = nil
+	err := a.Start(dir, 0)
+	a.log.Close()
+	if err == nil {
+		t.Fatal("restart succeeded with no key installed")
+	}
+}
+
+// TestMemoryModeRestartAfterReinitWithKey verifies that once ReinitWithKey has
+// installed the real key, a restart comes back with that key.
+func TestMemoryModeRestartAfterReinitWithKey(t *testing.T) {
+	dir := t.TempDir()
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+	if err := a.Start(dir, 0); err != nil {
+		t.Fatalf("first Start with no config: %v", err)
+	}
+	key := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	wantPub := core.ECDHFromKey(core.ECC_CURVE25519, key).PublicKeyBase64()
+	if err := a.ReinitWithKey(key, common.CIPHER_SCHEME_CURVE); err != nil {
+		t.Fatalf("ReinitWithKey: %v", err)
+	}
+
+	a.Stop()
+	a.config = nil
+	if err := a.Start(dir, 0); err != nil {
+		t.Fatalf("restart after ReinitWithKey: %v", err)
+	}
+	defer a.Stop()
+	if got := a.PublicKeyBase64(); got != wantPub {
+		t.Fatalf("restart did not keep the installed key: got %q want %q", got, wantPub)
+	}
+}
+
+// TestRestartHandlerReportsFailureOnly verifies that a failed restart answers
+// with the 500 alone, not a 500 followed by the success message.
+func TestRestartHandlerReportsFailureOnly(t *testing.T) {
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+	if err := a.Start(t.TempDir(), 0); err != nil {
+		t.Fatalf("first Start with no config: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	a.restartAgent(c) // no key installed, so the restart fails
+	a.log.Close()
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d want %d", w.Code, http.StatusInternalServerError)
+	}
+	if body := w.Body.String(); strings.Contains(body, "successfully restart agent") {
+		t.Fatalf("failed restart also reported success: %s", body)
+	}
+}
+
+// TestStopAfterFailedRestartIsSafe verifies that a failed restart leaves an
+// agent that Stop and another RestartAgent can be called on without panicking.
+func TestStopAfterFailedRestartIsSafe(t *testing.T) {
+	resetConfigWatches()
+	a := &UdpAgent{}
+	a.SetConfigSource(ConfigSourceMemory)
+	if err := a.Start(t.TempDir(), 0); err != nil {
+		t.Fatalf("first Start with no config: %v", err)
+	}
+	if err := a.RestartAgent(); err == nil {
+		t.Fatal("restart succeeded with no key installed")
+	}
+	if a.IsRunning() {
+		t.Fatal("agent reports running after a failed restart")
+	}
+	if err := a.RestartAgent(); err == nil {
+		t.Fatal("second restart succeeded with no key installed")
+	}
+	a.Stop()
+	a.log.Close()
 }

@@ -297,6 +297,12 @@ type UdpAgent struct {
 	// on first write so those later installs still survive a restart.
 	memConfig      *Config
 	memConfigMutex sync.Mutex
+	// memConfigSupplied is true when UseInMemoryConfig got a non-nil config.
+	// memConfig alone cannot tell, since SetKnockUser/ReinitWithKey allocate it.
+	memConfigSupplied bool
+	// startedOnce is set after the first successful Start, so a restart can be
+	// told apart from it (see checkMissingPrivateKey).
+	startedOnce bool
 
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
@@ -395,16 +401,11 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 
 	var prk []byte
 	if a.config.PrivateKeyBase64 == "" {
-		// An empty private key is only acceptable when the caller installs the
-		// real key right after Start: the register bootstrap flow
-		// (allowMissingConfig) and ConfigSourceMemory (the SDK path). Both use a
-		// throwaway key that ReinitWithKey replaces immediately. For run/dhp this
-		// is a real misconfiguration, so fail loudly instead of silently starting
-		// with a random key and empty identity.
-		if !a.allowMissingConfig && a.configSource != ConfigSourceMemory {
-			log.Error("no private key configured in etc/config.toml")
-			return fmt.Errorf("no private key configured; check etc/config.toml")
+		// Fail loudly unless the caller installs the real key after Start.
+		if err := a.checkMissingPrivateKey(); err != nil {
+			return err
 		}
+		log.Warning("no private key configured; starting with a throwaway key until ReinitWithKey installs the real one")
 		prk = core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	} else {
 		var sealed bool
@@ -501,6 +502,32 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 
 	time.Sleep(1000 * time.Millisecond)
 
+	a.startedOnce = true
+	return nil
+}
+
+// checkMissingPrivateKey reports whether Start may run on a throwaway key that
+// ReinitWithKey replaces later. File mode allows it only for the register
+// bootstrap (allowMissingConfig). Memory mode allows it only on the first Start
+// with no supplied config; an empty key in a supplied config, or a restart
+// before ReinitWithKey, is a caller bug that would otherwise knock silently
+// with a random key.
+func (a *UdpAgent) checkMissingPrivateKey() error {
+	if a.configSource != ConfigSourceMemory {
+		if a.allowMissingConfig {
+			return nil
+		}
+		log.Error("no private key configured in etc/config.toml")
+		return fmt.Errorf("no private key configured; check etc/config.toml")
+	}
+	if a.memConfigSupplied {
+		log.Error("no private key in the config passed to UseInMemoryConfig")
+		return fmt.Errorf("no private key configured; UseInMemoryConfig was given a config with an empty PrivateKeyBase64")
+	}
+	if a.startedOnce {
+		log.Error("no private key installed before restart; call ReinitWithKey after the first Start")
+		return fmt.Errorf("no private key configured; ReinitWithKey was not called before restart")
+	}
 	return nil
 }
 
@@ -590,9 +617,10 @@ func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
 // watcher, so nothing on disk can change the agent's identity, key, cipher
 // scheme, peers, or resources after it starts. Use this when the caller
 // installs the key and identity programmatically after Start (the SDK
-// registration path); to also supply the base config up front, use
-// UseInMemoryConfig. This is independent of SetAllowMissingConfig, which only
-// softens a missing-file read in the file-based `register` bootstrap.
+// registration path); a restart fails until ReinitWithKey has installed the
+// key. To also supply the base config up front, use UseInMemoryConfig. This is
+// independent of SetAllowMissingConfig, which only softens a missing-file read
+// in the file-based `register` bootstrap.
 func (a *UdpAgent) SetConfigSource(src ConfigSource) {
 	a.configSource = src
 }
@@ -602,8 +630,9 @@ func (a *UdpAgent) SetConfigSource(src ConfigSource) {
 // watcher. Call it before Start. The config's scalar fields are copied into a
 // fresh Config (Config carries a lock and must not be copied by value); the
 // UserData map and any DHPConfig pointer are referenced, not deep-copied, so do
-// not mutate those after the call. A nil cfg selects memory mode with an empty
-// base config, for the install-after-Start path.
+// not mutate those after the call. A non-nil cfg must set PrivateKeyBase64 or
+// Start fails. A nil cfg selects memory mode with an empty base config, for the
+// install-after-Start path.
 func (a *UdpAgent) UseInMemoryConfig(cfg *Config) {
 	a.configSource = ConfigSourceMemory
 	a.memConfigMutex.Lock()
@@ -612,6 +641,7 @@ func (a *UdpAgent) UseInMemoryConfig(cfg *Config) {
 	} else {
 		a.memConfig = cloneConfigData(cfg)
 	}
+	a.memConfigSupplied = cfg != nil
 	a.memConfigMutex.Unlock()
 }
 
@@ -625,7 +655,11 @@ func (a *UdpAgent) SetCheckResults(results map[string]any) {
 
 // export Stop
 func (a *UdpAgent) Stop() {
-	a.running.Store(false)
+	// No-op unless running: a failed restart leaves the agent already stopped,
+	// and a second teardown would close closed channels and panic.
+	if !a.running.Swap(false) {
+		return
+	}
 	a.stopKnockLoop()
 	close(a.signals.stop)
 	a.device.Stop()

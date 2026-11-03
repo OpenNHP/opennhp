@@ -315,6 +315,7 @@ func (a *UdpAgent) restartAgent(c *gin.Context) {
 	err := a.RestartAgent()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return // don't also send the success response
 	}
 
 	c.JSON(http.StatusOK, gin.H{"msg": "successfully restart agent"})

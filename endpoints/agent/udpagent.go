@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -587,7 +588,7 @@ func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]
 		a.updateMemConfig(func(c *Config) {
 			c.UserId = usrId
 			c.OrganizationId = orgId
-			c.UserData = userData
+			c.UserData = maps.Clone(userData)
 		})
 	}
 }
@@ -620,19 +621,21 @@ func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
 // registration path); a restart fails until ReinitWithKey has installed the
 // key. To also supply the base config up front, use UseInMemoryConfig. This is
 // independent of SetAllowMissingConfig, which only softens a missing-file read
-// in the file-based `register` bootstrap.
+// in the file-based `register` bootstrap. The config watchers are package
+// globals, so Stop on a memory-mode agent also closes the watchers of any
+// file-mode agent in the same process.
 func (a *UdpAgent) SetConfigSource(src ConfigSource) {
 	a.configSource = src
 }
 
 // UseInMemoryConfig switches the agent to ConfigSourceMemory and supplies the
 // base configuration programmatically, so Start reads no etc/*.toml and arms no
-// watcher. Call it before Start. The config's scalar fields are copied into a
-// fresh Config (Config carries a lock and must not be copied by value); the
-// UserData map and any DHPConfig pointer are referenced, not deep-copied, so do
-// not mutate those after the call. A non-nil cfg must set PrivateKeyBase64 or
-// Start fails. A nil cfg selects memory mode with an empty base config, for the
-// install-after-Start path.
+// watcher. Call it before Start. The config is copied into a fresh Config
+// (Config carries a lock and must not be copied by value), including UserData
+// and DHPConfig, so later changes to cfg do not reach the agent. UserData is
+// copied shallowly, so values nested inside it are still shared. A non-nil cfg
+// must set PrivateKeyBase64 or Start fails. A nil cfg selects memory mode with
+// an empty base config, for the install-after-Start path.
 func (a *UdpAgent) UseInMemoryConfig(cfg *Config) {
 	a.configSource = ConfigSourceMemory
 	a.memConfigMutex.Lock()

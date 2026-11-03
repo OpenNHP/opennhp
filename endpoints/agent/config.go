@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -223,19 +224,25 @@ func (a *UdpAgent) loadBaseConfig() error {
 
 // cloneConfigData copies a Config's data fields into a fresh Config. Config
 // carries a lock (keyMu) and must never be copied by value, so this copies the
-// serialized fields explicitly. The UserData map and the DHPConfig pointer are
-// shared with the source, not deep-copied.
+// serialized fields explicitly. UserData and DHPConfig get their own copies too
+// (UserData shallowly: values inside it are still shared), so no load ever
+// shares state with the template or the caller's Config.
 func cloneConfigData(src *Config) *Config {
 	if src == nil {
 		return &Config{}
 	}
-	return &Config{
+	dst := &Config{
 		LogLevel:            src.LogLevel,
 		DefaultCipherScheme: src.DefaultCipherScheme,
 		PrivateKeyBase64:    src.PrivateKeyBase64,
 		KnockUser:           src.KnockUser,
-		DHPConfig:           src.DHPConfig,
 	}
+	dst.UserData = maps.Clone(src.UserData)
+	if src.DHPConfig != nil {
+		dhp := *src.DHPConfig
+		dst.DHPConfig = &dhp
+	}
+	return dst
 }
 
 // applyInMemoryBaseConfig populates the agent from the programmatic config

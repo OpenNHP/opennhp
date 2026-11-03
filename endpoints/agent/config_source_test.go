@@ -16,10 +16,11 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-// resetConfigWatches clears the package-level watch handles so a memory-mode
-// test can assert that no watcher was armed, independent of any file-mode test
-// that ran earlier in the same process.
+// resetConfigWatches closes and clears the package-level watch handles so a
+// memory-mode test can assert that no watcher was armed, independent of any
+// file-mode test that ran earlier in the same process.
 func resetConfigWatches() {
+	(&UdpAgent{}).StopConfigWatch()
 	baseConfigWatch = nil
 	dhpConfigWatch = nil
 	serverConfigWatch = nil
@@ -88,15 +89,34 @@ func TestUseInMemoryConfigAppliesIdentity(t *testing.T) {
 // copy of the supplied data, so later mutation of the caller's struct does not
 // reach the agent.
 func TestUseInMemoryConfigDoesNotShareCallerConfig(t *testing.T) {
-	a := &UdpAgent{}
-	caller := &Config{KnockUser: KnockUser{UserId: "original"}, DefaultCipherScheme: common.CIPHER_SCHEME_CURVE}
+	a := &UdpAgent{log: log.NewLogger("test", 0, t.TempDir(), "agent")}
+	caller := &Config{
+		KnockUser:           KnockUser{UserId: "original", UserData: map[string]any{"k": "original"}},
+		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
+		DHPConfig:           &DHPConfig{TEEPrivateKeyBase64: "original"},
+	}
 	a.UseInMemoryConfig(caller)
 
 	caller.UserId = "mutated"
 	caller.DefaultCipherScheme = common.CIPHER_SCHEME_GMSM
+	caller.UserData["k"] = "mutated"
+	caller.TEEPrivateKeyBase64 = "mutated"
 
 	if a.memConfig.UserId != "original" || a.memConfig.DefaultCipherScheme != common.CIPHER_SCHEME_CURVE {
 		t.Fatalf("agent observed caller mutation: %+v", a.memConfig)
+	}
+	if a.memConfig.UserData["k"] != "original" || a.memConfig.TEEPrivateKeyBase64 != "original" {
+		t.Fatalf("agent observed caller mutation of UserData/DHPConfig: %+v %+v", a.memConfig.UserData, a.memConfig.DHPConfig)
+	}
+
+	// A load must not share UserData or DHPConfig with the template either.
+	if err := a.loadBaseConfig(); err != nil {
+		t.Fatalf("loadBaseConfig: %v", err)
+	}
+	a.config.UserData["k"] = "live"
+	a.config.TEEPrivateKeyBase64 = "live"
+	if a.memConfig.UserData["k"] != "original" || a.memConfig.TEEPrivateKeyBase64 != "original" {
+		t.Fatalf("live config mutation leaked into the template: %+v %+v", a.memConfig.UserData, a.memConfig.DHPConfig)
 	}
 }
 
@@ -129,8 +149,8 @@ func TestMemoryModeRebuildBuildsFreshConfig(t *testing.T) {
 	}
 }
 
-// TestMemoryModeRestartKeepsRekey verifies the fix for the reviewer's finding 3:
-// a rekey via ReinitWithKey is recorded in the template, so a Stop/Start restart
+// TestMemoryModeRestartKeepsRekey verifies that a rekey via ReinitWithKey is
+// recorded in the template, so a Stop/Start restart
 // (which clears a.config and rebuilds from the template) keeps the rotated key
 // and cipher scheme instead of reverting to the originally supplied one.
 func TestMemoryModeRestartKeepsRekey(t *testing.T) {
@@ -187,8 +207,8 @@ func TestMemoryModeSetKnockUserSurvivesRestart(t *testing.T) {
 	}
 }
 
-// TestMemoryModeRotationNotSupported verifies the fix for finding 2: the
-// file-backed rotation paths refuse in memory mode instead of writing a key to
+// TestMemoryModeRotationNotSupported verifies that the file-backed rotation
+// paths refuse in memory mode instead of writing a key to
 // disk that the running agent never uses and reporting success.
 func TestMemoryModeRotationNotSupported(t *testing.T) {
 	a := &UdpAgent{}
@@ -202,9 +222,9 @@ func TestMemoryModeRotationNotSupported(t *testing.T) {
 	}
 }
 
-// TestMemoryModeStartRestartKeepsPeers verifies the fix for finding 3's peer
-// loss: a memory-mode restart keeps peers added with AddServer rather than
-// wiping serverClusterMap and skipping loadPeers.
+// TestMemoryModeStartRestartKeepsPeers verifies that a memory-mode restart
+// keeps peers added with AddServer rather than wiping serverClusterMap and
+// skipping loadPeers.
 func TestMemoryModeStartRestartKeepsPeers(t *testing.T) {
 	dir := t.TempDir()
 	key := core.NewECDH(core.ECC_CURVE25519).PrivateKey()
@@ -242,8 +262,8 @@ func TestMemoryModeStartRestartKeepsPeers(t *testing.T) {
 	}
 }
 
-// TestMemoryModeStartIgnoresConfigFile is the security invariant the maintainer
-// asked for: an agent started in memory mode uses the in-code identity and key,
+// TestMemoryModeStartIgnoresConfigFile verifies memory mode's core security
+// invariant: an agent started in memory mode uses the in-code identity and key,
 // arms no watcher, and ignores a config.toml that exists on disk (one that would
 // otherwise set a different identity and cipher scheme in file mode).
 func TestMemoryModeStartIgnoresConfigFile(t *testing.T) {

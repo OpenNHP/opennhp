@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -70,7 +71,7 @@ func (f *storageFixture) sign(t *testing.T, req *http.Request, ts time.Time) {
 		}
 		req.Body = io.NopCloser(bytes.NewReader(body))
 	}
-	sr, err := storageauth.NewRequest(req.Method, req.URL.Path, body, selfPub)
+	sr, err := storageauth.NewRequest(req.Method, req.URL.Path, body, selfPub, base64.StdEncoding.EncodeToString(serverPub))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,6 +288,23 @@ func TestStorageUploadLimits(t *testing.T) {
 			t.Fatalf("got %d, want 507", w.Code)
 		}
 	})
+	t.Run("free space reserved by uploads in progress", func(t *testing.T) {
+		free, ok := diskFreeBytes(os.TempDir())
+		if !ok {
+			t.Skip("free space is not available on this platform")
+		}
+		f := newStorageFixture(t, common.CIPHER_SCHEME_CURVE, &HttpConfig{StorageMinFreeMB: 1})
+		// Another upload in progress has reserved all but a little of it.
+		f.hs.storage.reservedBytes.Store(free)
+		r := uploadRequest(t, "a.ztdo", []byte("x"))
+		f.sign(t, r, time.Now())
+		if w := f.serve(r); w.Code != http.StatusInsufficientStorage {
+			t.Fatalf("got %d, want 507", w.Code)
+		}
+		if got := f.hs.storage.reservedBytes.Load(); got != free {
+			t.Fatalf("reservation not released: %d, want %d", got, free)
+		}
+	})
 	t.Run("too many concurrent uploads", func(t *testing.T) {
 		f := newStorageFixture(t, common.CIPHER_SCHEME_CURVE, &HttpConfig{StorageMaxConcurrentUploads: 1})
 		f.hs.storage.uploadSlots <- struct{}{} // one upload in progress
@@ -359,16 +377,32 @@ func TestStorageRateLimit(t *testing.T) {
 func TestNonceCacheBounded(t *testing.T) {
 	nc := newNonceCache(2)
 	now := time.Now()
-	if !nc.add("a", now) || !nc.add("b", now) {
+	if nc.add("a", now) != nonceAccepted || nc.add("b", now) != nonceAccepted {
 		t.Fatal("fresh nonces refused")
 	}
-	if nc.add("a", now) {
+	if nc.add("a", now) != nonceReplayed {
 		t.Fatal("replayed nonce accepted")
 	}
-	if nc.add("c", now) {
+	if nc.add("c", now) != nonceCacheFull {
 		t.Fatal("full cache accepted a nonce while every entry is live")
 	}
-	if !nc.add("c", now.Add(storageNonceTTL+time.Second)) {
+	later := now.Add(storageNonceTTL + time.Second)
+	if nc.add("c", later) != nonceAccepted {
 		t.Fatal("expired entries were not reclaimed")
+	}
+	if nc.add("a", later) != nonceAccepted {
+		t.Fatal("an expired nonce was still remembered")
+	}
+}
+
+// A valid request refused only because the nonce cache is full gets 503,
+// not a 401 that would send the operator looking at keys and clocks.
+func TestStorageFullNonceCacheIs503(t *testing.T) {
+	f := newStorageFixture(t, common.CIPHER_SCHEME_CURVE, nil)
+	f.hs.storage.nonces = newNonceCache(0)
+	md := httptest.NewRequest(http.MethodGet, "/storage/metadata/x", nil)
+	f.sign(t, md, time.Now())
+	if w := f.serve(md); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("got %d, want 503", w.Code)
 	}
 }

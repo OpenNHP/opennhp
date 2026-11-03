@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,7 @@ type storageState struct {
 	maxUploadBytes int64
 	minFreeBytes   int64
 	uploadSlots    chan struct{}
+	reservedBytes  atomic.Int64 // Content-Length of the uploads in progress
 	limiter        *rknRateLimiter
 	nonces         *nonceCache
 	now            func() time.Time
@@ -89,47 +91,49 @@ func (st *storageState) rateLimit(c *gin.Context) {
 // requireDBSignature authenticates a request as coming from an nhp-db
 // listed (and not expired) in db.toml, see package storageauth.
 func (hs *HttpServer) requireDBSignature(c *gin.Context) {
-	caller, reason := hs.verifyDBSignature(c.Request)
+	caller, status, reason := hs.verifyDBSignature(c.Request)
 	if reason != "" {
 		log.Warning("storage: rejected %s %s from %s: %s", c.Request.Method, c.Request.URL.Path, c.Request.RemoteAddr, reason)
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.AbortWithStatusJSON(status, gin.H{"error": http.StatusText(status)})
 		return
 	}
 	c.Set(storageCallerKey, caller)
 	c.Set(storageBodyHashKey, c.Request.Header.Get(storageauth.HeaderBodyHash))
 }
 
-// verifyDBSignature returns the caller's public key, or a reason (for the
-// log only; clients get a bare 401) why the request is not authenticated.
-func (hs *HttpServer) verifyDBSignature(r *http.Request) (caller string, reason string) {
+// verifyDBSignature returns the caller's public key, or the status to
+// answer and a reason (for the log only) why the request is refused: 401
+// when it is not authenticated, 503 when it is but the nonce cache is full.
+func (hs *HttpServer) verifyDBSignature(r *http.Request) (caller string, status int, reason string) {
+	deny := func(reason string) (string, int, string) { return "", http.StatusUnauthorized, reason }
 	st := hs.storage
 	pubB64 := r.Header.Get(storageauth.HeaderPublicKey)
 	sig := r.Header.Get(storageauth.HeaderSignature)
 	nonce := r.Header.Get(storageauth.HeaderNonce)
 	bodyHash := r.Header.Get(storageauth.HeaderBodyHash)
 	if pubB64 == "" || sig == "" || nonce == "" || bodyHash == "" {
-		return "", "missing signature headers"
+		return deny("missing signature headers")
 	}
 	ts, err := strconv.ParseInt(r.Header.Get(storageauth.HeaderTimestamp), 10, 64)
 	if err != nil {
-		return "", "bad timestamp"
+		return deny("bad timestamp")
 	}
 	if skew := st.now().Sub(time.Unix(ts, 0)); skew > storageauth.MaxClockSkew || skew < -storageauth.MaxClockSkew {
-		return "", "timestamp outside the allowed window"
+		return deny("timestamp outside the allowed window")
 	}
 	if !storageauth.ValidNonce(nonce) {
-		return "", "bad nonce"
+		return deny("bad nonce")
 	}
 	contentLength := max(r.ContentLength, 0)
 	// A request without a body must say so; one with a body is checked
 	// against the digest by its handler, as the body is read.
 	if !storageauth.ValidBodyHash(bodyHash) || (contentLength == 0 && bodyHash != storageauth.EmptyBodySHA256) {
-		return "", "bad body digest"
+		return deny("bad body digest")
 	}
 
 	pub, err := base64.StdEncoding.DecodeString(pubB64)
 	if err != nil {
-		return "", "bad public key"
+		return deny("bad public key")
 	}
 	// The key's size tells the scheme the nhp-db signed with.
 	var scheme int
@@ -139,7 +143,7 @@ func (hs *HttpServer) verifyDBSignature(r *http.Request) (caller string, reason 
 	case core.PublicKeySizeEx:
 		scheme = common.CIPHER_SCHEME_GMSM
 	default:
-		return "", "bad public key"
+		return deny("bad public key")
 	}
 
 	us := hs.udpServer
@@ -147,38 +151,42 @@ func (hs *HttpServer) verifyDBSignature(r *http.Request) (caller string, reason 
 	peer := us.dbPeerMap[pubB64]
 	us.dbPeerMapMutex.Unlock()
 	if peer == nil {
-		return "", "public key not in db.toml"
+		return deny("public key not in db.toml")
 	}
 	if peer.IsExpired() {
-		return "", "nhp-db peer expired"
+		return deny("nhp-db peer expired")
 	}
 
 	ecdh := us.device.GetEcdhByCipherScheme(scheme)
 	if ecdh == nil {
-		return "", "no server key for the scheme"
+		return deny("no server key for the scheme")
 	}
 	secret := ecdh.SharedSecret(pub)
 	if secret == nil {
-		return "", "ECDH failed"
+		return deny("ECDH failed")
 	}
 	req := storageauth.Request{
-		Method:          r.Method,
-		Path:            r.URL.Path,
-		ContentLength:   contentLength,
-		PublicKeyBase64: pubB64,
-		Timestamp:       ts,
-		Nonce:           nonce,
-		BodySHA256:      bodyHash,
+		Method:                r.Method,
+		Path:                  r.URL.Path,
+		ContentLength:         contentLength,
+		PublicKeyBase64:       pubB64,
+		ServerPublicKeyBase64: base64.StdEncoding.EncodeToString(ecdh.PublicKey()),
+		Timestamp:             ts,
+		Nonce:                 nonce,
+		BodySHA256:            bodyHash,
 	}
 	if !storageauth.Verify(secret, req, sig) {
-		return "", "bad signature"
+		return deny("bad signature")
 	}
 	// Record the nonce only once the signature is valid, so unauthenticated
 	// requests cannot fill the cache.
-	if !st.nonces.add(pubB64+"/"+nonce, st.now()) {
-		return "", "replayed or too many requests in flight"
+	switch st.nonces.add(pubB64+"/"+nonce, st.now()) {
+	case nonceReplayed:
+		return deny("replayed nonce")
+	case nonceCacheFull:
+		return "", http.StatusServiceUnavailable, "nonce cache full"
 	}
-	return pubB64, ""
+	return pubB64, 0, ""
 }
 
 // nonceCache remembers recently used nonces so a signed request cannot be
@@ -203,8 +211,16 @@ func newNonceCache(maxEntries int) *nonceCache {
 	return &nonceCache{seen: make(map[string]struct{}), maxEntries: maxEntries}
 }
 
-// add records nonce and reports whether it was new.
-func (nc *nonceCache) add(nonce string, now time.Time) bool {
+type nonceResult int
+
+const (
+	nonceAccepted nonceResult = iota
+	nonceReplayed
+	nonceCacheFull
+)
+
+// add records nonce if it is new and the cache has room.
+func (nc *nonceCache) add(nonce string, now time.Time) nonceResult {
 	nc.mu.Lock()
 	defer nc.mu.Unlock()
 
@@ -221,12 +237,12 @@ func (nc *nonceCache) add(nonce string, now time.Time) bool {
 	}
 
 	if _, ok := nc.seen[nonce]; ok {
-		return false
+		return nonceReplayed
 	}
 	if len(nc.seen) >= nc.maxEntries {
-		return false
+		return nonceCacheFull
 	}
 	nc.seen[nonce] = struct{}{}
 	nc.queue = append(nc.queue, nonceEntry{nonce: nonce, expiry: now.Add(storageNonceTTL)})
-	return true
+	return nonceAccepted
 }

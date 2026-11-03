@@ -7,7 +7,7 @@ import (
 
 func TestSignVerify(t *testing.T) {
 	secret := []byte("0123456789abcdef0123456789abcdef")
-	r, err := NewRequest(http.MethodPost, "/storage/upload", []byte("body"), "pubkey")
+	r, err := NewRequest(http.MethodPost, "/storage/upload", []byte("body"), "pubkey", "serverkey")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,6 +28,7 @@ func TestSignVerify(t *testing.T) {
 		"path":           func(r *Request) { r.Path = "/storage/metadata/x" },
 		"content length": func(r *Request) { r.ContentLength++ },
 		"public key":     func(r *Request) { r.PublicKeyBase64 = "other" },
+		"server key":     func(r *Request) { r.ServerPublicKeyBase64 = "other server" },
 		"timestamp":      func(r *Request) { r.Timestamp++ },
 		"nonce":          func(r *Request) { r.Nonce = "00000000000000000000000000000000" },
 		"body":           func(r *Request) { r.BodySHA256 = BodyHash([]byte("other body")) },

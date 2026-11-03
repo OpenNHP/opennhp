@@ -81,8 +81,12 @@ func (hs *HttpServer) initStorageRouter() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create storage directory failed"})
 			return
 		}
-		if free, ok := diskFreeBytes(storeRoot); ok && free-total < st.minFreeBytes {
-			log.Warning("storage: refusing a %d-byte upload, %d bytes free on the upload volume", total, free)
+		// Count the uploads already in progress against the free space too,
+		// or several could each pass the check against the same space.
+		reserved := st.reservedBytes.Add(total)
+		defer st.reservedBytes.Add(-total)
+		if free, ok := diskFreeBytes(storeRoot); ok && free-reserved < st.minFreeBytes {
+			log.Warning("storage: refusing a %d-byte upload, %d bytes free on the upload volume, %d reserved by uploads in progress", total, free, reserved-total)
 			c.JSON(http.StatusInsufficientStorage, gin.H{"error": "insufficient storage"})
 			return
 		}

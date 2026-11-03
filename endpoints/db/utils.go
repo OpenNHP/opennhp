@@ -2,6 +2,7 @@ package db
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -300,6 +301,9 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return "", fmt.Errorf("nhp-server is temporarily refusing signed storage requests (503); retry later")
+	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return "", fmt.Errorf("nhp-server refused the upload signature (401): its db.toml must list this nhp-db's public key %s, "+
 			"of the same scheme (curve25519 or SM2) as the nhp-server key in this nhp-db's server.toml, and the clocks must agree within %s",
@@ -427,7 +431,9 @@ func (a *UdpDevice) signStorageRequest(req *http.Request, body []byte) (string, 
 		return "", fmt.Errorf("ECDH with the nhp-server key failed")
 	}
 
-	sr, err := storageauth.NewRequest(req.Method, req.URL.Path, body, selfPub)
+	// Sign the server key in its canonical encoding (the server encodes its
+	// own key the same way), not as written in server.toml.
+	sr, err := storageauth.NewRequest(req.Method, req.URL.Path, body, selfPub, base64.StdEncoding.EncodeToString(serverPub))
 	if err != nil {
 		return "", err
 	}

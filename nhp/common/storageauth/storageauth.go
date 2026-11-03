@@ -6,8 +6,10 @@
 // which the two sides already trust (the server lists the nhp-db in
 // db.toml, the nhp-db lists the server in server.toml). A request carries
 // the nhp-db public key, a timestamp, a nonce and the SHA-256 of its body,
-// and an HMAC over those and the request line; the server recomputes it
-// from the shared secret and checks the body against the digest.
+// and an HMAC over those, the request line and the server's public key (so a
+// signature is bound to one server). The HMAC key is derived from the
+// shared secret with HKDF-SHA256; the server recomputes it and checks the
+// body against the digest.
 //
 // The signature never reveals the shared secret, so a request observed on a
 // plain-HTTP connection does not yield a reusable credential; the timestamp
@@ -17,6 +19,7 @@
 package storageauth
 
 import (
+	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -53,9 +56,12 @@ type Request struct {
 	Path            string // URL path, without query
 	ContentLength   int64  // 0 for a request without a body
 	PublicKeyBase64 string // the signer's NHP public key
-	Timestamp       int64  // Unix seconds
-	Nonce           string // hex, see NewNonce
-	BodySHA256      string // hex SHA-256 of the request body (EmptyBodySHA256 for none)
+	// ServerPublicKeyBase64 is the NHP public key of the server the request
+	// is for. It is signed but not sent: each side knows it.
+	ServerPublicKeyBase64 string
+	Timestamp             int64  // Unix seconds
+	Nonce                 string // hex, see NewNonce
+	BodySHA256            string // hex SHA-256 of the request body (EmptyBodySHA256 for none)
 }
 
 // EmptyBodySHA256 is the BodySHA256 of a request without a body.
@@ -77,19 +83,20 @@ func ValidBodyHash(s string) bool {
 }
 
 // NewRequest fills in a timestamp, a fresh nonce and the body digest.
-func NewRequest(method, path string, body []byte, publicKeyBase64 string) (Request, error) {
+func NewRequest(method, path string, body []byte, publicKeyBase64, serverPublicKeyBase64 string) (Request, error) {
 	nonce, err := NewNonce()
 	if err != nil {
 		return Request{}, err
 	}
 	return Request{
-		Method:          method,
-		Path:            path,
-		ContentLength:   int64(len(body)),
-		PublicKeyBase64: publicKeyBase64,
-		Timestamp:       time.Now().Unix(),
-		Nonce:           nonce,
-		BodySHA256:      BodyHash(body),
+		Method:                method,
+		Path:                  path,
+		ContentLength:         int64(len(body)),
+		PublicKeyBase64:       publicKeyBase64,
+		ServerPublicKeyBase64: serverPublicKeyBase64,
+		Timestamp:             time.Now().Unix(),
+		Nonce:                 nonce,
+		BodySHA256:            BodyHash(body),
 	}, nil
 }
 
@@ -118,16 +125,23 @@ func (r Request) canonical() []byte {
 		r.Path,
 		strconv.FormatInt(r.ContentLength, 10),
 		r.PublicKeyBase64,
+		r.ServerPublicKeyBase64,
 		strconv.FormatInt(r.Timestamp, 10),
 		r.Nonce,
 		r.BodySHA256,
 	}, "\n"))
 }
 
+// macKey derives the HMAC key from the raw ECDH output, rather than using
+// that output directly.
+func macKey(sharedSecret []byte) []byte {
+	// hkdf.Key only fails for an output longer than 255 hash blocks.
+	key, _ := hkdf.Key(sha256.New, sharedSecret, nil, context, sha256.Size)
+	return key
+}
+
 func mac(sharedSecret []byte, r Request) []byte {
-	k := hmac.New(sha256.New, sharedSecret)
-	k.Write([]byte(context))
-	m := hmac.New(sha256.New, k.Sum(nil))
+	m := hmac.New(sha256.New, macKey(sharedSecret))
 	m.Write(r.canonical())
 	return m.Sum(nil)
 }

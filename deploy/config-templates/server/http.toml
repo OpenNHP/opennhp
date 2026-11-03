@@ -22,6 +22,8 @@ HttpListenPort = 8443
 # /storage API: ZTDO upload by nhp-db (online mode), anonymous download by agents.
 # Upload and metadata require a request signed with the key of an nhp-db
 # listed in db.toml (nhp-db does this automatically). Read when the http server starts.
+# The signature covers the request path, so a reverse proxy in front must not rewrite
+# /storage paths (e.g. strip a prefix), or every signed upload is refused with 401.
 # EnableStorage: false removes the /storage routes entirely (default true).
 # StorageMaxUploadMB: largest accepted upload in MiB (default 20480).
 # StorageMinFreeMB: free space in MiB an upload must leave on the upload volume (default 1024).

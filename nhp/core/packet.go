@@ -247,7 +247,19 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 }
 
 func (d *Device) RecvPrecheck(pkt *Packet) (int, int, error) {
+	// The header is read in place from pkt.Content (type and size, the flag
+	// that selects the scheme, then the scheme's header), so make sure it is
+	// all there first. Content comes off the network before the peer is
+	// authenticated; a short or empty packet must be an error, not a panic
+	// (an empty one indexes Content[0]) or a read past the packet. Callers
+	// that already drop packets below MinimalLength are unaffected.
+	if len(pkt.Content) == 0 || len(pkt.Content) < pkt.MinimalLength() {
+		return 0, 0, fmt.Errorf("packet is shorter than an NHP header")
+	}
 	headerSize := pkt.Header().Size()
+	if len(pkt.Content) < headerSize {
+		return 0, 0, fmt.Errorf("packet is shorter than its NHP header")
+	}
 
 	// check type and payload size
 	t, s := pkt.HeaderTypeAndSize()

@@ -106,6 +106,10 @@ On success the knock is performed and the nhp-server ack is returned
 | 429 | `Too many failed attempts, try again later` |
 | 400 | `Cannot determine the client address` |
 
+The code is marked used before the knock is sent, so a knock that fails on the
+server or AC side (for example, an unreachable AC) still spends it. With
+`OTPAllowReuse = false`, wait for the next code before retrying.
+
 ## QR login protocol
 
 ```
@@ -124,6 +128,11 @@ browser                         nhp-server (plugin)                    phone
 
 Response: `success`, `sessionId`, `qrData` (encrypted, signed session data),
 `serverUrl`, `aspId`, `resId`, `expiresAt` (Unix seconds).
+
+`generate` is unauthenticated, so sessions are bounded: at most 20 per client
+(the same limit key as the rate limiter) and 10,000 in total. A session holds its
+slot until it is cleaned up, about ten minutes after `generate`. Beyond that,
+the response is HTTP 429 `too many QR codes generated, try again later`.
 
 The login page encodes the QR code as:
 

@@ -395,7 +395,14 @@ func otpClientIP(ctx *gin.Context, trusted []netip.Prefix) string {
 // recording in sessions and logs. It is "" when the peer address cannot be
 // parsed; callers must refuse then (errNoClientAddr).
 func otpClientAddr(ctx *gin.Context, trusted []netip.Prefix) string {
-	peer := ctx.RemoteIP()
+	// gin's RemoteIP is the host part of RemoteAddr, not checked to be an
+	// IP; parse it so only a real address can become a limit key or the
+	// knock's source, and so IPv4-mapped peers read as plain IPv4.
+	a, err := netip.ParseAddr(ctx.RemoteIP())
+	if err != nil {
+		return ""
+	}
+	peer := a.Unmap().String()
 	if len(trusted) == 0 {
 		warnUntrustedForwarding(ctx, peer)
 		return peer

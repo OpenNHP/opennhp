@@ -283,7 +283,18 @@ func useTestOTPConfig(t *testing.T, allowReuse bool) {
 	baseConf = &config{OTPSecretKey: testOTPSecret, OTPPeriod: 30, OTPDigits: 6, OTPAllowReuse: allowReuse}
 	otpLimiter = newOTPGuard()
 	log = nhplog.NewLogger("", 0, "", "") // the plugin logger is normally set by Init
-	t.Cleanup(func() { baseConf, otpLimiter, log = oldConf, oldLimiter, oldLog })
+	// A fresh QR service per test, so session caps do not carry over.
+	svc := GetQRAuthService()
+	oldSessions, oldPerClient := svc.sessions, svc.perClient
+	svc.mutex.Lock()
+	svc.sessions, svc.perClient = make(map[string]*QRCodeSession), make(map[string]int)
+	svc.mutex.Unlock()
+	t.Cleanup(func() {
+		baseConf, otpLimiter, log = oldConf, oldLimiter, oldLog
+		svc.mutex.Lock()
+		svc.sessions, svc.perClient = oldSessions, oldPerClient
+		svc.mutex.Unlock()
+	})
 }
 
 // Wrong codes from one address lock it out, even if it rotates
@@ -788,5 +799,57 @@ func TestAuthOTPCodeUnknownErrorFailsClosed(t *testing.T) {
 	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
 	if w := otpRequest(t, good, "192.0.2.80:5000", "", &knocked); w.Code != http.StatusInternalServerError || knocked != 0 {
 		t.Fatalf("unknown error: got %d, knocked %d", w.Code, knocked)
+	}
+}
+
+// generate is bounded per client and overall, and expired sessions free
+// their slots.
+func TestGenerateSessionCaps(t *testing.T) {
+	useTestOTPConfig(t, false)
+	svc := GetQRAuthService()
+	for i := 0; i < qrMaxSessionsPerClient; i++ {
+		qrGenerate(t)
+	}
+	if r := qrHandlerRequest(t, "/?action=generate", qrBrowserAddr, func(ctx *gin.Context) { HandleQRGenerate(ctx, "demo") }); r["httpStatus"] != float64(http.StatusTooManyRequests) {
+		t.Fatalf("client over its session cap: %v", r)
+	}
+	// A different client is not affected.
+	if _, _, err := svc.GenerateSession("authenticator", "demo", "192.0.2.99", "https://example"); err != nil {
+		t.Fatalf("another client was capped: %v", err)
+	}
+
+	svc.mutex.Lock()
+	svc.removeExpiredLocked(time.Now().Add(svc.expiry + 6*time.Minute))
+	left, clients := len(svc.sessions), len(svc.perClient)
+	svc.mutex.Unlock()
+	if left != 0 || clients != 0 {
+		t.Fatalf("cleanup left %d sessions, %d client counters", left, clients)
+	}
+	qrGenerate(t) // the slot is free again
+
+	for i := 0; len(svc.sessions) < qrMaxSessions; i++ {
+		if _, _, err := svc.GenerateSession("authenticator", "demo", fmt.Sprintf("10.%d.%d.1", i/250, i%250), "https://example"); err != nil {
+			t.Fatalf("refused before the global cap at %d sessions: %v", len(svc.sessions), err)
+		}
+	}
+	if _, _, err := svc.GenerateSession("authenticator", "demo", "198.51.100.200", "https://example"); !errors.Is(err, errQRSessionLimit) {
+		t.Fatalf("global cap not enforced: %v", err)
+	}
+}
+
+// Only a real IP address becomes the client address, in canonical form.
+func TestOTPClientAddrParsesPeer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for remote, want := range map[string]string{
+		"foo:123":                "", // RemoteIP() would return "foo"
+		"[::ffff:192.0.2.9]:500": "192.0.2.9",
+		"192.0.2.10:500":         "192.0.2.10",
+	} {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		ctx.Request.RemoteAddr = remote
+		if got := otpClientAddr(ctx, nil); got != want {
+			t.Errorf("RemoteAddr %q: got %q, want %q", remote, got, want)
+		}
 	}
 }

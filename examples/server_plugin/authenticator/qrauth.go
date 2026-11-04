@@ -40,6 +40,17 @@ type QRCodeSession struct {
 	knocked     bool // qrvalid already ran for this session
 }
 
+// action=generate is unauthenticated, so the session table is bounded:
+// sessions stay in it until cleanupExpiredSessions drops them, about ten
+// minutes after generate, and neither one client nor all of them together
+// may hold more than these many.
+const (
+	qrMaxSessions          = 10000
+	qrMaxSessionsPerClient = 20
+)
+
+var errQRSessionLimit = errors.New("too many QR codes generated, try again later")
+
 // qrMaxOTPFailures is how many wrong codes a session accepts before it is
 // dead. Codes are checked against the shared OTPSecretKey under otpLimiter;
 // this cap is on top of that, so one session cannot be used for unlimited
@@ -59,6 +70,7 @@ const (
 // QRAuthService manages QR code authentication sessions
 type QRAuthService struct {
 	sessions   map[string]*QRCodeSession
+	perClient  map[string]int // live sessions per otpLimitKey(SrcIp); see qrMaxSessionsPerClient
 	mutex      sync.RWMutex
 	encryptKey []byte
 	hmacKey    []byte
@@ -123,15 +135,20 @@ func InitQRAuthService() {
 		rand.Read(encKey)
 		rand.Read(hmacKey)
 
-		qrAuthService = &QRAuthService{
-			sessions:   make(map[string]*QRCodeSession),
-			encryptKey: encKey,
-			hmacKey:    hmacKey,
-			expiry:     5 * time.Minute,
-		}
+		qrAuthService = newQRAuthService(encKey, hmacKey)
 
 		go qrAuthService.cleanupExpiredSessions()
 	})
+}
+
+func newQRAuthService(encKey, hmacKey []byte) *QRAuthService {
+	return &QRAuthService{
+		sessions:   make(map[string]*QRCodeSession),
+		perClient:  make(map[string]int),
+		encryptKey: encKey,
+		hmacKey:    hmacKey,
+		expiry:     5 * time.Minute,
+	}
 }
 
 // GetQRAuthService returns the singleton QR auth service
@@ -170,9 +187,15 @@ func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (
 		ExpiresAt:     now.Add(s.expiry),
 	}
 
-	// Store session
+	// Store session, within the table's bounds.
+	client := otpLimitKey(srcIp)
 	s.mutex.Lock()
+	if len(s.sessions) >= qrMaxSessions || s.perClient[client] >= qrMaxSessionsPerClient {
+		s.mutex.Unlock()
+		return nil, nil, errQRSessionLimit
+	}
 	s.sessions[sessionID] = session
+	s.perClient[client]++
 	s.mutex.Unlock()
 
 	// Create QR code data
@@ -441,12 +464,22 @@ func (s *QRAuthService) cleanupExpiredSessions() {
 	for range ticker.C {
 		s.mutex.Lock()
 		now := time.Now()
-		for id, session := range s.sessions {
-			if now.After(session.ExpiresAt.Add(5 * time.Minute)) {
-				delete(s.sessions, id)
+		s.removeExpiredLocked(now)
+		s.mutex.Unlock()
+	}
+}
+
+// removeExpiredLocked drops sessions expired more than five minutes ago (kept
+// that long so a polling browser sees "expired"). s.mutex must be held.
+func (s *QRAuthService) removeExpiredLocked(now time.Time) {
+	for id, session := range s.sessions {
+		if now.After(session.ExpiresAt.Add(5 * time.Minute)) {
+			delete(s.sessions, id)
+			client := otpLimitKey(session.SrcIp)
+			if s.perClient[client]--; s.perClient[client] <= 0 {
+				delete(s.perClient, client)
 			}
 		}
-		s.mutex.Unlock()
 	}
 }
 
@@ -474,7 +507,11 @@ func HandleQRGenerate(ctx *gin.Context, resId string) {
 
 	session, qrData, err := service.GenerateSession(aspId, resId, srcIp, serverUrl)
 	if err != nil {
-		ctx.JSON(http.StatusOK, QRGenerateResponse{
+		status := http.StatusOK
+		if errors.Is(err, errQRSessionLimit) {
+			status = http.StatusTooManyRequests
+		}
+		ctx.JSON(status, QRGenerateResponse{
 			Success: false,
 			ErrMsg:  err.Error(),
 		})

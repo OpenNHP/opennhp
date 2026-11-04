@@ -21,13 +21,13 @@ QRCodeExpiry = 300
 # people may log in within the same 30-second window.
 # Failed attempts are always rate limited, on the manual OTP form and on the QR flow's
 # mobile verification alike (both check codes from OTPSecretKey): 5 failures from one
-# address (IPv6: one /64) lock it out for 15 minutes, and at most 30 failures per minute
-# are checked in any minute across all addresses. The global limit fails closed: while
-# it is exhausted, nobody can log in with OTP, and anyone can exhaust it with about one
-# wrong guess every two seconds. It is also the only bound on an attacker spread over
-# many addresses: 30 guesses a minute against the 3 codes valid at any time is roughly a
-# 12% chance of a correct guess per day (about a week expected) while ShowOTPSecret is
-# off. Both follow from every user sharing one OTPSecretKey.
+# address (IPv6: one /64; a whole /48 gets 15) lock it out for 15 minutes, and at most
+# 30 failures are checked in any minute across all addresses. The global limit fails
+# closed: while it is exhausted, nobody can log in with OTP, and anyone can exhaust it
+# with about one wrong guess every two seconds. It is also the only bound on an attacker
+# spread over many addresses: 30 guesses a minute against the 3 codes valid at any time
+# is roughly a 12% chance of a correct guess per day (about a week expected) while
+# ShowOTPSecret is off. Both follow from every user sharing one OTPSecretKey.
 # OTPAllowReuse = false
 
 # Show OTPSecretKey on the public login page so visitors can enrol it (default: false).
@@ -36,9 +36,12 @@ QRCodeExpiry = 300
 # ShowOTPSecret = false
 
 # Reverse proxies in front of nhp-server (addresses or CIDR prefixes). OTP attempts from
-# one of them are rate limited by the client address in X-Forwarded-For; from any other
-# peer the header is ignored. Leave empty when clients connect directly. Without it, every
-# client behind a proxy shares the proxy's limit, and one client can lock out all users
-# (a warning is logged the first time a loopback or private peer sends X-Forwarded-For
-# while this is empty). One invalid entry disables the list.
+# one of them are rate limited by the client address in X-Forwarded-For, and access is
+# opened for that address. From any other peer the header is ignored and access is opened
+# for the TCP peer, so a client cannot point access at an address it does not hold.
+# Leave empty when clients connect directly. Behind a proxy it must be set: otherwise
+# every client shares the proxy's limit, one client can lock out all users, and access is
+# opened for the proxy's address instead of the client's (a warning is logged the first
+# time a loopback or private peer sends X-Forwarded-For while this is empty).
+# One invalid entry disables the list.
 # TrustedProxies = ["127.0.0.1"]

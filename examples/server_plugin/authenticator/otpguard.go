@@ -56,12 +56,17 @@ type otpIPState struct {
 
 // otpTicket is one reserved attempt; pass it back to release or succeed.
 type otpTicket struct {
-	ip string
-	at time.Time // when the attempt was counted in global
+	keys []string  // the address's limit key, then any enclosing prefix keys
+	at   time.Time // when the attempt was counted in global
 }
 
 const (
-	otpMaxIPFailures     = 5
+	otpMaxIPFailures = 5
+	// otpMaxPrefixFailures caps a whole IPv6 /48 (see otpLimitKeys). One
+	// /48, an ordinary customer allocation, holds 65,536 /64s, enough to keep
+	// the global budget exhausted on per-/64 limits alone; with this cap it
+	// gets 15 guesses per 15 minutes, half of one minute's global budget.
+	otpMaxPrefixFailures = 15
 	otpIPLockout         = 15 * time.Minute
 	otpIPFailureTTL      = 15 * time.Minute // failures older than this are forgotten
 	otpGlobalMaxFailures = 30
@@ -125,8 +130,26 @@ func (g *otpGuard) pruneGlobal(now time.Time) {
 	g.global = g.global[n:]
 }
 
-// reserve reports whether an OTP attempt from ip may be checked and, if so,
-// counts it as a failure until release or succeed says otherwise.
+// otpLimitKeys returns the keys an attempt from limit key ip counts
+// against: the key itself and, for an IPv6 /64, its enclosing /48.
+func otpLimitKeys(ip string) []string {
+	if p, err := netip.ParsePrefix(ip); err == nil && p.Addr().Is6() && p.Bits() == 64 {
+		return []string{ip, netip.PrefixFrom(p.Addr(), 48).Masked().String()}
+	}
+	return []string{ip}
+}
+
+// otpKeyLimit is the failure cap for a key from otpLimitKeys.
+func otpKeyLimit(key string) int {
+	if p, err := netip.ParsePrefix(key); err == nil && p.Bits() == 48 {
+		return otpMaxPrefixFailures
+	}
+	return otpMaxIPFailures
+}
+
+// reserve reports whether an OTP attempt from ip (an otpLimitKey) may be
+// checked and, if so, counts it as a failure, against ip and every
+// enclosing prefix, until release or succeed says otherwise.
 func (g *otpGuard) reserve(ip string) (otpTicket, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -137,65 +160,89 @@ func (g *otpGuard) reserve(ip string) (otpTicket, bool) {
 		return otpTicket{}, false
 	}
 
-	st, ok := g.ips[ip]
-	switch {
-	case ok && now.Before(st.lockedUntil):
-		return otpTicket{}, false
-	case ok && (!st.lockedUntil.IsZero() || now.Sub(st.lastFailure) > otpIPFailureTTL):
-		// The lockout ended or the failures went stale: start over.
-		*st = otpIPState{}
-	case !ok:
-		if len(g.ips) >= otpMaxTrackedIPs {
-			g.evictIPs(now)
-			if len(g.ips) >= otpMaxTrackedIPs {
-				// Cannot track another address; refuse rather than check it
-				// without a per-address limit.
-				return otpTicket{}, false
-			}
+	keys := otpLimitKeys(ip)
+	// Check every key before changing any, so a refusal leaves no trace.
+	untracked := 0
+	for _, k := range keys {
+		st, ok := g.ips[k]
+		switch {
+		case !ok:
+			untracked++
+		case now.Before(st.lockedUntil):
+			return otpTicket{}, false
 		}
-		st = &otpIPState{}
-		g.ips[ip] = st
+	}
+	if len(g.ips)+untracked > otpMaxTrackedIPs {
+		g.evictIPs(now)
+		if len(g.ips)+untracked > otpMaxTrackedIPs {
+			// Cannot track another address; refuse rather than check it
+			// without a per-address limit.
+			return otpTicket{}, false
+		}
 	}
 
-	g.global = append(g.global, now)
-	st.failures++
-	st.lastFailure = now
-	if st.failures >= otpMaxIPFailures {
-		st.lockedUntil = now.Add(otpIPLockout)
+	for _, k := range keys {
+		st, ok := g.ips[k]
+		switch {
+		case !ok:
+			st = &otpIPState{}
+			g.ips[k] = st
+		case !st.lockedUntil.IsZero() || now.Sub(st.lastFailure) > otpIPFailureTTL:
+			// The lockout ended or the failures went stale: start over.
+			*st = otpIPState{}
+		}
+		st.failures++
+		st.lastFailure = now
+		if st.failures >= otpKeyLimit(k) {
+			st.lockedUntil = now.Add(otpIPLockout)
+		}
 	}
-	return otpTicket{ip: ip, at: now}, true
+	g.global = append(g.global, now)
+	return otpTicket{keys: keys, at: now}, true
 }
 
 // release gives back an attempt that turned out not to be a guess (a
-// correct code refused only because it was already used). If the address's
-// counter was reset between reserve and release, this forgives at most one
-// failure.
+// correct code refused only because it was already used). If a counter was
+// reset between reserve and release, this forgives at most one failure.
 func (g *otpGuard) release(t otpTicket) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.refundGlobal(t)
-	st, ok := g.ips[t.ip]
+	for _, k := range t.keys {
+		g.refundKey(k)
+	}
+}
+
+// succeed gives back the attempt after a correct code and clears the
+// address's own failures. Enclosing prefixes only get this attempt back:
+// other addresses in them may still be guessing.
+func (g *otpGuard) succeed(t otpTicket) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.refundGlobal(t)
+	for i, k := range t.keys {
+		if i == 0 {
+			delete(g.ips, k)
+		} else {
+			g.refundKey(k)
+		}
+	}
+}
+
+func (g *otpGuard) refundKey(k string) {
+	st, ok := g.ips[k]
 	if !ok {
 		return
 	}
 	if st.failures > 0 {
 		st.failures--
 	}
-	if st.failures < otpMaxIPFailures {
+	if st.failures < otpKeyLimit(k) {
 		st.lockedUntil = time.Time{}
 	}
 	if st.failures == 0 {
-		delete(g.ips, t.ip)
+		delete(g.ips, k)
 	}
-}
-
-// succeed gives back the attempt and clears the address's failures after a
-// correct code.
-func (g *otpGuard) succeed(t otpTicket) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.refundGlobal(t)
-	delete(g.ips, t.ip)
 }
 
 func (g *otpGuard) refundGlobal(t otpTicket) {
@@ -359,7 +406,8 @@ func warnUntrustedForwarding(ctx *gin.Context, peer string) {
 	}
 	if otpProxyWarned.CompareAndSwap(false, true) && log != nil {
 		log.Warning("OTP rate limit: request from %s carries X-Forwarded-For but TrustedProxies is empty; "+
-			"if nhp-server is behind a reverse proxy, every client shares the proxy's limit and one client can lock out all users. "+
+			"if nhp-server is behind a reverse proxy, every client shares the proxy's limit, one client can lock out all users, "+
+			"and access is opened for the proxy's address instead of the client's. "+
 			"Set TrustedProxies in the authenticator config.", peer)
 	}
 }

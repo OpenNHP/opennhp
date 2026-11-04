@@ -364,6 +364,11 @@ func authOTPCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 
 	log.Info("OTP authentication successful using configured secret key")
 
+	// Open access for the address that authenticated, not for whatever
+	// X-Forwarded-For claims: nhp-server fills req.SrcIp from gin's
+	// ClientIP, which trusts that header from any peer.
+	req.SrcIp = otpClientAddr(ctx, conf.trustedProxies)
+
 	// Proceed with knock operation
 	ackMsg, err := helper.AuthWithHttpCallbackFunc(req, res)
 	if ackMsg == nil || ackMsg.ErrCode != common.ErrSuccess.ErrorCode() {
@@ -406,6 +411,9 @@ func authQRCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Reso
 	}
 
 	log.Info("QR authentication for sessionId: %s", sessionId)
+
+	// Open access for the address the session is bound to; see authOTPCode.
+	req.SrcIp = otpClientAddr(ctx, requestTrustedProxies())
 
 	// Proceed with knock operation
 	ackMsg, err := helper.AuthWithHttpCallbackFunc(req, res)

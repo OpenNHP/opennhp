@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net"
 	"net/http"
@@ -570,5 +571,137 @@ func TestWarnUntrustedForwarding(t *testing.T) {
 	}
 	if try("198.51.100.9", "198.51.100.1") || try("127.0.0.1", "") {
 		t.Fatal("warned without a proxy-looking peer and header")
+	}
+}
+
+// Rotating /64s inside one IPv6 /48 hits the /48 cap instead of draining
+// the global budget; other /48s are unaffected.
+func TestOTPGuardIPv6PrefixCap(t *testing.T) {
+	g, _ := newTestGuard()
+	admitted := 0
+	for i := 0; i < 100; i++ {
+		key := otpLimitKey(fmt.Sprintf("2001:db8:1:%x::1", i))
+		if guess(g, key) {
+			admitted++
+		}
+	}
+	if admitted != otpMaxPrefixFailures {
+		t.Fatalf("one /48 got %d guesses, want %d", admitted, otpMaxPrefixFailures)
+	}
+	if len(g.global) >= otpGlobalMaxFailures {
+		t.Fatal("one /48 exhausted the global budget")
+	}
+	if !guess(g, otpLimitKey("2001:db8:2::1")) {
+		t.Fatal("another /48 was locked out")
+	}
+	// A success gives the /48 its attempt back without clearing the others.
+	g2, _ := newTestGuard()
+	for i := 0; i < otpMaxPrefixFailures-1; i++ {
+		guess(g2, otpLimitKey(fmt.Sprintf("2001:db8:1:%x::1", i)))
+	}
+	tk, ok := g2.reserve(otpLimitKey("2001:db8:1:ff::1"))
+	if !ok {
+		t.Fatal("refused before the /48 cap")
+	}
+	g2.succeed(tk)
+	if !guess(g2, otpLimitKey("2001:db8:1:fe::1")) || guess(g2, otpLimitKey("2001:db8:1:fd::1")) {
+		t.Fatal("success did not refund exactly one /48 attempt")
+	}
+}
+
+// Access is opened for the address that authenticated, never for a forged
+// X-Forwarded-For.
+func TestKnockUsesAuthenticatedAddress(t *testing.T) {
+	useTestOTPConfig(t, true)
+	var opened []string
+	helper := &plugins.HttpServerPluginHelper{
+		AuthWithHttpCallbackFunc: func(req *common.HttpKnockRequest, _ *common.ResourceData) (*common.ServerKnockAckMsg, error) {
+			opened = append(opened, req.SrcIp)
+			return &common.ServerKnockAckMsg{ErrCode: common.ErrSuccess.ErrorCode()}, nil
+		},
+	}
+	gin.SetMode(gin.TestMode)
+	do := func(target string, h func(*gin.Context, *common.HttpKnockRequest, *common.ResourceData, *plugins.HttpServerPluginHelper) (*common.ServerKnockAckMsg, error)) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodGet, target, nil)
+		ctx.Request.RemoteAddr = qrBrowserAddr
+		ctx.Request.Header.Set("X-Forwarded-For", "203.0.113.66")
+		// What nhp-server puts in req.SrcIp: gin's ClientIP, i.e. the header.
+		_, _ = h(ctx, &common.HttpKnockRequest{SrcIp: ctx.ClientIP()}, testResource("demo"), helper)
+	}
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	do("/?action=otpvalid&otpCode="+good, authOTPCode)
+
+	sessionID, qrData, _ := qrGenerate(t)
+	qrVerify(t, qrData, good, "192.0.2.41:5000")
+	do("/?action=qrvalid&sessionId="+sessionID, authQRCode)
+
+	want := []string{"192.0.2.40", "192.0.2.40"}
+	if len(opened) != 2 || opened[0] != want[0] || opened[1] != want[1] {
+		t.Fatalf("opened access for %v, want %v", opened, want)
+	}
+}
+
+// Parallel verifies of one session cannot check more codes than its cap,
+// and the code is checked without holding the service lock.
+func TestVerifySessionParallelCap(t *testing.T) {
+	useTestOTPConfig(t, false)
+	svc := GetQRAuthService()
+	_, qr, err := svc.GenerateSession("authenticator", "demo", "192.0.2.70", "https://example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	var mu sync.Mutex
+	checked := 0
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = svc.VerifySession(qr.SessionID, qr.Token, "", "", func() error {
+				mu.Lock()
+				checked++
+				mu.Unlock()
+				<-release
+				return errOTPInvalid
+			})
+		}()
+	}
+	// While codes are being checked, status polling is not blocked.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := checked
+		mu.Unlock()
+		if n == qrMaxOTPFailures || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if svc.GetSession(qr.SessionID) == nil {
+		t.Fatal("session lookup failed while codes were being checked")
+	}
+	close(release)
+	wg.Wait()
+	if checked != qrMaxOTPFailures {
+		t.Fatalf("checked %d codes for one session, cap %d", checked, qrMaxOTPFailures)
+	}
+}
+
+// An unauthenticated scan notification never moves a session backwards.
+func TestScanDoesNotRegressSession(t *testing.T) {
+	useTestOTPConfig(t, false)
+	sessionID, qrData, _ := qrGenerate(t)
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	qrVerify(t, qrData, good, "192.0.2.41:5000")
+	qrHandlerRequest(t, "/?action=scan&sessionId="+sessionID, "198.51.100.5:5000", HandleQRScan)
+	if r := qrHandlerRequest(t, "/?action=status&sessionId="+sessionID, qrBrowserAddr, HandleQRStatus); r["status"] != float64(QRStatusConfirmed) {
+		t.Fatalf("scan moved a confirmed session: %v", r)
+	}
+	knocked := 0
+	qrvalidRequest(t, sessionID, "demo", &knocked)
+	if knocked != 1 {
+		t.Fatal("confirmed session could not knock after a scan notification")
 	}
 }

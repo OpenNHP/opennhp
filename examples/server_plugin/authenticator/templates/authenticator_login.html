@@ -1232,7 +1232,8 @@
                         qrStatusText.textContent = translations[currentLang].qrStatusConfirmed;
                         qrOverlay.classList.add('show', 'success');
                         qrOverlayText.textContent = translations[currentLang].qrStatusConfirmed;
-                        showMessage(translations[currentLang].loginSuccess, 'success');
+                        // "Login successful" waits for the knock: qrvalid can
+                        // still refuse (different address, session used).
                         await completeAuthentication('qrvalid');
                         break;
                     case 3: // expired
@@ -1398,6 +1399,7 @@
             const data = await response.json();
 
             if (data.errCode === "0" || data.errCode === "") {
+                showMessage(translations[currentLang].loginSuccess, 'success');
                 if (data.redirectUrl) {
                     setTimeout(() => {
                         window.location.href = data.redirectUrl;

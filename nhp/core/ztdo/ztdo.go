@@ -445,14 +445,21 @@ func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey [
 	recalcSig.mixHash(headerBuf)
 	remainingCiphertextFileSize -= int64(headerBuf.Len())
 
-	// The trailing signature is not payload: keep payload parsing out of it.
-	var signatureSize int64
-	if ztdo.header.HasSignature() {
-		signatureSize = SIGNATURELenSize
+	// Refuse files whose header says unsigned. The flag is in the header,
+	// which only the signature authenticates, so whoever serves the file
+	// could clear it and drop the signature to skip the whole-file check
+	// (dropping or reordering chunks, changing metadata). Nothing is lost:
+	// EncryptZtdoFile always appends the signature, so an unsigned file has
+	// never decrypted.
+	if !ztdo.header.HasSignature() {
+		return fmt.Errorf("ztdo: unsigned files are not supported")
 	}
 
-	// read payloads until only the signature (if any) is left. Checking
-	// before each payload, not after, lets a file with no payloads, which
+	// The trailing signature is not payload: keep payload parsing out of it.
+	const signatureSize = SIGNATURELenSize
+
+	// read payloads until only the signature is left. Checking before each
+	// payload, not after, lets a file with no payloads, which
 	// EncryptZtdoFile writes for an empty plaintext, decrypt to nothing; its
 	// signature still covers the header. Payloads are bounded away from the
 	// signature, so the count can only land on signatureSize, never below.
@@ -478,14 +485,12 @@ func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey [
 	// update recalculated signature
 	recalcSig.sign(gcmKey)
 
-	if ztdo.header.HasSignature() {
-		if err := toStructure(ciphertextFile, remainingCiphertextFileSize, &ztdo.signature); err != nil {
-			return err
-		}
+	if err := toStructure(ciphertextFile, remainingCiphertextFileSize, &ztdo.signature); err != nil {
+		return err
+	}
 
-		if !ztdo.signature.verify(recalcSig) {
-			return fmt.Errorf("signature verification failed")
-		}
+	if !ztdo.signature.verify(recalcSig) {
+		return fmt.Errorf("signature verification failed")
 	}
 
 	return nil

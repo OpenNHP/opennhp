@@ -78,11 +78,6 @@ func allocatedDuring(f func()) uint64 {
 }
 
 // Valid files with multi-chunk metadata still round-trip.
-//
-// Only signed files: EncryptZtdoFile appends the signature even when the
-// header says unsigned, so an unsigned file has never decrypted (on the
-// unfixed parser it failed AEAD on the trailing signature; now the parser
-// refuses those 32 bytes as a payload first). nhp-db always signs.
 func TestZtdoRoundTrip(t *testing.T) {
 	plaintext := make([]byte, 100_000)
 	_, _ = rand.Read(plaintext)
@@ -265,5 +260,34 @@ func TestZtdoEmptyPlaintext(t *testing.T) {
 	patchFile(t, path, headerLen-1, []byte{'X'}) // tamper with the header's metadata
 	if _, err := decrypt(t, path); err == nil || !strings.Contains(err.Error(), "signature") {
 		t.Fatalf("tampered empty file: err = %v, want a signature failure", err)
+	}
+}
+
+// Files whose header says unsigned are refused: clearing the flag and
+// dropping the signature must not skip the whole-file check. That includes
+// a header-only file, which would otherwise decrypt to an empty plaintext.
+func TestZtdoUnsignedRefused(t *testing.T) {
+	cipherConfigOff := MagicNumberSize + ObjectIDSize + VersionSize + NhpServerLenSize + len("nhp.example:62206")
+	for _, plaintext := range [][]byte{[]byte("secret data"), nil} {
+		path, _ := writeZtdo(t, plaintext, "", true)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The downgrade: clear the signature flag and drop the signature.
+		data[cipherConfigOff] &^= 0x80
+		data = data[:len(data)-SIGNATURELenSize]
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := decrypt(t, path); err == nil || !strings.Contains(err.Error(), "unsigned") {
+			t.Fatalf("plaintext %d bytes: err = %v, want an unsigned-file refusal", len(plaintext), err)
+		}
+	}
+
+	// A file written unsigned by the encryptor is refused the same way.
+	path, _ := writeZtdo(t, []byte("x"), "", false)
+	if _, err := decrypt(t, path); err == nil || !strings.Contains(err.Error(), "unsigned") {
+		t.Fatalf("encrypted unsigned: err = %v, want an unsigned-file refusal", err)
 	}
 }

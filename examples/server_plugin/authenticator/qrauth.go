@@ -695,7 +695,7 @@ func HandleQRVerify(ctx *gin.Context) {
 		return
 	}
 	err = service.VerifySession(qrData.SessionID, qrData.Token, otpClientAddr(ctx, conf.trustedProxies), req.DeviceInfo, func() error {
-		return checkConfiguredOTP(conf, clientIP, req.OTPCode)
+		return otpCheck(conf, clientIP, req.OTPCode)
 	})
 	if err != nil {
 		status := http.StatusOK

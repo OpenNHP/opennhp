@@ -27,7 +27,7 @@ go test ./...   # unit and handler tests
 | `OTPPeriod` | `30` | TOTP step in seconds, 15–300. Out-of-range values fall back to 30. |
 | `OTPDigits` | `6` | Only 6 is supported (the login page takes six digits); other values fall back to 6 with an error log. |
 | `QRCodeExpiry` | `300` | QR session lifetime in seconds. |
-| `OTPAllowReuse` | `false` | When `false`, a code that was accepted once is refused for its remaining validity (about 90 s). |
+| `OTPAllowReuse` | `false` | When `false`, a code that was accepted once is refused for its remaining validity (about 90 s). **Forced to `true` while `ShowOTPSecret` is on** (see below). |
 | `ShowOTPSecret` | `false` | Render `OTPSecretKey` on the public login page so visitors can enrol it. **Public demos only**: anyone who can load the page can then generate valid codes. |
 | `TrustedProxies` | empty | Reverse proxies in front of nhp-server (addresses or CIDR prefixes). **Must be set behind a proxy**; see below. IPv4-mapped entries (`::ffff:10.0.0.0/104`) are treated as IPv4; an IPv4-mapped prefix shorter than /96 is invalid. One invalid entry disables the whole list. |
 
@@ -43,6 +43,12 @@ Every user shares one `OTPSecretKey`. That has two consequences:
   code. Multi-user deployments should set `OTPAllowReuse = true`.
 - **The global rate limit is the only bound on a distributed attacker, and it
   fails closed.** See *Rate limiting* below.
+- **`ShowOTPSecret = true` forces `OTPAllowReuse = true`.** With the seed on the
+  public page anyone can compute every code, so replay protection protects
+  nothing. Worse, it would let anyone spend each new code the moment its step
+  begins and lock every user out, and the rate limiter cannot stop that
+  because the codes are correct. An explicit `OTPAllowReuse = false` is
+  ignored with a warning in this mode.
 
 ## Rate limiting
 
@@ -86,7 +92,7 @@ source address, which nhp-server would otherwise take from `X-Forwarded-For`
 for any peer. **Behind a reverse proxy, set `TrustedProxies`.** Otherwise every
 client shares the proxy's limit, one client can lock out everyone, and access is
 opened for the proxy's address instead of the client's. A warning is logged the
-first time a loopback or private peer sends `X-Forwarded-For` while
+first time any request carries `X-Forwarded-For` while
 `TrustedProxies` is empty.
 
 ## Manual OTP login

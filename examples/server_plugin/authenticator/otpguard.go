@@ -109,7 +109,8 @@ var (
 )
 
 // otpCheck is checkConfiguredOTP; a variable only so tests can make it
-// return an error authOTPCode does not know about.
+// return an error the handlers do not know about. Both otpvalid and verify
+// call it.
 var otpCheck = checkConfiguredOTP
 
 // checkConfiguredOTP checks code against the configured OTPSecretKey under
@@ -294,6 +295,11 @@ func (g *otpGuard) refundGlobal(t otpTicket) {
 // seed, so in a multi-user deployment several people legitimately enter
 // the same code.
 //
+// The table is keyed by the code alone, not by TOTP step: two steps inside
+// one lifetime can produce the same six digits, and the second is then
+// refused as used. That costs one login a wait for the next code with
+// probability about 1e-6, which is not worth validating each step here.
+//
 // Only codes that validated reach this table, and at most 2*skew+1 codes
 // validate at any time, so pruning on every call keeps it a few entries.
 func (g *otpGuard) consume(code string, allowReuse bool, lifetime time.Duration) bool {
@@ -438,19 +444,15 @@ func otpClientAddr(ctx *gin.Context, trusted []netip.Prefix) string {
 // otpProxyWarned makes warnUntrustedForwarding log once per process.
 var otpProxyWarned atomic.Bool
 
-// warnUntrustedForwarding logs, once, when a loopback or private peer sends
-// X-Forwarded-For while TrustedProxies is empty. That is almost always a
-// reverse proxy, and limiting by its address means five wrong codes from
-// anyone lock every user out. The header is still ignored.
+// warnUntrustedForwarding logs, once, when any peer sends X-Forwarded-For
+// while TrustedProxies is empty. That usually means a reverse proxy, which
+// may have a public address (a CDN, a cloud load balancer), so the peer's
+// address is not used to decide. Limiting by the proxy's address means five
+// wrong codes from anyone lock every user out. The header is still ignored.
+// A directly connected client sending the header can also trigger it; it
+// is logged once per process, so that costs one line.
 func warnUntrustedForwarding(ctx *gin.Context, peer string) {
 	if otpProxyWarned.Load() || ctx.GetHeader("X-Forwarded-For") == "" {
-		return
-	}
-	a, err := netip.ParseAddr(peer)
-	if err != nil {
-		return
-	}
-	if a = a.Unmap(); !a.IsLoopback() && !a.IsPrivate() {
 		return
 	}
 	if otpProxyWarned.CompareAndSwap(false, true) && log != nil {

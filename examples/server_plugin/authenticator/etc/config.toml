@@ -18,7 +18,8 @@ QRCodeExpiry = 300
 # Allow the same OTP code to be used more than once while it is valid (default: false).
 # Off, a code already accepted is refused for the next ~90 seconds, so a code observed in
 # transit cannot be replayed. Every user shares OTPSecretKey, so turn this on if several
-# people may log in within the same 30-second window.
+# people may log in within the same 30-second window. Forced on while ShowOTPSecret is on:
+# with a public seed anyone could otherwise spend each new code first and lock everyone out.
 # Failed attempts are always rate limited, on the manual OTP form and on the QR flow's
 # mobile verification alike (both check codes from OTPSecretKey): 5 failures from one
 # address (IPv6: one /64; a whole /48 gets 15) lock it out for 15 minutes, and at most
@@ -44,6 +45,6 @@ QRCodeExpiry = 300
 # Leave empty when clients connect directly. Behind a proxy it must be set: otherwise
 # every client shares the proxy's limit, one client can lock out all users, and access is
 # opened for the proxy's address instead of the client's (a warning is logged the first
-# time a loopback or private peer sends X-Forwarded-For while this is empty).
+# time any request carries X-Forwarded-For while this is empty).
 # One invalid entry disables the list.
 # TrustedProxies = ["127.0.0.1"]

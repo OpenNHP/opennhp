@@ -157,6 +157,19 @@ func updateConfig(file string) (err error) {
 	if conf.QRCodeExpiry == 0 {
 		conf.QRCodeExpiry = 300
 	}
+	if conf.ShowOTPSecret && !conf.OTPAllowReuse {
+		// With the seed on the public page anyone can compute every code,
+		// so replay protection protects nothing, and it would let anyone
+		// spend each new code the moment its step begins and lock every
+		// user out. The rate limiter cannot stop that: the codes are correct.
+		conf.OTPAllowReuse = true
+		var explicit struct {
+			OTPAllowReuse *bool `toml:"OTPAllowReuse"`
+		}
+		if toml.Unmarshal(content, &explicit) == nil && explicit.OTPAllowReuse != nil {
+			log.Warning("OTPAllowReuse = false is ignored while ShowOTPSecret = true: with a public seed it only lets anyone lock every user out")
+		}
+	}
 
 	baseConf = conf
 	log.Info("Authenticator plugin config loaded: OTPPeriod=%d, OTPDigits=%d, QRCodeExpiry=%d, OTPAllowReuse=%v, ShowOTPSecret=%v, TrustedProxies=%d",

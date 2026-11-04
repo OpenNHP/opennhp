@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -559,8 +560,9 @@ func TestQRStatusConcurrentWithVerify(t *testing.T) {
 	}
 }
 
-// The missing-TrustedProxies warning fires for a private peer sending
-// X-Forwarded-For, and not for a public one or one without the header.
+// The missing-TrustedProxies warning fires for any peer sending
+// X-Forwarded-For (a proxy may have a public address), and never without
+// the header.
 func TestWarnUntrustedForwarding(t *testing.T) {
 	useTestOTPConfig(t, false)
 	gin.SetMode(gin.TestMode)
@@ -578,11 +580,11 @@ func TestWarnUntrustedForwarding(t *testing.T) {
 		return otpProxyWarned.Load()
 	}
 	t.Cleanup(func() { otpProxyWarned.Store(false) })
-	if !try("127.0.0.1", "198.51.100.1") || !try("10.0.0.5", "198.51.100.1") {
-		t.Fatal("no warning for a proxy-looking peer")
+	if !try("127.0.0.1", "198.51.100.1") || !try("10.0.0.5", "198.51.100.1") || !try("198.51.100.9", "203.0.113.1") {
+		t.Fatal("no warning for a peer sending X-Forwarded-For")
 	}
-	if try("198.51.100.9", "198.51.100.1") || try("127.0.0.1", "") {
-		t.Fatal("warned without a proxy-looking peer and header")
+	if try("127.0.0.1", "") || try("198.51.100.9", "") {
+		t.Fatal("warned without X-Forwarded-For")
 	}
 }
 
@@ -907,5 +909,46 @@ func TestQRKnockOpensForGenerator(t *testing.T) {
 	_, _ = authQRCode(ctx, &common.HttpKnockRequest{}, testResource("demo"), helper)
 	if len(opened) != 1 || opened[0] != "2001:db8:5:6::10" {
 		t.Fatalf("opened access for %v, want the generator 2001:db8:5:6::10", opened)
+	}
+}
+
+// With ShowOTPSecret on, reuse is forced on: one client spending the current
+// code (anyone can compute it from the public page) must not lock others out.
+func TestShowOTPSecretForcesReuse(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		useTestOTPConfig(t, false)
+		body := "OTPSecretKey = \"" + testOTPSecret + "\"\nShowOTPSecret = true\n"
+		if explicit {
+			body += "OTPAllowReuse = false\n"
+		}
+		file := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := updateConfig(file); err != nil {
+			t.Fatal(err)
+		}
+		if !baseConf.OTPAllowReuse {
+			t.Fatalf("explicit=%v: OTPAllowReuse not forced on with ShowOTPSecret", explicit)
+		}
+		knocked := 0
+		code, _ := totp.GenerateCode(testOTPSecret, time.Now())
+		otpRequest(t, code, "203.0.113.50:5000", "", &knocked) // the attacker spends it first
+		if w := otpRequest(t, code, "192.0.2.51:5000", "", &knocked); w.Code != http.StatusOK || knocked != 2 {
+			t.Fatalf("explicit=%v: second user refused (status %d, knocked %d)", explicit, w.Code, knocked)
+		}
+	}
+
+	// Without ShowOTPSecret the configured value stands.
+	useTestOTPConfig(t, false)
+	file := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(file, []byte("OTPSecretKey = \""+testOTPSecret+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateConfig(file); err != nil {
+		t.Fatal(err)
+	}
+	if baseConf.OTPAllowReuse {
+		t.Fatal("OTPAllowReuse forced on without ShowOTPSecret")
 	}
 }

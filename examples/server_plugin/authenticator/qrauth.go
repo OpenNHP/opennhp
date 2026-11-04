@@ -339,6 +339,14 @@ func (s *QRAuthService) ConsumeConfirmedSession(sessionID, resId, requesterKey s
 // not wait on it. The attempt is reserved against the session's cap before
 // the lock is released, so parallel verifies cannot exceed the cap, and the
 // session is re-checked before it is confirmed.
+//
+// Known, accepted race: with OTPAllowReuse off, checkOTP marks a correct
+// code as used. If the session expires or another verify confirms it while
+// the code is being checked, the re-check fails and that code is spent, so
+// the phone has to wait for the next TOTP step. The window is one TOTP
+// validation long and costs availability only. Closing it would mean
+// moving consume out of checkConfiguredOTP and behind the re-check, which
+// is not worth the extra coupling.
 func (s *QRAuthService) VerifySession(sessionID, token, mobileIP, deviceInfo string, checkOTP func() error) error {
 	s.mutex.Lock()
 	session, err := s.verifiableSessionLocked(sessionID, token)

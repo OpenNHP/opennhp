@@ -108,6 +108,10 @@ var (
 	errNoClientAddr = errors.New("cannot determine the client address")
 )
 
+// otpCheck is checkConfiguredOTP; a variable only so tests can make it
+// return an error authOTPCode does not know about.
+var otpCheck = checkConfiguredOTP
+
 // checkConfiguredOTP checks code against the configured OTPSecretKey under
 // the rate limit for clientIP, and refuses a used code unless
 // OTPAllowReuse is set. Every path that accepts the configured OTP goes

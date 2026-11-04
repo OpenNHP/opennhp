@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net"
@@ -774,5 +775,18 @@ func TestGlobalLimitWarningOncePerWindow(t *testing.T) {
 	guess(g, "203.0.113.2")
 	if !g.globalWarned.Equal(first) {
 		t.Fatal("warned twice within one window")
+	}
+}
+
+// An error authOTPCode does not recognise fails closed: no knock.
+func TestAuthOTPCodeUnknownErrorFailsClosed(t *testing.T) {
+	useTestOTPConfig(t, false)
+	old := otpCheck
+	otpCheck = func(*config, string, string) error { return errors.New("some future failure") }
+	t.Cleanup(func() { otpCheck = old })
+	knocked := 0
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	if w := otpRequest(t, good, "192.0.2.80:5000", "", &knocked); w.Code != http.StatusInternalServerError || knocked != 0 {
+		t.Fatalf("unknown error: got %d, knocked %d", w.Code, knocked)
 	}
 }

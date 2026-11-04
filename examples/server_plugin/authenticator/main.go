@@ -338,7 +338,7 @@ func authOTPCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 	}
 
 	clientIP := otpClientIP(ctx, conf.trustedProxies)
-	switch err := checkConfiguredOTP(conf, clientIP, otpCode); {
+	switch err := otpCheck(conf, clientIP, otpCode); {
 	case errors.Is(err, errNoClientAddr):
 		log.Error("OTP auth refused: %v (RemoteAddr %q)", err, ctx.Request.RemoteAddr)
 		ctx.JSON(http.StatusBadRequest, gin.H{
@@ -365,6 +365,15 @@ func authOTPCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"errMsg":  "OTP code already used, wait for the next code",
+		})
+		return nil, err
+	case err != nil:
+		// Fail closed: an error this switch does not know about must never
+		// fall through to the knock.
+		log.Error("OTP auth refused for %s: %v", clientIP, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"errMsg":  "OTP verification failed",
 		})
 		return nil, err
 	}

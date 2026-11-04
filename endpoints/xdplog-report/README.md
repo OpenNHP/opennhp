@@ -358,6 +358,17 @@ rebuilds the site: `deploy-xdpstats` runs the collector once with
 day, so the index is rewritten from the deployed binary's own output. The
 daily timer run is not forced; there the incremental path is the point.
 
+The deploy does not take the collector's exit code as the answer. A run that
+lost the collector's lock exits zero without touching the site, and a run
+that could not list a source exits non-zero with the site perfectly rebuilt,
+so the exit code says neither "rebuilt" nor "not rebuilt". The deploy
+therefore checks two things about the run it started: the collect log lines
+*that run* wrote must contain the forced-rebuild line, and the published
+`index.html` must be newer than a marker created before the run. The first
+says the flag reached the collector; the second says the file nginx serves
+was rewritten. A source that could not be listed is reported as a warning —
+the site was rebuilt, but the published days may be stale.
+
 The hero number animates (2.5s count-up, thousands separators) using
 `countup.js`, written next to `index.html` and loaded with a plain
 `<script src="countup.js" defer>`. It is progressive enhancement: the span
@@ -796,6 +807,13 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 部署会重建站点的原因：`deploy-xdpstats` 会带 `XDPSTATS_SITE_FORCE=1` 跑一次采集脚本，
 它会传 `-force`，把缓存里的每一天重新分析一遍，于是首页由这次部署的二进制自己的输出来重写。
 每日的定时采集不加这个开关 —— 那里增量路径才是本意。
+
+部署不拿采集脚本的退出码当结论：抢不到锁的运行会以 0 退出却没有碰过站点，而某个源列不出来
+的运行会以非 0 退出、站点却重建得好好的 —— 退出码两件事都说明不了。所以部署检查的是**它
+自己发起的这次运行**的两件事：这次运行写进采集日志的行里必须有"强制重建"那一行；发布出去
+的 `index.html` 必须比运行前留下的标记文件新。前者说明开关到了采集脚本手里，后者说明 nginx
+对外提供的那个文件确实被重写了。某个源列不出来只记为警告 —— 站点是重建了，但已发布的日子
+可能是旧的。
 
 `totalnumber.js` 把三个累计数字导出成 JavaScript 常量，供别的站点直接引用：
 

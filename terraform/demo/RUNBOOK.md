@@ -1500,10 +1500,27 @@ re-analyzed and every page and the index are rewritten. The flag travels in
 the systemd manager's environment (`systemctl set-environment`), so the run
 still happens inside the unit's sandbox rather than as a bare ssh command,
 and it is cleared again right after, so the daily timer run stays
-incremental. The job then reads the collect log back: it fails if the run
-did not rebuild, and it fails if the published country figure is above a
+incremental.
+
+The job does not take the collector's exit code as the answer, because it
+cannot be one. A run that lost the collector's lock exits zero without
+touching the site; a run that could not list a source exits non-zero with
+the site perfectly rebuilt. So the job checks two things about the run it
+started: the collect log lines **that run** wrote must contain the
+forced-rebuild line, and the published `index.html` must be newer than a
+marker file created before the run. The first says the flag reached the
+collector; the second says the file nginx serves was rewritten. A source that
+could not be listed is reported as a warning rather than a failure — the
+site was rebuilt, but the published days may be stale, and the collector's
+unit still records the failure. The published country figure is bounded at a
 generous 400 — there are only ~250 ISO 3166-1 alpha-2 codes, and a total
 above that is the double count the country rule exists to prevent.
+
+A step after the first run guarantees two things whatever the run did: the
+force flag does not outlive the deploy (a leaked `XDPSTATS_SITE_FORCE` would
+force every daily run to rebuild the whole site, and nobody would notice),
+and the daily timer is running (the first run stops it for the forced
+rebuild; a timer that will not start is a failed deploy, not a warning).
 
 **Publishing floor.** `xdplog-report site` publishes nothing before `-since`
 (default `2026-10-16`): no detail page, no index row, and no share of the
@@ -1633,6 +1650,14 @@ go run ./xdplog-report history \
   so many country codes to resolve: the total would exceed the number of
   countries there are. The homepage, `totalnumber.js` and the README all
   say so.
+- **Expect the country figure to drop.** The deployed snapshot alone records
+  130 countries, and the live site was publishing that baseline *plus* its
+  own union — around 131 at the time of the change. The first deploy with
+  the fixed binary republishes the live period's union alone, so the
+  published number falls by roughly that baseline in one step. That is the
+  fix, not a regression: the old number was counting countries that were
+  never in the published days twice. The source count does not drop — it
+  still carries the snapshot's baseline.
 - **Rolling it back** is removing the day from `history.json` (or the whole
   file): the next run rewrites the homepage, the day becomes a live row
   again and the day page is linked once more. The fingerprint of the file

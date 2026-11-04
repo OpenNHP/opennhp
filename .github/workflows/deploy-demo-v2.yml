@@ -4005,6 +4005,9 @@ jobs:
           TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/xdpstats"
           WEB_ROOT="/var/www/stats"
+          # A marker file created before the forced run, so the published
+          # index can be compared against it afterwards.
+          MARKER="/tmp/xdpstats-deploy-marker"
 
           # Manual run; the timer will pick up daily thereafter.
           #
@@ -4024,43 +4027,116 @@ jobs:
           # over, so the rebuild has happened when it returns. The manager
           # environment is cleared afterwards either way, so the daily timer
           # run is not forced.
+          #
+          # What this step has to prove is not "the collector ran" but "the
+          # published site was rewritten by the binary this deploy
+          # installed". The collector's exit code cannot carry that: it
+          # exits non-zero when a source could not be listed, which can
+          # happen with the site perfectly rebuilt, and it exits zero when
+          # the run lost the collector's lock, which happens with the site
+          # untouched. So the proof is taken from two independent facts
+          # about this run:
+          #
+          #   1. the collect log lines THIS run wrote — not the log's last
+          #      line, which a later run can overwrite — say the run was
+          #      forced and that the site rewrote the index;
+          #   2. the published index.html is newer than a marker created
+          #      before the run, which is what "republished" means for the
+          #      file nginx serves.
+          #
+          # Either fact alone has a hole: the log says what the run
+          # believed, the timestamp says the file was rewritten but not by
+          # whom. Together they are what the deploy needs to know.
+
+          # The marker is created before the run, so the index can be
+          # compared against it afterwards. `find -newer` compares
+          # nanosecond timestamps, so a rewrite inside the same second as
+          # the marker is still seen.
+          ssh $SSH_OPTS $TARGET "rm -f $MARKER && touch $MARKER"
+          log_before=$(ssh $SSH_OPTS $TARGET "{ wc -l < $REMOTE_DIR/collect.log; } 2>/dev/null || echo 0" | tr -d '[:space:]')
+          log_before=${log_before:-0}
+
           ssh $SSH_OPTS $TARGET "sudo systemctl set-environment XDPSTATS_SITE_FORCE=1"
           # The timer is stopped for the forced run: a timer tick that lands
-          # on top of it would win the collector's flock, and the forced run
+          # on top of it would win the collector's lock, and the forced run
           # would then exit without rebuilding anything. The timer is
-          # started again below, before any failure can exit this step — a
-          # stopped timer would silently stop the daily collection.
+          # started again by the step after this one, which runs even when
+          # this one fails — a stopped timer would silently stop the daily
+          # collection.
           ssh $SSH_OPTS $TARGET "sudo systemctl stop xdpstats.timer || true"
+          # A run that was already in flight holds the collector's lock, and
+          # the forced run would lose that race and exit without
+          # rebuilding. Wait for the lock rather than failing the deploy on
+          # a race it did not cause. The collector refuses to run at all
+          # without flock, so a relay without it has no collection to race
+          # with and the wait is skipped.
+          if ssh $SSH_OPTS $TARGET "command -v flock >/dev/null 2>&1"; then
+            if ! ssh $SSH_OPTS $TARGET "flock -w 60 $REMOTE_DIR/raw/.lock true"; then
+              echo "ERROR: another collect run held the collector's lock for more than 60s" >&2
+              exit 1
+            fi
+          fi
           collect_rc=0
           ssh $SSH_OPTS $TARGET "sudo systemctl start xdpstats.service" || collect_rc=$?
           ssh $SSH_OPTS $TARGET "sudo systemctl unset-environment XDPSTATS_SITE_FORCE" || true
-          ssh $SSH_OPTS $TARGET "sudo systemctl start xdpstats.timer || true"
-          if [ "$collect_rc" -ne 0 ]; then
-            echo "ERROR: the collector failed (rc=$collect_rc); the site still serves the previous build" >&2
-            echo "--- last 20 lines of xdpstats journald log ---" >&2
-            ssh $SSH_OPTS $TARGET "sudo journalctl -u xdpstats -n 20 --no-pager" >&2 || true
-            echo "--- last 30 lines of the collect log ---" >&2
-            ssh $SSH_OPTS $TARGET "tail -n 30 $REMOTE_DIR/collect.log" >&2 || true
-            exit 1
-          fi
 
-          # The site's own stdout is redirected into the collect log, and
-          # the collector's last word is its "complete:" line. A forced run
-          # always ends in one — "pulled at least one day, site rewritten"
-          # or "no new days; site rebuilt anyway (-force)". A run that lost
-          # the flock race logs "another collect run is in progress" and
-          # exits 0 without touching the site, so it must not pass as a
-          # rebuild.
-          last_line=$(ssh $SSH_OPTS $TARGET "tail -n 1 $REMOTE_DIR/collect.log")
-          echo "collector: $last_line"
-          case "$last_line" in
-            *"complete: "*) ;;
+          # Only the lines this run wrote. A later run — the timer catches
+          # up when it is started again — appends after them and cannot
+          # make this run look like something it did not do.
+          run_log=$(ssh $SSH_OPTS $TARGET "sed -n '$((log_before + 1)),\$p' $REMOTE_DIR/collect.log" || true)
+
+          # 1. The forced rebuild reached the collector. The "-force" line
+          #    is written after the run wins the collector's lock, so its
+          #    absence means this run rebuilt nothing: it lost the race, or
+          #    the binary was missing.
+          case "$run_log" in
+            *"forcing a full site rebuild (-force)"*)
+              echo "collector: the forced rebuild was requested"
+              ;;
             *)
-              echo "ERROR: the collector ran but the site was not rebuilt" >&2
-              ssh $SSH_OPTS $TARGET "tail -n 30 $REMOTE_DIR/collect.log" >&2 || true
+              echo "ERROR: the forced rebuild never reached the collector; the site was not rebuilt" >&2
+              echo "--- the lines this run wrote to the collect log ---" >&2
+              printf '%s\n' "$run_log" | tail -n 40 >&2
               exit 1
               ;;
           esac
+
+          # 2. The published index was rewritten. The site's own line says
+          #    the index was written; the file's timestamp says the file
+          #    nginx serves was rewritten.
+          republished=$(ssh $SSH_OPTS $TARGET "find $WEB_ROOT/index.html -newer $MARKER 2>/dev/null" || true)
+          if [ -z "$republished" ]; then
+            echo "ERROR: the published index.html was not rewritten by this run; the site still serves the previous build" >&2
+            echo "--- the lines this run wrote to the collect log ---" >&2
+            printf '%s\n' "$run_log" | tail -n 40 >&2
+            exit 1
+          fi
+          echo "collector: $republished was rewritten"
+          case "$run_log" in
+            *"wrote day pages + index"*) ;;
+            *)
+              # The site publishes the index before it reports, so a run
+              # that failed after the write leaves a republished index and
+              # no "wrote" line. The state may not have been saved; the
+              # next run rebuilds what it missed.
+              echo "WARNING: the index was republished but the site did not report a clean write (exit code $collect_rc)" >&2
+              ;;
+          esac
+
+          if [ "$collect_rc" -ne 0 ]; then
+            # The index was republished, which is what the deploy is for, so
+            # the deploy did its job. A non-zero exit here is the
+            # collector's source alarm: it could not list a source, so the
+            # published site may be missing the most recent days. That is
+            # worth saying out loud, but it is not a failed site rebuild,
+            # and failing the whole demo deployment over a briefly
+            # unreachable source would bury the deploy that did succeed.
+            # The collector's unit still records the failure, and the daily
+            # timer picks the missing days up when the source is back.
+            echo "WARNING: the collector exited $collect_rc; the site was rebuilt, but a source could not be listed and the published days may be stale" >&2
+            echo "--- the lines this run wrote to the collect log ---" >&2
+            printf '%s\n' "$run_log" | tail -n 40 >&2
+          fi
 
           # The published figures, and a bound on the country count. There
           # are only ~250 ISO 3166-1 alpha-2 codes, so a country total well
@@ -4069,15 +4145,35 @@ jobs:
           # published. The site counts the live period's countries alone;
           # see endpoints/xdplog-report/render_index.go.
           ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK $WEB_ROOT/totalnumber.js"
+          blocked=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_BLOCKED $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          sources=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_SOURCE_IPS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
           countries=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_COUNTRIES $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
           if [ -z "$countries" ]; then
             echo "ERROR: no country figure in the published totalnumber.js" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$countries" | grep -Eq '^[0-9]+$'; then
+            echo "ERROR: the published country figure is not a number: '$countries'" >&2
             exit 1
           fi
           if [ "$countries" -gt 400 ]; then
             echo "ERROR: implausible country total: $countries (there are ~250 ISO country codes)" >&2
             exit 1
           fi
+
+          # The figures the site now publishes, in the job summary: they are
+          # what the deploy changed, and the country total is expected to
+          # drop (it no longer carries the history snapshot's baseline).
+          {
+            echo "### XDP attack stats — published by this deploy"
+            echo
+            echo "| Figure | Published |"
+            echo "| --- | --- |"
+            echo "| Blocked packets | ${blocked:-?} |"
+            echo "| Distinct source IPs | ${sources:-?} |"
+            echo "| Distinct countries | $countries |"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Wait up to 30s for the nginx reload + first site render to land.
           for i in $(seq 1 30); do
@@ -4093,6 +4189,36 @@ jobs:
           echo "--- last 20 lines of xdpstats journald log ---" >&2
           ssh $SSH_OPTS $TARGET "sudo journalctl -u xdpstats -n 20 --no-pager" >&2 || true
           exit 1
+
+      - name: The collector must be left running
+        if: always()
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          # Two things this step guarantees, whatever the step above did:
+          #
+          # 1. The force flag does not outlive the deploy. A leaked
+          #    XDPSTATS_SITE_FORCE would force every daily run to rebuild
+          #    the whole site from scratch, and nobody would notice. The
+          #    step above clears it too; this clears it again in case that
+          #    step failed before reaching its own cleanup.
+          ssh $SSH_OPTS $TARGET "sudo systemctl unset-environment XDPSTATS_SITE_FORCE" || true
+          # 2. The timer is running. It is what collects every day, and the
+          #    step above stops it for the forced run — a stopped timer
+          #    would silently stop the daily collection, so it is started
+          #    here and its state is checked. A timer that will not start is
+          #    a failed deploy, not a warning.
+          ssh $SSH_OPTS $TARGET "sudo systemctl enable --now xdpstats.timer" || true
+          if ! ssh $SSH_OPTS $TARGET "sudo systemctl is-active xdpstats.timer"; then
+            echo "ERROR: the xdpstats timer is not active; the daily collection would stop" >&2
+            exit 1
+          fi
+          ssh $SSH_OPTS $TARGET "systemctl list-timers xdpstats.timer --no-pager" || true
+          ssh $SSH_OPTS $TARGET "rm -f /tmp/xdpstats-deploy-marker" || true
 
       - name: Cleanup
         if: always()

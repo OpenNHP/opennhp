@@ -618,10 +618,19 @@ by the deploy) and says so in the collect log either way.
   `xdplog-report site` only rewrites the index when an input moved (a day's
   log changed, a day was unpublished, the history snapshot's bytes
   changed), so without it the site would keep serving the previous build.
-  The job then reads the collect log back and fails if the run did not
-  rebuild, or if the published country figure is implausible (there are
-  only ~250 ISO 3166-1 alpha-2 codes). The daily timer run is not forced —
-  the incremental path is the point there.
+  The job then checks two things about the run it started, because the
+  collector's exit code cannot answer either question: a run that lost the
+  collector's lock exits zero without touching the site, and a run that
+  could not list a source exits non-zero with the site perfectly rebuilt.
+  The collect log lines *that run* wrote must contain the forced-rebuild
+  line, and the published `index.html` must be newer than a marker created
+  before the run — the flag reached the collector, and the file nginx serves
+  was rewritten. A source that could not be listed is a warning, not a
+  failure. The job also fails if the published country figure is
+  implausible (there are only ~250 ISO 3166-1 alpha-2 codes), and a step
+  after it guarantees the force flag did not outlive the deploy and that
+  the daily timer is running. The daily timer run is not forced — the
+  incremental path is the point there.
 
 **Three directories, three permission stories.** `/home/ec2-user` is mode
 0700 on AL2023 and nginx workers run as `nginx`, so the web root is

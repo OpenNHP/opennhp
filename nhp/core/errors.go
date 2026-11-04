@@ -114,6 +114,7 @@ const (
 	errNHPPeerNotFound
 	errNHPPeerExpired
 	errNHPPeerAddressMismatch
+	errNHPPeerRoleMismatch
 )
 
 // device sdk errors
@@ -155,4 +156,5 @@ var (
 	ErrPeerNotFound                   = newError(errNHPPeerNotFound, "peer not found in peer pool")
 	ErrPeerExpired                    = newError(errNHPPeerExpired, "peer expired")
 	ErrPeerAddressMismatch            = newError(errNHPPeerAddressMismatch, "peer does not match its previous address on this connection")
+	ErrPeerRoleMismatch               = newError(errNHPPeerRoleMismatch, "peer is not registered for the role this message type requires")
 )

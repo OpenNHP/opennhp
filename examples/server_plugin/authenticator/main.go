@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -336,41 +337,30 @@ func authOTPCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		return nil, fmt.Errorf("OTPSecretKey not configured")
 	}
 
-	// Throttle guessing by the TCP peer address, or the X-Forwarded-For
-	// client behind a configured trusted proxy; see otpClientIP.
 	clientIP := otpClientIP(ctx, conf.trustedProxies)
-	ticket, ok := otpLimiter.reserve(clientIP)
-	if !ok {
+	switch err := checkConfiguredOTP(conf, clientIP, otpCode); {
+	case errors.Is(err, errOTPRateLimited):
 		log.Warning("OTP auth refused for %s: too many failed attempts", clientIP)
 		ctx.JSON(http.StatusTooManyRequests, gin.H{
 			"success": false,
 			"errMsg":  "Too many failed attempts, try again later",
 		})
-		return nil, fmt.Errorf("too many failed OTP attempts")
-	}
-
-	// Validate OTP using configured secret. A wrong code keeps the failure
-	// reserve already counted.
-	service := GetQRAuthService()
-	if !service.ValidateConfiguredOTP(conf.OTPSecretKey, otpCode, conf.OTPPeriod) {
+		return nil, err
+	case errors.Is(err, errOTPInvalid):
 		log.Info("OTP verification failed for %s: invalid OTP code", clientIP)
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"errMsg":  "Invalid OTP code",
 		})
-		return nil, fmt.Errorf("invalid OTP code")
-	}
-	if !otpLimiter.consume(otpCode, conf.OTPAllowReuse, otpCodeLifetime(conf.OTPPeriod)) {
-		// The code is correct, so this is not a guess: give the attempt back.
-		otpLimiter.release(ticket)
+		return nil, err
+	case errors.Is(err, errOTPUsed):
 		log.Warning("OTP verification failed for %s: code already used", clientIP)
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"errMsg":  "OTP code already used, wait for the next code",
 		})
-		return nil, fmt.Errorf("OTP code already used")
+		return nil, err
 	}
-	otpLimiter.succeed(ticket)
 
 	log.Info("OTP authentication successful using configured secret key")
 
@@ -402,8 +392,9 @@ func authQRCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Reso
 		return nil, fmt.Errorf("missing sessionId for QR authentication")
 	}
 
-	// Knock only for a session whose OTP was verified on the mobile device,
-	// for the resource it was generated for, and only once.
+	// Knock only for a session confirmed by HandleQRVerify, which checks the
+	// configured OTP through the same limiter as otpvalid, for the resource
+	// it was generated for, and only once.
 	if err := GetQRAuthService().ConsumeConfirmedSession(sessionId, res.ResourceId); err != nil {
 		log.Warning("QR auth refused for sessionId %s: %v", sessionId, err)
 		ctx.JSON(http.StatusOK, gin.H{

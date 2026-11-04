@@ -786,6 +786,7 @@
             Add the secret key below to your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.
         </p>
 
+        {{if .otpSecretKey}}
         <div class="secret-section">
             <p class="secret-label" id="secretLabel">OTP Secret Key</p>
             <div class="secret-value">
@@ -798,6 +799,7 @@
                 </button>
             </div>
         </div>
+        {{end}}
 
         <div class="otp-input-section">
             <p class="otp-input-label" id="otpInputLabel">Enter 6-digit verification code</p>
@@ -921,7 +923,6 @@
     let currentLang = 'en';
     let currentSession = {
         sessionId: null,
-        otpSecret: null,
         expiresAt: null
     };
     let pollingInterval = null;
@@ -1087,13 +1088,12 @@
 
             currentSession = {
                 sessionId: data.sessionId,
-                otpSecret: data.otpSecret,
                 expiresAt: data.expiresAt * 1000
             };
 
 
             // Build QR content
-            const qrContent = `nhp://scan?data=${encodeURIComponent(data.qrData)}&otp=${encodeURIComponent(data.otpSecret)}&server=${encodeURIComponent(data.serverUrl)}&asp=${encodeURIComponent(config.aspId)}&res=${encodeURIComponent(config.resId)}&sid=${encodeURIComponent(data.sessionId)}`;
+            const qrContent = `nhp://scan?data=${encodeURIComponent(data.qrData)}&server=${encodeURIComponent(data.serverUrl)}&asp=${encodeURIComponent(config.aspId)}&res=${encodeURIComponent(config.resId)}&sid=${encodeURIComponent(data.sessionId)}`;
 
             // Render QR code
             renderQRCode(qrContent);
@@ -1458,12 +1458,10 @@
         // Always call changeLanguage to initialize all translations
         changeLanguage();
 
-        // The server only sends the OTP secret key when ShowOTPSecret is on;
-        // otherwise users already have it enrolled and the section is hidden.
+        // The server only sends the OTP secret key (and the section showing
+        // it) when ShowOTPSecret is on; otherwise users already have it enrolled.
         if (config.otpSecretKey) {
             document.getElementById('otpSecret').textContent = config.otpSecretKey;
-        } else {
-            document.querySelector('.secret-section').style.display = 'none';
         }
 
         // Fetch IP

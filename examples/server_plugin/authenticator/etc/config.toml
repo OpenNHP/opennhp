@@ -19,9 +19,11 @@ QRCodeExpiry = 300
 # Off, a code already accepted is refused for the next ~90 seconds, so a code observed in
 # transit cannot be replayed. Every user shares OTPSecretKey, so turn this on if several
 # people may log in within the same 30-second window.
-# Failed attempts are always rate limited: 5 failures from one address lock it out for
-# 15 minutes, and at most 30 failures per minute are checked across all addresses. The
-# global limit fails closed: while it is exhausted, nobody can log in with OTP.
+# Failed attempts are always rate limited, on the manual OTP form and on the QR flow's
+# mobile verification alike (both check codes from OTPSecretKey): 5 failures from one
+# address (IPv6: one /64) lock it out for 15 minutes, and at most 30 failures per minute
+# are checked across all addresses. The global limit fails closed: while it is
+# exhausted, nobody can log in with OTP.
 # OTPAllowReuse = false
 
 # Show OTPSecretKey on the public login page so visitors can enrol it (default: false).

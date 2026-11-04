@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -16,7 +17,7 @@ import (
 // A 6-digit TOTP checked with one step of skew accepts 3 codes at a time,
 // so an unthrottled endpoint falls to brute force in about 3*10^5 guesses.
 // Two limits apply, and neither depends on headers a client can forge:
-//   - per source address (see otpClientIP): at most otpMaxIPFailures
+//   - per source address (see otpClientIP; IPv6 per /64): at most otpMaxIPFailures
 //     failures, after which the address is locked out for otpIPLockout;
 //   - across all sources: at most otpGlobalMaxFailures failures per
 //     otpGlobalWindow, so spreading guesses over many addresses does not
@@ -85,6 +86,34 @@ func newOTPGuard() *otpGuard {
 }
 
 var otpLimiter = newOTPGuard()
+
+var (
+	errOTPRateLimited = errors.New("too many failed OTP attempts")
+	errOTPInvalid     = errors.New("invalid OTP code")
+	errOTPUsed        = errors.New("OTP code already used")
+)
+
+// checkConfiguredOTP checks code against the configured OTPSecretKey under
+// the rate limit for clientIP, and refuses a used code unless
+// OTPAllowReuse is set. Every path that accepts the configured OTP goes
+// through here, so none of them is weaker than another.
+func checkConfiguredOTP(conf *config, clientIP, code string) error {
+	ticket, ok := otpLimiter.reserve(clientIP)
+	if !ok {
+		return errOTPRateLimited
+	}
+	// A wrong code keeps the failure reserve already counted.
+	if !GetQRAuthService().ValidateConfiguredOTP(conf.OTPSecretKey, code, conf.OTPPeriod) {
+		return errOTPInvalid
+	}
+	if !otpLimiter.consume(code, conf.OTPAllowReuse, otpCodeLifetime(conf.OTPPeriod)) {
+		// The code is correct, so this is not a guess: give the attempt back.
+		otpLimiter.release(ticket)
+		return errOTPUsed
+	}
+	otpLimiter.succeed(ticket)
+	return nil
+}
 
 func (g *otpGuard) rollGlobalWindow(now time.Time) {
 	if now.Sub(g.globalWindowStart) >= otpGlobalWindow {
@@ -243,7 +272,23 @@ func isTrustedProxy(s string, trusted []netip.Prefix) bool {
 	return false
 }
 
-// otpClientIP is the address OTP attempts are limited by. It is the TCP peer
+// otpLimitKey is the key an address is limited under: IPv4 addresses as
+// they are, IPv6 addresses by their /64, because a single host commonly
+// holds a whole /64 and could otherwise rotate through fresh keys.
+func otpLimitKey(addr string) string {
+	a, err := netip.ParseAddr(addr)
+	if err != nil {
+		return addr
+	}
+	a = a.Unmap()
+	if a.Is4() {
+		return a.String()
+	}
+	return netip.PrefixFrom(a, 64).Masked().String()
+}
+
+// otpClientIP is the key OTP attempts are limited by (see otpLimitKey) for
+// the client's address. That address is the TCP peer
 // unless that peer is one of the configured trusted proxies, in which case
 // it is the right-most X-Forwarded-For entry that is not itself a trusted
 // proxy: everything to the left of it was written by the client and can be
@@ -252,7 +297,7 @@ func isTrustedProxy(s string, trusted []netip.Prefix) bool {
 func otpClientIP(ctx *gin.Context, trusted []netip.Prefix) string {
 	peer := ctx.RemoteIP()
 	if len(trusted) == 0 || !isTrustedProxy(peer, trusted) {
-		return peer
+		return otpLimitKey(peer)
 	}
 	var hops []string
 	for _, h := range ctx.Request.Header.Values("X-Forwarded-For") {
@@ -263,12 +308,12 @@ func otpClientIP(ctx *gin.Context, trusted []netip.Prefix) string {
 		if isTrustedProxy(hop, trusted) {
 			continue
 		}
-		if a, err := netip.ParseAddr(hop); err == nil {
-			return a.Unmap().String()
+		if _, err := netip.ParseAddr(hop); err == nil {
+			return otpLimitKey(hop)
 		}
 		// Garbage where an address should be: fall back to the proxy, which
 		// shares one limit across its clients rather than trusting the header.
-		return peer
+		return otpLimitKey(peer)
 	}
-	return peer
+	return otpLimitKey(peer)
 }

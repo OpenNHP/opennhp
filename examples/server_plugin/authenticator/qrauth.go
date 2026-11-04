@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -23,7 +24,6 @@ import (
 type QRCodeSession struct {
 	SessionID     string    `json:"sessionId"`
 	Token         string    `json:"token"`
-	OTPSecret     string    `json:"otpSecret"`
 	AuthServiceId string    `json:"aspId"`
 	ResourceId    string    `json:"resId"`
 	SrcIp         string    `json:"srcIp"`
@@ -86,8 +86,6 @@ type QRGenerateResponse struct {
 	Success   bool   `json:"success"`
 	SessionID string `json:"sessionId,omitempty"`
 	QRData    string `json:"qrData,omitempty"`
-	OTPSecret string `json:"otpSecret,omitempty"`
-	OTPUri    string `json:"otpUri,omitempty"` // otpauth:// URI for Google Authenticator
 	ServerUrl string `json:"serverUrl,omitempty"`
 	AspId     string `json:"aspId,omitempty"`
 	ResId     string `json:"resId,omitempty"`
@@ -141,7 +139,11 @@ func GetQRAuthService() *QRAuthService {
 }
 
 // GenerateSession creates a new QR code session
-func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (*QRCodeSession, *QRCodeData, string, error) {
+//
+// The session has no OTP secret of its own: whoever displays the QR code
+// would hold it and could confirm the session themselves. The phone proves
+// itself with a code from the configured OTPSecretKey instead.
+func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (*QRCodeSession, *QRCodeData, error) {
 	// Generate session ID
 	sessionBytes := make([]byte, 16)
 	rand.Read(sessionBytes)
@@ -152,22 +154,10 @@ func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (
 	rand.Read(tokenBytes)
 	token := base64.URLEncoding.EncodeToString(tokenBytes)
 
-	// Generate TOTP secret
-	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "OpenNHP Authenticator",
-		AccountName: sessionID[:8],
-		Period:      30,
-		SecretSize:  20,
-	})
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("failed to generate OTP secret: %v", err)
-	}
-
 	now := time.Now()
 	session := &QRCodeSession{
 		SessionID:     sessionID,
 		Token:         token,
-		OTPSecret:     key.Secret(),
 		AuthServiceId: aspId,
 		ResourceId:    resId,
 		SrcIp:         srcIp,
@@ -194,11 +184,8 @@ func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (
 	// Sign the QR data
 	qrData.Signature = s.signQRData(qrData)
 
-	// Generate OTP URI for Google Authenticator
-	otpUri := key.URL()
-
 	log.Info("Authenticator session created: sessionId=%s, aspId=%s, resId=%s", sessionID, aspId, resId)
-	return session, qrData, otpUri, nil
+	return session, qrData, nil
 }
 
 // signQRData creates HMAC signature for QR data
@@ -329,8 +316,11 @@ func (s *QRAuthService) ConsumeConfirmedSession(sessionID, resId string) error {
 	return nil
 }
 
-// VerifySession verifies a session with OTP
-func (s *QRAuthService) VerifySession(sessionID, token, otpCode, mobileIP, deviceInfo string) error {
+// VerifySession confirms a session. checkOTP verifies the phone's code
+// (checkConfiguredOTP in production) and runs only once the session and its
+// token are known to be good; an errOTPInvalid from it counts against the
+// session's qrMaxOTPFailures.
+func (s *QRAuthService) VerifySession(sessionID, token, mobileIP, deviceInfo string, checkOTP func() error) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -359,12 +349,13 @@ func (s *QRAuthService) VerifySession(sessionID, token, otpCode, mobileIP, devic
 		return fmt.Errorf("too many failed attempts, generate a new QR code")
 	}
 
-	// Verify OTP
-	if !totp.Validate(otpCode, session.OTPSecret) {
-		session.otpFailures++
-		session.Status = QRStatusFailed
-		session.ErrMsg = "invalid OTP code"
-		return fmt.Errorf("invalid OTP code")
+	if err := checkOTP(); err != nil {
+		if errors.Is(err, errOTPInvalid) {
+			session.otpFailures++
+			session.Status = QRStatusFailed
+			session.ErrMsg = err.Error()
+		}
+		return err
 	}
 
 	session.Status = QRStatusConfirmed
@@ -420,7 +411,7 @@ func HandleQRGenerate(ctx *gin.Context, resId string) {
 	}
 	serverUrl := fmt.Sprintf("%s://%s", scheme, ctx.Request.Host)
 
-	session, qrData, otpUri, err := service.GenerateSession(aspId, resId, srcIp, serverUrl)
+	session, qrData, err := service.GenerateSession(aspId, resId, srcIp, serverUrl)
 	if err != nil {
 		ctx.JSON(http.StatusOK, QRGenerateResponse{
 			Success: false,
@@ -443,8 +434,6 @@ func HandleQRGenerate(ctx *gin.Context, resId string) {
 		Success:   true,
 		SessionID: session.SessionID,
 		QRData:    encryptedData,
-		OTPSecret: session.OTPSecret,
-		OTPUri:    otpUri,
 		ServerUrl: serverUrl,
 		AspId:     aspId,
 		ResId:     resId,
@@ -564,10 +553,27 @@ func HandleQRVerify(ctx *gin.Context) {
 		return
 	}
 
-	// Verify session
-	err = service.VerifySession(qrData.SessionID, qrData.Token, req.OTPCode, ctx.ClientIP(), req.DeviceInfo)
-	if err != nil {
+	conf := baseConf
+	if conf == nil || conf.OTPSecretKey == "" {
 		ctx.JSON(http.StatusOK, QRVerifyResponse{
+			Success: false,
+			ErrMsg:  "OTP secret key not configured",
+		})
+		return
+	}
+
+	// The phone's code is checked against the configured secret under the
+	// same limiter as otpvalid, keyed by the phone's address.
+	clientIP := otpClientIP(ctx, conf.trustedProxies)
+	err = service.VerifySession(qrData.SessionID, qrData.Token, ctx.ClientIP(), req.DeviceInfo, func() error {
+		return checkConfiguredOTP(conf, clientIP, req.OTPCode)
+	})
+	if err != nil {
+		status := http.StatusOK
+		if errors.Is(err, errOTPRateLimited) {
+			status = http.StatusTooManyRequests
+		}
+		ctx.JSON(status, QRVerifyResponse{
 			Success: false,
 			ErrMsg:  err.Error(),
 		})

@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"html/template"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -213,12 +215,14 @@ func TestOTPClientIP(t *testing.T) {
 		{"127.0.0.1", "6.6.6.6, 198.51.100.1, 10.1.2.3", true, "198.51.100.1"}, // forged left part skipped
 		{"127.0.0.1", "garbage", true, "127.0.0.1"},                            // garbage: the proxy's limit
 		{"127.0.0.1", "", true, "127.0.0.1"},
+		{"2001:db8:1:2:aaaa::1", "", false, "2001:db8:1:2::/64"}, // IPv6 limited per /64
+		{"127.0.0.1", "2001:db8:1:2:bbbb::9", true, "2001:db8:1:2::/64"},
 	}
 	gin.SetMode(gin.TestMode)
 	for _, c := range cases {
 		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 		ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		ctx.Request.RemoteAddr = c.peer + ":5000"
+		ctx.Request.RemoteAddr = net.JoinHostPort(c.peer, "5000")
 		if c.xff != "" {
 			ctx.Request.Header.Set("X-Forwarded-For", c.xff)
 		}
@@ -355,35 +359,96 @@ func qrvalidRequest(t *testing.T, sessionID, resID string, knocked *int) *httpte
 	return w
 }
 
-// qrvalid knocks only for a session whose OTP was verified, for its own
-// resource, and only once.
-func TestAuthQRCodeRequiresConfirmedSession(t *testing.T) {
+func qrHandlerRequest(t *testing.T, target, remoteAddr string, h func(*gin.Context)) map[string]any {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(http.MethodGet, target, nil)
+	ctx.Request.RemoteAddr = remoteAddr
+	h(ctx)
+	resp := map[string]any{"httpStatus": float64(w.Code)}
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	return resp
+}
+
+// generate hands the browser a session, as the login page does.
+func qrGenerate(t *testing.T) (sessionID, qrData string, resp map[string]any) {
+	t.Helper()
+	resp = qrHandlerRequest(t, "/?action=generate", "192.0.2.40:5000", func(ctx *gin.Context) { HandleQRGenerate(ctx, "demo") })
+	sessionID, _ = resp["sessionId"].(string)
+	qrData, _ = resp["qrData"].(string)
+	if sessionID == "" || qrData == "" {
+		t.Fatalf("generate failed: %v", resp)
+	}
+	return sessionID, qrData, resp
+}
+
+func qrVerify(t *testing.T, qrData, code, phoneAddr string) map[string]any {
+	t.Helper()
+	q := url.Values{"action": {"verify"}, "encryptedData": {qrData}, "otpCode": {code}}
+	return qrHandlerRequest(t, "/?"+q.Encode(), phoneAddr, HandleQRVerify)
+}
+
+// The QR flow cannot be completed with what generate hands out: there is
+// no per-session secret, and confirming a session takes a code from the
+// configured OTPSecretKey. A confirmed session knocks once, for its own
+// resource.
+func TestQRFlowRequiresConfiguredOTP(t *testing.T) {
 	useTestOTPConfig(t, false)
-	svc := GetQRAuthService()
 	knocked := 0
 
 	qrvalidRequest(t, "made-up", "demo", &knocked)
-	session, qr, _, err := svc.GenerateSession("authenticator", "demo", "192.0.2.40", "https://example")
-	if err != nil {
-		t.Fatal(err)
+	sessionID, qrData, resp := qrGenerate(t)
+	for _, leaked := range []string{"otpSecret", "otpUri"} {
+		if _, ok := resp[leaked]; ok {
+			t.Fatalf("generate returned %s", leaked)
+		}
 	}
-	qrvalidRequest(t, session.SessionID, "demo", &knocked)
+	qrvalidRequest(t, sessionID, "demo", &knocked)
+
+	// A code from any secret the browser could have made up does not confirm.
+	other, _ := totp.Generate(totp.GenerateOpts{Issuer: "x", AccountName: "y"})
+	forged, _ := totp.GenerateCode(other.Secret(), time.Now())
+	if r := qrVerify(t, qrData, forged, "192.0.2.41:5000"); r["success"] != false {
+		t.Fatalf("verify accepted a code from another secret: %v", r)
+	}
+	qrvalidRequest(t, sessionID, "demo", &knocked)
 	if knocked != 0 {
 		t.Fatalf("knocked %d times without a confirmed session", knocked)
 	}
 
-	code, _ := totp.GenerateCode(session.OTPSecret, time.Now())
-	if err := svc.VerifySession(qr.SessionID, qr.Token, code, "192.0.2.41", "test"); err != nil {
-		t.Fatal(err)
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	if r := qrVerify(t, qrData, good, "192.0.2.41:5000"); r["success"] != true {
+		t.Fatalf("verify refused the configured code: %v", r)
 	}
-	qrvalidRequest(t, session.SessionID, "other", &knocked)
+	qrvalidRequest(t, sessionID, "other", &knocked)
 	if knocked != 0 {
 		t.Fatal("knocked for a different resource")
 	}
-	qrvalidRequest(t, session.SessionID, "demo", &knocked)
-	qrvalidRequest(t, session.SessionID, "demo", &knocked)
+	qrvalidRequest(t, sessionID, "demo", &knocked)
+	qrvalidRequest(t, sessionID, "demo", &knocked)
 	if knocked != 1 {
 		t.Fatalf("confirmed session knocked %d times, want 1", knocked)
+	}
+}
+
+// verify shares otpvalid's limiter: guesses there lock the address out of
+// both paths, and a fresh session per guess does not help.
+func TestQRVerifyIsRateLimited(t *testing.T) {
+	useTestOTPConfig(t, false)
+	for i := 0; i < otpMaxIPFailures; i++ {
+		_, qrData, _ := qrGenerate(t)
+		qrVerify(t, qrData, "000000", "192.0.2.60:5000")
+	}
+	_, qrData, _ := qrGenerate(t)
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	if r := qrVerify(t, qrData, good, "192.0.2.60:5000"); r["httpStatus"] != float64(http.StatusTooManyRequests) {
+		t.Fatalf("locked-out phone address: got %v, want 429", r)
+	}
+	knocked := 0
+	if w := otpRequest(t, good, "192.0.2.60:5000", "", &knocked); w.Code != http.StatusTooManyRequests || knocked != 0 {
+		t.Fatalf("otpvalid not locked out by verify guesses: %d, knocked %d", w.Code, knocked)
 	}
 }
 
@@ -391,20 +456,16 @@ func TestAuthQRCodeRequiresConfirmedSession(t *testing.T) {
 func TestVerifySessionCapsFailures(t *testing.T) {
 	useTestOTPConfig(t, false)
 	svc := GetQRAuthService()
-	session, qr, _, err := svc.GenerateSession("authenticator", "demo", "192.0.2.50", "https://example")
+	_, qr, err := svc.GenerateSession("authenticator", "demo", "192.0.2.50", "https://example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	good, _ := totp.GenerateCode(session.OTPSecret, time.Now())
-	bad := "000000"
-	if bad == good {
-		bad = "111111"
-	}
 	for i := 0; i < qrMaxOTPFailures; i++ {
-		_ = svc.VerifySession(qr.SessionID, qr.Token, bad, "", "")
+		_ = svc.VerifySession(qr.SessionID, qr.Token, "", "", func() error { return errOTPInvalid })
 	}
-	if err := svc.VerifySession(qr.SessionID, qr.Token, good, "", ""); err == nil {
-		t.Fatal("session accepted a code after the failure limit")
+	called := false
+	if err := svc.VerifySession(qr.SessionID, qr.Token, "", "", func() error { called = true; return nil }); err == nil || called {
+		t.Fatalf("session checked a code after the failure limit (err %v, checked %v)", err, called)
 	}
 }
 

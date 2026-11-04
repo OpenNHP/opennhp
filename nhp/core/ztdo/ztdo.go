@@ -277,7 +277,7 @@ func (signature *ZtdoSignature) sign(key []byte) {
 }
 
 func (signature *ZtdoSignature) verify(in *ZtdoSignature) bool {
-	return bytes.Equal(signature.Signature[:], in.Signature[:])
+	return hmac.Equal(signature.Signature[:], in.Signature[:]) // constant time
 }
 
 func NewZtdo() *Ztdo {
@@ -419,13 +419,15 @@ func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey [
 	if err != nil {
 		return err
 	}
-	defer plaintextFile.Close()
 	// Chunks are written as they decrypt, before the signature over the
 	// whole file is checked; never leave that unverified (possibly truncated
-	// or reordered) plaintext behind on failure.
+	// or reordered) plaintext behind on failure. On success the close error
+	// is returned too, so a failed write-back is not reported as success.
 	defer func() {
+		if closeErr := plaintextFile.Close(); err == nil {
+			err = closeErr
+		}
 		if err != nil {
-			_ = plaintextFile.Close()
 			_ = os.Remove(plaintextPath)
 		}
 	}()
@@ -611,15 +613,14 @@ func (p *zparser) unmarshal(data any) error {
 					p.lengths[lengthFor] = endianness.Uint32(expandedBytes[:])
 
 					// A chunk with its continuation bit set must be full, as
-					// the encoder only ever writes it that way. Otherwise a
+					// SetMetadata only ever writes it that way. Otherwise a
 					// run of empty continued chunks turns every 2 input bytes
 					// into a whole slice element, amplifying allocation far
-					// beyond the input size.
-					if lengthContinue != "" && p.continued {
-						if full := uint32(1)<<(8*length-1) - 1; p.lengths[lengthFor] != full {
-							return fmt.Errorf("ztdo: continued %s chunk has length %d, want %d",
-								lengthFor, p.lengths[lengthFor], full)
-						}
+					// beyond the input size. lengthContinue is only used on
+					// MetadataLen, so full means MetadataChunkMaxSize.
+					if lengthContinue != "" && p.continued && p.lengths[lengthFor] != MetadataChunkMaxSize {
+						return fmt.Errorf("ztdo: continued %s chunk has length %d, want %d",
+							lengthFor, p.lengths[lengthFor], MetadataChunkMaxSize)
 					}
 				}
 

@@ -425,7 +425,8 @@ func authQRCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Reso
 		})
 		return nil, errNoClientAddr
 	}
-	if err := GetQRAuthService().ConsumeConfirmedSession(sessionId, res.ResourceId, requester); err != nil {
+	srcIp, err := GetQRAuthService().ConsumeConfirmedSession(sessionId, res.ResourceId, requester)
+	if err != nil {
 		log.Warning("QR auth refused for sessionId %s: %v", sessionId, err)
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -436,8 +437,9 @@ func authQRCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Reso
 
 	log.Info("QR authentication for sessionId: %s", sessionId)
 
-	// Open access for the address the session is bound to; see authOTPCode.
-	req.SrcIp = otpClientAddr(ctx, requestTrustedProxies())
+	// Open access for the address that generated the session, never for the
+	// requester's own (see ConsumeConfirmedSession and authOTPCode).
+	req.SrcIp = srcIp
 
 	// Proceed with knock operation
 	ackMsg, err := helper.AuthWithHttpCallbackFunc(req, res)

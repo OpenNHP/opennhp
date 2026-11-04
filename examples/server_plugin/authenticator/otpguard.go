@@ -242,6 +242,12 @@ func (g *otpGuard) release(t otpTicket) {
 // succeed gives back the attempt after a correct code and clears the
 // address's own failures. Enclosing prefixes only get this attempt back:
 // other addresses in them may still be guessing.
+//
+// Clearing is deliberate, and it also drops failures that parallel requests
+// from the same address reserved but have not resolved. That gains nothing
+// today: it takes a valid code, and whoever has one need not guess. If the
+// guard is ever reused with per-user secrets, subtract only this ticket's
+// attempt instead.
 func (g *otpGuard) succeed(t otpTicket) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

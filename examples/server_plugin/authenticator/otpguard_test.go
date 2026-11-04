@@ -853,3 +853,59 @@ func TestOTPClientAddrParsesPeer(t *testing.T) {
 		}
 	}
 }
+
+// One IPv6 /48 cannot fill the session table by rotating /64s.
+func TestGenerateSessionPrefixCap(t *testing.T) {
+	useTestOTPConfig(t, false)
+	svc := GetQRAuthService()
+	created := 0
+	for i := 0; i < 50; i++ {
+		for j := 0; j < qrMaxSessionsPerClient; j++ {
+			if _, _, err := svc.GenerateSession("authenticator", "demo", fmt.Sprintf("2001:db8:1:%x::%x", i, j+1), "https://example"); err == nil {
+				created++
+			}
+		}
+	}
+	if created != qrMaxSessionsPerPrefix {
+		t.Fatalf("one /48 opened %d sessions, want %d", created, qrMaxSessionsPerPrefix)
+	}
+	if _, _, err := svc.GenerateSession("authenticator", "demo", "2001:db8:2::1", "https://example"); err != nil {
+		t.Fatalf("another /48 was capped: %v", err)
+	}
+	svc.mutex.Lock()
+	svc.removeExpiredLocked(time.Now().Add(svc.expiry + 6*time.Minute))
+	clients := len(svc.perClient)
+	svc.mutex.Unlock()
+	if clients != 0 {
+		t.Fatalf("cleanup left %d session counters", clients)
+	}
+}
+
+// A different host in the generator's IPv6 /64 can pass the same-client
+// check, but the knock still opens access for the generator, not for it.
+func TestQRKnockOpensForGenerator(t *testing.T) {
+	useTestOTPConfig(t, true)
+	const generator, neighbour = "[2001:db8:5:6::10]:5000", "[2001:db8:5:6::99]:5000"
+	r := qrHandlerRequest(t, "/?action=generate", generator, func(ctx *gin.Context) { HandleQRGenerate(ctx, "demo") })
+	sessionID, _ := r["sessionId"].(string)
+	qrData, _ := r["qrData"].(string)
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	if v := qrVerify(t, qrData, good, "192.0.2.41:5000"); v["success"] != true {
+		t.Fatalf("verify: %v", v)
+	}
+	var opened []string
+	helper := &plugins.HttpServerPluginHelper{
+		AuthWithHttpCallbackFunc: func(req *common.HttpKnockRequest, _ *common.ResourceData) (*common.ServerKnockAckMsg, error) {
+			opened = append(opened, req.SrcIp)
+			return &common.ServerKnockAckMsg{ErrCode: common.ErrSuccess.ErrorCode()}, nil
+		},
+	}
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/?action=qrvalid&sessionId="+sessionID, nil)
+	ctx.Request.RemoteAddr = neighbour
+	_, _ = authQRCode(ctx, &common.HttpKnockRequest{}, testResource("demo"), helper)
+	if len(opened) != 1 || opened[0] != "2001:db8:5:6::10" {
+		t.Fatalf("opened access for %v, want the generator 2001:db8:5:6::10", opened)
+	}
+}

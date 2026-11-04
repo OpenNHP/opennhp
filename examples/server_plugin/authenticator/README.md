@@ -130,9 +130,13 @@ Response: `success`, `sessionId`, `qrData` (encrypted, signed session data),
 `serverUrl`, `aspId`, `resId`, `expiresAt` (Unix seconds).
 
 `generate` is unauthenticated, so sessions are bounded: at most 20 per client
-(the same limit key as the rate limiter) and 10,000 in total. A session holds its
-slot until it is cleaned up, about ten minutes after `generate`. Beyond that,
-the response is HTTP 429 `too many QR codes generated, try again later`.
+(the same limit key as the rate limiter, so an IPv6 /64), 100 per IPv6 /48, and
+10,000 in total. A session holds its slot until it is cleaned up, about ten
+minutes after `generate`. Beyond that, the response is HTTP 429
+`too many QR codes generated, try again later`. Like the global OTP limit, the
+total cap can be used to deny QR login to everyone, here by about 500 IPv4
+addresses (or 100 IPv6 /48s) every ten minutes. Manual OTP login is not
+affected.
 
 The login page encodes the QR code as:
 
@@ -173,7 +177,11 @@ Response: `{"success": true}` or `{"success": false, "errMsg": ...}`:
 
 `?sessionId=<sid>`. Performs the knock only if the session is confirmed and
 unexpired, belongs to `resid`, has not knocked before, and the request comes
-from the same client address (same limiter key) that called `generate`. If the
+from the same client (same limiter key, so the same IPv6 /64) that called
+`generate`. Access is opened for the exact address that called `generate`, not
+for the requester's. Another host in the same /64 that saw the session ID
+therefore gains nothing by racing the browser for the knock, and IPv6 privacy
+address rotation does not break a legitimate login. If the
 browser's address changed in between, for example a dual-stack browser
 switching between IPv4 and IPv6, it gets "this QR code was generated from a
 different network address; refresh the QR code and try again". Changing

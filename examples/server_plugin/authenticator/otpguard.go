@@ -19,11 +19,13 @@ import (
 // Two limits apply, and neither depends on headers a client can forge:
 //   - per source address (see otpClientIP; IPv6 per /64): at most otpMaxIPFailures
 //     failures, after which the address is locked out for otpIPLockout;
-//   - across all sources: at most otpGlobalMaxFailures failures per
-//     otpGlobalWindow, so spreading guesses over many addresses does not
-//     help. The cost is that a flood of failures blocks OTP logins for
-//     everyone until the window ends; this is an authentication gate, so it
-//     fails closed.
+//   - across all sources: at most otpGlobalMaxFailures failures in any
+//     otpGlobalWindow (a sliding window, not fixed buckets), so spreading
+//     guesses over many addresses does not help. The cost is that a flood of
+//     failures blocks OTP logins for everyone; this is an authentication
+//     gate, so it fails closed. That ceiling is also the only bound on a
+//     distributed attacker: 30 guesses a minute against 3 valid codes is
+//     about a 12% chance of a correct guess per day.
 //
 // The check and the count are one step: reserve counts the attempt as a
 // failure before the code is checked, and a correct code gives it back.
@@ -40,8 +42,7 @@ type otpGuard struct {
 
 	ips map[string]*otpIPState
 
-	globalWindowStart time.Time
-	globalFailures    int
+	global []time.Time // when each failure counted in the last otpGlobalWindow was reserved, oldest first
 
 	used map[string]time.Time // OTP code -> when it may be used again
 }
@@ -54,8 +55,8 @@ type otpIPState struct {
 
 // otpTicket is one reserved attempt; pass it back to release or succeed.
 type otpTicket struct {
-	ip     string
-	window time.Time // the global window the attempt was counted in
+	ip string
+	at time.Time // when the attempt was counted in global
 }
 
 const (
@@ -115,10 +116,12 @@ func checkConfiguredOTP(conf *config, clientIP, code string) error {
 	return nil
 }
 
-func (g *otpGuard) rollGlobalWindow(now time.Time) {
-	if now.Sub(g.globalWindowStart) >= otpGlobalWindow {
-		g.globalWindowStart, g.globalFailures = now, 0
+func (g *otpGuard) pruneGlobal(now time.Time) {
+	n := 0
+	for n < len(g.global) && now.Sub(g.global[n]) >= otpGlobalWindow {
+		n++
 	}
+	g.global = g.global[n:]
 }
 
 // reserve reports whether an OTP attempt from ip may be checked and, if so,
@@ -128,8 +131,8 @@ func (g *otpGuard) reserve(ip string) (otpTicket, bool) {
 	defer g.mu.Unlock()
 	now := g.now()
 
-	g.rollGlobalWindow(now)
-	if g.globalFailures >= otpGlobalMaxFailures {
+	g.pruneGlobal(now)
+	if len(g.global) >= otpGlobalMaxFailures {
 		return otpTicket{}, false
 	}
 
@@ -153,13 +156,13 @@ func (g *otpGuard) reserve(ip string) (otpTicket, bool) {
 		g.ips[ip] = st
 	}
 
-	g.globalFailures++
+	g.global = append(g.global, now)
 	st.failures++
 	st.lastFailure = now
 	if st.failures >= otpMaxIPFailures {
 		st.lockedUntil = now.Add(otpIPLockout)
 	}
-	return otpTicket{ip: ip, window: g.globalWindowStart}, true
+	return otpTicket{ip: ip, at: now}, true
 }
 
 // release gives back an attempt that turned out not to be a guess (a
@@ -193,9 +196,12 @@ func (g *otpGuard) succeed(t otpTicket) {
 }
 
 func (g *otpGuard) refundGlobal(t otpTicket) {
-	// An attempt counted in an earlier window is not refunded from this one.
-	if g.globalWindowStart.Equal(t.window) && g.globalFailures > 0 {
-		g.globalFailures--
+	// Remove this attempt's own entry; if it already aged out, nothing.
+	for i := len(g.global) - 1; i >= 0; i-- {
+		if g.global[i].Equal(t.at) {
+			g.global = append(g.global[:i], g.global[i+1:]...)
+			return
+		}
 	}
 }
 
@@ -295,9 +301,15 @@ func otpLimitKey(addr string) string {
 // forged. Gin's ClientIP is not used because nhp-server's engine trusts
 // X-Forwarded-For from any peer.
 func otpClientIP(ctx *gin.Context, trusted []netip.Prefix) string {
+	return otpLimitKey(otpClientAddr(ctx, trusted))
+}
+
+// otpClientAddr is the client address otpClientIP limits by, unmasked, for
+// recording in sessions and logs.
+func otpClientAddr(ctx *gin.Context, trusted []netip.Prefix) string {
 	peer := ctx.RemoteIP()
 	if len(trusted) == 0 || !isTrustedProxy(peer, trusted) {
-		return otpLimitKey(peer)
+		return peer
 	}
 	var hops []string
 	for _, h := range ctx.Request.Header.Values("X-Forwarded-For") {
@@ -308,12 +320,21 @@ func otpClientIP(ctx *gin.Context, trusted []netip.Prefix) string {
 		if isTrustedProxy(hop, trusted) {
 			continue
 		}
-		if _, err := netip.ParseAddr(hop); err == nil {
-			return otpLimitKey(hop)
+		if a, err := netip.ParseAddr(hop); err == nil {
+			return a.Unmap().String()
 		}
 		// Garbage where an address should be: fall back to the proxy, which
 		// shares one limit across its clients rather than trusting the header.
-		return otpLimitKey(peer)
+		return peer
 	}
-	return otpLimitKey(peer)
+	return peer
+}
+
+// requestTrustedProxies is the configured TrustedProxies, or none before a
+// config has loaded.
+func requestTrustedProxies() []netip.Prefix {
+	if conf := baseConf; conf != nil {
+		return conf.trustedProxies
+	}
+	return nil
 }

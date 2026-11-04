@@ -394,8 +394,9 @@ func authQRCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Reso
 
 	// Knock only for a session confirmed by HandleQRVerify, which checks the
 	// configured OTP through the same limiter as otpvalid, for the resource
-	// it was generated for, and only once.
-	if err := GetQRAuthService().ConsumeConfirmedSession(sessionId, res.ResourceId); err != nil {
+	// it was generated for, from the client that generated it, and only once.
+	requester := otpClientIP(ctx, requestTrustedProxies())
+	if err := GetQRAuthService().ConsumeConfirmedSession(sessionId, res.ResourceId, requester); err != nil {
 		log.Warning("QR auth refused for sessionId %s: %v", sessionId, err)
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,

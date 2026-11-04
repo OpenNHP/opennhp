@@ -105,8 +105,8 @@ func TestOTPGuardRelease(t *testing.T) {
 		}
 		g.release(tk)
 	}
-	if g.globalFailures != otpMaxIPFailures-1 {
-		t.Fatalf("global failures %d, want %d", g.globalFailures, otpMaxIPFailures-1)
+	if len(g.global) != otpMaxIPFailures-1 {
+		t.Fatalf("global failures %d, want %d", len(g.global), otpMaxIPFailures-1)
 	}
 	if !guess(g, "192.0.2.4") || guess(g, "192.0.2.4") {
 		t.Fatal("earlier failures were not kept")
@@ -153,6 +153,24 @@ func TestOTPGuardGlobalLimit(t *testing.T) {
 	}
 }
 
+// The global limit is a sliding window: failures straddling a minute
+// boundary cannot add up to twice the limit.
+func TestOTPGuardGlobalSlidingWindow(t *testing.T) {
+	g, clk := newTestGuard()
+	clk.advance(otpGlobalWindow - time.Second)
+	for i := 0; i < otpGlobalMaxFailures; i++ {
+		guess(g, "198.51.100."+strconv.Itoa(i))
+	}
+	clk.advance(2 * time.Second) // a fixed window would have reset here
+	if guess(g, "203.0.113.1") {
+		t.Fatal("the global limit reset at a window boundary")
+	}
+	clk.advance(otpGlobalWindow)
+	if !guess(g, "203.0.113.1") {
+		t.Fatal("old failures never aged out")
+	}
+}
+
 // A code can be used once while it is valid, unless reuse is allowed, and
 // expired codes are pruned.
 func TestOTPGuardConsume(t *testing.T) {
@@ -180,13 +198,13 @@ func TestOTPGuardConsume(t *testing.T) {
 func TestOTPGuardBounded(t *testing.T) {
 	g, clk := newTestGuard()
 	for i := 0; i < otpMaxTrackedIPs+10; i++ {
-		g.globalWindowStart, g.globalFailures = clk.now(), 0 // isolate from the global limit
+		g.global = nil // isolate from the global limit
 		guess(g, "ip-"+strconv.Itoa(i))
 	}
 	if len(g.ips) > otpMaxTrackedIPs {
 		t.Fatalf("tracked %d addresses, limit %d", len(g.ips), otpMaxTrackedIPs)
 	}
-	g.globalFailures = 0
+	g.global = nil
 	if guess(g, "one-more") {
 		t.Fatal("checked an address it could not track")
 	}
@@ -319,8 +337,8 @@ func TestAuthOTPCodeUsedCodeIsNotAFailure(t *testing.T) {
 	for i := 0; i < otpMaxIPFailures+2; i++ {
 		otpRequest(t, code, "192.0.2.31:5000", "", &knocked)
 	}
-	if otpLimiter.globalFailures != 0 || len(otpLimiter.ips) != 0 {
-		t.Fatalf("used code counted as failure: global %d, ips %d", otpLimiter.globalFailures, len(otpLimiter.ips))
+	if len(otpLimiter.global) != 0 || len(otpLimiter.ips) != 0 {
+		t.Fatalf("used code counted as failure: global %d, ips %d", len(otpLimiter.global), len(otpLimiter.ips))
 	}
 }
 
@@ -343,12 +361,20 @@ func testResource(resID string) *common.ResourceData {
 	return res
 }
 
+const qrBrowserAddr = "192.0.2.40:5000" // where qrGenerate's browser connects from
+
 func qrvalidRequest(t *testing.T, sessionID, resID string, knocked *int) *httptest.ResponseRecorder {
+	t.Helper()
+	return qrvalidRequestFrom(t, sessionID, resID, qrBrowserAddr, knocked)
+}
+
+func qrvalidRequestFrom(t *testing.T, sessionID, resID, remoteAddr string, knocked *int) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/plugins/authenticator?action=qrvalid&sessionId="+sessionID, nil)
+	ctx.Request.RemoteAddr = remoteAddr
 	helper := &plugins.HttpServerPluginHelper{
 		AuthWithHttpCallbackFunc: func(*common.HttpKnockRequest, *common.ResourceData) (*common.ServerKnockAckMsg, error) {
 			*knocked++
@@ -375,7 +401,7 @@ func qrHandlerRequest(t *testing.T, target, remoteAddr string, h func(*gin.Conte
 // generate hands the browser a session, as the login page does.
 func qrGenerate(t *testing.T) (sessionID, qrData string, resp map[string]any) {
 	t.Helper()
-	resp = qrHandlerRequest(t, "/?action=generate", "192.0.2.40:5000", func(ctx *gin.Context) { HandleQRGenerate(ctx, "demo") })
+	resp = qrHandlerRequest(t, "/?action=generate", qrBrowserAddr, func(ctx *gin.Context) { HandleQRGenerate(ctx, "demo") })
 	sessionID, _ = resp["sessionId"].(string)
 	qrData, _ = resp["qrData"].(string)
 	if sessionID == "" || qrData == "" {
@@ -425,6 +451,11 @@ func TestQRFlowRequiresConfiguredOTP(t *testing.T) {
 	qrvalidRequest(t, sessionID, "other", &knocked)
 	if knocked != 0 {
 		t.Fatal("knocked for a different resource")
+	}
+	// Someone else who saw the session ID in the QR code cannot take the knock.
+	qrvalidRequestFrom(t, sessionID, "demo", "198.51.100.77:5000", &knocked)
+	if knocked != 0 {
+		t.Fatal("knocked for a client other than the one that generated the session")
 	}
 	qrvalidRequest(t, sessionID, "demo", &knocked)
 	qrvalidRequest(t, sessionID, "demo", &knocked)

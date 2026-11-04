@@ -38,5 +38,7 @@ QRCodeExpiry = 300
 # Reverse proxies in front of nhp-server (addresses or CIDR prefixes). OTP attempts from
 # one of them are rate limited by the client address in X-Forwarded-For; from any other
 # peer the header is ignored. Leave empty when clients connect directly. Without it, every
-# client behind a proxy shares the proxy's limit. One invalid entry disables the list.
+# client behind a proxy shares the proxy's limit, and one client can lock out all users
+# (a warning is logged the first time a loopback or private peer sends X-Forwarded-For
+# while this is empty). One invalid entry disables the list.
 # TrustedProxies = ["127.0.0.1"]

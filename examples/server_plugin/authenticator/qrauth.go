@@ -40,7 +40,10 @@ type QRCodeSession struct {
 }
 
 // qrMaxOTPFailures is how many wrong codes a session accepts before it is
-// dead. Each session has its own secret, so the limit is per session.
+// dead. Codes are checked against the shared OTPSecretKey under otpLimiter;
+// this cap is on top of that, so one session cannot be used for unlimited
+// guesses. It does not imply a per-session secret, and none should be added:
+// whoever displays the QR code would hold it.
 const qrMaxOTPFailures = 5
 
 // QRCodeStatus constants
@@ -258,7 +261,8 @@ func (s *QRAuthService) DecryptQRData(encrypted string) (*QRCodeData, error) {
 	return &data, nil
 }
 
-// GetSession retrieves a session by ID
+// GetSession returns a copy of the session, taken under the lock, or nil.
+// A copy because other handlers write the session concurrently.
 func (s *QRAuthService) GetSession(sessionID string) *QRCodeSession {
 	s.mutex.Lock() // may mark the session expired
 	defer s.mutex.Unlock()
@@ -272,7 +276,8 @@ func (s *QRAuthService) GetSession(sessionID string) *QRCodeSession {
 		session.Status = QRStatusExpired
 	}
 
-	return session
+	snapshot := *session
+	return &snapshot
 }
 
 // ValidateConfiguredOTP validates a 6-digit SHA1 TOTP code against the

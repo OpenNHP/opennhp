@@ -520,3 +520,55 @@ func TestLoginPageHidesSecret(t *testing.T) {
 		}
 	}
 }
+
+// Status polling runs concurrently with verify and qrvalid; run with -race.
+func TestQRStatusConcurrentWithVerify(t *testing.T) {
+	useTestOTPConfig(t, true)
+	sessionID, qrData, _ := qrGenerate(t)
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			qrHandlerRequest(t, "/?action=status&sessionId="+sessionID, qrBrowserAddr, HandleQRStatus)
+		}()
+		go func() {
+			defer wg.Done()
+			qrVerify(t, qrData, good, "192.0.2.41:5000")
+			knocked := 0
+			qrvalidRequest(t, sessionID, "demo", &knocked)
+		}()
+	}
+	wg.Wait()
+	if r := qrHandlerRequest(t, "/?action=status&sessionId="+sessionID, qrBrowserAddr, HandleQRStatus); r["status"] != float64(QRStatusConfirmed) {
+		t.Fatalf("status after verify: %v", r)
+	}
+}
+
+// The missing-TrustedProxies warning fires for a private peer sending
+// X-Forwarded-For, and not for a public one or one without the header.
+func TestWarnUntrustedForwarding(t *testing.T) {
+	useTestOTPConfig(t, false)
+	gin.SetMode(gin.TestMode)
+	try := func(peer, xff string) bool {
+		otpProxyWarned.Store(false)
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		ctx.Request.RemoteAddr = net.JoinHostPort(peer, "5000")
+		if xff != "" {
+			ctx.Request.Header.Set("X-Forwarded-For", xff)
+		}
+		if got := otpClientAddr(ctx, nil); got != peer {
+			t.Fatalf("header was honored without TrustedProxies: %s", got)
+		}
+		return otpProxyWarned.Load()
+	}
+	t.Cleanup(func() { otpProxyWarned.Store(false) })
+	if !try("127.0.0.1", "198.51.100.1") || !try("10.0.0.5", "198.51.100.1") {
+		t.Fatal("no warning for a proxy-looking peer")
+	}
+	if try("198.51.100.9", "198.51.100.1") || try("127.0.0.1", "") {
+		t.Fatal("warned without a proxy-looking peer and header")
+	}
+}

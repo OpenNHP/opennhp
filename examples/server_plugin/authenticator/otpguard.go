@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -166,7 +167,9 @@ func (g *otpGuard) reserve(ip string) (otpTicket, bool) {
 }
 
 // release gives back an attempt that turned out not to be a guess (a
-// correct code refused only because it was already used).
+// correct code refused only because it was already used). If the address's
+// counter was reset between reserve and release, this forgives at most one
+// failure.
 func (g *otpGuard) release(t otpTicket) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -197,6 +200,8 @@ func (g *otpGuard) succeed(t otpTicket) {
 
 func (g *otpGuard) refundGlobal(t otpTicket) {
 	// Remove this attempt's own entry; if it already aged out, nothing.
+	// Entries reserved in the same clock tick are equal and interchangeable,
+	// so removing another one of them leaves the count just as correct.
 	for i := len(g.global) - 1; i >= 0; i-- {
 		if g.global[i].Equal(t.at) {
 			g.global = append(g.global[:i], g.global[i+1:]...)
@@ -308,7 +313,11 @@ func otpClientIP(ctx *gin.Context, trusted []netip.Prefix) string {
 // recording in sessions and logs.
 func otpClientAddr(ctx *gin.Context, trusted []netip.Prefix) string {
 	peer := ctx.RemoteIP()
-	if len(trusted) == 0 || !isTrustedProxy(peer, trusted) {
+	if len(trusted) == 0 {
+		warnUntrustedForwarding(ctx, peer)
+		return peer
+	}
+	if !isTrustedProxy(peer, trusted) {
 		return peer
 	}
 	var hops []string
@@ -328,6 +337,31 @@ func otpClientAddr(ctx *gin.Context, trusted []netip.Prefix) string {
 		return peer
 	}
 	return peer
+}
+
+// otpProxyWarned makes warnUntrustedForwarding log once per process.
+var otpProxyWarned atomic.Bool
+
+// warnUntrustedForwarding logs, once, when a loopback or private peer sends
+// X-Forwarded-For while TrustedProxies is empty. That is almost always a
+// reverse proxy, and limiting by its address means five wrong codes from
+// anyone lock every user out. The header is still ignored.
+func warnUntrustedForwarding(ctx *gin.Context, peer string) {
+	if otpProxyWarned.Load() || ctx.GetHeader("X-Forwarded-For") == "" {
+		return
+	}
+	a, err := netip.ParseAddr(peer)
+	if err != nil {
+		return
+	}
+	if a = a.Unmap(); !a.IsLoopback() && !a.IsPrivate() {
+		return
+	}
+	if otpProxyWarned.CompareAndSwap(false, true) && log != nil {
+		log.Warning("OTP rate limit: request from %s carries X-Forwarded-For but TrustedProxies is empty; "+
+			"if nhp-server is behind a reverse proxy, every client shares the proxy's limit and one client can lock out all users. "+
+			"Set TrustedProxies in the authenticator config.", peer)
+	}
 }
 
 // requestTrustedProxies is the configured TrustedProxies, or none before a

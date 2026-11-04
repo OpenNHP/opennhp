@@ -27,7 +27,7 @@ go test ./...   # unit and handler tests
 | `OTPPeriod` | `30` | TOTP step in seconds, 15–300. Out-of-range values fall back to 30. |
 | `OTPDigits` | `6` | Only 6 is supported (the login page takes six digits); other values fall back to 6 with an error log. |
 | `QRCodeExpiry` | `300` | QR session lifetime in seconds. |
-| `OTPAllowReuse` | `false` | When `false`, a code that was accepted once is refused for its remaining validity (about 90 s). **Forced to `true` while `ShowOTPSecret` is on** (see below). |
+| `OTPAllowReuse` | `false` | When `false`, a code that was accepted once is refused for its remaining validity (`3 × OTPPeriod`, 90 s by default). **Forced to `true` while `ShowOTPSecret` is on** (see below). |
 | `ShowOTPSecret` | `false` | Render `OTPSecretKey` on the public login page so visitors can enrol it. **Public demos only**: anyone who can load the page can then generate valid codes. |
 | `TrustedProxies` | empty | Reverse proxies in front of nhp-server (addresses or CIDR prefixes). **Must be set behind a proxy**; see below. IPv4-mapped entries (`::ffff:10.0.0.0/104`) are treated as IPv4; an IPv4-mapped prefix shorter than /96 is invalid. One invalid entry disables the whole list. |
 
@@ -36,11 +36,12 @@ skew either side of the current step.
 
 ### Shared seed: what operators should know
 
-Every user shares one `OTPSecretKey`. That has two consequences:
+Every user shares one `OTPSecretKey`. That has these consequences:
 
 - **With `OTPAllowReuse = false`, only about three people can log in per
-  90-second window.** Everyone else gets "OTP code already used" until the next
-  code. Multi-user deployments should set `OTPAllowReuse = true`.
+  `3 × OTPPeriod` window (90 s by default).** Everyone else gets "OTP code
+  already used" until the next code. Multi-user deployments should set
+  `OTPAllowReuse = true`.
 - **The global rate limit is the only bound on a distributed attacker, and it
   fails closed.** See *Rate limiting* below.
 - **`ShowOTPSecret = true` forces `OTPAllowReuse = true`.** With the seed on the
@@ -195,6 +196,11 @@ different network address; refresh the QR code and try again". Changing
 because `qrvalid` derives the requester's address with the current list; a new
 QR code fixes it.
 
+The session is marked used before the knock is sent, so a knock that fails on
+the server or AC side (for example, an unreachable AC) still uses it up, and the
+login page does not retry. Generate a new QR code; with `OTPAllowReuse = false`
+the phone's code is spent too, so wait for the next one.
+
 ## Breaking change: QR protocol (per-session secret removed)
 
 Earlier versions created a TOTP secret for every QR session. `generate`
@@ -241,3 +247,26 @@ the QR code can be that. So the fix cannot keep the old protocol:
 
 Operators: upgrading the server before every user's QR client supports the new
 protocol breaks QR login for those users. Manual OTP login works throughout.
+
+## Upgrade notes: changed defaults
+
+Besides the QR protocol, two new settings change what an existing deployment
+does after the upgrade unless they are set explicitly. Both are deliberate
+secure defaults.
+
+- **`ShowOTPSecret = false`: the login page no longer shows the seed.**
+  Previously every visitor saw `OTPSecretKey` on the page, and anyone
+  could enrol from it. That includes deployments built from the default
+  `endpoints/server/main/etc/resource.toml`, which loads this plugin. After the
+  upgrade, hand the seed to users some other way. Alternatively, set
+  `ShowOTPSecret = true` for a public demo, accepting that the code is then not
+  secret (which also forces `OTPAllowReuse = true`).
+- **`OTPAllowReuse = false`: a code works once.** With one shared seed, only
+  about three logins fit in each `3 × OTPPeriod` window (90 s by default), and
+  everyone else gets "OTP code already used" until the next code. Previously
+  codes could be reused. Multi-user deployments should set
+  `OTPAllowReuse = true`.
+
+Behind a reverse proxy, also set `TrustedProxies`. Without it, access is now
+opened for the proxy's address rather than for the address in
+`X-Forwarded-For`. See *Client address and reverse proxies*.

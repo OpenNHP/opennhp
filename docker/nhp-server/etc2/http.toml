@@ -24,3 +24,20 @@ TLSKeyFile = "cert/cert.key"
 # StorageMaxUploadMB = 20480
 # StorageMinFreeMB = 1024
 # StorageMaxConcurrentUploads = 4
+
+# TrustedProxies: the network origins (IPv4/IPv6 addresses or CIDR prefixes)
+# whose X-Forwarded-For / X-Real-IP headers are believed. The knock source IP
+# is what nhp-server asks the AC to open a firewall rule for, so a caller that
+# can set it can open the resource for an address of their choosing.
+# Leave it empty (the default) unless this listener is bound where ONLY a
+# reverse proxy can reach it AND that proxy OVERWRITES the forwarding headers
+# (nginx: proxy_set_header X-Forwarded-For $remote_addr -- NOT
+# $proxy_add_x_forwarded_for, which carries the client's own value through).
+# With the list empty the headers are ignored and the TCP peer address is used.
+# An entry that does not parse refuses the whole list and the HTTP server does
+# not start, rather than leaving a trust list nobody wrote.
+# Like the other fields here, a change takes effect only when the HTTP server
+# restarts (set EnableHttp = false, then back to true). Editing the file alone
+# does not revoke trust from a running listener; the daemon logs a Critical
+# line when the configured list and the running one disagree.
+TrustedProxies = []

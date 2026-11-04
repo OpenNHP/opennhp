@@ -119,12 +119,19 @@ DisableAgentValidation = false
 # TLSCertFile: certificate file path.
 # TLSKeyFile: key file path.
 # to update http changes, you need to restart the http server by changing "EnableHttp" to "false" and then switch it back to "true".
+# TrustedProxies: 信任 X-Forwarded-For / X-Real-IP 的来源（IPv4/IPv6 地址或 CIDR 前缀）。
+#   敲门来源 IP 会被 NHP-Server 用于向 NHP-AC 申请放行规则，因此不能由调用方自行指定。
+#   留空（默认）表示不信任任何代理：忽略转发头，直接使用 TCP 对端地址。
+#   仅当该监听地址只有反向代理可达，且该代理是「覆盖」而非「追加」转发头
+#   （nginx：proxy_set_header X-Forwarded-For $remote_addr;）时才填写。
+#   列表中任一条目无法解析，则整个列表被拒绝且 HTTP 服务不启动。
 [HttpConfig]
 EnableHttp = true
 EnableTLS = true
 HttpListenIp = "0.0.0.0"    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only, "127.0.0.1" for local ipv4 access only
 TLSCertFile = "cert/cert.pem"
 TLSKeyFile = "cert/cert.key"
+TrustedProxies = []
 
 # list the AC peers for the server under [[ACs]] table
 

@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +35,13 @@ type HttpServer struct {
 	listenAddr *net.TCPAddr
 	config     *HttpConfig
 	storage    *storageState
+
+	// trustedProxies is the resolved HttpConfig.TrustedProxies list, kept
+	// so knockSourceIP can tell "no proxy is configured" from "a proxy is"
+	// without re-reading gin's engine state. Empty means the forwarding
+	// headers are never consulted. Written once in Start, before the
+	// listener goroutine starts, and read-only afterwards.
+	trustedProxies []string
 
 	wg      sync.WaitGroup
 	running atomic.Bool
@@ -78,6 +87,10 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 
 	gin.SetMode(gin.ReleaseMode)
 	hs.ginEngine = gin.New()
+	if err := hs.applyTrustedProxies(hc.TrustedProxies); err != nil {
+		log.Error("refusing to start the HTTP knock listener: %v", err)
+		return err
+	}
 	store := cookie.NewStore([]byte("nhpstore"))
 	hs.ginEngine.Use(sessions.Sessions("nhpsessions", store))
 	hs.ginEngine.Use(corsMiddleware())
@@ -94,7 +107,29 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		IdleTimeout:  time.Duration(hc.IdleTimeoutMs) * time.Millisecond,
 	}
 
+	// Mark the server running before either listener goroutine starts, not
+	// after -- the TLS branch below returns from inside its own `if`, so a
+	// store placed at the end of the function is reached only on the plain
+	// HTTP path. Everything that manages a live listener keys off this flag:
+	// Stop returns early without it, updateHttpConfig reads IsRunning to
+	// decide whether to restart, and trustedProxiesPending uses it to decide
+	// whether a proxy-list edit is still pending. Leaving it unset for a TLS
+	// listener meant EnableHttp = false never stopped it, each reload bound a
+	// second listener onto a port already in use, and the "TrustedProxies
+	// changed" warning never fired -- for the configuration the shipped
+	// http.toml files actually ship (EnableTLS = true).
+	//
+	// The flag means "this HttpServer owns a listener goroutine", which is
+	// true from here on in all three paths (TLS, TLS with missing cert files
+	// falling through, plain HTTP). The store also orders the trustedProxies
+	// write above ahead of any cross-goroutine read of it.
+	// wg.Add before the flag, not after: Stop observes running, then blocks on
+	// wg.Wait(). Storing the flag first leaves a window where a Stop from the
+	// etcd watcher could sail past a counter this goroutine has not yet
+	// incremented. The order below makes that impossible.
 	hs.wg.Add(1)
+	hs.running.Store(true)
+
 	if hc.EnableTLS {
 		certFilePath := filepath.Join(ExeDirPath, hc.TLSCertFile)
 		keyFilePath := filepath.Join(ExeDirPath, hc.TLSKeyFile)
@@ -107,7 +142,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 				var err = hs.httpServer.ListenAndServeTLS(certFilePath, keyFilePath)
 				if err != nil && err != http.ErrServerClosed {
 					log.Error("https server close error: %v", err)
-					//panic(err)
+					hs.listenerFailed(err)
 				}
 			}()
 
@@ -121,11 +156,10 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		var err = hs.httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Error("http server close error: %v", err)
-			//panic(err)
+			hs.listenerFailed(err)
 		}
 	}()
 
-	hs.running.Store(true)
 	return nil
 }
 
@@ -154,6 +188,183 @@ func (hs *HttpServer) Stop() {
 
 func (hs *HttpServer) IsRunning() bool {
 	return hs.running.Load()
+}
+
+// listenerFailed clears the running flag after ListenAndServe{,TLS} returns
+// something other than a clean shutdown -- a port already in use, an
+// unreadable key, a fatal accept error.
+//
+// Without this, a bind that fails asynchronously leaves an HttpServer that
+// claims to be running and serves nothing: updateHttpConfig sees IsRunning
+// and never builds a replacement, so the daemon stays dark until someone
+// cycles EnableHttp. Clearing it lets the next http.toml reload retry the
+// bind, so freeing the port is enough to recover.
+//
+// Only reached on the error path. A Stop-initiated shutdown returns
+// http.ErrServerClosed and must not land here, or Stop's own bookkeeping
+// would race with this store.
+func (hs *HttpServer) listenerFailed(err error) {
+	hs.running.Store(false)
+	log.Error("HttpServer (%s) is no longer listening; the next http config reload will retry: %v", hs.id, err)
+}
+
+// applyTrustedProxies pins which network origins nhp-serverd will believe
+// X-Forwarded-For / X-Real-IP from, and must run before any handler does.
+//
+// gin.New() leaves Engine.trustedProxies at the package default of
+// 0.0.0.0/0 + ::/0 with ForwardedByClientIP on, so ctx.ClientIP() returns a
+// *caller-supplied* address for every request that carries a forwarding
+// header. That value is not cosmetic here: the plugin routes put it in
+// HttpKnockRequest.SrcIp and handleHttpOpenResource hands it to the AC as the
+// source address of the firewall rule it opens, so trusting every peer lets
+// any caller that can authenticate to a plugin open the resource for an
+// address of their choosing and file the access against it (CWE-348).
+//
+// The default is therefore to trust nobody: with the list empty, ClientIP()
+// degenerates to the TCP peer and the headers are inert. An operator who
+// actually terminates TLS in a reverse proxy names that proxy in
+// HttpConfig.TrustedProxies, and the proxy must *overwrite* the forwarding
+// headers rather than append to them (nginx: `proxy_set_header
+// X-Forwarded-For $remote_addr`, which deploy/nginx/server.conf.template
+// does) — $proxy_add_x_forwarded_for would carry the client's own value
+// through and hand the spoof back.
+//
+// A list that does not parse is a hard failure rather than a partial trust:
+// gin's SetTrustedProxies installs the prefix it managed to parse *before*
+// the bad entry and returns the error alongside it, so an engine left in that
+// state would silently trust whichever proxies happened to sort first. We
+// reset to "trust nobody" and refuse to bind at all, which the operator sees
+// immediately instead of discovering it from a mis-attributed AC rule.
+func (hs *HttpServer) applyTrustedProxies(proxies []string) error {
+	trimmed := normalizeTrustedProxies(proxies)
+
+	if len(trimmed) == 0 {
+		hs.trustedProxies = nil
+		// nil (not an empty slice) is gin's own "no proxy is trusted" value.
+		if err := hs.ginEngine.SetTrustedProxies(nil); err != nil {
+			return fmt.Errorf("failed to disable proxy header trust: %w", err)
+		}
+		log.Info("http knock: TrustedProxies is empty, forwarding headers are ignored and the TCP peer address is used as the knock source")
+		return nil
+	}
+
+	if err := hs.ginEngine.SetTrustedProxies(trimmed); err != nil {
+		// Undo the partially-installed prefix before reporting.
+		if resetErr := hs.ginEngine.SetTrustedProxies(nil); resetErr != nil {
+			log.Error("http knock: failed to reset proxy header trust after a bad TrustedProxies list: %v", resetErr)
+		}
+		hs.trustedProxies = nil
+		return fmt.Errorf("invalid TrustedProxies entry in http.toml: %w", err)
+	}
+
+	hs.trustedProxies = trimmed
+	log.Info("http knock: trusting forwarding headers from %d configured proxy origin(s)", len(trimmed))
+	return nil
+}
+
+// normalizeTrustedProxies drops blank entries and surrounding whitespace so
+// a configured list and a running list compare equal when they say the same
+// thing. It does not validate: that is gin's job in SetTrustedProxies, which
+// is the only place an entry is accepted or refused.
+func normalizeTrustedProxies(proxies []string) []string {
+	trimmed := make([]string, 0, len(proxies))
+	for _, proxy := range proxies {
+		proxy = strings.TrimSpace(proxy)
+		if len(proxy) == 0 {
+			continue
+		}
+		trimmed = append(trimmed, proxy)
+	}
+	return trimmed
+}
+
+// trustedProxyPrefixes resolves a list the way gin's prepareTrustedCIDRs does
+// -- a bare address becomes a host prefix -- and returns the result as a set.
+//
+// A set of prefixes, rather than the strings, is what "the same trust" means:
+// "127.0.0.1" and "127.0.0.1/32" admit exactly the same peer, and reordering
+// a list changes nothing, because isTrustedProxy tests every entry. Comparing
+// raw strings would announce a pending change for either edit.
+//
+// ok is false when an entry does not parse. Such a list is not equal to
+// anything -- gin would refuse it outright -- so callers treat that as a
+// difference rather than guessing.
+func trustedProxyPrefixes(proxies []string) (map[netip.Prefix]struct{}, bool) {
+	set := make(map[netip.Prefix]struct{}, len(proxies))
+	for _, proxy := range normalizeTrustedProxies(proxies) {
+		if strings.Contains(proxy, "/") {
+			prefix, err := netip.ParsePrefix(proxy)
+			if err != nil {
+				return nil, false
+			}
+			set[prefix.Masked()] = struct{}{}
+			continue
+		}
+		addr, err := netip.ParseAddr(proxy)
+		if err != nil {
+			return nil, false
+		}
+		set[netip.PrefixFrom(addr, addr.BitLen())] = struct{}{}
+	}
+	return set, true
+}
+
+// trustedProxiesPending reports whether a running listener is still enforcing
+// a different set of proxy origins than the one now configured.
+//
+// updateHttpConfig does not restart a listener that is already running, so an
+// edit to TrustedProxies alone changes s.httpConfig while the live engine
+// keeps the list it started with. For most fields that lag is merely
+// confusing; this one grants trust, so an operator who deletes a proxy to
+// stop trusting it would be reading a config that says the proxy is gone from
+// a process that still believes it. Callers log that rather than let it pass
+// silently; applying it takes the documented EnableHttp false/true cycle.
+//
+// The comparison is on resolved prefixes so the warning only fires when the
+// set of admitted peers actually differs. A line that cried wolf over
+// "127.0.0.1" becoming "127.0.0.1/32" would be worth less when it fires for
+// real, and it repeats on every reload for as long as the mismatch stands.
+//
+// Safe to call from another goroutine: trustedProxies is written by
+// applyTrustedProxies before Start stores the running flag, and that atomic
+// store orders the write ahead of the Load below.
+func (hs *HttpServer) trustedProxiesPending(configured []string) bool {
+	if hs == nil || !hs.running.Load() {
+		return false
+	}
+	want, wantOK := trustedProxyPrefixes(configured)
+	// The running list parsed once already, in applyTrustedProxies, so a
+	// failure here would mean the two disagree about what gin accepts.
+	running, runningOK := trustedProxyPrefixes(hs.trustedProxies)
+	if !wantOK || !runningOK {
+		return true
+	}
+	if len(want) != len(running) {
+		return true
+	}
+	for prefix := range want {
+		if _, found := running[prefix]; !found {
+			return true
+		}
+	}
+	return false
+}
+
+// knockSourceIP returns the address a knock is attributed to: the address the
+// AC rule is opened for, the one the plugin authenticates, and the one the
+// audit ledger records.
+//
+// With no trusted proxy configured this is the TCP peer, unconditionally —
+// ctx.RemoteIP() rather than ctx.ClientIP(), so the answer does not depend on
+// gin's engine still being in the state applyTrustedProxies left it in. Only
+// once an operator has named a proxy does ClientIP()'s forwarding-header walk
+// come into play, and then only for requests that actually arrive from one of
+// those origins.
+func (hs *HttpServer) knockSourceIP(ctx *gin.Context) string {
+	if len(hs.trustedProxies) == 0 {
+		return ctx.RemoteIP()
+	}
+	return ctx.ClientIP()
 }
 
 // LoadFilesRecursively loads HTML and template files recursively from the specified directory and adds them to the given gin.Engine.
@@ -231,7 +442,7 @@ func (hs *HttpServer) initRouter() {
 		req := &common.HttpKnockRequest{
 			AuthServiceId: aspId,
 			DeviceId:      ctx.Request.UserAgent(),
-			SrcIp:         ctx.ClientIP(),
+			SrcIp:         hs.knockSourceIP(ctx),
 			Url:           ctx.Request.URL,
 		}
 
@@ -261,7 +472,7 @@ func (hs *HttpServer) initRouter() {
 			AuthServiceId: aspId,
 			ResourceId:    resId,
 			DeviceId:      ctx.Request.UserAgent(),
-			SrcIp:         ctx.ClientIP(),
+			SrcIp:         hs.knockSourceIP(ctx),
 			Url:           ctx.Request.URL,
 		}
 		hs.legacyAuthWithAspPlugin(ctx, req)
@@ -285,6 +496,11 @@ func (hs *HttpServer) initRouter() {
 				return
 			}
 
+			// NOTE before re-enabling: a `srcip` query parameter is caller-
+			// supplied in exactly the way X-Forwarded-For was (CWE-348), and it
+			// ends up as the source of an AC rule. Take the address from
+			// hs.knockSourceIP(ctx) and treat any value in the URL as a request
+			// to be authorized against the token, never as the answer.
 			req := &common.HttpRefreshRequest{
 				Token: token,
 				SrcIp: ctx.Query("srcip"),
@@ -392,6 +608,26 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		}
 		s.auditEvent("knock", severity, fields)
 	}()
+
+	// The source address is what the AC turns into a firewall rule, so it has
+	// to be an address. knockSourceIP returns "" when RemoteAddr does not split
+	// into host/port, and a plugin is free to write req.SrcIp itself; either way
+	// an unparsable value would reach the AC as the source of an ipset entry.
+	// Refuse here so the denial is audited with a reason rather than handed on.
+	//
+	// net.ParseIP also rejects a zone-scoped address such as fe80::1%eth0,
+	// which RemoteIP() can return for a link-local peer. That is deliberate:
+	// the zone names an interface on *this* host and means nothing to the AC,
+	// which is a different machine, so the rule it built from one would at
+	// best not parse and at worst match something else. A link-local client
+	// has no route to a remote AC's protected resources anyway.
+	if net.ParseIP(srcIp) == nil {
+		err = common.ErrInvalidIpAddress
+		ackMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
+		ackMsg.ErrMsg = err.Error()
+		log.Error("httpserver-agent(%s#%s)[handleHttpOpenResource] refusing to open a resource for an unparsable source address %q", knkMsg.UserId, knkMsg.DeviceId, srcIp)
+		return
+	}
 
 	if len(res.Resources) == 0 {
 		err = common.ErrResourceNotFound

@@ -412,7 +412,10 @@ func runSite(args []string, stdout io.Writer) error {
 	//
 	// Only the live days are unioned. A day the snapshot freezes is not
 	// among them, so its attackers are not counted twice: the snapshot
-	// carries that period's own totals as its baseline.
+	// carries that period's own totals as its baseline. The country count
+	// is this union alone — the snapshot's own country count is not added to
+	// it, because the two periods' country sets were never kept side by side
+	// and adding them would count a country seen in both periods twice.
 	union := unionDayFacts(opts.StatePath, summaries)
 	if len(union.Missing) > 0 {
 		fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the all-time totals are a lower bound\n",
@@ -439,6 +442,14 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	if len(frozen) > 0 {
 		fmt.Fprintf(stdout, "site: %d day(s) frozen by the history snapshot (published from it, not from the logs)\n", len(frozen))
+	}
+	if hist != nil && hist.Totals.Countries > 0 {
+		// The snapshot's country count is recorded but not published: the
+		// site's country figure is the live period's union alone. Saying so
+		// in the collect log keeps the deliberate difference visible to
+		// whoever reads it.
+		fmt.Fprintf(stdout, "site: the history snapshot's country count (%d) is recorded but not added to the site's country total\n",
+			hist.Totals.Countries)
 	}
 
 	if dirty {

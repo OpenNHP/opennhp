@@ -259,15 +259,65 @@ func TestHistoryTotalsAddUp(t *testing.T) {
 	if got := totals["NHP_TOTAL_ATTACK_BLOCKED"]; uint64(got) != live {
 		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want %d", got, live)
 	}
-	// The source and country baselines are added on top of the live union.
+	// The source baseline is added on top of the live union.
 	liveSources := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"] - hist.Totals.SourceIPs
 	if liveSources < 0 {
 		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want the baseline %d plus a live union",
 			totals["NHP_TOTAL_ATTACK_SOURCE_IPS"], hist.Totals.SourceIPs)
 	}
-	if got := totals["NHP_TOTAL_ATTACK_COUNTRIES"]; got != hist.Totals.Countries {
-		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want the baseline %d (no geo source in the fixture)",
-			got, hist.Totals.Countries)
+	// The country baseline is not added: the published figure is the live
+	// period's union, and this fixture has no geo source, so it is zero.
+	if got := totals["NHP_TOTAL_ATTACK_COUNTRIES"]; got != 0 {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 0 (the live union alone; no geo source in the fixture)",
+			got)
+	}
+}
+
+// TestHistoryCountryTotalIgnoresSnapshotBaseline pins the country total's
+// source of truth: the live period's union, with nothing taken from the
+// snapshot. The two periods' country sets were never kept side by side, so
+// adding the snapshot's count would count every country seen in both periods
+// twice — and the total would exceed the number of countries there are.
+func TestHistoryCountryTotalIgnoresSnapshotBaseline(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100,
+		"203.0.113.5", "198.51.100.7", "10.0.0.9")
+	writeDropLogWithSources(t, logs, "server", siteDay2, 200,
+		"203.0.113.5", "192.0.2.9")
+
+	// A snapshot with a country count of its own. Its day is older than the
+	// live ones, so it freezes nothing that is analyzed here.
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = "2026-10-15"
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	hist.Totals.SourceIPs = 40
+	hist.Totals.Countries = 130
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv", "-history", path)
+
+	totals := readTotalNumbers(t, out)
+	// The source count keeps the baseline: an address active in both periods
+	// is counted once in each, so the figure is a lower bound.
+	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != 43 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 43 (the baseline 40 plus the live union of 3)", got)
+	}
+	// The country count starts from zero however large the baseline is: the
+	// live union alone. 203.0.113.0/24 resolves to AU in testdata/geo.csv
+	// and the other addresses resolve to nothing.
+	if got := totals["NHP_TOTAL_ATTACK_COUNTRIES"]; got != 1 {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 1 (the live union alone, not the baseline 130 plus 1)", got)
+	}
+	// The homepage says so, so a reader can tell the two figures apart.
+	page := string(readArtifact(t, out, "index.html"))
+	if !strings.Contains(page, "The country total counts only the countries seen on the days published from the logs") {
+		t.Error("the homepage does not say that the country total ignores the snapshot")
 	}
 }
 

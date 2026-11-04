@@ -402,9 +402,14 @@ summary, not its events — so its date renders as plain text, and the pages
 the site published for those days earlier are left in place, unlinked (unlinked
 is not unpublished). `totals.blocked` must equal the sum of the snapshot's own
 days, so the hero total stays the sum of every row of `index.json`; the
-snapshot's `source_ips`/`countries` are **added** to the live period's union
-rather than merged with it (the two periods' address sets were never kept side
-by side), so both are lower bounds. A `-history` path that cannot be read
+snapshot's `source_ips` is **added** to the live period's union rather than
+merged with it (the two periods' address sets were never kept side by side),
+so the source figure is a lower bound. The snapshot's `countries` is **not**
+added: the country total is the live period's union alone, starting from zero
+however large the snapshot's own count is — adding it would count every
+country seen in both periods twice, and there are only so many country codes
+to resolve, so the total would exceed the number of countries there are.
+A `-history` path that cannot be read
 fails the run — silently counting only the site's own days would shrink the
 published totals by an unquantifiable amount — and the file's fingerprint
 lives in `state.json`, so editing it rewrites the index. The snapshot is

@@ -116,7 +116,7 @@ func runHistory(args []string, stdout io.Writer) error {
 	if err := writeFileAtomic(*outPath, b, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", *outPath, err)
 	}
-	fmt.Fprintf(stdout, "history: %d day(s) from %s, %d blocked packet(s), %d source IP(s), %d country/countries, counting from %s\n",
+	fmt.Fprintf(stdout, "history: %d day(s) from %s, %d blocked packet(s), %d source IP(s), %d country/countries (recorded, not added to the site's country total), counting from %s\n",
 		len(hist.Days), *outPath, hist.Totals.Blocked, hist.Totals.SourceIPs, hist.Totals.Countries, hist.Since)
 	return nil
 }

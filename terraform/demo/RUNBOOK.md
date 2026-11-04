@@ -1605,12 +1605,18 @@ go run ./xdplog-report history \
   `totals.blocked` must equal the sum of its own days' `drop_pkts`, and the
   site refuses to load a snapshot where it does not. So the hero total is
   still the sum of every row of `index.json`.
-- **The two union counts are added, not merged.** The snapshot's
-  `source_ips` / `countries` are the unions of the saved period; the live
-  days have their own union. The two periods' address sets were never kept
-  side by side, so the site adds them: a source active in both periods is
-  counted once in each. Both figures are therefore **lower bounds**, and
-  the homepage, `totalnumber.js` and the README all say so.
+- **The source count adds the two periods; the country count does not.**
+  The snapshot's `source_ips` / `countries` are the unions of the saved
+  period; the live days have their own union. The two periods' address sets
+  were never kept side by side, so the site adds the snapshot's `source_ips`
+  to the live union: a source active in both periods is counted once in each,
+  so that figure is a **lower bound** on the true number of distinct
+  attackers. The country total is the live period's union **alone** — the
+  snapshot's `countries` is recorded but never added, because adding it
+  would count every country seen in both periods twice, and there are only
+  so many country codes to resolve: the total would exceed the number of
+  countries there are. The homepage, `totalnumber.js` and the README all
+  say so.
 - **Rolling it back** is removing the day from `history.json` (or the whole
   file): the next run rewrites the homepage, the day becomes a live row
   again and the day page is linked once more. The fingerprint of the file

@@ -71,7 +71,14 @@ type HistoryTotals struct {
 	// sets were never kept, so a true union is not computable. The result
 	// is a lower bound.
 	SourceIPs int `json:"source_ips"`
-	// Countries is the same for countries.
+	// Countries is the number of distinct countries the saved period saw.
+	//
+	// The site records it but does not add it to the country total it
+	// publishes. The two periods' country sets were never kept side by side
+	// either, and adding them would count every country seen in both periods
+	// twice — and there are only so many country codes to resolve, so a
+	// total built that way exceeds the number of countries there are. The
+	// published figure is the live period's union on its own.
 	Countries int `json:"countries"`
 }
 

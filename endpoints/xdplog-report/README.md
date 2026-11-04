@@ -273,12 +273,20 @@ equal the sum of its own days' `drop_pkts`, and a snapshot where it does not
 is refused. The hero total therefore stays the sum of every row of
 `index.json`, history rows included.
 
-**The two union counts are added, not merged.** `source_ips` and `countries`
-are the unions of the saved period; the live days have their own union. The
-two periods' address sets were never kept side by side, so the site adds
-them: a source active in both periods is counted once in each. Both figures
-are therefore **lower bounds** on the true distinct totals, and the
-homepage, `totalnumber.js` and this README all say so.
+**The source count adds the two periods; the country count does not.**
+`source_ips` and `countries` are the unions of the saved period; the live days
+have their own union. The two periods' address sets were never kept side by
+side, so the site adds the snapshot's `source_ips` to the live union: a
+source active in both periods is counted once in each, and the figure is
+therefore a **lower bound** on the true number of distinct attackers.
+
+The country count is the live period's union alone — the snapshot's
+`countries` is recorded but never added. Adding it would count every country
+seen in both periods twice, and there are only so many country codes to
+resolve, so the total would exceed the number of countries there are. The
+published figure is the number of distinct countries the days analyzed from
+the logs resolved to, and the homepage, `totalnumber.js` and this README all
+say so.
 
 **A snapshot that cannot be read stops the run.** `-history` pointing at a
 missing or invalid file is an error, never a silent fallback to counting only
@@ -716,9 +724,13 @@ go run ./xdplog-report site \
 **包数仍然可复现。** 快照的 `totals.blocked` 必须等于它自己各行 `drop_pkts` 之和，不等就直接
 拒绝加载。于是 hero 包数依旧是 `index.json` 全部行 `drop_pkts` 之和，历史行也在内。
 
-**两个并集数是相加，不是合并。** `source_ips` 与 `countries` 是那一期的并集，实时天有它们自己
-的并集；两期的地址集合从未同时留存，所以站点把它们相加：同一个来源在两期都活跃会被各算一次。
-因此这两个数字是真实去重总数的**下界**，首页、`totalnumber.js` 和本文档都写明了这一点。
+**来源数是两期相加，国家数不是。** `source_ips` 与 `countries` 是那一期的并集，实时天有它们自己
+的并集；两期的地址集合从未同时留存，所以站点把快照的 `source_ips` 加到实时并集上：同一个来源
+在两期都活跃会被各算一次，因此这个数字是真实去重来源数的**下界**。
+
+国家数只有实时那一期的并集 —— 快照里的 `countries` 只记录、不累加。累加的话，两期都出现过的
+国家会被算两次，而国家代码本来就没有多少个，累加出来的总数会超过真实的国家数。公布的数字是
+从日志分析出的那些天里出现过的不同国家数，首页、`totalnumber.js` 和本文档都写明了这一点。
 
 **读不到的快照会让运行直接失败。** `-history` 指向不存在或非法的文件是错误，绝不会静默退化成
 "只统计自己的数据" —— 那会让公布的累计值凭空少掉一块且没人能复核。文件内容的指纹写进

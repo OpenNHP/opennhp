@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,7 +23,17 @@ import (
 
 var (
 	errReadConfigFailed = errors.New("ztdo config read failed")
-	errSaveConfigFailed = errors.New("ztdo config save failed")
+	// errZdtoNotFound is the one read failure that means "no such object".
+	// It wraps errReadConfigFailed so callers that only check that still
+	// see a read failure.
+	errZdtoNotFound      = fmt.Errorf("%w: not found", errReadConfigFailed)
+	errSaveConfigFailed  = errors.New("ztdo config save failed")
+	errNotDBPeer         = errors.New("sender is not an nhp-db listed in db.toml")
+	errUnauthorized      = errors.New("unauthorized")
+	errAttestationFailed = errors.New("attestation verification failed")
+	errNotObjectOwner    = errors.New("data object is owned by another nhp-db")
+	errDbIdChange        = errors.New("data object dbId cannot be changed")
+	errEmptyPolicy       = errors.New("data object must carry a smart policy")
 
 	// lastRelayForwardBlockLog rate-limits the per-packet Critical
 	// emitted by HandleRelayForward when the (relay, real-client)
@@ -648,7 +659,7 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 	if err != nil {
 		dsaMsg.DoId = doId
 		dsaMsg.ErrCode = 1
-		dsaMsg.ErrMsg = err.Error()
+		dsaMsg.ErrMsg = zdtoReadErrorForAgent(err)
 	} else {
 		dsaMsg.DoId = doId
 		dsaMsg.SpoId = config.Spo.PolicyId
@@ -712,7 +723,16 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%q) failed: %v", transactionId, addrStr, common.TruncateDoIDForLog(doId), err)
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
-		dagMsg.ErrMsg = err.Error()
+		dagMsg.ErrMsg = zdtoReadErrorForAgent(err)
+	} else if config.Spo.Policy == "" {
+		// An object stored before registration required a policy. Answer
+		// the agent instead of letting its transaction time out, and tell
+		// the operator which object needs its policy re-registered.
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] DoId=%q has no smart policy; attestation refused, re-register the object with a policy",
+			transactionId, addrStr, common.TruncateDoIDForLog(doId))
+		dagMsg.DoId = doId
+		dagMsg.ErrCode = 1
+		dagMsg.ErrMsg = errAttestationFailed.Error()
 	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
 		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attestation: %s", transactionId, addrStr, attErr.Error())
 		return attErr
@@ -791,14 +811,25 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 
 	doId := aolMsg.DoId
 
-	err = SaveZdtoConfig(aolMsg)
+	// Only an nhp-db listed in db.toml may register or update data objects,
+	// and only for the objects it owns (SaveZdtoConfig). validatePeer
+	// already binds NHP_DRG to the NHP_DB role; this check does not depend
+	// on that.
+	if owner, authErr := s.authorizeDRGSender(ppd.RemotePubKey); authErr != nil {
+		log.Warning("server-db(DoId=%q,trx=#%d@%s)[HandleDHPDRGMessage] rejected: %v (pubkey=%s)",
+			common.TruncateDoIDForLog(doId), transactionId, addrStr, authErr, base64.StdEncoding.EncodeToString(ppd.RemotePubKey))
+		// The sender gets a generic answer; the reason is in the log.
+		err = errUnauthorized
+	} else {
+		err = SaveZdtoConfig(aolMsg, owner)
+	}
 
 	errCode := 0 //success
 	errMsg := ""
 
 	if err != nil {
 		errCode = 1
-		errMsg = err.Error()
+		errMsg = drgErrorForSender(err)
 	}
 
 	aakMsg := &common.DAKMsg{
@@ -831,9 +862,26 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 	return nil
 }
 
+// authorizeDRGSender returns the owner identity (public key, base64) of an
+// NHP_DRG sender, which must be an nhp-db listed, and not expired, in
+// db.toml.
+func (s *UdpServer) authorizeDRGSender(pubKey []byte) (string, error) {
+	pk := base64.StdEncoding.EncodeToString(pubKey)
+	s.dbPeerMapMutex.Lock()
+	dbPeer := s.dbPeerMap[pk]
+	s.dbPeerMapMutex.Unlock()
+	if len(pubKey) == 0 || dbPeer == nil || dbPeer.IsExpired() {
+		return "", errNotDBPeer
+	}
+	return pk, nil
+}
+
 func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation string) error {
+	// Fail closed: an object without a policy has nothing to verify the
+	// attestation against. Registration refuses empty policies, so this
+	// only catches objects stored before that check existed.
 	if spo.Policy == "" {
-		return nil
+		return errEmptyPolicy
 	}
 
 	wasmBytes, err := spo.GetPolicy()
@@ -854,26 +902,77 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 	}
 }
 
-func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
+// zdtoConfigMu makes SaveZdtoConfig's read-check-write atomic, so two
+// nhp-dbs registering the same new DoId cannot both pass the owner check.
+var zdtoConfigMu sync.Mutex
+
+// SaveZdtoConfig stores a data object registered by the nhp-db whose
+// authenticated public key is owner. A new object records owner; an
+// existing one may only be updated by its owner and keeps its dbId. An
+// object stored before owners were recorded is claimed by the first
+// update whose dbId matches the stored one. A stored object that cannot be
+// read (corrupt, unreadable) is never treated as new: that would let any
+// nhp-db take it over.
+//
+// The owner is the nhp-db's NHP public key, so an nhp-db that rotates its
+// key can no longer update the objects it registered; recover by clearing
+// or replacing "ownerPublicKey" in etc/ztdo/data-<doId>.json.
+func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 	objectId := drgMsg.DoId
 	if err := common.ValidateDoID(objectId); err != nil {
 		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), err)
 		return err
+	}
+	if owner == "" {
+		return errNotDBPeer
+	}
+	if drgMsg.Spo.Policy == "" {
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), errEmptyPolicy)
+		return errEmptyPolicy
 	}
 	configFileName := "data-" + objectId + ".json"
 
 	etcDir := filepath.Join(ExeDirPath, "etc", "ztdo")
 	configPath := filepath.Join(etcDir, configFileName)
 
-	if existingDrgMsg, err := ReadZdtoConfig(objectId); err == nil {
+	zdtoConfigMu.Lock()
+	defer zdtoConfigMu.Unlock()
+
+	existingDrgMsg, readErr := ReadZdtoConfig(objectId)
+	switch {
+	case readErr == nil:
+		if existingDrgMsg.OwnerPublicKey != "" && existingDrgMsg.OwnerPublicKey != owner {
+			log.Warning("server[SaveZdtoConfig] rejected DoId=%q update by %s: %v", common.TruncateDoIDForLog(objectId), owner, errNotObjectOwner)
+			return errNotObjectOwner
+		}
+		if existingDrgMsg.DbId != drgMsg.DbId {
+			log.Warning("server[SaveZdtoConfig] rejected DoId=%q update by %s: %v", common.TruncateDoIDForLog(objectId), owner, errDbIdChange)
+			return errDbIdChange
+		}
+		if existingDrgMsg.OwnerPublicKey == "" {
+			// dbId is not authenticated, so record who claimed a legacy
+			// object: an operator can audit the claim and correct it.
+			log.Warning("server[SaveZdtoConfig] DoId=%q (dbId %q) had no recorded owner; claimed by nhp-db %s",
+				common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner)
+		}
+
 		// alway keep original date source type
 		drgMsg.DataSourceType = existingDrgMsg.DataSourceType
 
 		if drgMsg.AccessUrl == "" { // provider update access url
 			drgMsg.AccessUrl = existingDrgMsg.AccessUrl
 		}
-
+	case errors.Is(readErr, errZdtoNotFound):
+		// a new object
+	default:
+		// Fail closed: an object that exists but cannot be read keeps its
+		// owner until an operator repairs it.
+		log.Error("server[SaveZdtoConfig] rejected DoId=%q update by %s: stored object unreadable: %v", common.TruncateDoIDForLog(objectId), owner, readErr)
+		return errSaveConfigFailed
 	}
+
+	// The owner is the authenticated sender, never what the message says.
+	drgMsg.OwnerPublicKey = owner
 
 	// Make sure the etc directory exists
 	if err := os.MkdirAll(etcDir, 0755); err != nil {
@@ -911,6 +1010,30 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 	return nil
 }
 
+// drgErrorForSender is the error text sent back in a DAK. Refusals that
+// depend on another nhp-db's object (it exists and has another owner, or
+// another dbId) get the same generic answer as an unauthorized sender, so
+// one nhp-db cannot probe which DoIds exist or who owns them; the reason
+// is in the server log. Errors about the sender's own request pass through.
+func drgErrorForSender(err error) string {
+	if errors.Is(err, errNotObjectOwner) || errors.Is(err, errDbIdChange) {
+		return errUnauthorized.Error()
+	}
+	return err.Error()
+}
+
+// zdtoReadErrorForAgent is the error text sent to an agent for a failed
+// ReadZdtoConfig. Every read failure gets the same message, so an agent
+// cannot tell a missing object from an unreadable one (and clients that
+// match the message keep working); other errors, such as an invalid DoId,
+// pass through.
+func zdtoReadErrorForAgent(err error) string {
+	if errors.Is(err, errReadConfigFailed) {
+		return errReadConfigFailed.Error()
+	}
+	return err.Error()
+}
+
 // read data-<doId>.json to DRGMsg Object
 func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	if err := common.ValidateDoID(doId); err != nil {
@@ -924,9 +1047,9 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Debug("server[ReadZdtoConfig] DoId=%q not found: %v", common.TruncateDoIDForLog(doId), err)
-		} else {
-			log.Error("server[ReadZdtoConfig] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
+			return common.DRGMsg{}, errZdtoNotFound
 		}
+		log.Error("server[ReadZdtoConfig] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
 		return common.DRGMsg{}, errReadConfigFailed
 	}
 	defer func() { _ = file.Close() }()

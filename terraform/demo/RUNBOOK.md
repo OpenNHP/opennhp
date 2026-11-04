@@ -1489,6 +1489,22 @@ separators. The relay reaches nhp-server through the existing
 relay→server SSH path (already in the XDP whitelist and security group);
 no firewall, capability, or `xdp.toml` change.
 
+**A deploy republishes the site.** `xdplog-report site` only rewrites the
+index when an input moved — a day's log changed, a day was unpublished, the
+history snapshot's bytes changed. A deploy that changes what the site
+publishes (the figures, the hero, the markup) would therefore leave the
+previous build published until some log happened to change. So the
+`deploy-xdpstats` job runs the collector once with `XDPSTATS_SITE_FORCE=1`,
+which makes it pass `-force` to `xdplog-report site`: every cached day is
+re-analyzed and every page and the index are rewritten. The flag travels in
+the systemd manager's environment (`systemctl set-environment`), so the run
+still happens inside the unit's sandbox rather than as a bare ssh command,
+and it is cleared again right after, so the daily timer run stays
+incremental. The job then reads the collect log back: it fails if the run
+did not rebuild, and it fails if the published country figure is above a
+generous 400 — there are only ~250 ISO 3166-1 alpha-2 codes, and a total
+above that is the double count the country rule exists to prevent.
+
 **Publishing floor.** `xdplog-report site` publishes nothing before `-since`
 (default `2026-10-16`): no detail page, no index row, and no share of the
 all-time total. The XDP filter was attached after those logs were written, so
@@ -1673,7 +1689,10 @@ is in the state and DNS outlives it.
   local cache.
 
 - **Force a full rebuild** after editing `endpoints/xdplog-report/classify.go`
-  (so a new DROP reason or category applies retroactively):
+  (so a new DROP reason or category applies retroactively). A deploy already
+  rebuilds the site (see "A deploy republishes the site" above); this recipe
+  is for a change that is not going through a deploy, and for rebuilding
+  without re-pulling the logs:
   ```bash
   ssh relay-jump
   cd endpoints && go build -o /tmp/xdplog-report ./xdplog-report && \
@@ -1683,6 +1702,12 @@ is in the state and DNS outlives it.
     -out   /var/www/stats \
     -state /home/ec2-user/xdpstats/state.json \
     -force
+  ```
+
+  The same rebuild through the collector, which also re-pulls the logs:
+  ```bash
+  ssh relay-jump
+  /home/ec2-user/xdpstats/xdpstats-collect.sh -v -f
   ```
 
 - **Rotate the collector keypair** (e.g. compromised relay host):

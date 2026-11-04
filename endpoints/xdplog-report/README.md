@@ -343,6 +343,21 @@ names the product instead of repeating a generic noun. `index.json` keeps the
 raw directory name in `source` — that field is part of the published contract
 and anyone already parsing it depends on the value.
 
+### The index is rewritten only when something moved
+
+`siteRenderVersion` covers the *day* pages. The index has no version of its
+own: `renderIndex` runs only when the run is dirty, and dirty means a day's
+raw log moved, a day was unpublished, or the history snapshot's bytes
+changed. The country and source figures are recomputed on every run, but
+their *publication* is gated.
+
+So a change to what the index says — the published figures, the hero, the
+markup — does not reach the visitors on its own. That is why the deploy
+rebuilds the site: `deploy-xdpstats` runs the collector once with
+`XDPSTATS_SITE_FORCE=1`, which passes `-force` and re-analyzes every cached
+day, so the index is rewritten from the deployed binary's own output. The
+daily timer run is not forced; there the incremental path is the point.
+
 The hero number animates (2.5s count-up, thousands separators) using
 `countup.js`, written next to `index.html` and loaded with a plain
 `<script src="countup.js" defer>`. It is progressive enhancement: the span
@@ -770,6 +785,17 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 首页表格的 Source 列把 `server` 显示成 **nhp-server**，让这一列说明产品名而不是重复一个
 泛称。`index.json` 的 `source` 字段保持目录原名 —— 它属于已发布的契约，已有解析代码依赖
 这个值。
+
+### 首页只在有东西变动时才重写
+
+`siteRenderVersion` 管的是**每日详情页**。首页自己没有版本号：`renderIndex` 只在本次运行
+"脏"的时候才执行，而"脏"指的是某天的原始日志变了、某天被下架、或者 history 快照的字节变了。
+国家和来源数每次运行都会重新计算，但**是否发布**由这个"脏"标志决定。
+
+所以，改动首页要说的内容（发布出来的数字、hero 区块、页面标记）本身到不了访客那里。这就是
+部署会重建站点的原因：`deploy-xdpstats` 会带 `XDPSTATS_SITE_FORCE=1` 跑一次采集脚本，
+它会传 `-force`，把缓存里的每一天重新分析一遍，于是首页由这次部署的二进制自己的输出来重写。
+每日的定时采集不加这个开关 —— 那里增量路径才是本意。
 
 `totalnumber.js` 把三个累计数字导出成 JavaScript 常量，供别的站点直接引用：
 

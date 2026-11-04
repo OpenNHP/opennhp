@@ -607,6 +607,21 @@ by the deploy) and says so in the collect log either way.
   `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
   `relay.*` / `agent.*` / `reg.*` / `demo.*` (SAN expanded by
   `bootstrap-tls.sh`).
+- **A deploy republishes the site.** `deploy-demo-v2`'s `deploy-xdpstats`
+  job runs the collector once with `XDPSTATS_SITE_FORCE=1` — the systemd
+  manager's environment, so the run still happens inside the unit's sandbox
+  (`ProtectSystem=full`, `ReadWritePaths`) rather than as a bare ssh
+  command — which makes the collector pass `-force` to `xdplog-report
+  site`: every cached day is re-analyzed and every page and the index are
+  rewritten. The forced rebuild is what makes a deploy that changes the
+  published figures, the hero or the markup reach the visitors at all:
+  `xdplog-report site` only rewrites the index when an input moved (a day's
+  log changed, a day was unpublished, the history snapshot's bytes
+  changed), so without it the site would keep serving the previous build.
+  The job then reads the collect log back and fails if the run did not
+  rebuild, or if the published country figure is implausible (there are
+  only ~250 ISO 3166-1 alpha-2 codes). The daily timer run is not forced —
+  the incremental path is the point there.
 
 **Three directories, three permission stories.** `/home/ec2-user` is mode
 0700 on AL2023 and nginx workers run as `nginx`, so the web root is

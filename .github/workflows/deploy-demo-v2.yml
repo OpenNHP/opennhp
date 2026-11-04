@@ -4003,9 +4003,81 @@ jobs:
           set -euo pipefail
           SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
           TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/xdpstats"
+          WEB_ROOT="/var/www/stats"
 
           # Manual run; the timer will pick up daily thereafter.
-          ssh $SSH_OPTS $TARGET "sudo systemctl start xdpstats.service || true"
+          #
+          # The rebuild is forced, and that is the point of this step.
+          # `xdplog-report site` only rewrites the index when an input moved
+          # (a day's log changed, a day was unpublished, the history
+          # snapshot's bytes changed), so a deploy that changes what the
+          # site publishes — the figures, the hero, the markup — would
+          # otherwise leave the previous build published until some log
+          # happened to change. XDPSTATS_SITE_FORCE=1 makes the collector
+          # pass -force, and it travels in the systemd manager's
+          # environment so the run still happens inside the unit's sandbox
+          # (ProtectSystem=full, ReadWritePaths) rather than as a bare ssh
+          # command.
+          #
+          # systemctl start on a Type=oneshot unit blocks until the run is
+          # over, so the rebuild has happened when it returns. The manager
+          # environment is cleared afterwards either way, so the daily timer
+          # run is not forced.
+          ssh $SSH_OPTS $TARGET "sudo systemctl set-environment XDPSTATS_SITE_FORCE=1"
+          # The timer is stopped for the forced run: a timer tick that lands
+          # on top of it would win the collector's flock, and the forced run
+          # would then exit without rebuilding anything. The timer is
+          # started again below, before any failure can exit this step — a
+          # stopped timer would silently stop the daily collection.
+          ssh $SSH_OPTS $TARGET "sudo systemctl stop xdpstats.timer || true"
+          collect_rc=0
+          ssh $SSH_OPTS $TARGET "sudo systemctl start xdpstats.service" || collect_rc=$?
+          ssh $SSH_OPTS $TARGET "sudo systemctl unset-environment XDPSTATS_SITE_FORCE" || true
+          ssh $SSH_OPTS $TARGET "sudo systemctl start xdpstats.timer || true"
+          if [ "$collect_rc" -ne 0 ]; then
+            echo "ERROR: the collector failed (rc=$collect_rc); the site still serves the previous build" >&2
+            echo "--- last 20 lines of xdpstats journald log ---" >&2
+            ssh $SSH_OPTS $TARGET "sudo journalctl -u xdpstats -n 20 --no-pager" >&2 || true
+            echo "--- last 30 lines of the collect log ---" >&2
+            ssh $SSH_OPTS $TARGET "tail -n 30 $REMOTE_DIR/collect.log" >&2 || true
+            exit 1
+          fi
+
+          # The site's own stdout is redirected into the collect log, and
+          # the collector's last word is its "complete:" line. A forced run
+          # always ends in one — "pulled at least one day, site rewritten"
+          # or "no new days; site rebuilt anyway (-force)". A run that lost
+          # the flock race logs "another collect run is in progress" and
+          # exits 0 without touching the site, so it must not pass as a
+          # rebuild.
+          last_line=$(ssh $SSH_OPTS $TARGET "tail -n 1 $REMOTE_DIR/collect.log")
+          echo "collector: $last_line"
+          case "$last_line" in
+            *"complete: "*) ;;
+            *)
+              echo "ERROR: the collector ran but the site was not rebuilt" >&2
+              ssh $SSH_OPTS $TARGET "tail -n 30 $REMOTE_DIR/collect.log" >&2 || true
+              exit 1
+              ;;
+          esac
+
+          # The published figures, and a bound on the country count. There
+          # are only ~250 ISO 3166-1 alpha-2 codes, so a country total well
+          # above that is a double count — the history snapshot's own
+          # country count added to the live period's union — and must not be
+          # published. The site counts the live period's countries alone;
+          # see endpoints/xdplog-report/render_index.go.
+          ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK $WEB_ROOT/totalnumber.js"
+          countries=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_COUNTRIES $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          if [ -z "$countries" ]; then
+            echo "ERROR: no country figure in the published totalnumber.js" >&2
+            exit 1
+          fi
+          if [ "$countries" -gt 400 ]; then
+            echo "ERROR: implausible country total: $countries (there are ~250 ISO country codes)" >&2
+            exit 1
+          fi
 
           # Wait up to 30s for the nginx reload + first site render to land.
           for i in $(seq 1 30); do

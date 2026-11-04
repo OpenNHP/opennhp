@@ -339,6 +339,13 @@ func authOTPCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 
 	clientIP := otpClientIP(ctx, conf.trustedProxies)
 	switch err := checkConfiguredOTP(conf, clientIP, otpCode); {
+	case errors.Is(err, errNoClientAddr):
+		log.Error("OTP auth refused: %v (RemoteAddr %q)", err, ctx.Request.RemoteAddr)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"errMsg":  "Cannot determine the client address",
+		})
+		return nil, err
 	case errors.Is(err, errOTPRateLimited):
 		log.Warning("OTP auth refused for %s: too many failed attempts", clientIP)
 		ctx.JSON(http.StatusTooManyRequests, gin.H{
@@ -401,6 +408,14 @@ func authQRCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Reso
 	// configured OTP through the same limiter as otpvalid, for the resource
 	// it was generated for, from the client that generated it, and only once.
 	requester := otpClientIP(ctx, requestTrustedProxies())
+	if requester == "" {
+		log.Error("QR auth refused: %v (RemoteAddr %q)", errNoClientAddr, ctx.Request.RemoteAddr)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"errMsg":  "Cannot determine the client address",
+		})
+		return nil, errNoClientAddr
+	}
 	if err := GetQRAuthService().ConsumeConfirmedSession(sessionId, res.ResourceId, requester); err != nil {
 		log.Warning("QR auth refused for sessionId %s: %v", sessionId, err)
 		ctx.JSON(http.StatusOK, gin.H{

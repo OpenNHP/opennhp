@@ -705,3 +705,74 @@ func TestScanDoesNotRegressSession(t *testing.T) {
 		t.Fatal("confirmed session could not knock after a scan notification")
 	}
 }
+
+// IPv4-mapped TrustedProxies prefixes match the plain IPv4 peers they
+// describe; ones wider than the mapped range are refused.
+func TestTrustedProxiesIPv4Mapped(t *testing.T) {
+	trusted, err := parseTrustedProxies([]string{"::ffff:10.0.0.0/104", "::ffff:192.0.2.7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, peer := range []string{"10.1.2.3", "192.0.2.7", "::ffff:10.9.9.9"} {
+		if !isTrustedProxy(peer, trusted) {
+			t.Errorf("%s not matched by an IPv4-mapped entry", peer)
+		}
+	}
+	if isTrustedProxy("11.0.0.1", trusted) {
+		t.Error("matched outside the mapped prefix")
+	}
+	if _, err := parseTrustedProxies([]string{"::ffff:0:0/80"}); err == nil {
+		t.Error("an IPv4-mapped prefix shorter than /96 was accepted")
+	}
+}
+
+// With no parsable peer address, nothing is limited under "" and nothing
+// is knocked for an empty address: every entry point refuses.
+func TestEmptyClientAddressIsRefused(t *testing.T) {
+	useTestOTPConfig(t, true)
+	const badPeer = "not-an-address" // what a unix-socket listener can leave in RemoteAddr
+	knocked := 0
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	if w := otpRequest(t, good, badPeer, "", &knocked); w.Code != http.StatusBadRequest || knocked != 0 {
+		t.Fatalf("otpvalid: got %d, knocked %d", w.Code, knocked)
+	}
+	if r := qrHandlerRequest(t, "/?action=generate", badPeer, func(ctx *gin.Context) { HandleQRGenerate(ctx, "demo") }); r["httpStatus"] != float64(http.StatusBadRequest) {
+		t.Fatalf("generate: %v", r)
+	}
+	sessionID, qrData, _ := qrGenerate(t)
+	if r := qrVerify(t, qrData, good, badPeer); r["httpStatus"] != float64(http.StatusBadRequest) {
+		t.Fatalf("verify: %v", r)
+	}
+	qrVerify(t, qrData, good, "192.0.2.41:5000")
+	if w := qrvalidRequestFrom(t, sessionID, "demo", badPeer, &knocked); w.Code != http.StatusBadRequest || knocked != 0 {
+		t.Fatalf("qrvalid: got %d, knocked %d", w.Code, knocked)
+	}
+	if _, ok := otpLimiter.reserve(""); ok {
+		t.Fatal("reserve admitted an empty key")
+	}
+	if len(otpLimiter.ips) != 0 {
+		t.Fatalf("tracked %d keys for refused requests", len(otpLimiter.ips))
+	}
+}
+
+// Reaching the global limit is logged at most once per window.
+func TestGlobalLimitWarningOncePerWindow(t *testing.T) {
+	useTestOTPConfig(t, false)
+	g, clk := newTestGuard()
+	for i := 0; i < otpGlobalMaxFailures; i++ {
+		guess(g, "198.51.100."+strconv.Itoa(i))
+	}
+	if !g.globalWarned.IsZero() {
+		t.Fatal("warned before the limit was reached")
+	}
+	guess(g, "203.0.113.1")
+	first := g.globalWarned
+	if first.IsZero() {
+		t.Fatal("no warning when the limit was reached")
+	}
+	clk.advance(time.Second)
+	guess(g, "203.0.113.2")
+	if !g.globalWarned.Equal(first) {
+		t.Fatal("warned twice within one window")
+	}
+}

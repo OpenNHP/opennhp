@@ -448,6 +448,14 @@ func HandleQRGenerate(ctx *gin.Context, resId string) {
 
 	aspId := "authenticator"
 	srcIp := otpClientAddr(ctx, requestTrustedProxies())
+	if srcIp == "" {
+		// A session bound to no address could never knock; say why now.
+		ctx.JSON(http.StatusBadRequest, QRGenerateResponse{
+			Success: false,
+			ErrMsg:  errNoClientAddr.Error(),
+		})
+		return
+	}
 
 	// Build server URL
 	scheme := "https"
@@ -610,6 +618,13 @@ func HandleQRVerify(ctx *gin.Context) {
 	// The phone's code is checked against the configured secret under the
 	// same limiter as otpvalid, keyed by the phone's address.
 	clientIP := otpClientIP(ctx, conf.trustedProxies)
+	if clientIP == "" {
+		ctx.JSON(http.StatusBadRequest, QRVerifyResponse{
+			Success: false,
+			ErrMsg:  errNoClientAddr.Error(),
+		})
+		return
+	}
 	err = service.VerifySession(qrData.SessionID, qrData.Token, otpClientAddr(ctx, conf.trustedProxies), req.DeviceInfo, func() error {
 		return checkConfiguredOTP(conf, clientIP, req.OTPCode)
 	})

@@ -29,7 +29,7 @@ go test ./...   # unit and handler tests
 | `QRCodeExpiry` | `300` | QR session lifetime in seconds. |
 | `OTPAllowReuse` | `false` | When `false`, a code that was accepted once is refused for its remaining validity (about 90 s). |
 | `ShowOTPSecret` | `false` | Render `OTPSecretKey` on the public login page so visitors can enrol it. **Public demos only**: anyone who can load the page can then generate valid codes. |
-| `TrustedProxies` | empty | Reverse proxies in front of nhp-server (addresses or CIDR prefixes). **Must be set behind a proxy**; see below. One invalid entry disables the whole list. |
+| `TrustedProxies` | empty | Reverse proxies in front of nhp-server (addresses or CIDR prefixes). **Must be set behind a proxy**; see below. IPv4-mapped entries (`::ffff:10.0.0.0/104`) are treated as IPv4; an IPv4-mapped prefix shorter than /96 is invalid. One invalid entry disables the whole list. |
 
 The algorithm is fixed at TOTP / SHA1 / 6 digits, accepting one step of clock
 skew either side of the current step.
@@ -61,10 +61,13 @@ one limiter:
   recorded. A correct code refused only because it was already used is not
   counted as a failure.
 
-The global limit fails closed. About one wrong guess every two seconds, from
-any mix of addresses, blocks OTP and QR login for everyone. It also bounds a
-distributed attacker to roughly a 12% chance of a correct guess per day (about a
-week expected) while `ShowOTPSecret` is off.
+The global limit fails closed: while it is reached, OTP and QR login are blocked
+for everyone, and `[OTP] global limit reached` is logged once per minute.
+Because of the per-address lockouts, keeping it reached takes about 90 IPv4
+addresses (or 30 IPv6 /48s) every 15 minutes. That is cheap for a botnet but not
+possible from a single host. The global limit also bounds a distributed attacker
+to roughly a 12% chance of a correct guess per day (about a week expected) while
+`ShowOTPSecret` is off.
 
 ### Client address and reverse proxies
 
@@ -72,6 +75,9 @@ The limiter and the knock both use the client's address, never a value the
 client can forge:
 
 - By default that is the TCP peer. `X-Forwarded-For` is ignored.
+- If the peer address cannot be parsed (for example a unix-socket listener in
+  front of nhp-server), the request is refused with HTTP 400, rather than
+  sharing one limit and opening access for an empty address.
 - If the peer is listed in `TrustedProxies`, it is the right-most
   `X-Forwarded-For` hop that is not itself a trusted proxy.
 
@@ -98,6 +104,7 @@ On success the knock is performed and the nhp-server ack is returned
 | 200 | `Invalid OTP code` |
 | 200 | `OTP code already used, wait for the next code` |
 | 429 | `Too many failed attempts, try again later` |
+| 400 | `Cannot determine the client address` |
 
 ## QR login protocol
 
@@ -146,6 +153,7 @@ Response: `{"success": true}` or `{"success": false, "errMsg": ...}`:
 | 200 | `too many failed attempts, generate a new QR code` | Ask the user to refresh the QR code on the computer. |
 | 200 | `session not found` / `session expired` / `session already confirmed` / `invalid QR data` | Ask the user to refresh the QR code. |
 | 429 | `too many failed OTP attempts` | Rate limited; try again later. |
+| 400 | `cannot determine the client address` | Server-side setup problem; report it to the operator. |
 
 ### `action=status` (browser)
 
@@ -159,7 +167,10 @@ unexpired, belongs to `resid`, has not knocked before, and the request comes
 from the same client address (same limiter key) that called `generate`. If the
 browser's address changed in between, for example a dual-stack browser
 switching between IPv4 and IPv6, it gets "this QR code was generated from a
-different network address; refresh the QR code and try again".
+different network address; refresh the QR code and try again". Changing
+`TrustedProxies` while a QR login is in progress can have the same effect,
+because `qrvalid` derives the requester's address with the current list; a new
+QR code fixes it.
 
 ## Breaking change: QR protocol (per-session secret removed)
 

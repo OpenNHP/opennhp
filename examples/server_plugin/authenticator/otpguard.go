@@ -24,9 +24,12 @@ import (
 //     otpGlobalWindow (a sliding window, not fixed buckets), so spreading
 //     guesses over many addresses does not help. The cost is that a flood of
 //     failures blocks OTP logins for everyone; this is an authentication
-//     gate, so it fails closed. That ceiling is also the only bound on a
-//     distributed attacker: 30 guesses a minute against 3 valid codes is
-//     about a 12% chance of a correct guess per day.
+//     gate, so it fails closed. Holding it exhausted takes about 90 IPv4
+//     addresses (or 30 IPv6 /48s) every 15 minutes, given the per-address
+//     lockouts: cheap for a botnet, not possible from a single host. That
+//     ceiling is also the only bound on a distributed attacker: 30 guesses a
+//     minute against 3 valid codes is about a 12% chance of a correct guess
+//     per day.
 //
 // The check and the count are one step: reserve counts the attempt as a
 // failure before the code is checked, and a correct code gives it back.
@@ -43,7 +46,8 @@ type otpGuard struct {
 
 	ips map[string]*otpIPState
 
-	global []time.Time // when each failure counted in the last otpGlobalWindow was reserved, oldest first
+	global       []time.Time // when each failure counted in the last otpGlobalWindow was reserved, oldest first
+	globalWarned time.Time   // when the global limit was last logged as reached
 
 	used map[string]time.Time // OTP code -> when it may be used again
 }
@@ -98,6 +102,10 @@ var (
 	errOTPRateLimited = errors.New("too many failed OTP attempts")
 	errOTPInvalid     = errors.New("invalid OTP code")
 	errOTPUsed        = errors.New("OTP code already used")
+	// errNoClientAddr: the peer address could not be parsed (for example a
+	// unix-socket listener in front of nhp-server). Refused rather than
+	// sharing one limit key and opening access for an empty address.
+	errNoClientAddr = errors.New("cannot determine the client address")
 )
 
 // checkConfiguredOTP checks code against the configured OTPSecretKey under
@@ -105,6 +113,9 @@ var (
 // OTPAllowReuse is set. Every path that accepts the configured OTP goes
 // through here, so none of them is weaker than another.
 func checkConfiguredOTP(conf *config, clientIP, code string) error {
+	if clientIP == "" {
+		return errNoClientAddr
+	}
 	ticket, ok := otpLimiter.reserve(clientIP)
 	if !ok {
 		return errOTPRateLimited
@@ -155,8 +166,19 @@ func (g *otpGuard) reserve(ip string) (otpTicket, bool) {
 	defer g.mu.Unlock()
 	now := g.now()
 
+	if ip == "" {
+		return otpTicket{}, false
+	}
 	g.pruneGlobal(now)
 	if len(g.global) >= otpGlobalMaxFailures {
+		// Make an everyone-is-locked-out period visible, once per window.
+		if now.Sub(g.globalWarned) >= otpGlobalWindow {
+			g.globalWarned = now
+			if log != nil {
+				log.Warning("[OTP] global limit reached: %d failed attempts in the last %v; refusing every OTP attempt until they age out",
+					len(g.global), otpGlobalWindow)
+			}
+		}
 		return otpTicket{}, false
 	}
 
@@ -293,7 +315,10 @@ func (g *otpGuard) evictIPs(now time.Time) {
 }
 
 // parseTrustedProxies parses TrustedProxies entries (addresses or CIDR
-// prefixes). One bad entry fails the whole list.
+// prefixes). One bad entry fails the whole list. Peers are compared as
+// plain IPv4 (see isTrustedProxy), so IPv4-mapped entries are converted to
+// IPv4 too; an IPv4-mapped prefix shorter than /96 covers more than the
+// mapped range and is refused rather than silently never matching.
 func parseTrustedProxies(entries []string) ([]netip.Prefix, error) {
 	prefixes := make([]netip.Prefix, 0, len(entries))
 	for _, e := range entries {
@@ -302,6 +327,12 @@ func parseTrustedProxies(entries []string) ([]netip.Prefix, error) {
 			p, err := netip.ParsePrefix(e)
 			if err != nil {
 				return nil, fmt.Errorf("invalid TrustedProxies entry %q: %v", e, err)
+			}
+			if p.Addr().Is4In6() {
+				if p.Bits() < 96 {
+					return nil, fmt.Errorf("invalid TrustedProxies entry %q: an IPv4-mapped prefix must be /96 or longer", e)
+				}
+				p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
 			}
 			prefixes = append(prefixes, p.Masked())
 			continue
@@ -357,7 +388,8 @@ func otpClientIP(ctx *gin.Context, trusted []netip.Prefix) string {
 }
 
 // otpClientAddr is the client address otpClientIP limits by, unmasked, for
-// recording in sessions and logs.
+// recording in sessions and logs. It is "" when the peer address cannot be
+// parsed; callers must refuse then (errNoClientAddr).
 func otpClientAddr(ctx *gin.Context, trusted []netip.Prefix) string {
 	peer := ctx.RemoteIP()
 	if len(trusted) == 0 {

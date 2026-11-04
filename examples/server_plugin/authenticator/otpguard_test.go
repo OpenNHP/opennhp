@@ -1,0 +1,430 @@
+package main
+
+import (
+	"encoding/json"
+	"html/template"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/pquerna/otp/totp"
+
+	"github.com/OpenNHP/opennhp/nhp/common"
+	nhplog "github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/plugins"
+)
+
+const testOTPSecret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+type fakeClock struct{ t time.Time }
+
+func (c *fakeClock) now() time.Time          { return c.t }
+func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+
+func newTestGuard() (*otpGuard, *fakeClock) {
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	g := newOTPGuard()
+	g.now = clk.now
+	return g, clk
+}
+
+// guess makes one wrong attempt from ip and reports whether it was checked.
+func guess(g *otpGuard, ip string) bool {
+	_, ok := g.reserve(ip)
+	return ok
+}
+
+// After otpMaxIPFailures failures an address is locked out for
+// otpIPLockout; other addresses are not affected.
+func TestOTPGuardLocksOutAnAddress(t *testing.T) {
+	g, clk := newTestGuard()
+	for i := 0; i < otpMaxIPFailures; i++ {
+		if !guess(g, "192.0.2.1") {
+			t.Fatalf("attempt %d refused before the limit", i+1)
+		}
+	}
+	if guess(g, "192.0.2.1") {
+		t.Fatal("address not locked out after the failure limit")
+	}
+	if !guess(g, "192.0.2.2") {
+		t.Fatal("another address was locked out")
+	}
+	clk.advance(otpIPLockout + time.Second)
+	if !guess(g, "192.0.2.1") {
+		t.Fatal("lockout did not expire")
+	}
+}
+
+// Failures spread over time are forgotten, and a success clears them.
+func TestOTPGuardFailureCountResets(t *testing.T) {
+	g, clk := newTestGuard()
+	for i := 0; i < otpMaxIPFailures-1; i++ {
+		guess(g, "192.0.2.1")
+	}
+	tk, _ := g.reserve("192.0.2.1")
+	g.succeed(tk)
+	for i := 0; i < otpMaxIPFailures-1; i++ {
+		guess(g, "192.0.2.1")
+	}
+	if !guess(g, "192.0.2.1") {
+		t.Fatal("a success did not clear the failure count")
+	}
+
+	for i := 0; i < otpMaxIPFailures-1; i++ {
+		guess(g, "192.0.2.3")
+	}
+	clk.advance(otpIPFailureTTL + time.Second)
+	for i := 0; i < otpMaxIPFailures-1; i++ {
+		guess(g, "192.0.2.3")
+	}
+	if !guess(g, "192.0.2.3") {
+		t.Fatal("stale failures still counted")
+	}
+}
+
+// A correct but already-used code gives its attempt back, to the address
+// and to the global budget, without clearing earlier failures.
+func TestOTPGuardRelease(t *testing.T) {
+	g, _ := newTestGuard()
+	for i := 0; i < otpMaxIPFailures-1; i++ {
+		guess(g, "192.0.2.4")
+	}
+	for i := 0; i < 10; i++ {
+		tk, ok := g.reserve("192.0.2.4")
+		if !ok {
+			t.Fatalf("release %d did not give the attempt back", i)
+		}
+		g.release(tk)
+	}
+	if g.globalFailures != otpMaxIPFailures-1 {
+		t.Fatalf("global failures %d, want %d", g.globalFailures, otpMaxIPFailures-1)
+	}
+	if !guess(g, "192.0.2.4") || guess(g, "192.0.2.4") {
+		t.Fatal("earlier failures were not kept")
+	}
+}
+
+// Parallel attempts cannot all pass the check before any is counted.
+func TestOTPGuardConcurrentReserve(t *testing.T) {
+	g, _ := newTestGuard()
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	admitted := 0
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if guess(g, "192.0.2.5") {
+				mu.Lock()
+				admitted++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if admitted != otpMaxIPFailures {
+		t.Fatalf("admitted %d parallel guesses, want %d", admitted, otpMaxIPFailures)
+	}
+}
+
+// Guesses spread over many addresses still hit the global limit.
+func TestOTPGuardGlobalLimit(t *testing.T) {
+	g, clk := newTestGuard()
+	for i := 0; i < otpGlobalMaxFailures; i++ {
+		if !guess(g, "198.51.100."+strconv.Itoa(i)) {
+			t.Fatalf("attempt %d refused before the global limit", i+1)
+		}
+	}
+	if guess(g, "203.0.113.9") {
+		t.Fatal("a fresh address was allowed past the global failure limit")
+	}
+	clk.advance(otpGlobalWindow)
+	if !guess(g, "203.0.113.9") {
+		t.Fatal("the global window did not reset")
+	}
+}
+
+// A code can be used once while it is valid, unless reuse is allowed, and
+// expired codes are pruned.
+func TestOTPGuardConsume(t *testing.T) {
+	g, clk := newTestGuard()
+	life := otpCodeLifetime(30)
+	if !g.consume("123456", false, life) {
+		t.Fatal("fresh code refused")
+	}
+	if g.consume("123456", false, life) {
+		t.Fatal("code accepted twice")
+	}
+	if !g.consume("123456", true, life) {
+		t.Fatal("reuse refused with OTPAllowReuse")
+	}
+	clk.advance(life)
+	if !g.consume("123456", false, life) || len(g.used) != 1 {
+		t.Fatalf("code still refused or not pruned after it can no longer validate (%d left)", len(g.used))
+	}
+	if otpCodeLifetime(60) != 3*time.Minute {
+		t.Fatalf("lifetime ignores the period: %v", otpCodeLifetime(60))
+	}
+}
+
+// The address table stays bounded and refuses rather than tracking nothing.
+func TestOTPGuardBounded(t *testing.T) {
+	g, clk := newTestGuard()
+	for i := 0; i < otpMaxTrackedIPs+10; i++ {
+		g.globalWindowStart, g.globalFailures = clk.now(), 0 // isolate from the global limit
+		guess(g, "ip-"+strconv.Itoa(i))
+	}
+	if len(g.ips) > otpMaxTrackedIPs {
+		t.Fatalf("tracked %d addresses, limit %d", len(g.ips), otpMaxTrackedIPs)
+	}
+	g.globalFailures = 0
+	if guess(g, "one-more") {
+		t.Fatal("checked an address it could not track")
+	}
+	clk.advance(otpIPFailureTTL + time.Second)
+	if !guess(g, "one-more") {
+		t.Fatal("stale addresses were not evicted")
+	}
+}
+
+func TestOTPClientIP(t *testing.T) {
+	trusted, err := parseTrustedProxies([]string{"127.0.0.1", "10.0.0.0/8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseTrustedProxies([]string{"127.0.0.1", "nope"}); err == nil {
+		t.Fatal("an invalid entry was accepted")
+	}
+	cases := []struct {
+		peer, xff string
+		trusted   bool
+		want      string
+	}{
+		{"192.0.2.1", "198.51.100.1", true, "192.0.2.1"},                       // untrusted peer: header ignored
+		{"127.0.0.1", "198.51.100.1", false, "127.0.0.1"},                      // no trusted list: header ignored
+		{"127.0.0.1", "198.51.100.1", true, "198.51.100.1"},                    // behind the proxy
+		{"127.0.0.1", "6.6.6.6, 198.51.100.1, 10.1.2.3", true, "198.51.100.1"}, // forged left part skipped
+		{"127.0.0.1", "garbage", true, "127.0.0.1"},                            // garbage: the proxy's limit
+		{"127.0.0.1", "", true, "127.0.0.1"},
+	}
+	gin.SetMode(gin.TestMode)
+	for _, c := range cases {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		ctx.Request.RemoteAddr = c.peer + ":5000"
+		if c.xff != "" {
+			ctx.Request.Header.Set("X-Forwarded-For", c.xff)
+		}
+		var tp []netip.Prefix
+		if c.trusted {
+			tp = trusted
+		}
+		if got := otpClientIP(ctx, tp); got != c.want {
+			t.Errorf("peer %s xff %q: got %s, want %s", c.peer, c.xff, got, c.want)
+		}
+	}
+}
+
+// otpRequest drives the real handler as the login page does.
+func otpRequest(t *testing.T, code, remoteAddr, forwardedFor string, knocked *int) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/plugins/authenticator?resid=demo&action=otpvalid&otpCode="+code, nil)
+	ctx.Request.RemoteAddr = remoteAddr
+	if forwardedFor != "" {
+		ctx.Request.Header.Set("X-Forwarded-For", forwardedFor)
+	}
+	helper := &plugins.HttpServerPluginHelper{
+		AuthWithHttpCallbackFunc: func(*common.HttpKnockRequest, *common.ResourceData) (*common.ServerKnockAckMsg, error) {
+			*knocked++
+			return &common.ServerKnockAckMsg{ErrCode: common.ErrSuccess.ErrorCode()}, nil
+		},
+	}
+	_, _ = authOTPCode(ctx, &common.HttpKnockRequest{}, &common.ResourceData{}, helper)
+	return w
+}
+
+func useTestOTPConfig(t *testing.T, allowReuse bool) {
+	t.Helper()
+	oldConf, oldLimiter, oldLog := baseConf, otpLimiter, log
+	baseConf = &config{OTPSecretKey: testOTPSecret, OTPPeriod: 30, OTPDigits: 6, OTPAllowReuse: allowReuse}
+	otpLimiter = newOTPGuard()
+	log = nhplog.NewLogger("", 0, "", "") // the plugin logger is normally set by Init
+	t.Cleanup(func() { baseConf, otpLimiter, log = oldConf, oldLimiter, oldLog })
+}
+
+// Wrong codes from one address lock it out, even if it rotates
+// X-Forwarded-For, and a correct code is then refused too.
+func TestAuthOTPCodeLocksOutGuessing(t *testing.T) {
+	useTestOTPConfig(t, false)
+	knocked := 0
+	for i := 0; i < otpMaxIPFailures; i++ {
+		w := otpRequest(t, "000000", "192.0.2.10:5000", "10.0.0."+strconv.Itoa(i), &knocked)
+		if w.Code != http.StatusOK {
+			t.Fatalf("attempt %d: got %d before the limit", i+1, w.Code)
+		}
+	}
+	good, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	if w := otpRequest(t, good, "192.0.2.10:5000", "10.9.9.9", &knocked); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("locked-out address: got %d, want 429", w.Code)
+	}
+	if knocked != 0 {
+		t.Fatalf("knocked %d times for a locked-out address", knocked)
+	}
+	if w := otpRequest(t, good, "192.0.2.11:5000", "", &knocked); w.Code != http.StatusOK || knocked != 1 {
+		t.Fatalf("other address with a valid code: got %d, knocked %d", w.Code, knocked)
+	}
+}
+
+// A valid code is accepted once; a second use is refused unless
+// OTPAllowReuse is set.
+func TestAuthOTPCodeReplay(t *testing.T) {
+	for _, allowReuse := range []bool{false, true} {
+		useTestOTPConfig(t, allowReuse)
+		knocked := 0
+		code, _ := totp.GenerateCode(testOTPSecret, time.Now())
+		otpRequest(t, code, "192.0.2.20:5000", "", &knocked)
+		w := otpRequest(t, code, "192.0.2.21:5000", "", &knocked)
+		var resp map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		if allowReuse && knocked != 2 {
+			t.Errorf("OTPAllowReuse: knocked %d times, want 2", knocked)
+		}
+		if !allowReuse && (knocked != 1 || resp["success"] != false) {
+			t.Errorf("replayed code: knocked %d times, response %v", knocked, resp)
+		}
+	}
+}
+
+// A correct code refused only because it was already used is not counted
+// as a guess: users sharing one seed must not lock each other out.
+func TestAuthOTPCodeUsedCodeIsNotAFailure(t *testing.T) {
+	useTestOTPConfig(t, false)
+	knocked := 0
+	code, _ := totp.GenerateCode(testOTPSecret, time.Now())
+	otpRequest(t, code, "192.0.2.30:5000", "", &knocked)
+	for i := 0; i < otpMaxIPFailures+2; i++ {
+		otpRequest(t, code, "192.0.2.31:5000", "", &knocked)
+	}
+	if otpLimiter.globalFailures != 0 || len(otpLimiter.ips) != 0 {
+		t.Fatalf("used code counted as failure: global %d, ips %d", otpLimiter.globalFailures, len(otpLimiter.ips))
+	}
+}
+
+// The configured OTPPeriod is what validation uses.
+func TestValidateConfiguredOTPUsesPeriod(t *testing.T) {
+	svc := GetQRAuthService()
+	now := time.Now()
+	code60, err := totp.GenerateCodeCustom(testOTPSecret, now, totp.ValidateOpts{Period: 60, Digits: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !svc.ValidateConfiguredOTP(testOTPSecret, code60, 60) {
+		t.Fatal("a 60s code was refused with OTPPeriod=60")
+	}
+}
+
+func testResource(resID string) *common.ResourceData {
+	res := &common.ResourceData{}
+	res.ResourceId = resID
+	return res
+}
+
+func qrvalidRequest(t *testing.T, sessionID, resID string, knocked *int) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/plugins/authenticator?action=qrvalid&sessionId="+sessionID, nil)
+	helper := &plugins.HttpServerPluginHelper{
+		AuthWithHttpCallbackFunc: func(*common.HttpKnockRequest, *common.ResourceData) (*common.ServerKnockAckMsg, error) {
+			*knocked++
+			return &common.ServerKnockAckMsg{ErrCode: common.ErrSuccess.ErrorCode()}, nil
+		},
+	}
+	_, _ = authQRCode(ctx, &common.HttpKnockRequest{}, testResource(resID), helper)
+	return w
+}
+
+// qrvalid knocks only for a session whose OTP was verified, for its own
+// resource, and only once.
+func TestAuthQRCodeRequiresConfirmedSession(t *testing.T) {
+	useTestOTPConfig(t, false)
+	svc := GetQRAuthService()
+	knocked := 0
+
+	qrvalidRequest(t, "made-up", "demo", &knocked)
+	session, qr, _, err := svc.GenerateSession("authenticator", "demo", "192.0.2.40", "https://example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	qrvalidRequest(t, session.SessionID, "demo", &knocked)
+	if knocked != 0 {
+		t.Fatalf("knocked %d times without a confirmed session", knocked)
+	}
+
+	code, _ := totp.GenerateCode(session.OTPSecret, time.Now())
+	if err := svc.VerifySession(qr.SessionID, qr.Token, code, "192.0.2.41", "test"); err != nil {
+		t.Fatal(err)
+	}
+	qrvalidRequest(t, session.SessionID, "other", &knocked)
+	if knocked != 0 {
+		t.Fatal("knocked for a different resource")
+	}
+	qrvalidRequest(t, session.SessionID, "demo", &knocked)
+	qrvalidRequest(t, session.SessionID, "demo", &knocked)
+	if knocked != 1 {
+		t.Fatalf("confirmed session knocked %d times, want 1", knocked)
+	}
+}
+
+// A QR session dies after qrMaxOTPFailures wrong codes, even for the right one.
+func TestVerifySessionCapsFailures(t *testing.T) {
+	useTestOTPConfig(t, false)
+	svc := GetQRAuthService()
+	session, qr, _, err := svc.GenerateSession("authenticator", "demo", "192.0.2.50", "https://example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	good, _ := totp.GenerateCode(session.OTPSecret, time.Now())
+	bad := "000000"
+	if bad == good {
+		bad = "111111"
+	}
+	for i := 0; i < qrMaxOTPFailures; i++ {
+		_ = svc.VerifySession(qr.SessionID, qr.Token, bad, "", "")
+	}
+	if err := svc.VerifySession(qr.SessionID, qr.Token, good, "", ""); err == nil {
+		t.Fatal("session accepted a code after the failure limit")
+	}
+}
+
+// The shared seed is not published on the login page unless ShowOTPSecret is on.
+func TestLoginPageHidesSecret(t *testing.T) {
+	for _, show := range []bool{false, true} {
+		useTestOTPConfig(t, false)
+		baseConf.ShowOTPSecret = show
+		gin.SetMode(gin.TestMode)
+		w := httptest.NewRecorder()
+		ctx, engine := gin.CreateTestContext(w)
+		page, err := os.ReadFile("templates/authenticator_login.html")
+		if err != nil {
+			t.Fatal(err)
+		}
+		engine.SetHTMLTemplate(template.Must(template.New("authenticator/authenticator_login.html").Parse(string(page))))
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		_, _ = showLoginPage(ctx, &common.HttpKnockRequest{}, testResource("demo"), nil)
+		if got := strings.Contains(w.Body.String(), testOTPSecret); got != show {
+			t.Errorf("ShowOTPSecret=%v: secret in page = %v", show, got)
+		}
+	}
+}

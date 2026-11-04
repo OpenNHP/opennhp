@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -33,7 +34,14 @@ type QRCodeSession struct {
 	MobileIP      string    `json:"mobileIp,omitempty"`
 	MobileDevice  string    `json:"mobileDevice,omitempty"`
 	ErrMsg        string    `json:"errMsg,omitempty"`
+
+	otpFailures int  // wrong codes entered for this session
+	knocked     bool // qrvalid already ran for this session
 }
+
+// qrMaxOTPFailures is how many wrong codes a session accepts before it is
+// dead. Each session has its own secret, so the limit is per session.
+const qrMaxOTPFailures = 5
 
 // QRCodeStatus constants
 const (
@@ -265,8 +273,8 @@ func (s *QRAuthService) DecryptQRData(encrypted string) (*QRCodeData, error) {
 
 // GetSession retrieves a session by ID
 func (s *QRAuthService) GetSession(sessionID string) *QRCodeSession {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mutex.Lock() // may mark the session expired
+	defer s.mutex.Unlock()
 
 	session, exists := s.sessions[sessionID]
 	if !exists {
@@ -280,8 +288,23 @@ func (s *QRAuthService) GetSession(sessionID string) *QRCodeSession {
 	return session
 }
 
-// VerifyOTPOnly verifies OTP code without mobile scan
-func (s *QRAuthService) VerifyOTPOnly(sessionID, otpCode string) error {
+// ValidateConfiguredOTP validates a 6-digit SHA1 TOTP code against the
+// configured secret key with the configured period, accepting
+// otpValidationSkew steps either side of the current one.
+func (s *QRAuthService) ValidateConfiguredOTP(secretKey, otpCode string, periodSeconds int) bool {
+	ok, err := totp.ValidateCustom(otpCode, secretKey, time.Now().UTC(), totp.ValidateOpts{
+		Period:    uint(periodSeconds),
+		Skew:      otpValidationSkew,
+		Digits:    otp.DigitsSix,
+		Algorithm: otp.AlgorithmSHA1,
+	})
+	return ok && err == nil
+}
+
+// ConsumeConfirmedSession authorizes the one knock a QR session is good
+// for: the session must exist, be unexpired, have had its OTP verified by
+// VerifySession, belong to resId, and not have been used before.
+func (s *QRAuthService) ConsumeConfirmedSession(sessionID, resId string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -289,27 +312,21 @@ func (s *QRAuthService) VerifyOTPOnly(sessionID, otpCode string) error {
 	if !exists {
 		return fmt.Errorf("session not found")
 	}
-
 	if time.Now().After(session.ExpiresAt) {
 		session.Status = QRStatusExpired
 		return fmt.Errorf("session expired")
 	}
-
-	// Verify OTP
-	if !totp.Validate(otpCode, session.OTPSecret) {
-		session.Status = QRStatusFailed
-		session.ErrMsg = "invalid OTP code"
-		return fmt.Errorf("invalid OTP code")
+	if session.Status != QRStatusConfirmed {
+		return fmt.Errorf("session not confirmed")
 	}
-
-	session.Status = QRStatusConfirmed
-	session.ConfirmedAt = time.Now()
+	if session.ResourceId != resId {
+		return fmt.Errorf("session is for a different resource")
+	}
+	if session.knocked {
+		return fmt.Errorf("session already used")
+	}
+	session.knocked = true
 	return nil
-}
-
-// ValidateConfiguredOTP validates an OTP code against the configured secret key
-func (s *QRAuthService) ValidateConfiguredOTP(secretKey, otpCode string) bool {
-	return totp.Validate(otpCode, secretKey)
 }
 
 // VerifySession verifies a session with OTP
@@ -332,14 +349,19 @@ func (s *QRAuthService) VerifySession(sessionID, token, otpCode, mobileIP, devic
 	}
 
 	// Verify token
-	if session.Token != token {
+	if !hmac.Equal([]byte(session.Token), []byte(token)) {
 		session.Status = QRStatusFailed
 		session.ErrMsg = "invalid token"
 		return fmt.Errorf("invalid token")
 	}
 
+	if session.otpFailures >= qrMaxOTPFailures {
+		return fmt.Errorf("too many failed attempts, generate a new QR code")
+	}
+
 	// Verify OTP
 	if !totp.Validate(otpCode, session.OTPSecret) {
+		session.otpFailures++
 		session.Status = QRStatusFailed
 		session.ErrMsg = "invalid OTP code"
 		return fmt.Errorf("invalid OTP code")

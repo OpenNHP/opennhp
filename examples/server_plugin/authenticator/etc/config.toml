@@ -6,11 +6,31 @@
 # Example: JBSWY3DPEHPK3PXP (16 characters)
 OTPSecretKey = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 
-# OTP code validity period in seconds (default: 30)
+# OTP code validity period in seconds (default: 30, allowed: 15..300)
 OTPPeriod = 30
 
-# Number of digits in OTP code (default: 6)
+# Number of digits in OTP code. Only 6 is supported (the login page takes six digits).
 OTPDigits = 6
 
 # QR code expiry time in seconds (default: 300)
 QRCodeExpiry = 300
+
+# Allow the same OTP code to be used more than once while it is valid (default: false).
+# Off, a code already accepted is refused for the next ~90 seconds, so a code observed in
+# transit cannot be replayed. Every user shares OTPSecretKey, so turn this on if several
+# people may log in within the same 30-second window.
+# Failed attempts are always rate limited: 5 failures from one address lock it out for
+# 15 minutes, and at most 30 failures per minute are checked across all addresses. The
+# global limit fails closed: while it is exhausted, nobody can log in with OTP.
+# OTPAllowReuse = false
+
+# Show OTPSecretKey on the public login page so visitors can enrol it (default: false).
+# Anyone who can load the page can then generate valid codes, which makes the OTP no
+# longer secret. Enable it only for public demos.
+# ShowOTPSecret = false
+
+# Reverse proxies in front of nhp-server (addresses or CIDR prefixes). OTP attempts from
+# one of them are rate limited by the client address in X-Forwarded-For; from any other
+# peer the header is ignored. Leave empty when clients connect directly. Without it, every
+# client behind a proxy shares the proxy's limit. One invalid entry disables the list.
+# TrustedProxies = ["127.0.0.1"]

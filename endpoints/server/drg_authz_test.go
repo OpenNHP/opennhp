@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -138,6 +139,72 @@ func TestAttestationEmptyPolicyFailsClosed(t *testing.T) {
 }
 
 // writeRawZdto stores msg as is, bypassing SaveZdtoConfig's checks.
+// HandleDHPDRGMessage passes the dbId's online holder to SaveZdtoConfig:
+// a legacy object is claimed only by the nhp-db online with its dbId, not
+// by another configured nhp-db naming the same dbId, and not by anyone
+// while nobody is online with it (a one-shot "nhp-db encrypt" run).
+func TestHandleDHPDRGMessageLegacyClaimNeedsOnlineHolder(t *testing.T) {
+	old := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = old })
+	const id = "legacy-via-handler"
+
+	s, peers := dbOnlineTestServer(t, "key-a", "key-b")
+	keyA := peers["key-a"].PubKeyBase64
+
+	if err := SaveZdtoConfig(testDRG(id), keyA, ""); err != nil {
+		t.Fatal(err)
+	}
+	stored, _ := ReadZdtoConfig(id)
+	stored.OwnerPublicKey = ""
+	writeRawZdto(t, &stored)
+
+	drg := func(rawKey string) {
+		t.Helper()
+		body, err := json.Marshal(testDRG(id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// No transaction to answer on: the handler saves (or refuses)
+		// first, then ends at ErrTransactionIdNotFound.
+		err = s.HandleDHPDRGMessage(&core.PacketParserData{
+			ConnData:     &core.ConnectionData{RemoteAddr: &net.UDPAddr{IP: net.ParseIP("203.0.113.50"), Port: 42000}},
+			BodyMessage:  body,
+			RemotePubKey: []byte(rawKey),
+			SenderTrxId:  1,
+		})
+		if !errors.Is(err, common.ErrTransactionIdNotFound) {
+			t.Fatalf("HandleDHPDRGMessage = %v, want ErrTransactionIdNotFound (no transaction)", err)
+		}
+	}
+	owner := func() string {
+		t.Helper()
+		got, err := ReadZdtoConfig(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.OwnerPublicKey
+	}
+
+	drg("key-a")
+	if got := owner(); got != "" {
+		t.Fatalf("claimed while nobody is online with the dbId: owner %q", got)
+	}
+
+	if _, err := dbOnline(t, s, "key-a", "db-1", 42001); !errors.Is(err, common.ErrTransactionIdNotFound) {
+		t.Fatalf("key-a online: %v", err)
+	}
+	drg("key-b")
+	if got := owner(); got != "" {
+		t.Fatalf("claimed by an nhp-db not online with the dbId: owner %q", got)
+	}
+
+	drg("key-a")
+	if got := owner(); got != keyA {
+		t.Fatalf("holder's claim: owner %q, want %q", got, keyA)
+	}
+}
+
 func writeRawZdto(t *testing.T, msg *common.DRGMsg) {
 	t.Helper()
 	b, err := json.MarshalIndent(msg, "", "  ")

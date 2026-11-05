@@ -611,6 +611,9 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 		DBCipherScheme: ppd.CipherScheme,
 		DBId:           dbId,
 	}
+	// Keep checkDBIdAvailable immediately before this: the gap between
+	// them is the window in which bindDBConn below can still refuse a
+	// connection that has already been promoted.
 	if !s.promoteControlConnection(ppd.ConnData, controlConnectionDB) {
 		log.Warning("server-db(@%s@%s)[HandleDBOnline] authenticated connection is no longer current", dbId, addrStr)
 		return fmt.Errorf("authenticated DB connection is no longer current")
@@ -971,9 +974,21 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner, dbIdHolder string) error {
 			// The dbId in a DRG is only what the sender says. Holding it
 			// online is the binding: an nhp-db that is not online with
 			// this dbId cannot claim the object.
+			//
+			// The sender only gets "unauthorized"; the log tells the
+			// operator which case this is. A one-shot "nhp-db encrypt"
+			// never comes online, so re-registering a legacy object from
+			// it needs the nhp-db daemon with this dbId, and the same
+			// key, online at the time.
+			if dbIdHolder == "" {
+				log.Warning("server[SaveZdtoConfig] rejected DoId=%q (dbId %q) claim by %s: no nhp-db is online with this dbId; "+
+					"bring the nhp-db daemon for dbId %q online with this key and retry: %v",
+					common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner, drgMsg.DbId, errNotObjectOwner)
+				return errNotObjectOwner
+			}
 			if dbIdHolder != owner {
-				log.Warning("server[SaveZdtoConfig] rejected DoId=%q (dbId %q) claim by %s: not online with this dbId: %v",
-					common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner, errNotObjectOwner)
+				log.Warning("server[SaveZdtoConfig] rejected DoId=%q (dbId %q) claim by %s: dbId is held online by another nhp-db %s: %v",
+					common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner, dbIdHolder, errNotObjectOwner)
 				return errNotObjectOwner
 			}
 			// Record who claimed a legacy object: an operator can audit

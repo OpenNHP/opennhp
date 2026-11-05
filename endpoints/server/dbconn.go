@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
 )
@@ -111,25 +112,35 @@ func (s *UdpServer) dbIdHolder(dbId string) string {
 	return pubKey
 }
 
+// Why dbConnForObject found no route for an object. Only the server log
+// sees these; the agent gets the generic ErrDBOffline either way.
+var (
+	errDbIdNotOnline      = errors.New("no nhp-db is online with this dbId")
+	errDbIdHolderInactive = errors.New("the nhp-db online with this dbId is no longer configured or has expired")
+	errDbIdHolderNotOwner = errors.New("the nhp-db online with this dbId is not the object's owner")
+)
+
 // dbConnForObject returns the connection to send an object's NHP_DWR on:
 // the active nhp-db online with the object's dbId and, when the object has
 // a recorded owner, only if that nhp-db is the owner. Otherwise the object
 // is treated as offline, so its wrapping request never reaches an nhp-db
-// that merely claims its dbId.
-func (s *UdpServer) dbConnForObject(dbId, owner string) (*DBConn, bool) {
+// that merely claims its dbId. The error says which case it was;
+// errDbIdHolderNotOwner names the holder, because a holder that is not the
+// owner is what squatting a dbId looks like.
+func (s *UdpServer) dbConnForObject(dbId, owner string) (*DBConn, error) {
 	s.dbConnectionMapMutex.Lock()
 	defer s.dbConnectionMapMutex.Unlock()
 
 	c, found := s.dbConnectionMap[dbId]
 	if !found {
-		return nil, false
+		return nil, errDbIdNotOnline
 	}
 	pubKey := c.DBPeer.PublicKeyBase64()
-	if owner != "" && pubKey != owner {
-		return nil, false
-	}
 	if !s.activeDBPeerLocked(pubKey) {
-		return nil, false
+		return nil, fmt.Errorf("%w (holder %s)", errDbIdHolderInactive, pubKey)
 	}
-	return c, true
+	if owner != "" && pubKey != owner {
+		return nil, fmt.Errorf("%w (holder %s, owner %s)", errDbIdHolderNotOwner, pubKey, owner)
+	}
+	return c, nil
 }

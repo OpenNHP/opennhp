@@ -138,7 +138,6 @@ func TestAttestationEmptyPolicyFailsClosed(t *testing.T) {
 	}
 }
 
-// writeRawZdto stores msg as is, bypassing SaveZdtoConfig's checks.
 // HandleDHPDRGMessage passes the dbId's online holder to SaveZdtoConfig:
 // a legacy object is claimed only by the nhp-db online with its dbId, not
 // by another configured nhp-db naming the same dbId, and not by anyone
@@ -205,6 +204,7 @@ func TestHandleDHPDRGMessageLegacyClaimNeedsOnlineHolder(t *testing.T) {
 	}
 }
 
+// writeRawZdto stores msg as is, bypassing SaveZdtoConfig's checks.
 func writeRawZdto(t *testing.T, msg *common.DRGMsg) {
 	t.Helper()
 	b, err := json.MarshalIndent(msg, "", "  ")

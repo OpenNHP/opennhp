@@ -766,9 +766,9 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 			ConsumerEphemeralPublicKey: consumerEphemeralPublicKey,
 		}
 
-		dbConn, found := s.dbConnForObject(config.DbId, config.OwnerPublicKey)
-		if !found {
-			log.Critical("dbConn not found for dbId:%s (DoId=%q)", config.DbId, common.TruncateDoIDForLog(doId))
+		dbConn, routeErr := s.dbConnForObject(config.DbId, config.OwnerPublicKey)
+		if routeErr != nil {
+			log.Critical("dbConn not found for dbId:%s (DoId=%q): %v", config.DbId, common.TruncateDoIDForLog(doId), routeErr)
 			err = common.ErrDBOffline
 			dagMsg.ErrCode = 1
 			dagMsg.ErrMsg = err.Error()
@@ -840,6 +840,11 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 		// The sender gets a generic answer; the reason is in the log.
 		err = errUnauthorized
 	} else {
+		// dbIdHolder is read before SaveZdtoConfig takes zdtoConfigMu, on
+		// purpose: a holder that goes offline in between was a legitimate
+		// holder a moment earlier, and nesting dbConnectionMapMutex inside
+		// zdtoConfigMu (which covers file I/O) would cost more than that
+		// window is worth.
 		err = SaveZdtoConfig(aolMsg, owner, s.dbIdHolder(aolMsg.DbId))
 	}
 

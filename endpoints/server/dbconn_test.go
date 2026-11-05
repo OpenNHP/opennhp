@@ -52,7 +52,7 @@ func TestBindDBConnRefusesAnotherHolder(t *testing.T) {
 	if err := s.bindDBConn(testDBConn(b, "db-1")); !errors.Is(err, errDbIdHeld) {
 		t.Fatalf("takeover by another nhp-db: got %v, want errDbIdHeld", err)
 	}
-	if c, ok := s.dbConnForObject("db-1", ""); !ok || c != connA {
+	if c, err := s.dbConnForObject("db-1", ""); err != nil || c != connA {
 		t.Fatal("route changed after a refused takeover")
 	}
 	if got := s.dbIdHolder("db-1"); got != "key-a" {
@@ -74,11 +74,11 @@ func TestBindDBConnSameHolderReconnects(t *testing.T) {
 		t.Fatalf("reconnect: %v", err)
 	}
 	s.unbindDBConn(oldConn.ConnData)
-	if c, ok := s.dbConnForObject("db-1", "key-a"); !ok || c != newConn {
+	if c, err := s.dbConnForObject("db-1", "key-a"); err != nil || c != newConn {
 		t.Fatal("old connection's teardown removed the new route")
 	}
 	s.unbindDBConn(newConn.ConnData)
-	if _, ok := s.dbConnForObject("db-1", "key-a"); ok {
+	if _, err := s.dbConnForObject("db-1", "key-a"); err == nil {
 		t.Fatal("route survived its connection's teardown")
 	}
 }
@@ -117,8 +117,8 @@ func TestDBConnHolderMustStayActive(t *testing.T) {
 			}
 			retire(s, a)
 
-			if _, ok := s.dbConnForObject("db-1", ""); ok {
-				t.Fatal("DWR routed to an inactive nhp-db")
+			if _, err := s.dbConnForObject("db-1", ""); !errors.Is(err, errDbIdHolderInactive) {
+				t.Fatalf("DWR to an inactive nhp-db: got %v, want errDbIdHolderInactive", err)
 			}
 			if got := s.dbIdHolder("db-1"); got != "" {
 				t.Fatalf("inactive nhp-db still holds the dbId: %q", got)
@@ -137,17 +137,17 @@ func TestDBConnForObjectChecksOwner(t *testing.T) {
 	if err := s.bindDBConn(testDBConn(a, "db-1")); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.dbConnForObject("db-1", "key-b"); ok {
-		t.Fatal("DWR for key-b's object routed to key-a")
+	if _, err := s.dbConnForObject("db-1", "key-b"); !errors.Is(err, errDbIdHolderNotOwner) {
+		t.Fatalf("DWR for key-b's object held by key-a: got %v, want errDbIdHolderNotOwner", err)
 	}
-	if _, ok := s.dbConnForObject("db-1", "key-a"); !ok {
+	if _, err := s.dbConnForObject("db-1", "key-a"); err != nil {
 		t.Fatal("owner's object not routed")
 	}
-	if _, ok := s.dbConnForObject("db-1", ""); !ok {
+	if _, err := s.dbConnForObject("db-1", ""); err != nil {
 		t.Fatal("legacy object not routed by dbId")
 	}
-	if _, ok := s.dbConnForObject("db-2", ""); ok {
-		t.Fatal("unknown dbId routed")
+	if _, err := s.dbConnForObject("db-2", ""); !errors.Is(err, errDbIdNotOnline) {
+		t.Fatalf("unknown dbId: got %v, want errDbIdNotOnline", err)
 	}
 }
 
@@ -257,7 +257,7 @@ func TestHandleDBOnlineAccepts(t *testing.T) {
 	if !errors.Is(err, common.ErrTransactionIdNotFound) {
 		t.Fatalf("HandleDBOnline = %v, want ErrTransactionIdNotFound (no transaction)", err)
 	}
-	if c, ok := s.dbConnForObject("db-1", ""); !ok || c.ConnData != conn.ConnData {
+	if c, err := s.dbConnForObject("db-1", ""); err != nil || c.ConnData != conn.ConnData {
 		t.Fatal("accepted nhp-db is not the route for its dbId")
 	}
 	if !conn.isDBConnection.Load() || conn.timeout() != DefaultDBConnectionTimeoutMs {
@@ -301,7 +301,7 @@ func TestHandleDBOnlineRefusesBeforePromotion(t *testing.T) {
 			t.Fatalf("takeover: got %v, want errDbIdHeld", err)
 		}
 		assertNotPromoted(t, s, conn)
-		if c, ok := s.dbConnForObject("db-1", ""); !ok || c.ConnData != holder.ConnData {
+		if c, err := s.dbConnForObject("db-1", ""); err != nil || c.ConnData != holder.ConnData {
 			t.Fatal("refused takeover changed the route")
 		}
 	})

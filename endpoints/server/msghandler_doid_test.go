@@ -25,7 +25,7 @@ func TestZdtoConfigRejectsInvalidDoID(t *testing.T) {
 	t.Cleanup(func() { ExeDirPath = originalExeDir })
 
 	invalidDoID := "foo/../../../bar"
-	if err := SaveZdtoConfig(testDRG(invalidDoID), testOwner); !errors.Is(err, common.ErrInvalidDoID) {
+	if err := SaveZdtoConfig(testDRG(invalidDoID), testOwner, ""); !errors.Is(err, common.ErrInvalidDoID) {
 		t.Fatalf("SaveZdtoConfig error = %v, want ErrInvalidDoID", err)
 	} else if err.Error() != common.ErrInvalidDoID.Error() {
 		t.Fatalf("SaveZdtoConfig reflected rejected input: %q", err)
@@ -49,7 +49,7 @@ func TestZdtoConfigValidDoIDRoundTrip(t *testing.T) {
 	t.Cleanup(func() { ExeDirPath = originalExeDir })
 
 	want := testDRG("550e8400-e29b-41d4-a716-446655440000")
-	if err := SaveZdtoConfig(want, testOwner); err != nil {
+	if err := SaveZdtoConfig(want, testOwner, ""); err != nil {
 		t.Fatalf("SaveZdtoConfig returned %v", err)
 	}
 	got, err := ReadZdtoConfig(want.DoId)
@@ -92,14 +92,14 @@ func TestZdtoConfigConcurrentUpdatesRemainReadable(t *testing.T) {
 	const id = "concurrent-update"
 	first := testDRG(id)
 	first.AccessUrl = "original"
-	if err := SaveZdtoConfig(first, testOwner); err != nil {
+	if err := SaveZdtoConfig(first, testOwner, ""); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
 			for range 10 {
-				if err := SaveZdtoConfig(testDRG(id), testOwner); err != nil {
+				if err := SaveZdtoConfig(testDRG(id), testOwner, ""); err != nil {
 					t.Error(err)
 					return
 				}
@@ -122,7 +122,7 @@ func TestZdtoConfigRenameFailureRemovesTemporaryFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "data-object.json"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveZdtoConfig(testDRG("object"), testOwner); !errors.Is(err, errSaveConfigFailed) {
+	if err := SaveZdtoConfig(testDRG("object"), testOwner, ""); !errors.Is(err, errSaveConfigFailed) {
 		t.Fatalf("save error = %v", err)
 	}
 	files, err := filepath.Glob(filepath.Join(dir, ".data-*.json"))

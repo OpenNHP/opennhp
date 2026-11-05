@@ -44,7 +44,7 @@ func TestZdtoConfigOwnership(t *testing.T) {
 
 	first := testDRG(id)
 	first.OwnerPublicKey = "forged-by-sender" // never trusted
-	if err := SaveZdtoConfig(first, "db-a"); err != nil {
+	if err := SaveZdtoConfig(first, "db-a", ""); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := ReadZdtoConfig(id); got.OwnerPublicKey != "db-a" {
@@ -53,19 +53,19 @@ func TestZdtoConfigOwnership(t *testing.T) {
 
 	takeover := testDRG(id)
 	takeover.Spo.Policy = "b3RoZXI=" // another nhp-db's policy
-	if err := SaveZdtoConfig(takeover, "db-b"); !errors.Is(err, errNotObjectOwner) {
+	if err := SaveZdtoConfig(takeover, "db-b", ""); !errors.Is(err, errNotObjectOwner) {
 		t.Fatalf("update by another nhp-db: got %v, want errNotObjectOwner", err)
 	}
 
 	renamed := testDRG(id)
 	renamed.DbId = "db-2"
-	if err := SaveZdtoConfig(renamed, "db-a"); !errors.Is(err, errDbIdChange) {
+	if err := SaveZdtoConfig(renamed, "db-a", ""); !errors.Is(err, errDbIdChange) {
 		t.Fatalf("dbId change: got %v, want errDbIdChange", err)
 	}
 
 	update := testDRG(id)
 	update.Spo.Policy = "bmV3IHBvbGljeQ=="
-	if err := SaveZdtoConfig(update, "db-a"); err != nil {
+	if err := SaveZdtoConfig(update, "db-a", ""); err != nil {
 		t.Fatalf("update by the owner: %v", err)
 	}
 	if got, _ := ReadZdtoConfig(id); got.Spo.Policy != update.Spo.Policy || got.OwnerPublicKey != "db-a" {
@@ -74,7 +74,8 @@ func TestZdtoConfigOwnership(t *testing.T) {
 }
 
 // An object stored before owners were recorded is claimed by the first
-// update whose dbId matches; a different dbId cannot claim it.
+// update whose dbId matches, sent by the nhp-db online with that dbId; a
+// different dbId, or an nhp-db not holding the dbId, cannot claim it.
 func TestZdtoConfigLegacyObjectClaim(t *testing.T) {
 	old := ExeDirPath
 	ExeDirPath = t.TempDir()
@@ -82,7 +83,7 @@ func TestZdtoConfigLegacyObjectClaim(t *testing.T) {
 	const id = "legacy-object"
 
 	legacy := testDRG(id)
-	if err := SaveZdtoConfig(legacy, "db-a"); err != nil {
+	if err := SaveZdtoConfig(legacy, "db-a", ""); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate a config written before this change: no owner.
@@ -92,10 +93,20 @@ func TestZdtoConfigLegacyObjectClaim(t *testing.T) {
 
 	other := testDRG(id)
 	other.DbId = "someone-else"
-	if err := SaveZdtoConfig(other, "db-b"); !errors.Is(err, errDbIdChange) {
+	if err := SaveZdtoConfig(other, "db-b", ""); !errors.Is(err, errDbIdChange) {
 		t.Fatalf("legacy object claimed under another dbId: got %v", err)
 	}
-	if err := SaveZdtoConfig(testDRG(id), "db-a"); err != nil {
+	// The dbId in a DRG is only a claim: an nhp-db that is not online with
+	// the object's dbId cannot claim it, even naming the right dbId.
+	for name, holder := range map[string]string{"nobody online": "", "another nhp-db online": "db-b"} {
+		if err := SaveZdtoConfig(testDRG(id), "db-a", holder); !errors.Is(err, errNotObjectOwner) {
+			t.Fatalf("legacy claim, %s: got %v, want errNotObjectOwner", name, err)
+		}
+	}
+	if got, _ := ReadZdtoConfig(id); got.OwnerPublicKey != "" {
+		t.Fatalf("refused claim stored an owner: %q", got.OwnerPublicKey)
+	}
+	if err := SaveZdtoConfig(testDRG(id), "db-a", "db-a"); err != nil {
 		t.Fatalf("legacy object update with its dbId: %v", err)
 	}
 	if got, _ := ReadZdtoConfig(id); got.OwnerPublicKey != "db-a" {
@@ -110,10 +121,10 @@ func TestZdtoConfigRequiresPolicyAndOwner(t *testing.T) {
 
 	noPolicy := testDRG("no-policy")
 	noPolicy.Spo.Policy = ""
-	if err := SaveZdtoConfig(noPolicy, "db-a"); !errors.Is(err, errEmptyPolicy) {
+	if err := SaveZdtoConfig(noPolicy, "db-a", ""); !errors.Is(err, errEmptyPolicy) {
 		t.Fatalf("empty policy: got %v, want errEmptyPolicy", err)
 	}
-	if err := SaveZdtoConfig(testDRG("no-owner"), ""); !errors.Is(err, errNotDBPeer) {
+	if err := SaveZdtoConfig(testDRG("no-owner"), "", ""); !errors.Is(err, errNotDBPeer) {
 		t.Fatalf("no owner: got %v, want errNotDBPeer", err)
 	}
 }
@@ -148,7 +159,7 @@ func TestZdtoConfigUnreadableObjectFailsClosed(t *testing.T) {
 	t.Cleanup(func() { ExeDirPath = old })
 	const id = "corrupt-object"
 
-	if err := SaveZdtoConfig(testDRG(id), "db-a"); err != nil {
+	if err := SaveZdtoConfig(testDRG(id), "db-a", ""); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(ExeDirPath, "etc", "ztdo", "data-"+id+".json")
@@ -158,7 +169,7 @@ func TestZdtoConfigUnreadableObjectFailsClosed(t *testing.T) {
 
 	takeover := testDRG(id)
 	takeover.Spo.Policy = "b3RoZXI="
-	if err := SaveZdtoConfig(takeover, "db-b"); !errors.Is(err, errSaveConfigFailed) {
+	if err := SaveZdtoConfig(takeover, "db-b", ""); !errors.Is(err, errSaveConfigFailed) {
 		t.Fatalf("takeover of a corrupt object: got %v, want errSaveConfigFailed", err)
 	}
 	if b, _ := os.ReadFile(path); string(b) != `{"doId": "corrupt-obj` {
@@ -170,7 +181,7 @@ func TestZdtoConfigUnreadableObjectFailsClosed(t *testing.T) {
 	if _, err := ReadZdtoConfig("never-registered"); !errors.Is(err, errZdtoNotFound) || !errors.Is(err, errReadConfigFailed) {
 		t.Fatalf("missing object: got %v, want errZdtoNotFound wrapping errReadConfigFailed", err)
 	}
-	if err := SaveZdtoConfig(testDRG("never-registered"), "db-b"); err != nil {
+	if err := SaveZdtoConfig(testDRG("never-registered"), "db-b", ""); err != nil {
 		t.Fatalf("new object: %v", err)
 	}
 }

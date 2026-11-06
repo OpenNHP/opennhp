@@ -271,6 +271,15 @@ func TestHandleDBOnlineAccepts(t *testing.T) {
 // Every refusal happens before promotion and rate exemption, and leaves the
 // existing route alone.
 func TestHandleDBOnlineRefusesBeforePromotion(t *testing.T) {
+	t.Run("empty dbId", func(t *testing.T) {
+		s, _ := dbOnlineTestServer(t, "key-a")
+		conn, err := dbOnline(t, s, "key-a", "", 41000)
+		if !errors.Is(err, errEmptyDBId) {
+			t.Fatalf("empty dbId: got %v, want errEmptyDBId", err)
+		}
+		assertNotPromoted(t, s, conn)
+	})
+
 	t.Run("unknown peer", func(t *testing.T) {
 		s, _ := dbOnlineTestServer(t, "key-a")
 		conn, err := dbOnline(t, s, "stranger", "db-1", 41001)

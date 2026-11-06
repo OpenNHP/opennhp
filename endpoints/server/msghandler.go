@@ -582,6 +582,10 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	}
 
 	dbId := dolMsg.DBId
+	if strings.TrimSpace(dbId) == "" {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v", dbId, addrStr, errEmptyDBId)
+		return errEmptyDBId
+	}
 	dbPubkeyBase64 := base64.StdEncoding.EncodeToString(ppd.RemotePubKey)
 	s.dbPeerMapMutex.Lock()
 	dbPeer := s.dbPeerMap[dbPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
@@ -768,7 +772,11 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 
 		dbConn, routeErr := s.dbConnForObject(config.DbId, config.OwnerPublicKey)
 		if routeErr != nil {
-			log.Critical("dbConn not found for dbId:%s (DoId=%q): %v", config.DbId, common.TruncateDoIDForLog(doId), routeErr)
+			if errors.Is(routeErr, errDbIdHolderNotOwner) {
+				log.Critical("possible dbId squat: online nhp-db does not own dbId:%s (DoId=%q): %v", config.DbId, common.TruncateDoIDForLog(doId), routeErr)
+			} else {
+				log.Critical("dbConn not found for dbId:%s (DoId=%q): %v", config.DbId, common.TruncateDoIDForLog(doId), routeErr)
+			}
 			err = common.ErrDBOffline
 			dagMsg.ErrCode = 1
 			dagMsg.ErrMsg = err.Error()

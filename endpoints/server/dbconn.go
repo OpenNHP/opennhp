@@ -116,6 +116,7 @@ func (s *UdpServer) dbIdHolder(dbId string) string {
 // sees these; the agent gets the generic ErrDBOffline either way.
 var (
 	errDbIdNotOnline      = errors.New("no nhp-db is online with this dbId")
+	errEmptyDBId          = errors.New("nhp-db DbId must not be empty")
 	errDbIdHolderInactive = errors.New("the nhp-db online with this dbId is no longer configured or has expired")
 	errDbIdHolderNotOwner = errors.New("the nhp-db online with this dbId is not the object's owner")
 )

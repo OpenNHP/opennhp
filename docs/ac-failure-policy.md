@@ -23,11 +23,23 @@ and grant lifetimes are unchanged. IPv6 and XDP are unchanged;
 selecting fail-closed with XDP is rejected.
 
 The setting requires a restart. Invalid values fail startup. A live policy change
-rejects the base-config update and logs that a restart is required. During an etcd
-reload, independent HTTP and server-peer sections are still applied.
+rejects the entire base-config update and logs that a restart is required. An
+invalid policy also rejects the entire update. Other base fields in the same edit
+(including `LogLevel` and `DefaultIp`) remain unchanged; keep the running policy
+value to apply those fields without restarting. During an etcd reload, independent
+HTTP and server-peer sections are still applied.
 
-The AC tags its broad fallback rules with `opennhp-ac-fail-open`. On startup,
-both modes remove those owned rules, including duplicates left after a crash.
+Local startup now reports a missing or malformed `etc/config.toml` immediately,
+instead of continuing with an empty configuration and failing later.
+
+The AC requires the iptables `comment` match (`xt_comment` on legacy iptables)
+to tag its broad fallback rules with `opennhp-ac-fail-open`. Ensure this support
+is available in the host kernel and iptables installation, including for container
+deployments. Startup cleanup does not test insertion when no owned rules exist;
+missing comment support can therefore surface only when fail-open is needed.
+
+On startup, both modes remove those owned rules, including duplicates left after
+a crash.
 Switching from fail-open to fail-closed therefore needs no manual rule cleanup
 when the rules were created by this version. Fail-open starts with the normal
 firewall baseline and opens again only after the usual discovery failure threshold.

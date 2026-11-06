@@ -633,6 +633,13 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	// the dbId since checkDBIdAvailable; that connection then stays
 	// promoted, without a route, until it times out.
 	if bindErr := s.bindDBConn(dbConn); bindErr != nil {
+		// The promotion above can race with another holder. Demote a losing
+		// connection immediately so it does not retain a 300-second slot.
+		dbConn.timeoutMs.Store(0)
+		select {
+		case dbConn.timeoutUpdate <- struct{}{}:
+		default:
+		}
 		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v (pubkey=%s)", dbId, addrStr, bindErr, dbPubkeyBase64)
 		return bindErr
 	}

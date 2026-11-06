@@ -70,10 +70,12 @@ RAW_DIR="$XDPSTATS_DIR/raw"
 WEB_DIR="/var/www/stats"
 STATE_FILE="$XDPSTATS_DIR/state.json"
 SOURCES_CONF="$XDPSTATS_DIR/sources.conf"
-# The history snapshot: the site's own numbers for the days before it started
-# publishing, which the collector's cache does not reach back to. It is
-# installed by deploy-xdpstats from deploy/config-templates/xdpstats/history.json
-# and stays private, beside the state rather than under the web root.
+# The history snapshot: the site's own numbers for the days the collector's
+# cache no longer reaches, and the fallback the site publishes those days
+# from. A day the cache still has is analyzed from the log like any other
+# day, so the snapshot only carries what is left. It is installed by
+# deploy-xdpstats from deploy/config-templates/xdpstats/history.json and stays
+# private, beside the state rather than under the web root.
 HISTORY_FILE="$XDPSTATS_DIR/history.json"
 LOG_FILE="$XDPSTATS_DIR/collect.log"
 LOCK_FILE="$RAW_DIR/.lock"
@@ -351,12 +353,13 @@ else
   log "info" "no GeoIP database at $GEO_MMDB; region table and country totals stay empty"
 fi
 
-# The history snapshot seeds the site's counters with the days before it
-# started publishing. It is passed only when it is readable: a snapshot that
-# cannot be read is a configuration error the site refuses to run with, and
-# the alternative — running without it — would shrink the published all-time
-# totals to whatever the collector's cache still holds. So a missing snapshot
-# is logged loudly here instead of silently shrinking the numbers.
+# The history snapshot carries the days the collector's cache no longer
+# reaches, and the baseline the site's counters start from. It is passed only
+# when it is readable: a snapshot that cannot be read is a configuration
+# error the site refuses to run with, and the alternative — running without it
+# — would shrink the published all-time totals to whatever the cache still
+# holds. So a missing snapshot is logged loudly here instead of silently
+# shrinking the numbers.
 if [ -r "$HISTORY_FILE" ]; then
   SITE_ARGS+=("-history" "$HISTORY_FILE")
   log "info" "history snapshot in use: $HISTORY_FILE"

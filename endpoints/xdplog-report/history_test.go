@@ -159,13 +159,14 @@ func TestLoadSiteHistoryMissingFileIsAnError(t *testing.T) {
 	}
 }
 
-// TestHistoryFreezesCoveredDay is the core of the feature: a day the
-// snapshot lists is published from the snapshot, once, without a link, and
-// the live copy of the same day contributes nothing.
-func TestHistoryFreezesCoveredDay(t *testing.T) {
+// TestHistoryLiveDaySupersedesTheSnapshot is the rule that keeps the
+// snapshot from double-counting: a day the live site can produce is analyzed
+// from the log, and the snapshot's row for it is dropped. The published
+// numbers are then the live ones -- with a real detail page to click, and the
+// day's attackers in the all-time union.
+func TestHistoryLiveDaySupersedesTheSnapshot(t *testing.T) {
 	logs, out := stageTestdata(t)
 	hist := validHistory()
-	// Freeze the first staged day.
 	hist.Days = hist.Days[:1]
 	hist.Days[0].Day = siteDay1
 	hist.Days[0].DropPkts = 100
@@ -174,17 +175,46 @@ func TestHistoryFreezesCoveredDay(t *testing.T) {
 
 	runSiteCmd(t, logs, out, "-history", path)
 
-	page, err := os.ReadFile(filepath.Join(out, "index.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(page)
-	// The frozen day appears once, as plain text, with the history flag.
+	body := string(readArtifact(t, out, "index.html"))
+	// The day appears once, and it is a link: the live site produced it.
 	if got := strings.Count(body, ">"+siteDay1+"<"); got != 1 {
 		t.Errorf("%s appears %d times in the index, want 1", siteDay1, got)
 	}
-	if strings.Contains(body, `href="d/server/`+siteDay1+`.html"`) {
-		t.Errorf("the frozen day links to a detail page: it has none")
+	if !strings.Contains(body, `href="d/server/`+siteDay1+`.html"`) {
+		t.Error("the day the live site produced lost its detail page link")
+	}
+	if strings.Contains(body, ">history<") {
+		t.Error("a day the live site produced carries the history flag")
+	}
+	// The live day is still a link.
+	if !strings.Contains(body, `href="d/server/`+siteDay2+`.html"`) {
+		t.Errorf("the live day lost its detail page link")
+	}
+}
+
+// TestHistoryFreezesADayTheLiveSiteCannotProduce pins the case the snapshot
+// exists for: the collector no longer has the day's log, so the snapshot's
+// row is the only record of it. It is published from the snapshot -- as plain
+// text, with no detail page to click, and with the snapshot's own numbers.
+func TestHistoryFreezesADayTheLiveSiteCannotProduce(t *testing.T) {
+	logs, out := stageTestdata(t)
+	const frozenDay = "2026-10-18"
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = frozenDay
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	body := string(readArtifact(t, out, "index.html"))
+	// The frozen day appears once, as plain text, with the history flag.
+	if got := strings.Count(body, ">"+frozenDay+"<"); got != 1 {
+		t.Errorf("%s appears %d times in the index, want 1", frozenDay, got)
+	}
+	if strings.Contains(body, `href="d/server/`+frozenDay+`.html"`) {
+		t.Error("the frozen day links to a detail page: it has none")
 	}
 	if !strings.Contains(body, ">history<") {
 		t.Error("the frozen day carries no history flag")
@@ -196,17 +226,14 @@ func TestHistoryFreezesCoveredDay(t *testing.T) {
 
 	// index.json carries the marker too, and lists the frozen day exactly
 	// once.
-	idx, err := os.ReadFile(filepath.Join(out, "index.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	idx := readArtifact(t, out, "index.json")
 	var rows []SiteDaySummary
 	if err := json.Unmarshal(idx, &rows); err != nil {
 		t.Fatal(err)
 	}
 	frozen := 0
 	for _, r := range rows {
-		if r.Day == siteDay1 {
+		if r.Day == frozenDay {
 			frozen++
 			if !r.History {
 				t.Errorf("index.json row %s is not marked as history", r.Day)
@@ -259,26 +286,36 @@ func TestHistoryTotalsAddUp(t *testing.T) {
 	if got := totals["NHP_TOTAL_ATTACK_BLOCKED"]; uint64(got) != live {
 		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want %d", got, live)
 	}
-	// The source baseline is added on top of the live union.
-	liveSources := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"] - hist.Totals.SourceIPs
-	if liveSources < 0 {
-		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want the baseline %d plus a live union",
-			totals["NHP_TOTAL_ATTACK_SOURCE_IPS"], hist.Totals.SourceIPs)
+	// The source count is the union over the published days -- not the
+	// snapshot's baseline added on top of it. Two unions can only be merged
+	// when both sets are present; adding their sizes counts an address seen
+	// in both periods twice.
+	plainLogs, plainOut := stageTestdata(t)
+	runSiteCmd(t, plainLogs, plainOut)
+	plain := readTotalNumbers(t, plainOut)
+	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != plain["NHP_TOTAL_ATTACK_SOURCE_IPS"] {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want %d (the union of the published days; the snapshot's baseline is not added on top)",
+			got, plain["NHP_TOTAL_ATTACK_SOURCE_IPS"])
 	}
-	// The country baseline is not added: the published figure is the live
-	// period's union, and this fixture has no geo source, so it is zero.
+	// The country baseline is not added either: the published figure is the
+	// union over the published days, and this fixture has no geo source, so
+	// it is zero.
 	if got := totals["NHP_TOTAL_ATTACK_COUNTRIES"]; got != 0 {
-		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 0 (the live union alone; no geo source in the fixture)",
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 0 (the union of the published days; no geo source in the fixture)",
 			got)
 	}
 }
 
-// TestHistoryCountryTotalIgnoresSnapshotBaseline pins the country total's
-// source of truth: the live period's union, with nothing taken from the
-// snapshot. The two periods' country sets were never kept side by side, so
-// adding the snapshot's count would count every country seen in both periods
-// twice — and the total would exceed the number of countries there are.
-func TestHistoryCountryTotalIgnoresSnapshotBaseline(t *testing.T) {
+// TestHistoryCountryTotalUnionsTheSnapshotDays pins the country total's
+// source of truth: the union over every published day, the snapshot's days
+// included.
+//
+// The snapshot's own country count is not added on top of it. A country seen
+// in both periods would then be counted twice, and the total would exceed
+// the number of countries there are -- and the snapshot's days' countries
+// are already in the union, because those days are analyzed from the logs
+// when the collector still has them.
+func TestHistoryCountryTotalUnionsTheSnapshotDays(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
 	out := filepath.Join(root, "web")
@@ -289,11 +326,12 @@ func TestHistoryCountryTotalIgnoresSnapshotBaseline(t *testing.T) {
 	writeDropLogWithSources(t, logs, "server", siteDay2, 200,
 		"203.0.113.5", "192.0.2.9")
 
-	// A snapshot with a country count of its own. Its day is older than the
-	// live ones, so it freezes nothing that is analyzed here.
+	// A snapshot with a country count of its own. Its day is one the live
+	// site also has, so the day is analyzed from the log and its countries
+	// join the union.
 	hist := validHistory()
 	hist.Days = hist.Days[:1]
-	hist.Days[0].Day = "2026-10-15"
+	hist.Days[0].Day = siteDay1
 	hist.Days[0].DropPkts = 100
 	hist.Totals.Blocked = 100
 	hist.Totals.SourceIPs = 40
@@ -303,32 +341,28 @@ func TestHistoryCountryTotalIgnoresSnapshotBaseline(t *testing.T) {
 	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv", "-history", path)
 
 	totals := readTotalNumbers(t, out)
-	// The source count keeps the baseline: an address active in both periods
-	// is counted once in each, so the figure is a lower bound.
-	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != 43 {
-		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 43 (the baseline 40 plus the live union of 3)", got)
+	// The source count is the union of the two days' addresses:
+	// 203.0.113.5, 198.51.100.7 and 192.0.2.9 (10.0.0.9 is a private
+	// address and is not counted). The snapshot's own 40 is not added on top
+	// of it.
+	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != 3 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 3 (the union of the published days; the snapshot's baseline 40 is not added on top)", got)
 	}
-	// The country count starts from zero however large the baseline is: the
-	// live union alone. 203.0.113.0/24 resolves to AU in testdata/geo.csv
-	// and the other addresses resolve to nothing.
+	// The country count is the union over the same days: 203.0.113.0/24
+	// resolves to AU in testdata/geo.csv and the other addresses resolve to
+	// nothing. The snapshot's own 130 is not added on top of it.
 	if got := totals["NHP_TOTAL_ATTACK_COUNTRIES"]; got != 1 {
-		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 1 (the live union alone, not the baseline 130 plus 1)", got)
-	}
-	// The homepage says so, so a reader can tell the two figures apart.
-	page := string(readArtifact(t, out, "index.html"))
-	if !strings.Contains(page, "The country total counts only the countries seen on the days published from the logs") {
-		t.Error("the homepage does not say that the country total ignores the snapshot")
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 1 (the union of the published days, not the baseline 130 plus 1)", got)
 	}
 }
 
-// TestHistoryFactsExcludedFromUnion pins that a frozen day's attackers are
-// not counted twice: the snapshot's baseline already accounts for that
-// period, so the live union must not include the frozen day's facts.
+// TestHistoryFactsJoinTheUnion pins that a snapshot's day contributes its
+// attackers to the all-time union exactly once.
 //
-// The fixture's first day carries the only source addresses (the second day
-// has none), so the union without a snapshot is those two addresses and the
-// union with one is empty.
-func TestHistoryFactsExcludedFromUnion(t *testing.T) {
+// The old behaviour added the snapshot's baseline on top of the union, which
+// counted an address seen in both periods twice and published the sum as a
+// "lower bound" -- the opposite of what the sum is.
+func TestHistoryFactsJoinTheUnion(t *testing.T) {
 	logs, out := stageTestdata(t)
 	hist := validHistory()
 	hist.Days = hist.Days[:1]
@@ -342,13 +376,13 @@ func TestHistoryFactsExcludedFromUnion(t *testing.T) {
 	runSiteCmd(t, logs, out, "-history", path)
 
 	totals := readTotalNumbers(t, out)
-	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != 40 {
-		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 40 (the baseline plus an empty live union)", got)
+	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != 2 {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 2 (the union of the published days; the snapshot's baseline 40 is not added on top)", got)
 	}
 
 	// The same site without a snapshot unions the first day's two source
-	// addresses, so a frozen day's facts showing up in the union would
-	// have shown up here as 42.
+	// addresses, and the snapshot's day is analyzed from the log rather than
+	// skipped, so the union is the same.
 	plainLogs, plainOut := stageTestdata(t)
 	runSiteCmd(t, plainLogs, plainOut)
 	plain := readTotalNumbers(t, plainOut)
@@ -358,10 +392,72 @@ func TestHistoryFactsExcludedFromUnion(t *testing.T) {
 	}
 }
 
+// TestHistoryBaselineStandsInForDaysWithoutFacts pins the one case where the
+// snapshot's own counts are added to the union: a day the live site cannot
+// produce and whose per-day records are gone. Then the snapshot is the only
+// carrier of that day's attackers, and the published figure is an upper
+// bound rather than an exact count.
+func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
+	logs, out := stageTestdata(t)
+	const frozenDay = "2026-10-18"
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = frozenDay
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	hist.Totals.SourceIPs = 40
+	hist.Totals.Countries = 0
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	totals := readTotalNumbers(t, out)
+	plainLogs, plainOut := stageTestdata(t)
+	runSiteCmd(t, plainLogs, plainOut)
+	plain := readTotalNumbers(t, plainOut)
+	want := plain["NHP_TOTAL_ATTACK_SOURCE_IPS"] + 40
+	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != want {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want %d (the union of the published days plus the snapshot's baseline, which stands in for the day whose records are gone)",
+			got, want)
+	}
+	// The homepage says so: the figure is an upper bound.
+	page := string(readArtifact(t, out, "index.html"))
+	if !strings.Contains(page, "upper bounds") {
+		t.Error("the homepage does not say that the totals are upper bounds")
+	}
+}
+
 // TestHistorySinceComesFromSnapshot pins that the counting start is the
 // snapshot's, not the earliest row's: the snapshot is what says the site's
 // numbers begin before its first published day.
 func TestHistorySinceComesFromSnapshot(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	// The snapshot counts from a day the site does not publish. The floor
+	// is lowered to match, so the snapshot's day is not below it.
+	hist.Since = "2026-10-15"
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = siteDay1
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-since", "2026-10-15", "-history", path)
+
+	page := string(readArtifact(t, out, "index.html"))
+	if !strings.Contains(page, "Since 2026-10-15.") {
+		t.Error("the homepage does not count from the snapshot's since date")
+	}
+	b := string(readArtifact(t, out, "totalnumber.js"))
+	if !strings.Contains(b, "Counting starts: 2026-10-15 (UTC).") {
+		t.Error("totalnumber.js does not record the snapshot's counting start")
+	}
+}
+
+// TestHistorySinceBelowTheFloorIsIgnored pins that the snapshot's own
+// counting start cannot put the site below its publishing floor: the days
+// before the floor are not published, so the site does not count from them.
+func TestHistorySinceBelowTheFloorIsIgnored(t *testing.T) {
 	logs, out := stageTestdata(t)
 	hist := validHistory()
 	hist.Since = "2026-10-01"
@@ -373,19 +469,64 @@ func TestHistorySinceComesFromSnapshot(t *testing.T) {
 
 	runSiteCmd(t, logs, out, "-history", path)
 
-	page, err := os.ReadFile(filepath.Join(out, "index.html"))
-	if err != nil {
+	page := string(readArtifact(t, out, "index.html"))
+	if strings.Contains(page, "Since 2026-10-01.") {
+		t.Error("the homepage counts from a day below the publishing floor")
+	}
+	if !strings.Contains(page, "Since 2026-10-16.") {
+		t.Error("the homepage does not count from the earliest published day")
+	}
+	b := string(readArtifact(t, out, "totalnumber.js"))
+	if strings.Contains(b, "Counting starts: 2026-10-01") {
+		t.Error("totalnumber.js counts from a day below the publishing floor")
+	}
+}
+
+// TestHistoryFrozenRowsRespectTheSinceFloor pins that the publishing floor
+// applies to the snapshot's days as well: a day below it is not in the index
+// and does not reach the hero total.
+func TestHistoryFrozenRowsRespectTheSinceFloor(t *testing.T) {
+	logs, out := stageTestdata(t)
+	hist := validHistory()
+	hist.Since = "2026-10-16"
+	hist.Days = []SiteDaySummary{
+		{Source: "server", Day: "2026-10-14", DropPkts: 111},
+		{Source: "server", Day: "2026-10-15", DropPkts: 222},
+		{Source: "server", Day: "2026-10-18", DropPkts: 333},
+	}
+	hist.Totals.Blocked = 111 + 222 + 333
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-history", path)
+
+	page := string(readArtifact(t, out, "index.html"))
+	for _, d := range []string{"2026-10-14", "2026-10-15"} {
+		if strings.Contains(page, ">"+d+"<") {
+			t.Errorf("%s is in the index although it is below the publishing floor", d)
+		}
+	}
+	if !strings.Contains(page, ">2026-10-18<") {
+		t.Error("the day on or after the floor is missing from the index")
+	}
+
+	// The hero total counts the published days only.
+	idx := readArtifact(t, out, "index.json")
+	var rows []SiteDaySummary
+	if err := json.Unmarshal(idx, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(page), "Since 2026-10-01.") {
-		t.Error("the homepage does not count from the snapshot's since date")
+	var sum uint64
+	for _, r := range rows {
+		if r.Day == "2026-10-14" || r.Day == "2026-10-15" {
+			t.Errorf("index.json carries the pre-floor row %s", r.Day)
+		}
+		sum += r.DropPkts
 	}
-	b, err := os.ReadFile(filepath.Join(out, "totalnumber.js"))
-	if err != nil {
-		t.Fatal(err)
+	if sum != indexTotalFromJSON(t, out) {
+		t.Errorf("the rows add up to %d but the hero shows %d", sum, indexTotalFromJSON(t, out))
 	}
-	if !strings.Contains(string(b), "Counting starts: 2026-10-01 (UTC).") {
-		t.Error("totalnumber.js does not record the snapshot's counting start")
+	if sum <= 111+222 {
+		t.Errorf("the hero total is %d; the pre-floor days are still counted in it", sum)
 	}
 }
 
@@ -406,6 +547,10 @@ func TestHistoryFingerprintMarksDirty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	firstFP := readSiteStateAt(t, filepath.Join(out, "state.json")).History
+	if firstFP == "" {
+		t.Fatal("state.json does not record the history fingerprint")
+	}
 
 	// A second run with nothing changed must not rewrite anything.
 	runSiteCmd(t, logs, out, "-history", path)
@@ -417,21 +562,18 @@ func TestHistoryFingerprintMarksDirty(t *testing.T) {
 		t.Error("an unchanged run rewrote the homepage")
 	}
 
-	// Changing the snapshot's baseline has to reach the homepage.
+	// Changing the snapshot has to reach the state, and the state is what
+	// makes the next run rewrite the index.
 	hist.Totals.Blocked = 100
 	hist.Totals.SourceIPs = 4242
 	hist.Days[0].DropPkts = 100
 	writeHistory(t, filepath.Dir(path), hist)
 	runSiteCmd(t, logs, out, "-history", path)
 
-	totals := readTotalNumbers(t, out)
-	if totals["NHP_TOTAL_ATTACK_SOURCE_IPS"] < 4242 {
-		t.Errorf("the changed snapshot did not reach totalnumber.js: %d",
-			totals["NHP_TOTAL_ATTACK_SOURCE_IPS"])
-	}
-	// The fingerprint is recorded in the state, so the next run knows the
-	// index is current.
 	state := readSiteStateAt(t, filepath.Join(out, "state.json"))
+	if state.History == firstFP {
+		t.Error("the changed snapshot's fingerprint did not reach state.json")
+	}
 	if state.History == "" {
 		t.Error("state.json does not record the history fingerprint")
 	}
@@ -483,19 +625,17 @@ func TestSiteWithoutHistoryIsUnchanged(t *testing.T) {
 // page, or the two drift apart silently.
 func TestHistoryRowsAreNotPublishedTwice(t *testing.T) {
 	logs, out := stageTestdata(t)
+	const frozenDay = "2026-10-18"
 	hist := validHistory()
 	hist.Days = hist.Days[:1]
-	hist.Days[0].Day = siteDay1
+	hist.Days[0].Day = frozenDay
 	hist.Days[0].DropPkts = 100
 	hist.Totals.Blocked = 100
 	path := writeHistory(t, t.TempDir(), hist)
 
 	runSiteCmd(t, logs, out, "-history", path)
 
-	idx, err := os.ReadFile(filepath.Join(out, "index.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	idx := readArtifact(t, out, "index.json")
 	var rows []SiteDaySummary
 	if err := json.Unmarshal(idx, &rows); err != nil {
 		t.Fatal(err)
@@ -509,10 +649,10 @@ func TestHistoryRowsAreNotPublishedTwice(t *testing.T) {
 			t.Errorf("%s appears %d times in index.json", key, n)
 		}
 	}
-	// The frozen day's packet count is the snapshot's, not the log's: the
-	// log for that day says something else entirely.
+	// The frozen day's packet count is the snapshot's: there is no log for
+	// it to be counted from.
 	for _, r := range rows {
-		if r.Day == siteDay1 && r.DropPkts != 100 {
+		if r.Day == frozenDay && r.DropPkts != 100 {
 			t.Errorf("the frozen day's count is %d, want the snapshot's 100", r.DropPkts)
 		}
 	}
@@ -703,7 +843,7 @@ func TestHistoryGeneratorFromIndexJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	totalsPath := filepath.Join(dir, "totalnumber.js")
-	totalsBody := totalNumberJS(hist.Blocked, hist.Sources, hist.Countries, hist.Since, nil)
+	totalsBody := totalNumberJS(hist.Blocked, hist.Sources, hist.Countries, hist.Since, historyBaseline{}, nil)
 	if err = os.WriteFile(totalsPath, []byte(totalsBody), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -741,7 +881,7 @@ func TestHistoryGeneratorRefusesAnIndexWithHistoryRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	totals := filepath.Join(dir, "totalnumber.js")
-	if err = os.WriteFile(totals, []byte(totalNumberJS(10, 1, 1, "2026-10-16", nil)), 0o644); err != nil {
+	if err = os.WriteFile(totals, []byte(totalNumberJS(10, 1, 1, "2026-10-16", historyBaseline{}, nil)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

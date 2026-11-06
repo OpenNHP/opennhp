@@ -67,20 +67,22 @@ type indexPageData struct {
 	// are unions. Zero hides the figure: no geo source means no countries, and
 	// showing "0 countries" would read as "no attacks from anywhere".
 	//
-	// With a history snapshot the source count is that snapshot's baseline
-	// plus the live period's union: the two periods' address sets were never
-	// kept side by side, so they are added rather than merged, and the figure
-	// is a lower bound on the true number of distinct attackers. The country
-	// count is the live period's union alone — the snapshot's own country
-	// count is not added, because a country seen in both periods would then
-	// be counted twice and the total would exceed the number of countries
-	// there are.
+	// They are the union over every published day's own sets, plus whatever
+	// the history snapshot stands in for (baseline): an address seen on ten
+	// days is one attacker, and one seen in the snapshot's period and in the
+	// live one is one attacker too.
 	TotalSources   int
 	TotalCountries int
-	// HasHistory is true when the index carries rows frozen by a history
-	// snapshot. Those rows have no detail page, and the page says so: a
-	// reader who cannot click a date deserves to know why.
+	// HasHistory is true when the index carries rows published from the
+	// history snapshot: the days the live site cannot produce. Those rows
+	// have no detail page, and the page says so, because a reader who cannot
+	// click a date deserves to know why.
 	HasHistory bool
+	// BaselineFromSnapshot is true when the snapshot's own counts stand in
+	// for days whose per-day records are gone. The two figures are then
+	// upper bounds rather than exact counts: an address seen both in the
+	// live period and in one of those days is counted once in each.
+	BaselineFromSnapshot bool
 }
 
 // renderIndex writes index.html, index.json, countup.js and totalnumber.js
@@ -95,11 +97,14 @@ type indexPageData struct {
 // caller from the per-day facts. They are passed in rather than recomputed
 // here so the run can report the days that could not contribute.
 //
+// baseline is what the history snapshot adds on top of that union: the part
+// of its own counts that covers the days whose per-day records are gone.
+//
 // hist is the history snapshot the caller loaded, if any. Its rows are
 // already among the rows passed in; it is passed separately for the two
 // things a row cannot carry: the counting start it names, and the baseline
 // its period contributes to the source count.
-func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, hist *SiteHistory) error {
+func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, baseline historyBaseline, hist *SiteHistory) error {
 	ordered := append([]SiteDaySummary(nil), rows...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].Day != ordered[j].Day {
@@ -125,39 +130,42 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, his
 	for _, s := range ordered {
 		total += s.DropPkts
 	}
-	// The counting start comes from the snapshot when there is one: the
-	// snapshot is what says the site's numbers begin before its first
-	// published day.
+	// The counting start is the earliest day the site publishes, which is
+	// what the rows say. The snapshot's own "since" is used when it names an
+	// earlier day the site does count — a snapshot records what the page said,
+	// which can be a day the site never published — but not when it names a
+	// day below the publishing floor: that day is not published, so the site
+	// does not count from it.
 	var since string
-	if hist != nil {
-		since = hist.Since
-	}
-	if since == "" && len(ordered) > 0 {
+	if len(ordered) > 0 {
 		// Sorted newest-first, so the last row holds the earliest day. It is
 		// already YYYY-MM-DD, which is the format the whole site uses.
 		since = ordered[len(ordered)-1].Day
 	}
-	// The source and country totals are the live period's union, and the
-	// snapshot's baseline is added to the source count only.
-	//
-	// The source count is added because the two periods' address sets were
-	// never kept side by side: a source active in both periods is counted
-	// once in each, so the published figure is a lower bound on the number of
-	// distinct attackers.
-	//
-	// The country count is not added. The same reasoning would hold, but a
-	// country is a small and checkable set — the geo database resolves a
-	// bounded number of codes — so adding the snapshot's count to the live
-	// union counts every country seen in both periods twice and publishes a
-	// number larger than the number of countries there are. The published
-	// figure is therefore the number of distinct countries the days analyzed
-	// from the logs resolved to: it starts from zero however large the
-	// snapshot's own country count is.
-	totalSources, totalCountries := union.Sources, union.Countries
-	if hist != nil {
-		totalSources += hist.Totals.SourceIPs
+	if hist != nil && hist.Since != "" && opts.publishesDay(hist.Since) {
+		if since == "" || hist.Since < since {
+			since = hist.Since
+		}
 	}
-	if err := writeTotalNumberJS(opts.OutDir, total, totalSources, totalCountries, since, hist); err != nil {
+	// The source and country totals are the union over every published day's
+	// own sets, plus what the snapshot stands in for the days whose records
+	// are gone. The snapshot's own all-time counts are never added on top of
+	// the union: the sum of two set sizes is at least their union, never at
+	// most it, so that would count an address seen in both periods twice.
+	totalSources := union.Sources + baseline.Sources
+	totalCountries := union.Countries + baseline.Countries
+	// The page explains the snapshot's rows only when there are any: a
+	// snapshot whose days the live site produced has nothing of its own to
+	// show, and the site's figures are then simply the union over the
+	// published days.
+	hasHistory := false
+	for _, r := range ordered {
+		if r.History {
+			hasHistory = true
+			break
+		}
+	}
+	if err := writeTotalNumberJS(opts.OutDir, total, totalSources, totalCountries, since, baseline, hist); err != nil {
 		return err
 	}
 	return writeIndexHTML(opts.OutDir, indexPageData{
@@ -173,9 +181,10 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, his
 		TotalDropPkts: groupThousands(total),
 		SinceDay:      since,
 
-		TotalSources:   totalSources,
-		TotalCountries: totalCountries,
-		HasHistory:     hist != nil,
+		TotalSources:         totalSources,
+		TotalCountries:       totalCountries,
+		HasHistory:           hasHistory,
+		BaselineFromSnapshot: baseline.Applied,
 	})
 }
 
@@ -257,8 +266,8 @@ func sourceLabel(name string) string {
 // Contents are a pure function of the summaries and the facts, so re-running
 // the site build rewrites a byte-identical file and the daily cron stays a
 // no-op.
-func writeTotalNumberJS(outDir string, total uint64, sources, countries int, since string, hist *SiteHistory) error {
-	body := totalNumberJS(total, sources, countries, since, hist)
+func writeTotalNumberJS(outDir string, total uint64, sources, countries int, since string, baseline historyBaseline, hist *SiteHistory) error {
+	body := totalNumberJS(total, sources, countries, since, baseline, hist)
 	return writeFileAtomic(outDir+"/totalnumber.js", []byte(body), 0o644)
 }
 
@@ -266,12 +275,12 @@ func writeTotalNumberJS(outDir string, total uint64, sources, countries int, sin
 // the constants are still emitted (as 0) so a consumer's <script src> never
 // 404s and leave a dangling reference.
 //
-// hist is the history snapshot, when there is one. It does not change the
-// numbers — the caller has already added its baseline to the source count —
-// but it does change what they mean, and a consumer reading this file has to
-// be told: the packet total spans two periods, the source count adds two
-// unions together, and the country count covers the published days only.
-func totalNumberJS(total uint64, sources, countries int, since string, hist *SiteHistory) string {
+// hist is the history snapshot, when there is one, and baseline is what it
+// contributes on top of the union the site computed from the per-day facts.
+// They do not change the numbers — the caller has already added them — but
+// they change what the numbers mean, and a consumer reading this file has to
+// be told.
+func totalNumberJS(total uint64, sources, countries int, since string, baseline historyBaseline, hist *SiteHistory) string {
 	var b strings.Builder
 	b.WriteString("// Generated by endpoints/xdplog-report site. Do not edit by hand.\n")
 	b.WriteString("// Attack (DROP) packets silently dropped by the nhp-server XDP ingress\n")
@@ -289,13 +298,14 @@ func totalNumberJS(total uint64, sources, countries int, since string, hist *Sit
 	b.WriteString("// and a source the GeoLite2 database cannot place belongs to no\n")
 	b.WriteString("// country, so it raises the source count only.\n")
 	if hist != nil {
-		b.WriteString("// The source count adds the snapshot's own count to the live period's\n")
-		b.WriteString("// union: an address seen in both periods is counted once in each, so\n")
-		b.WriteString("// the figure is a lower bound on the number of distinct attackers.\n")
-		b.WriteString("// The country count does not add the snapshot's count. A country seen\n")
-		b.WriteString("// in both periods would be counted twice, and the total would exceed\n")
-		b.WriteString("// the number of countries there are, so the figure is the number of\n")
-		b.WriteString("// distinct countries the published days resolved to.\n")
+		b.WriteString("// The union covers every published day, the snapshot's days included:\n")
+		b.WriteString("// an address seen in the snapshot's period and in the live one is\n")
+		b.WriteString("// one attacker, counted once.\n")
+	}
+	if baseline.Applied {
+		b.WriteString("// Days whose per-day records are gone are covered by the snapshot's\n")
+		b.WriteString("// own count instead, which can count an address or a country seen in\n")
+		b.WriteString("// both periods twice: these two figures are upper bounds.\n")
 	}
 	if since != "" {
 		fmt.Fprintf(&b, "// Counting starts: %s (UTC).\n", since)
@@ -549,7 +559,7 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 Source IPs on the detail pages are <strong>not</strong> masked.
 {{end}}
 tcp/22 scans never reach the host's NIC and are not counted. During deploys or restarts the XDP filter is detached and the gap shows as missing minutes, not as zero attacks.
-{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page and have no detail page. The source IP total is the snapshot's own count plus the days published since, so an address active in both periods is counted once in each. The country total counts only the countries seen on the days published from the logs: the snapshot's country count is not added, because a country seen in both periods would be counted twice and the total would exceed the number of countries there are. {{end}}
+{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and country totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own count stands in, which can count an address or a country seen in both periods twice: those two figures are upper bounds. {{end}}{{end}}
 </p>
 
 <h2>Daily index</h2>

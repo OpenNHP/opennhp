@@ -393,22 +393,33 @@ publishing floor, which the collector's cache does not reach back to.
 (`-html`) or from what the site published (`-index` + `-totals`), and refuses
 to write one whose rows do not sum to the page's own all-time total — a
 parsing slip must not freeze a wrong baseline into the site's history. The
-snapshot's days are **frozen**: the collector's copy of the same day is not
-analyzed, not published and not counted, so the overlapping days are not
-counted twice (they would read `7,002,040` instead of `3,501,020`), and the
-frozen rows carry `"history": true` in `index.json` plus a `history` chip on
-the homepage. A frozen day has no detail page — the snapshot carries the day's
-summary, not its events — so its date renders as plain text, and the pages
-the site published for those days earlier are left in place, unlinked (unlinked
-is not unpublished). `totals.blocked` must equal the sum of the snapshot's own
-days, so the hero total stays the sum of every row of `index.json`; the
-snapshot's `source_ips` is **added** to the live period's union rather than
-merged with it (the two periods' address sets were never kept side by side),
-so the source figure is a lower bound. The snapshot's `countries` is **not**
-added: the country total is the live period's union alone, starting from zero
-however large the snapshot's own count is — adding it would count every
-country seen in both periods twice, and there are only so many country codes
-to resolve, so the total would exceed the number of countries there are.
+A day the live site can produce is **not** frozen: it is analyzed from the log,
+published with a real detail page, and the snapshot's row for it is dropped, so
+the overlapping days are not counted twice (they would read `7,002,040` instead
+of `3,501,020`). The snapshot's rows are the fallback for the days the
+collector's cache no longer reaches; those carry `"history": true` in
+`index.json` plus a `history` chip on the homepage, and a frozen day has no
+detail page — the snapshot carries the day's summary, not its events — so its
+date renders as plain text. The pages the site published for those days earlier
+are left in place, unlinked (unlinked is not unpublished). `totals.blocked`
+must equal the sum of the snapshot's own days, so the hero total stays the sum
+of every row of `index.json`.
+
+The all-time source and country totals are the **union over every published
+day**, the snapshot's days included: each day's own set of attackers and of
+countries is unioned with the others', so an address seen on ten days — or in
+the snapshot's period and in the live one — is counted once. The snapshot's own
+`source_ips` and `countries` are therefore **not** added on top of that union:
+two unions can only be merged when both sets are present, and adding their
+sizes instead counts an address (or a country) seen in both periods twice,
+because the sum of two set sizes is at least their union, never at most it.
+What *is* added is the part of the snapshot's baseline that covers its own
+days whose per-day records are gone — the days the live site cannot produce at
+all — and only for those: nothing else carries those days' attackers, and the
+published figures are then upper bounds rather than exact counts. The
+publishing floor applies to the snapshot's days as well: a day below it is
+neither in the index nor in the hero total, and the snapshot's `since` cannot
+put the site below the floor either.
 A `-history` path that cannot be read
 fails the run — silently counting only the site's own days would shrink the
 published totals by an unquantifiable amount — and the file's fingerprint

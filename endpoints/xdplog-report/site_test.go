@@ -1133,7 +1133,7 @@ func TestSiteIndexNoHeroWhenEmpty(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}, nil); err != nil {
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}, historyBaseline{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	page, err := os.ReadFile(filepath.Join(out, "index.html"))
@@ -1269,7 +1269,7 @@ func TestTotalNumberJSEmptySite(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}, nil); err != nil {
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}, historyBaseline{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(out, "totalnumber.js"))
@@ -1437,7 +1437,7 @@ func TestIndexJSONIsArrayNotNull(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}, nil); err != nil {
+	if err := renderIndex(&SiteOptions{OutDir: out}, nil, factsUnion{}, historyBaseline{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(out, "index.json"))

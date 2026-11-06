@@ -256,37 +256,49 @@ The snapshot is:
 }
 ```
 
-**A frozen day wins.** The days the snapshot lists are published *from the
-snapshot*: the collector's copy of the same day is not analyzed, not published
-and not counted. The snapshot's days and the collector's days overlap
-exactly, so counting both would read `7,002,040` instead of `3,501,020`. Drop
-a day from the snapshot and the next run turns it back into a live row.
+**A live day wins.** The days the collector still has a log for are analyzed
+from it and published normally — with a detail page, with the day's attackers
+in the all-time union — and the snapshot's row for the same day is dropped.
+The snapshot's days and the collector's days overlap exactly, so counting both
+would read `7,002,040` instead of `3,501,020`. Drop a day from the snapshot
+and the next run turns it back into a live row.
 
-**A frozen day has no detail page.** The snapshot carries the day's summary,
-not its DROP events, so the homepage renders the date as plain text and tags
-the row `history`; `index.json` marks it `"history": true`. The pages the
-site published for those days before the snapshot was installed are not
-deleted — unlinked is not unpublished — they simply stop being linked.
+**A frozen day is the fallback.** A day the snapshot lists and the live site
+*cannot* produce — the collector's cache no longer reaches its log — is
+published from the snapshot. The snapshot carries the day's summary, not its
+DROP events, so the homepage renders the date as plain text and tags the row
+`history`; `index.json` marks it `"history": true`. The pages the site
+published for those days before the snapshot was installed are not deleted —
+unlinked is not unpublished — they simply stop being linked.
+
+**The floor applies to the snapshot too.** A day below `-since` is neither in
+the index nor in the hero total, whether it comes from the logs or from the
+snapshot, and the snapshot's `since` cannot put the site below the floor
+either: the site's counting start is the earliest day it publishes.
 
 **The packet total stays reproducible.** The snapshot's `totals.blocked` must
 equal the sum of its own days' `drop_pkts`, and a snapshot where it does not
 is refused. The hero total therefore stays the sum of every row of
 `index.json`, history rows included.
 
-**The source count adds the two periods; the country count does not.**
-`source_ips` and `countries` are the unions of the saved period; the live days
-have their own union. The two periods' address sets were never kept side by
-side, so the site adds the snapshot's `source_ips` to the live union: a
-source active in both periods is counted once in each, and the figure is
-therefore a **lower bound** on the true number of distinct attackers.
+**The source and country totals are one union, not two periods added up.**
+Every published day — analyzed from the logs or published from the snapshot —
+contributes its own set of attackers and of countries, and the site unions
+those sets. A source seen on ten days is one attacker, and a source seen in
+the snapshot's period and in the live one is one attacker too.
 
-The country count is the live period's union alone — the snapshot's
-`countries` is recorded but never added. Adding it would count every country
-seen in both periods twice, and there are only so many country codes to
-resolve, so the total would exceed the number of countries there are. The
-published figure is the number of distinct countries the days analyzed from
-the logs resolved to, and the homepage, `totalnumber.js` and this README all
-say so.
+The snapshot's own `source_ips` and `countries` are therefore **not** added on
+top of that union. Two unions can only be merged when both sets are present;
+adding their sizes instead counts a source (or a country) seen in both periods
+twice, because the sum of two set sizes is at least their union, never at most
+it. The site used to publish that sum and call it a lower bound, which is the
+opposite of what it is.
+
+What *is* added is the part of the snapshot's baseline that covers its own days
+whose per-day records are gone — the days the live site cannot produce at all.
+Nothing else carries those days' attackers, and the published figures are then
+**upper bounds** rather than exact counts; the homepage says so when that
+happens.
 
 **A snapshot that cannot be read stops the run.** `-history` pointing at a
 missing or invalid file is an error, never a silent fallback to counting only
@@ -500,7 +512,7 @@ does not need it — bump `siteRenderVersion` instead.
 | `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb`. |
 | `-mask-ip` | **`true`** | Truncate source addresses for the public site. Different default than the single-file CLI. |
 | `-since` | `2026-10-16` | Earliest `YYYY-MM-DD` day to publish. Older days are neither rendered nor counted, and any detail page already published for one is deleted. Empty publishes everything. |
-| `-history` | empty | Optional `history.json` snapshot: the baseline the site's counters start from, and the days it freezes. A path that cannot be read is an error, not a fallback. See "History baseline" above. |
+| `-history` | empty | Optional `history.json` snapshot: the fallback for the days the collector's cache no longer reaches, and the baseline its counters start from. A path that cannot be read is an error, not a fallback. See "History baseline" above. |
 | `-force` | `false` | Rebuild every day even if inputs are unchanged. Not needed to push a template change out: bumping `siteRenderVersion` does that. |
 
 ### Tests
@@ -739,24 +751,34 @@ go run ./xdplog-report site \
 }
 ```
 
-**被冻结的那天说了算。** 快照列出的日子**从快照发布**：采集端同一天的那份不分析、不发布、
-也不计入。快照里的日子和采集端的日子完全重叠，两边都算就会读成 `7,002,040` 而不是
-`3,501,020`。把某天从快照里删掉，下一次运行它就重新变回实时行。
+**实时那天说了算。** 采集端还留有日志的日子照常从日志分析、照常发布 —— 有详情页，那一天的
+攻击者也进入全局并集 —— 快照里同一天的那行被丢掉。快照里的日子和采集端的日子完全重叠，两边
+都算就会读成 `7,002,040` 而不是 `3,501,020`。把某天从快照里删掉，下一次运行它就重新变回
+实时行。
 
-**被冻结的那天没有详情页。** 快照只带当天的汇总，不带逐条 DROP 事件，所以首页把日期渲染成
-纯文本并给该行打上 `history` 标签；`index.json` 里对应标记 `"history": true`。站点在装上快照
-之前为这些天发布过的页面**不会删除** —— 不再被链接不等于已下线 —— 只是不再有入口。
+**被冻结的那天是兜底。** 快照列出、而实时站点**造不出来**的那天（采集端的缓存里已经没有它的
+日志了）从快照发布。快照只带当天的汇总，不带逐条 DROP 事件，所以首页把日期渲染成纯文本并给
+该行打上 `history` 标签；`index.json` 里对应标记 `"history": true`。站点在装上快照之前为这些
+天发布过的页面**不会删除** —— 不再被链接不等于已下线 —— 只是不再有入口。
+
+**下限线同样管着快照。** 早于 `-since` 的日子既不进索引也不进 hero 总数，日志来的和快照来的
+都一样；快照的 `since` 也不能把站点拉到下限线之前：站点的统计起点是它发布的最早那天。
 
 **包数仍然可复现。** 快照的 `totals.blocked` 必须等于它自己各行 `drop_pkts` 之和，不等就直接
 拒绝加载。于是 hero 包数依旧是 `index.json` 全部行 `drop_pkts` 之和，历史行也在内。
 
-**来源数是两期相加，国家数不是。** `source_ips` 与 `countries` 是那一期的并集，实时天有它们自己
-的并集；两期的地址集合从未同时留存，所以站点把快照的 `source_ips` 加到实时并集上：同一个来源
-在两期都活跃会被各算一次，因此这个数字是真实去重来源数的**下界**。
+**来源数和国家数是同一个并集，不是两期相加。** 每一个发布出去的日子 —— 无论是从日志分析出来
+的还是从快照发布出来的 —— 都贡献自己那份攻击者集合和国家集合，站点把这些集合取并集。一天里
+出现十次的来源算一个攻击者，在快照那一期和实时这一期都活跃的来源也算一个。
 
-国家数只有实时那一期的并集 —— 快照里的 `countries` 只记录、不累加。累加的话，两期都出现过的
-国家会被算两次，而国家代码本来就没有多少个，累加出来的总数会超过真实的国家数。公布的数字是
-从日志分析出的那些天里出现过的不同国家数，首页、`totalnumber.js` 和本文档都写明了这一点。
+因此快照自己的 `source_ips` 与 `countries` **不会**再叠加到这个并集上。两个并集只有在两边的
+集合都在手头时才能合并；退而求其次把两边的**大小**相加，会把两期都出现过的来源（或国家）算
+两次 —— 两个集合大小之和恒定不小于它们的并集，绝不会小于。站点过去公布的就是这个和，却把它
+称作下界，恰恰说反了。
+
+真正被加进来的，是快照基线里**只**覆盖那些逐日记录已经不在的快照日子的那部分 —— 实时站点
+根本造不出来的那些日子。除此之外没有别的东西携带那些天的攻击者，此时公布的数字是**上界**而
+不是精确值；发生这种情况时首页会写明。
 
 **读不到的快照会让运行直接失败。** `-history` 指向不存在或非法的文件是错误，绝不会静默退化成
 "只统计自己的数据" —— 那会让公布的累计值凭空少掉一块且没人能复核。文件内容的指纹写进
@@ -910,7 +932,7 @@ site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the 
 | `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`。 |
 | `-mask-ip` | **`true`** | 对外站点做 IP 截断；默认值与单文件 CLI 不同。 |
 | `-since` | `2026-10-16` | 最早发布的 `YYYY-MM-DD` 日期。更早的天既不渲染也不计入总数，已经为这些天发布过的详情页会被删除；传空则全部发布。 |
-| `-history` | 空 | 可选的 `history.json` 历史快照：站点计数起始的基线，以及它冻结的那几天。读不到就直接报错，不会退回只统计自身数据。见上文「历史基线」。 |
+| `-history` | 空 | 可选的 `history.json` 历史快照：采集端缓存已经够不到的那几天的兜底，以及站点计数起始的基线。读不到就直接报错，不会退回只统计自身数据。见上文「历史基线」。 |
 | `-force` | `false` | 即便输入未变化也强制重算每一天。推送模板改动不需要它：`siteRenderVersion` +1 即可。 |
 
 ### 测试

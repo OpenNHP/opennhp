@@ -66,19 +66,21 @@ type HistoryTotals struct {
 	// contract true once history rows are in the index.
 	Blocked uint64 `json:"blocked"`
 	// SourceIPs is the number of distinct source addresses the saved period
-	// saw. It is a union within that period, and it is added to the live
-	// period's union rather than merged with it — the two periods' address
-	// sets were never kept, so a true union is not computable. The result
-	// is a lower bound.
+	// saw. It is a union within that period.
+	//
+	// It is NOT added to the live period's union on top of it. Two unions
+	// can only be merged when both sets are present; the site's per-day
+	// facts (facts.go) are what make that possible, and a day the live site
+	// can analyze contributes its own set to the union. What is left of
+	// this baseline is the part that covers days whose facts are gone, and
+	// only that part is added -- see historyBaseline.
 	SourceIPs int `json:"source_ips"`
 	// Countries is the number of distinct countries the saved period saw.
 	//
-	// The site records it but does not add it to the country total it
-	// publishes. The two periods' country sets were never kept side by side
-	// either, and adding them would count every country seen in both periods
-	// twice — and there are only so many country codes to resolve, so a
-	// total built that way exceeds the number of countries there are. The
-	// published figure is the live period's union on its own.
+	// It is handled the same way as SourceIPs: the live site's per-day
+	// facts carry the countries of every day it can analyze, so the union
+	// already includes them, and this baseline stands in only for the days
+	// whose facts are gone.
 	Countries int `json:"countries"`
 }
 
@@ -158,6 +160,11 @@ func (h *SiteHistory) Covers(source, day string) bool {
 // Rows returns the snapshot's days as index rows, each marked as coming from
 // the snapshot. The marker is what makes the homepage render the day as plain
 // text: a frozen day has no detail page to link to.
+//
+// The rows are the fallback for the days the live site cannot produce. A day
+// the collector still has a raw log for -- or that the site published before
+// -- is analyzed live and supersedes the snapshot's row for it: the live
+// numbers, a real detail page, and the day's attackers in the all-time union.
 func (h *SiteHistory) Rows() []SiteDaySummary {
 	if h == nil {
 		return nil
@@ -168,6 +175,59 @@ func (h *SiteHistory) Rows() []SiteDaySummary {
 		out = append(out, d)
 	}
 	return out
+}
+
+// historyBaseline is what the history snapshot contributes to the all-time
+// source and country counts.
+//
+// The snapshot carries its own all-time figures for the period it froze. The
+// site's per-day facts (facts.go) carry the same information for every day
+// the live site can analyze, and those sets are unioned into the published
+// figures -- so the baseline must NOT be added on top of them. Two unions can
+// only be merged when both sets are present; adding their sizes instead
+// counts an address seen in both periods twice, because |A| + |B| >= |A union
+// B|. The site used to publish that sum and call it a lower bound, which is
+// the opposite of what it is.
+//
+// What is left of the baseline is the part that covers the snapshot's days
+// whose facts are gone -- the days the live site cannot produce at all.
+// Nothing else carries those days' attackers, so that part is added, and the
+// published figure becomes an upper bound rather than an exact count.
+type historyBaseline struct {
+	// Sources is the number of attackers the baseline adds.
+	Sources int
+	// Countries is the number of countries the baseline adds.
+	Countries int
+	// Applied is true when the baseline contributed anything, i.e. when the
+	// published figures are an upper bound instead of an exact count.
+	Applied bool
+}
+
+// baselineFor computes what the snapshot contributes to the all-time source
+// and country counts.
+//
+// snapUnion is the union over the snapshot's published days whose per-day
+// facts are still on disk, and missing counts the snapshot's published days
+// whose facts are not. The baseline is added only when there are such days,
+// and then only for the part of it the days that do have facts do not
+// already account for: the snapshot's baseline is the union over *all* its
+// days, so subtracting the part the facts cover leaves what the remaining
+// days alone can have contributed.
+func (h *SiteHistory) baselineFor(snapUnion factsUnion, missing int) historyBaseline {
+	var b historyBaseline
+	if h == nil || missing == 0 {
+		return b
+	}
+	b.Sources = h.Totals.SourceIPs - snapUnion.Sources
+	if b.Sources < 0 {
+		b.Sources = 0
+	}
+	b.Countries = h.Totals.Countries - snapUnion.Countries
+	if b.Countries < 0 {
+		b.Countries = 0
+	}
+	b.Applied = b.Sources > 0 || b.Countries > 0
+	return b
 }
 
 // Fingerprint identifies the snapshot's bytes. It goes into state.json so a

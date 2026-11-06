@@ -74,6 +74,8 @@ func (s *UdpServer) bindDBConn(conn *DBConn) error {
 	}
 	for dbId, c := range s.dbConnectionMap {
 		if dbId != conn.DBId && c.DBPeer.PublicKeyBase64() == pubKey {
+			// The old connection may remain promoted and rate-exempt until its
+			// timeout, even though its route is released here.
 			delete(s.dbConnectionMap, dbId)
 		}
 	}

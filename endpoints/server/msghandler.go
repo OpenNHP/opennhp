@@ -966,6 +966,15 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner, dbIdHolder string) error {
 	if owner == "" {
 		return errNotDBPeer
 	}
+	trimmedDBId := strings.TrimSpace(drgMsg.DbId)
+	if trimmedDBId == "" {
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), errEmptyDBId)
+		return errEmptyDBId
+	}
+	if trimmedDBId != drgMsg.DbId {
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), errDBIdWhitespace)
+		return errDBIdWhitespace
+	}
 	if drgMsg.Spo.Policy == "" {
 		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), errEmptyPolicy)
 		return errEmptyPolicy

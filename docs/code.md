@@ -62,6 +62,8 @@ The `endpoints` module contains executable daemons:
 | `ac/` | `nhp-ac` | Access Controller managing firewall rules |
 | `db/` | `nhp-db` | Data Broker for DHP (Data-content Hiding Protocol) |
 
+| `kgc/` | `nhp-kgc` | Key Generation Center for IBC keys |
+
 #### NHP-DB operational notes
 
 When `nhp-db encrypt` re-registers a legacy data object that has no recorded
@@ -71,7 +73,6 @@ will receive an unauthorized response. If an NHP-DB crashes, its `dbId` may
 remain held until the old connection's 300-second idle timeout expires, so a
 replacement using a different key can temporarily be refused with a
 "dbId is held by another nhp-db" warning.
-| `kgc/` | `nhp-kgc` | Key Generation Center for IBC keys |
 
 Each daemon follows a similar structure:
 

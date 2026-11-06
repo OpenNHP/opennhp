@@ -1034,6 +1034,17 @@ const (
 	ActAcDropNonTcpUdp     uint8 = 5
 	ActAcPassKnockAdmitted uint8 = 6
 	ActAcPassFlowTracked   uint8 = 7
+	// The classes the AC's filter needs to be the only inbound control on
+	// the host: the answers to the host's own traffic, the two client
+	// protocols admitted by port pair, and the IPv6 tree.
+	ActAcPassHostFlow      uint8 = 8
+	ActAcPassDhcpClient    uint8 = 9
+	ActAcPassNtpClient     uint8 = 10
+	ActAcPassIpv4Fragment  uint8 = 11
+	ActAcPassV6Control     uint8 = 12
+	ActAcPassV6Fragment    uint8 = 13
+	ActAcPassV6Established uint8 = 14
+	ActAcDropV6Other       uint8 = 15
 )
 
 // acActionName is the nhp-ac's counterpart of serverActionName.
@@ -1066,6 +1077,22 @@ func acActionName(action uint8) (verdict, reason string) {
 		return "PASS", "KNOCK_ADMITTED"
 	case ActAcPassFlowTracked:
 		return "PASS", "FLOW_TRACKED"
+	case ActAcPassHostFlow:
+		return "PASS", "HOST_FLOW"
+	case ActAcPassDhcpClient:
+		return "PASS", "DHCP_CLIENT"
+	case ActAcPassNtpClient:
+		return "PASS", "NTP_CLIENT"
+	case ActAcPassIpv4Fragment:
+		return "PASS", "IPV4_FRAGMENT"
+	case ActAcPassV6Control:
+		return "PASS", "V6_CONTROL"
+	case ActAcPassV6Fragment:
+		return "PASS", "V6_FRAGMENT"
+	case ActAcPassV6Established:
+		return "PASS", "V6_ESTABLISHED"
+	case ActAcDropV6Other:
+		return "DROP", "V6_OTHER"
 	default:
 		return "DROP", fmt.Sprintf("UNKNOWN-%d", action)
 	}

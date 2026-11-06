@@ -16,9 +16,34 @@
 #define IPPROTO_UDP 17
 #define MIN_PORT 0
 #define MAX_PORT 65535
-#define DNS_PORT 53
 #define DHCP_PORT_R 67
 #define DHCP_PORT_O 68
+#define NTP_PORT 123
+
+/* IPv6 next-header values: the three extension headers that may sit in front
+ * of the L4 header on ordinary traffic (an MLD report carries a hop-by-hop
+ * router alert), and ICMPv6. */
+#define IPPROTO_HOPOPTS  0
+#define IPPROTO_ROUTING  43
+#define IPPROTO_DSTOPTS  60
+#define IPPROTO_ICMPV6   58
+#define IPPROTO_FRAGMENT 44
+
+/* ICMPv6 types that keep a host working on an IPv6 subnet: "packet too big"
+ * (the frag-needed of v6) and the contiguous MLD/ND block 130..137 --
+ * multicast listener query/report/done, router and neighbour
+ * solicitation/advertisement, redirect. Neighbour discovery *is* v6's ARP, so
+ * dropping it would take the host off its own subnet. */
+#define ICMPV6_PKT_TOOBIG 2
+#define ICMPV6_MLD_FIRST  130
+#define ICMPV6_ND_LAST    137
+
+/* iph->frag_off, network order. OFFSET is non-zero on every fragment but the
+ * first, which is the one that has no L4 header behind the IP header.
+ * IP6_FRAG_OFFSET is the same field in an IPv6 fragment header (13 bits, the
+ * low 3 being reserved + M). */
+#define IP_OFFSET        0x1FFF
+#define IP6_FRAG_OFFSET  0xFFF8
 
 /* The AC's own action codes.
  *
@@ -40,6 +65,14 @@
 #define ACT_AC_DROP_NON_TCP_UDP     5
 #define ACT_AC_PASS_KNOCK_ADMITTED  6
 #define ACT_AC_PASS_FLOW_TRACKED    7
+#define ACT_AC_PASS_HOST_FLOW       8
+#define ACT_AC_PASS_DHCP_CLIENT     9
+#define ACT_AC_PASS_NTP_CLIENT      10
+#define ACT_AC_PASS_IPV4_FRAGMENT   11
+#define ACT_AC_PASS_V6_CONTROL      12
+#define ACT_AC_PASS_V6_FRAGMENT     13
+#define ACT_AC_PASS_V6_ESTABLISHED  14
+#define ACT_AC_DROP_V6_OTHER        15
 
 /* The whitelist maps, conn_track and their key/value structs live in
  * nhp_maps.h -- they are shared with tc_egress.c through their pins. */
@@ -224,6 +257,192 @@ static __always_inline __u8 ac_classify_drop(__u8 proto, bool is_syn, bool is_ac
     return ACT_AC_DROP_NON_TCP_UDP;
 }
 
+/* Does this packet belong to a UDP flow the host itself has a socket for?
+ *
+ * The AC's own answer to that question is its conn_track: tc_egress.c
+ * records every flow the host opens -- not only nhp-acd's -- and the reverse
+ * branch in xdp_white_prog() serves the answer out of that entry. That covers
+ * the host's TCP traffic (an SSH session the operator opened, the SSM agent's
+ * HTTPS connection) and its UDP traffic whose source port is ephemeral (a
+ * resolver's DNS query).
+ *
+ * The kernel's socket table answers the same question for the one case the
+ * conn_track cannot: a socket bound to a fixed port below the ephemeral range
+ * gets no egress entry (gate 3 in tc_egress.c), so the answer to it would be
+ * dropped and the daemon behind it would hang until it timed out. The lookup
+ * is the server's own (nhp_server_xdp.c) and asks the kernel which socket
+ * would receive this packet; a connected UDP socket is a client (a service
+ * socket is unconnected), so a match means the host opened this flow.
+ *
+ * Only UDP is asked. A TCP socket that is not a listener matches an *inbound*
+ * connection to a port the AC serves too -- the very flow the knock gates --
+ * and admitting it here would let a peer keep a connection open after its
+ * knock closed. The conn_track already covers the host's own TCP traffic, and
+ * it does so without that hole. */
+static __always_inline bool has_local_udp_flow(struct xdp_md *ctx, struct iphdr *iph,
+                                                __be16 sport, __be16 dport) {
+    struct bpf_sock_tuple tuple = {};
+    struct bpf_sock *sk;
+
+    tuple.ipv4.saddr = iph->saddr;
+    tuple.ipv4.daddr = iph->daddr;
+    tuple.ipv4.sport = sport;
+    tuple.ipv4.dport = dport;
+
+    sk = bpf_sk_lookup_udp(ctx, &tuple, sizeof(tuple.ipv4), BPF_F_CURRENT_NETNS, 0);
+    if (!sk)
+        return false;
+
+    /* A connected socket has a peer; an unconnected one is a listener by
+     * another name. */
+    bool owned = sk->dst_port != 0;
+
+    bpf_sk_release(sk);
+    return owned;
+}
+
+/* has_local_udp_flow() for IPv6. Same helper, same verdict rule, only the
+ * tuple differs -- and it has to exist, because the v6 branch below drops
+ * everything it cannot account for: without this the host's own v6 traffic
+ * (a resolver reachable over v6, a package mirror with an AAAA record) would
+ * hang exactly the way the v4 answers did before the lookup was added. */
+static __always_inline bool has_local_flow6(struct xdp_md *ctx, struct ipv6hdr *ip6h,
+                                            __be16 sport, __be16 dport, bool is_tcp) {
+    struct bpf_sock_tuple tuple = {};
+    struct bpf_sock *sk;
+    bool owned;
+
+    __builtin_memcpy(tuple.ipv6.saddr, ip6h->saddr.in6_u.u6_addr32, sizeof(tuple.ipv6.saddr));
+    __builtin_memcpy(tuple.ipv6.daddr, ip6h->daddr.in6_u.u6_addr32, sizeof(tuple.ipv6.daddr));
+    tuple.ipv6.sport = sport;
+    tuple.ipv6.dport = dport;
+
+    if (is_tcp)
+        sk = bpf_sk_lookup_tcp(ctx, &tuple, sizeof(tuple.ipv6),
+                               BPF_F_CURRENT_NETNS, 0);
+    else
+        sk = bpf_sk_lookup_udp(ctx, &tuple, sizeof(tuple.ipv6),
+                               BPF_F_CURRENT_NETNS, 0);
+    if (!sk)
+        return false;
+
+    owned = is_tcp ? sk->state != BPF_TCP_LISTEN : sk->dst_port != 0;
+
+    bpf_sk_release(sk);
+    return owned;
+}
+
+/* The IPv6 half of the decision tree.
+ *
+ * Deliberately *not* symmetrical with IPv4 in one respect: there is no
+ * service exception. The AC's whitelists are IPv4 tables, so this program
+ * cannot tell one peer's v6 address from another's, and "the peer that
+ * knocked may reach this port" is a policy it can only express over v4.
+ * Nothing therefore reaches a knocked port over v6.
+ *
+ * What does get in is neighbour discovery, the two address/clock-keeping
+ * client protocols, and the replies to the host's own v6 flows -- the same
+ * shape as nhp_server_xdp.c, so a host on a v6 subnet still works and a
+ * filter that says it drops everything but X does not have a hole the size
+ * of an address family. */
+static __always_inline int handle_ipv6(struct xdp_md *ctx, void *l3, void *data_end) {
+    struct ipv6hdr *ip6h = l3;
+    if ((void *)(ip6h + 1) > data_end)
+        return XDP_DROP;
+
+    /* Walk the extension-header chain to the L4 header. Two hops is enough
+     * for what a host on a v6 subnet actually receives (an MLD report is a
+     * hop-by-hop router alert followed by ICMPv6, and a fragment header may
+     * follow one of those); a longer chain falls through to the drop at the
+     * bottom rather than being guessed at. */
+    __u8 nexthdr = ip6h->nexthdr;
+    void *cur = (void *)(ip6h + 1);
+
+#pragma unroll
+    for (int i = 0; i < 2; i++) {
+        /* A fragment header is where v6 keeps the offset that makes IPv4's
+         * non-first fragments unreadable, so it gets the same answer as the
+         * IPv4 offset branch below: a fragment with a non-zero offset has no
+         * L4 header to judge and is passed as inert (the first fragment
+         * carries the ports and takes the full tree), while the first
+         * fragment simply continues down the chain. */
+        if (nexthdr == IPPROTO_FRAGMENT) {
+            struct frag_hdr *frag = cur;
+            if ((void *)(frag + 1) > data_end)
+                return XDP_DROP;
+
+            if (bpf_ntohs(frag->frag_off) & IP6_FRAG_OFFSET) {
+                record_v6_event(ctx, ACT_AC_PASS_V6_FRAGMENT, ip6h, nexthdr, 0, 0, false, false);
+                return XDP_PASS;
+            }
+            nexthdr = frag->nexthdr;
+            cur = (void *)(frag + 1);
+            continue;
+        }
+
+        if (nexthdr != IPPROTO_HOPOPTS && nexthdr != IPPROTO_ROUTING &&
+            nexthdr != IPPROTO_DSTOPTS)
+            break;
+
+        struct ipv6_opt_hdr *ext = cur;
+        if ((void *)(ext + 1) > data_end)
+            return XDP_DROP;
+        nexthdr = ext->nexthdr;
+        cur += ((__u32)ext->hdrlen + 1) * 8;
+        if (cur > data_end)
+            return XDP_DROP;
+    }
+
+    if (nexthdr == IPPROTO_ICMPV6) {
+        struct icmp6hdr *icmp6 = cur;
+        if ((void *)(icmp6 + 1) > data_end)
+            return XDP_DROP;
+
+        /* Counted, not reported: ND and MLD are steady background chatter on
+         * any v6 subnet, which is exactly what an unconditional pass would
+         * have been keeping out of the log. The per-window summary has the
+         * numbers. */
+        __u8 type = icmp6->icmp6_type;
+        if (type == ICMPV6_PKT_TOOBIG ||
+            (type >= ICMPV6_MLD_FIRST && type <= ICMPV6_ND_LAST)) {
+            record_v6_event(ctx, ACT_AC_PASS_V6_CONTROL, ip6h, nexthdr, 0, 0, false, false);
+            return XDP_PASS;
+        }
+        record_v6_event(ctx, ACT_AC_DROP_V6_OTHER, ip6h, nexthdr, 0, 0, true, true);
+        return XDP_DROP;
+    }
+
+    if (nexthdr == IPPROTO_TCP) {
+        struct tcphdr *tcp = cur;
+        if ((void *)(tcp + 1) > data_end)
+            return XDP_DROP;
+
+        /* The reply to a connection the host itself opened. */
+        if (has_local_flow6(ctx, ip6h, tcp->source, tcp->dest, true)) {
+            record_v6_event(ctx, ACT_AC_PASS_V6_ESTABLISHED, ip6h, nexthdr, tcp->source, tcp->dest, false, false);
+            return XDP_PASS;
+        }
+        record_v6_event(ctx, ACT_AC_DROP_V6_OTHER, ip6h, nexthdr, tcp->source, tcp->dest, true, true);
+        return XDP_DROP;
+    }
+
+    if (nexthdr == IPPROTO_UDP) {
+        struct udphdr *udp = cur;
+        if ((void *)(udp + 1) > data_end)
+            return XDP_DROP;
+
+        if (has_local_flow6(ctx, ip6h, udp->source, udp->dest, false)) {
+            record_v6_event(ctx, ACT_AC_PASS_V6_ESTABLISHED, ip6h, nexthdr, udp->source, udp->dest, false, false);
+            return XDP_PASS;
+        }
+        record_v6_event(ctx, ACT_AC_DROP_V6_OTHER, ip6h, nexthdr, udp->source, udp->dest, true, true);
+        return XDP_DROP;
+    }
+
+    record_v6_event(ctx, ACT_AC_DROP_V6_OTHER, ip6h, nexthdr, 0, 0, true, true);
+    return XDP_DROP;
+}
+
 SEC("xdp")
 static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     void *data = (void *)(long)ctx->data;
@@ -241,7 +460,15 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     switch (bpf_ntohs(eth->h_proto)) {
         case ETH_P_ARP:  return XDP_PASS;
         case ETH_P_IP:   break;
-        case ETH_P_IPV6: return XDP_PASS;
+        /* IPv6 used to be an unconditional pass, on the grounds that the demo
+         * hosts have no v6 address. That left every v6 listener -- sshd's
+         * [::]:22 above all -- reachable unfiltered the day a v6 CIDR is added
+         * to the VPC, with the deploy's "filter attached" check still green.
+         * With the security group open to the whole internet that is not an
+         * academic gap: it is a standing bypass into the host. So v6 is
+         * filtered with the same tree as v4, minus the whitelists, which are
+         * IPv4 tables. */
+        case ETH_P_IPV6: return handle_ipv6(ctx, (void *)(eth + 1), data_end);
         default:         return XDP_DROP;
     }
 
@@ -251,6 +478,25 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
     if (iph->ihl < 5)
         return XDP_DROP;
+
+    /* Fragments other than the first have no L4 header: the bytes at ihl * 4
+     * are payload, and reading them as one is how this program used to hand
+     * itself a garbage source and destination port. It then dropped the
+     * fragment as UDP_OTHER -- or, worse, passed it, because the garbage
+     * happened to read 67 -> 68 or 53 -> anything.
+     *
+     * So they are separated out and passed, under their own action code. A
+     * non-first fragment is inert on its own: the kernel cannot deliver
+     * anything to a socket until the *first* fragment arrives, and that one
+     * carries the ports and goes through the full tree below. Dropping them
+     * instead would make this filter, and not the network, the reason a large
+     * datagram fails. */
+    if (bpf_ntohs(iph->frag_off) & IP_OFFSET) {
+        /* Counted, not reported: a fragment flood would otherwise write one
+         * line per packet. */
+        record_event(ctx, ACT_AC_PASS_IPV4_FRAGMENT, iph, 0, 0, 0, false, false);
+        return XDP_PASS;
+    }
 
     /* The L4 header starts after the IP options, i.e. at ihl * 4 -- not at
      * iph + 1, which is only the same thing when there are no options. The
@@ -278,6 +524,12 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         is_ack = tcp->ack;
 
         if (tcp->dest == bpf_htons(22)) {
+            /* SSH is not filtered here, because the security group is what
+             * restricts it: tcp/22 is carved out of the all-ports range and
+             * stays open to the relay SG only. The nhp-server's own filter
+             * pins the same port to its relay whitelist in the program
+             * instead, because that host has no such group rule to lean on.
+             * Widening the AC's group does not widen tcp/22. */
             return XDP_PASS;
         }
     } else if (iph->protocol == IPPROTO_UDP) {
@@ -288,9 +540,46 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         ct_key.dport = udp->dest;
     }
 
-    if (iph->protocol == IPPROTO_UDP &&
-        (ct_key.dport == bpf_htons(DHCP_PORT_R) || ct_key.dport == bpf_htons(DHCP_PORT_O) || ct_key.sport == bpf_htons(DNS_PORT))) {
-        return XDP_PASS;
+    /* The two client protocols whose answers arrive on a socket the kernel
+     * cannot tell apart from a listener, so neither the conn_track nor the
+     * socket table can let them in on their own. Both are admitted by port
+     * pair, exactly as nhp_server_xdp.c admits them, and both are the
+     * complete list: "some daemon's replies are being dropped" is not on its
+     * own a reason to extend it, because the alternative -- admit anything
+     * addressed to a bound port -- throws the whole policy away.
+     *
+     * DHCP: the host's own address depends on the reply getting in, and its
+     * loss is terminal for the lease. The pair is narrow enough that a
+     * neighbour's broadcast DHCPDISCOVER to udp/67 is still dropped.
+     *
+     * NTP: chronyd polls its servers from the socket it has bound to udp/123
+     * rather than from a connected ephemeral one, so the answer (123 -> 123)
+     * looks exactly like an unsolicited query. Dropping it does not take the
+     * host off the air, it lets its clock drift -- which NHP notices on its
+     * own, because knock packets carry a timestamp the server checks against
+     * a window.
+     *
+     * What used to be here was a rule that passed any datagram addressed to
+     * udp/67 or udp/68, and any datagram *from* udp/53, to any destination
+     * port, from any address. With the security group open to the whole
+     * internet that was a standing bypass into every UDP listener on the
+     * host -- chronyd, the SSM agent, nhp-acd's own sockets -- because a
+     * source port is free to choose. The answer to a DNS query now comes in
+     * through the conn_track (the host's own query) or through the socket
+     * table (the host's own client socket), both of which ask the kernel
+     * which socket would receive the packet instead of trusting a port
+     * number. */
+    if (iph->protocol == IPPROTO_UDP) {
+        if (ct_key.sport == bpf_htons(DHCP_PORT_R) && ct_key.dport == bpf_htons(DHCP_PORT_O)) {
+            record_event(ctx, ACT_AC_PASS_DHCP_CLIENT, iph, ct_key.sport, ct_key.dport, 0, true, false);
+            return XDP_PASS;
+        }
+        if (ct_key.sport == bpf_htons(NTP_PORT) && ct_key.dport == bpf_htons(NTP_PORT)) {
+            /* Counted, not reported: chrony polls every 32-64s, so this would
+             * be a steady trickle of lines saying the same thing. */
+            record_event(ctx, ACT_AC_PASS_NTP_CLIENT, iph, ct_key.sport, ct_key.dport, 0, false, false);
+            return XDP_PASS;
+        }
     }
     __u64 now = bpf_ktime_get_ns();
 
@@ -304,34 +593,38 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .dst_ip = iph->daddr,
         };
         //only processes ICMP Echo Requests (type 8, code 0) and ICMP Echo Replies (type 0, code 0)
-        if ((icmp->type == ICMP_ECHO && icmp->code == 0) || 
+        if ((icmp->type == ICMP_ECHO && icmp->code == 0) ||
             (icmp->type == ICMP_ECHOREPLY && icmp->code == 0)) {
-            
-            if (icmp->type == ICMP_ECHO) {
-                //Lookup icmpwhitelist entry
-                struct icmpwhitelist_value *iw_val = bpf_map_lookup_elem(&icmpwhitelist, &icmpkey);
-                if (!iw_val) {
-                    /* No ICMP whitelist for this pair at all: nobody knocked
-                     * for it, so it counts as an unsolicited probe. */
-                    record_event(ctx, ACT_AC_DROP_NON_TCP_UDP, iph, ct_key.sport, ct_key.dport, 0, true, true);
-                    return XDP_DROP;
-                }
-                __u64 now = bpf_ktime_get_ns();
-                // Check if whitelist entry has expired
-                if (iw_val->expire_time < now) {
-                    bpf_map_delete_elem(&icmpwhitelist, &icmpkey);
-                    /* The entry existed but its window closed: a peer that did
-                     * knock, unlike one that never did. */
-                    record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
-                    return XDP_DROP;
-                }
-                // Check if source IP is icmpwhitelisted and allowed
-                if (iw_val->allowed == 1) {
-                    return XDP_PASS;
-                }
-            }  else {
+
+            /* Both directions are decided by the same whitelist entry. An echo
+             * reply used to be passed unconditionally, from anywhere: with the
+             * security group open that let any host on the internet reach
+             * whatever answers its pings on this host. The reply is the answer
+             * to a ping of ours, so it is admitted on the same entry the
+             * request needs -- the peer that knocked for ICMP, and only while
+             * its window is open. */
+            //Lookup icmpwhitelist entry
+            struct icmpwhitelist_value *iw_val = bpf_map_lookup_elem(&icmpwhitelist, &icmpkey);
+            if (!iw_val) {
+                /* No ICMP whitelist for this pair at all: nobody knocked
+                 * for it, so it counts as an unsolicited probe. */
+                record_event(ctx, ACT_AC_DROP_NON_TCP_UDP, iph, ct_key.sport, ct_key.dport, 0, true, true);
+                return XDP_DROP;
+            }
+            // Check if whitelist entry has expired
+            if (iw_val->expire_time < now) {
+                bpf_map_delete_elem(&icmpwhitelist, &icmpkey);
+                /* The entry existed but its window closed: a peer that did
+                 * knock, unlike one that never did. */
+                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
+                return XDP_DROP;
+            }
+            // Check if source IP is icmpwhitelisted and allowed
+            if (iw_val->allowed == 1) {
                 return XDP_PASS;
             }
+            /* The entry exists but does not allow this peer: fall through to
+             * the whitelist lookups below, which drop it. */
         }
     }
 
@@ -630,6 +923,24 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         if (pp_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
+    }
+    /* The host's own UDP traffic, asked last.
+     *
+     * Everything above is the AC's protocol: a knock opens a port, the
+     * whitelists admit the peer that asked for it, and the conn_track carries
+     * the flows that follow. What is left is the answer to a datagram the
+     * *host* sent -- a DNS reply above all, without which nhp-acd cannot
+     * resolve the nhp-server and every agent's knock fails.
+     *
+     * This is asked last on purpose. The conn_track above already serves the
+     * host's own flows, with the bookkeeping that goes with them (the
+     * `knock_peers` record, the egress entry the reply side is served from);
+     * the socket table is the backstop for the one case the conn_track cannot
+     * cover, a socket bound to a fixed port below the ephemeral range. See
+     * has_local_udp_flow(). */
+    if (iph->protocol == IPPROTO_UDP && has_local_udp_flow(ctx, iph, ct_key.sport, ct_key.dport)) {
+        record_event(ctx, ACT_AC_PASS_HOST_FLOW, iph, ct_key.sport, ct_key.dport, 0, false, false);
+        return XDP_PASS;
     }
     /* No whitelist admitted the packet. Which class it is depends on what the
      * packet was trying to do; either way it is dropped. */

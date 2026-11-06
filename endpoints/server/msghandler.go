@@ -582,9 +582,14 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	}
 
 	dbId := dolMsg.DBId
-	if strings.TrimSpace(dbId) == "" {
+	trimmedDBId := strings.TrimSpace(dbId)
+	if trimmedDBId == "" {
 		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v", dbId, addrStr, errEmptyDBId)
 		return errEmptyDBId
+	}
+	if trimmedDBId != dbId {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v", dbId, addrStr, errDBIdWhitespace)
+		return errDBIdWhitespace
 	}
 	dbPubkeyBase64 := base64.StdEncoding.EncodeToString(ppd.RemotePubKey)
 	s.dbPeerMapMutex.Lock()
@@ -592,7 +597,8 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	s.dbPeerMapMutex.Unlock()
 
 	if dbPeer == nil {
-		return fmt.Errorf("sender is not a configured DB peer")
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v (pubkey=%s)", dbId, addrStr, errNotDBPeer, dbPubkeyBase64)
+		return errNotDBPeer
 	}
 	// Every refusal comes before the connection is rate-exempted or
 	// promoted: a refused nhp-db keeps the ordinary agent timeout, per-IP

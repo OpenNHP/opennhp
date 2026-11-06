@@ -279,6 +279,14 @@ func TestHandleDBOnlineRefusesBeforePromotion(t *testing.T) {
 		}
 		assertNotPromoted(t, s, conn)
 	})
+	t.Run("whitespace around dbId", func(t *testing.T) {
+		s, _ := dbOnlineTestServer(t, "key-a")
+		conn, err := dbOnline(t, s, "key-a", " db-1", 41000)
+		if !errors.Is(err, errDBIdWhitespace) {
+			t.Fatalf("whitespace dbId: got %v, want errDBIdWhitespace", err)
+		}
+		assertNotPromoted(t, s, conn)
+	})
 
 	t.Run("unknown peer", func(t *testing.T) {
 		s, _ := dbOnlineTestServer(t, "key-a")

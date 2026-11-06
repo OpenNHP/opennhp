@@ -117,6 +117,7 @@ func (s *UdpServer) dbIdHolder(dbId string) string {
 var (
 	errDbIdNotOnline      = errors.New("no nhp-db is online with this dbId")
 	errEmptyDBId          = errors.New("nhp-db DbId must not be empty")
+	errDBIdWhitespace     = errors.New("nhp-db DbId must not have leading or trailing whitespace")
 	errDbIdHolderInactive = errors.New("the nhp-db online with this dbId is no longer configured or has expired")
 	errDbIdHolderNotOwner = errors.New("the nhp-db online with this dbId is not the object's owner")
 )

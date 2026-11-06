@@ -582,16 +582,37 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	}
 
 	dbId := dolMsg.DBId
+	trimmedDBId := strings.TrimSpace(dbId)
+	if trimmedDBId == "" {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v", dbId, addrStr, errEmptyDBId)
+		return errEmptyDBId
+	}
+	if trimmedDBId != dbId {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v", dbId, addrStr, errDBIdWhitespace)
+		return errDBIdWhitespace
+	}
 	dbPubkeyBase64 := base64.StdEncoding.EncodeToString(ppd.RemotePubKey)
 	s.dbPeerMapMutex.Lock()
 	dbPeer := s.dbPeerMap[dbPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.dbPeerMapMutex.Unlock()
-	if dbPeer != nil {
-		s.markRateExempt(ppd.ConnData)
-	}
 
 	if dbPeer == nil {
-		return fmt.Errorf("sender is not a configured DB peer")
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v (pubkey=%s)", dbId, addrStr, errNotDBPeer, dbPubkeyBase64)
+		return errNotDBPeer
+	}
+	// Every refusal comes before the connection is rate-exempted or
+	// promoted: a refused nhp-db keeps the ordinary agent timeout, per-IP
+	// bucket and rate limit while it retries.
+	//
+	// No DBA on refusal: nhp-db does not read the DBA error code, so any DBA
+	// would mark it online. It times out and retries instead.
+	if dbPeer.IsExpired() {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v (pubkey=%s)", dbId, addrStr, errNotDBPeer, dbPubkeyBase64)
+		return errNotDBPeer
+	}
+	if heldErr := s.checkDBIdAvailable(dbId, dbPubkeyBase64); heldErr != nil {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v (pubkey=%s)", dbId, addrStr, heldErr, dbPubkeyBase64)
+		return heldErr
 	}
 
 	dbConn := &DBConn{
@@ -600,14 +621,22 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 		DBCipherScheme: ppd.CipherScheme,
 		DBId:           dbId,
 	}
+	// Keep checkDBIdAvailable immediately before this: the gap between
+	// them is the window in which bindDBConn below can still refuse a
+	// connection that has already been promoted.
 	if !s.promoteControlConnection(ppd.ConnData, controlConnectionDB) {
 		log.Warning("server-db(@%s@%s)[HandleDBOnline] authenticated connection is no longer current", dbId, addrStr)
 		return fmt.Errorf("authenticated DB connection is no longer current")
 	}
 
-	s.dbConnectionMapMutex.Lock()
-	s.dbConnectionMap[dbId] = dbConn
-	s.dbConnectionMapMutex.Unlock()
+	// bindDBConn decides. It can still refuse here if another nhp-db bound
+	// the dbId since checkDBIdAvailable; that connection then stays
+	// promoted, without a route, until it times out.
+	if bindErr := s.bindDBConn(dbConn); bindErr != nil {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] rejected: %v (pubkey=%s)", dbId, addrStr, bindErr, dbPubkeyBase64)
+		return bindErr
+	}
+	s.markRateExempt(ppd.ConnData)
 
 	aakMsg := &common.ServerDBAckMsg{
 		ErrCode: common.ErrSuccess.ErrorCode(),
@@ -747,9 +776,13 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 			ConsumerEphemeralPublicKey: consumerEphemeralPublicKey,
 		}
 
-		dbConn, found := s.dbConnectionMap[config.DbId]
-		if !found {
-			log.Critical("dbConn not found for dbId:%s", config.DbId)
+		dbConn, routeErr := s.dbConnForObject(config.DbId, config.OwnerPublicKey)
+		if routeErr != nil {
+			if errors.Is(routeErr, errDbIdHolderNotOwner) {
+				log.Critical("possible dbId squat: online nhp-db does not own dbId:%s (DoId=%q): %v", config.DbId, common.TruncateDoIDForLog(doId), routeErr)
+			} else {
+				log.Critical("dbConn not found for dbId:%s (DoId=%q): %v", config.DbId, common.TruncateDoIDForLog(doId), routeErr)
+			}
 			err = common.ErrDBOffline
 			dagMsg.ErrCode = 1
 			dagMsg.ErrMsg = err.Error()
@@ -821,7 +854,12 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 		// The sender gets a generic answer; the reason is in the log.
 		err = errUnauthorized
 	} else {
-		err = SaveZdtoConfig(aolMsg, owner)
+		// dbIdHolder is read before SaveZdtoConfig takes zdtoConfigMu, on
+		// purpose: a holder that goes offline in between was a legitimate
+		// holder a moment earlier, and nesting dbConnectionMapMutex inside
+		// zdtoConfigMu (which covers file I/O) would cost more than that
+		// window is worth.
+		err = SaveZdtoConfig(aolMsg, owner, s.dbIdHolder(aolMsg.DbId))
 	}
 
 	errCode := 0 //success
@@ -910,14 +948,16 @@ var zdtoConfigMu sync.Mutex
 // authenticated public key is owner. A new object records owner; an
 // existing one may only be updated by its owner and keeps its dbId. An
 // object stored before owners were recorded is claimed by the first
-// update whose dbId matches the stored one. A stored object that cannot be
+// update whose dbId matches the stored one, and only by the nhp-db that is
+// online with that dbId (dbIdHolder, the public key bindDBConn bound to it;
+// "" if none). A stored object that cannot be
 // read (corrupt, unreadable) is never treated as new: that would let any
 // nhp-db take it over.
 //
 // The owner is the nhp-db's NHP public key, so an nhp-db that rotates its
 // key can no longer update the objects it registered; recover by clearing
 // or replacing "ownerPublicKey" in etc/ztdo/data-<doId>.json.
-func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
+func SaveZdtoConfig(drgMsg *common.DRGMsg, owner, dbIdHolder string) error {
 	objectId := drgMsg.DoId
 	if err := common.ValidateDoID(objectId); err != nil {
 		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), err)
@@ -925,6 +965,15 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 	}
 	if owner == "" {
 		return errNotDBPeer
+	}
+	trimmedDBId := strings.TrimSpace(drgMsg.DbId)
+	if trimmedDBId == "" {
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), errEmptyDBId)
+		return errEmptyDBId
+	}
+	if trimmedDBId != drgMsg.DbId {
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), errDBIdWhitespace)
+		return errDBIdWhitespace
 	}
 	if drgMsg.Spo.Policy == "" {
 		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), errEmptyPolicy)
@@ -950,8 +999,28 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg, owner string) error {
 			return errDbIdChange
 		}
 		if existingDrgMsg.OwnerPublicKey == "" {
-			// dbId is not authenticated, so record who claimed a legacy
-			// object: an operator can audit the claim and correct it.
+			// The dbId in a DRG is only what the sender says. Holding it
+			// online is the binding: an nhp-db that is not online with
+			// this dbId cannot claim the object.
+			//
+			// The sender only gets "unauthorized"; the log tells the
+			// operator which case this is. A one-shot "nhp-db encrypt"
+			// never comes online, so re-registering a legacy object from
+			// it needs the nhp-db daemon with this dbId, and the same
+			// key, online at the time.
+			if dbIdHolder == "" {
+				log.Warning("server[SaveZdtoConfig] rejected DoId=%q (dbId %q) claim by %s: no nhp-db is online with this dbId; "+
+					"bring the nhp-db daemon for dbId %q online with this key and retry: %v",
+					common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner, drgMsg.DbId, errNotObjectOwner)
+				return errNotObjectOwner
+			}
+			if dbIdHolder != owner {
+				log.Warning("server[SaveZdtoConfig] rejected DoId=%q (dbId %q) claim by %s: dbId is held online by another nhp-db %s: %v",
+					common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner, dbIdHolder, errNotObjectOwner)
+				return errNotObjectOwner
+			}
+			// Record who claimed a legacy object: an operator can audit
+			// the claim and correct it.
 			log.Warning("server[SaveZdtoConfig] DoId=%q (dbId %q) had no recorded owner; claimed by nhp-db %s",
 				common.TruncateDoIDForLog(objectId), drgMsg.DbId, owner)
 		}

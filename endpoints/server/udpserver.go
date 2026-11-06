@@ -131,7 +131,7 @@ type UdpServer struct {
 	relayPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	dbConnectionMapMutex sync.Mutex
-	dbConnectionMap      map[string]*DBConn // ac connection is indexed by remote IP address
+	dbConnectionMap      map[string]*DBConn // indexed by dbId; access only through dbconn.go
 
 	tokenStore *common.TokenStore[*ACTokenEntry]
 
@@ -1183,16 +1183,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		}
 
 		if conn.isDBConnection.Load() {
-			var dbToDelete string
-			s.dbConnectionMapMutex.Lock()
-			for dbId, dbConn := range s.dbConnectionMap {
-				if dbConn.ConnData.Equal(conn.ConnData) {
-					dbToDelete = dbId
-					break
-				}
-			}
-			delete(s.dbConnectionMap, dbToDelete)
-			s.dbConnectionMapMutex.Unlock()
+			s.unbindDBConn(conn.ConnData)
 		}
 
 		// remove the udp conn from remoteConnectionMap using the same key

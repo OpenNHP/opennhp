@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+* **server:** an NHP-DB claiming a legacy data object over `NHP_DRG` must be online and acknowledged with the same key and `dbId`; otherwise the claim is rejected as unauthorized.
+* **server:** NHP-DB `DbId` values with leading or trailing whitespace, or no value, are rejected during online registration and object registration.
+  This is an upgrade change: deployments with missing or malformed `DbId` values stop coming online, and existing objects with those values must be repaired manually in `etc/ztdo/data-<doId>.json`.
+
 ## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
 
 

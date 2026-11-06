@@ -83,14 +83,15 @@ variable "nhp_listen_port" {
   default     = 443
 }
 
-# 默认 false：新建/替换的主机在 XDP 挂上之前不能处于全开状态。确认 XDP 已挂上
-# （deploy-demo-v2 的 attach gate 为绿）后，用 infra-demo 的 open_all_ports 输入
-# 或 tfvars 显式设为 true。回滚：翻回 false 再 apply，SG 精确回到窄姿态
-# （udp/nhp_listen_port + relay SG 的 tcp/22）。
+# 默认 false：新建/替换的主机在 XDP 挂上之前不能处于全开状态，而且全开的
+# 代价是真实的——过滤器是 fail-open 的，每次部署/重启/崩溃的窗口里主机都是
+# 全开的。确认 XDP 已挂上（deploy-demo-v2 的 attach gate 为绿）后，用
+# infra-demo 的 open_all_ports 输入或 tfvars 显式设为 true。回滚：翻回 false
+# 再 apply，SG 精确回到窄姿态（udp/nhp_listen_port + relay SG 的 tcp/22）。
 #
-# 注意这里的 default 只是「手工跑 terraform」时的保守值：流水线（infra-demo）
-# 总是显式传值，默认传 true —— 全开是 demo 的常态姿态，统计站要靠它才数得到
-# 真实的扫描量；只有取消勾选 open_all_ports 才会收窄。
+# 流水线（infra-demo）与这里一致：默认不勾选 open_all_ports，勾选才会全开。
+# 全开的理由是统计站要数得到真实的扫描量（被安全组挡掉的包根本到不了网卡，
+# 也就进不了 XDP 的计数器），但那是一个需要主动做的决定，不是一个默认值。
 variable "server_open_all_ports" {
   description = "将 nhp-server 的安全组对 0.0.0.0/0 放开 tcp(除 22)/udp/icmp 全端口，由 XDP 独任把关；tcp/22 始终只对 relay SG 开放。翻回 false 并 apply 即精确回到窄 SG 姿态。"
   type        = bool
@@ -105,7 +106,8 @@ variable "server_open_all_ports" {
 # 也就进不了 XDP 的计数器，统计站上 AC 那一栏自然是空的。窄姿态下 AC 只有
 # tcp/443 和 knock 端口可达，所以绝大多数扫描在到达过滤器之前就没了。
 #
-# 流水线（infra-demo）默认传 true；只有取消勾选 open_ac_all_ports 才会收窄。
+# 同样默认 false：AC 的过滤器也是 fail-open，而且它的 netfilter backstop 只
+# 覆盖 tcp/443，窗口期里其余端口全开。勾选 open_ac_all_ports 才会全开。
 variable "ac_open_all_ports" {
   description = "将 nhp-ac 的安全组对 0.0.0.0/0 放开 tcp(除 22)/udp/icmp 全端口，由 AC 的 XDP 过滤器独任把关；tcp/22 始终只对 relay SG 开放。翻回 false 并 apply 即精确回到窄 SG 姿态。"
   type        = bool

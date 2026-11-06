@@ -267,22 +267,35 @@ at a time (see `terraform/demo/RUNBOOK.md`).
 
 **All-ports exposure on the AC (deliberate).** `aws_security_group.ac` is opened
 the same way, under `var.ac_open_all_ports` (the `infra-demo` `open_ac_all_ports`
-input), and for the same reason — only harder: a packet the security group drops
-never reaches the NIC, so the AC's XDP filter never sees it, never counts it,
-and the AC's column on stats.opennhp.org undercounts the attacks (in the narrow
-posture only tcp/443 and the knock port are reachable, so most scans are gone
-before the filter can see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by
-`nhp-acd` in `FilterMode = 1`) is the only inbound control on everything but
-tcp/22, exactly as on the server; tcp/22 stays restricted to the relay SG. What
-the AC has that the server does not is the fail-closed netfilter backstop
+input, **opt-in, default `false`** like the server's), and for the same reason —
+only harder: a packet the security group drops never reaches the NIC, so the
+AC's XDP filter never sees it, never counts it, and the AC's column on
+stats.opennhp.org undercounts the attacks (in the narrow posture only tcp/443
+and the knock port are reachable, so most scans are gone before the filter can
+see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by `nhp-acd` in
+`FilterMode = 1`) is then the only inbound control on everything but tcp/22;
+tcp/22 stays restricted to the relay SG.
+
+The filter has to be as narrow as the server's for that to hold, and it now
+is. UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and
+by the answers to the host's own queries (the AC's conn_track, plus the
+kernel's socket table for a socket bound below the ephemeral range). IPv6 is
+filtered rather than passed, a non-first IPv4 fragment is not judged by bytes
+that are not a header, and an ICMP echo reply needs the same whitelist entry
+the echo request does. `nhp/utils/ebpf/xdpfilter_test.go` pins each of those.
+
+What the AC has that the server does not is the fail-closed netfilter backstop
 (`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`), which keeps the
 protected resource shut while the XDP link is detached — i.e. it covers the
-fail-open windows the link has whenever `nhp-acd` is restarting.
+fail-open windows the link has whenever `nhp-acd` is restarting. **It covers
+tcp/443 and nothing else**: in every one of those windows every other port on
+the AC is unfiltered, exactly as on the server.
 `deploy-demo-v2` establishes that the filter is attached (`Verify the AC's XDP
 ingress filter attached`) and reports whether the group is actually wide open
 (`Check the AC's security group is open to the internet`); `infra-demo` refuses
-to widen a group whose host has no XDP program attached. Both groups are open by
-default in the pipeline — untick the input to go back to the narrow posture.
+to widen a group whose host has no XDP program attached. Neither group is open
+by default in the pipeline — tick the input to open one, untick it to go back
+to the narrow posture.
 
 **Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
 unprivileged on the demo host and `443 < 1024`, the unit does not rely on

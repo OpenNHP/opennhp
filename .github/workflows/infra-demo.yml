@@ -20,15 +20,15 @@ on:
         required: false
         default: ''
       open_all_ports:
-        description: 'Open the nhp-server security group to all ports (XDP is then the only inbound control). Leave it ticked -- a packet the security group drops never reaches the NIC, so it is never counted and the site undercounts the attacks. Untick it only to go back to the narrow group, and for the run that creates a new instance (the workflow refuses a new host with the group wide open).'
+        description: 'Open the nhp-server security group to all ports (XDP is then the only inbound control). Off by default: the group stays narrow until you ask for it, because the filter is fail-open and the window around every deploy is unfiltered. Tick it once "Verify the XDP ingress filter attached" is green and you want scans to reach the NIC -- a packet the security group drops is never counted -- and untick it for the run that creates a new instance (the workflow refuses a new host with the group wide open).'
         required: false
         type: boolean
-        default: true
+        default: false
       open_ac_all_ports:
-        description: 'Open the nhp-ac security group to all ports (the AC''s XDP filter is then the only inbound control). Same reasoning as open_all_ports: a packet the security group drops never reaches the AC''s NIC, so the AC''s filter never sees it, never counts it, and the AC''s column on stats.opennhp.org stays empty. Leave it ticked; untick it only to go back to the narrow group, and for the run that creates a new instance.'
+        description: 'Open the nhp-ac security group to all ports (the AC''s XDP filter is then the only inbound control). Off by default, for the same reason as open_all_ports: the AC''s filter is fail-open too, and the netfilter backstop covers tcp/443 only. Tick it once "Verify the AC''s XDP ingress filter attached" is green and you want the AC''s scans counted; untick it for the run that creates a new instance.'
         required: false
         type: boolean
-        default: true
+        default: false
   push:
     branches:
       - main
@@ -45,6 +45,14 @@ env:
   TF_WORKING_DIR: terraform/demo
   # push events always run plan; dispatch uses the input
   TF_ACTION: ${{ github.event.inputs.action || 'plan' }}
+  # The all-ports posture is opt-in, and the default has to be "off" for every
+  # run that did not ask for it: a push-triggered plan carries no dispatch
+  # input at all, and a plan that opens both groups because nobody remembered
+  # to untick two boxes is a plan that exposes the demo. So the value is
+  # "true" only when the input says "true", and "false" for anything else --
+  # unticked, absent, or a push.
+  OPEN_ALL_PORTS: ${{ github.event.inputs.open_all_ports == 'true' && 'true' || 'false' }}
+  OPEN_AC_ALL_PORTS: ${{ github.event.inputs.open_ac_all_ports == 'true' && 'true' || 'false' }}
 
 jobs:
   terraform:
@@ -237,14 +245,15 @@ jobs:
           TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
           TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
           TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
-          # The security-group posture is the demo's steady state, not a
-          # one-off: a packet the security group drops never reaches the NIC,
-          # so it is never counted by the XDP filter and the stats site
-          # undercounts the attacks. Only an explicit "false" narrows a group
-          # again; a push-triggered plan (no dispatch input) keeps the groups
-          # open rather than quietly planning them shut.
-          TF_VAR_server_open_all_ports: ${{ github.event.inputs.open_all_ports == 'false' && 'false' || 'true' }}
-          TF_VAR_ac_open_all_ports: ${{ github.event.inputs.open_ac_all_ports == 'false' && 'false' || 'true' }}
+          # The security-group posture is opt-in and defaults to the narrow
+          # group: the filter is fail-open, so a wide-open group is only safe
+          # while the program is really attached, and the window around every
+          # deploy is unfiltered either way. A packet the security group drops
+          # never reaches the NIC and is never counted, which is the reason
+          # to tick the box -- but it is a reason to tick it deliberately,
+          # not a reason to have it ticked by default.
+          TF_VAR_server_open_all_ports: ${{ env.OPEN_ALL_PORTS }}
+          TF_VAR_ac_open_all_ports: ${{ env.OPEN_AC_ALL_PORTS }}
         run: |
           terraform plan \
             ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \
@@ -252,10 +261,11 @@ jobs:
 
       # A host created or replaced in a plan that also opens every port has no
       # XDP program until deploy-demo-v2 runs, so it would sit fully exposed.
-      # Dispatch only: a push-triggered plan never applies, so it must not
-      # turn a red build on main over a posture the demo already has.
+      # The gate reads the plan's own variable values, so it fires on exactly
+      # the plans that widen a group -- whether they came from a dispatch or
+      # from a push.
       - name: Refuse all-ports SG on a new or replaced host
-        if: github.event_name == 'workflow_dispatch' && (env.TF_ACTION == 'plan' || env.TF_ACTION == 'apply')
+        if: env.TF_ACTION == 'plan' || env.TF_ACTION == 'apply'
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           set -euo pipefail
@@ -285,11 +295,11 @@ jobs:
       # the filter is fail-open. Ask the kernel on the host itself, over the
       # same relay jump the deploy uses, before the SG is widened.
       - name: Require an attached XDP filter before opening all ports
-        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm' && (github.event.inputs.open_all_ports != 'false' || github.event.inputs.open_ac_all_ports != 'false')
+        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm' && (env.OPEN_ALL_PORTS == 'true' || env.OPEN_AC_ALL_PORTS == 'true')
         working-directory: ${{ env.TF_WORKING_DIR }}
         env:
-          OPEN_ALL: ${{ github.event.inputs.open_all_ports == 'false' && 'false' || 'true' }}
-          OPEN_ALL_AC: ${{ github.event.inputs.open_ac_all_ports == 'false' && 'false' || 'true' }}
+          OPEN_ALL: ${{ env.OPEN_ALL_PORTS }}
+          OPEN_ALL_AC: ${{ env.OPEN_AC_ALL_PORTS }}
         run: |
           set -euo pipefail
           RELAY_IP=$(terraform output -raw relay_public_ip)

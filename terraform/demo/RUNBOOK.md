@@ -1319,11 +1319,13 @@ being attacked" rather than "the group ate the packets". The per-packet
 reaches the NIC, and so does the `[NHP-SCAN]` port/source table once the AC's
 scan-report knobs are set.
 
-- **The pipeline opens it by default.** `open_all_ports` and
-  `open_ac_all_ports` are both ticked by default in the `infra-demo` workflow;
-  only unticking one narrows that group again. The Terraform variables keep
-  `default = false`, so a hand-run `terraform apply` is still conservative — the
-  workflow always passes the value explicitly.
+- **The pipeline does not open it by default.** `open_all_ports` and
+  `open_ac_all_ports` are both *unticked* by default in the `infra-demo`
+  workflow, and the Terraform variables keep `default = false`, so a
+  push-triggered plan and a hand-run `terraform apply` both leave the groups
+  narrow. Ticking a box is what opens a group, and it is a deliberate act:
+  the filters are fail-open, so the window around every deploy is unfiltered
+  either way, and the narrow posture is the one that fails safe.
 - **Order is the same as on the server: `deploy-demo-v2` first.** Confirm
   `Verify the AC's XDP ingress filter attached` is green, then run
   `infra-demo apply`. The workflow also refuses to widen a group whose host has
@@ -1339,6 +1341,17 @@ scan-report knobs are set.
   keeps the protected resource shut while the XDP link is detached, i.e. it
   covers the fail-open windows the link has whenever `nhp-acd` is restarting.
   The backstop is lifted only once the XDP program is attached.
+  **It covers tcp/443 and nothing else.** During every deploy, restart and
+  crash of `nhp-acd` every other port on the AC is unfiltered, exactly as on
+  the server: the backstop is a second line of defence for the protected
+  resource, not a replacement for the filter.
+- **What the filter lets through is the server's list.** With the group open,
+  the AC's XDP filter is the only inbound control, so its rules are the
+  server's: UDP only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and by
+  the answers to the host's own queries, IPv6 filtered rather than passed, a
+  non-first IPv4 fragment passed as inert, and an ICMP echo reply on the same
+  whitelist entry the echo request needs. `nhp/utils/ebpf/xdpfilter_test.go`
+  pins each of those, so a rule cannot quietly come back.
 - **Rollback** is unticking `open_ac_all_ports` and running `infra-demo apply`.
   The group returns exactly to tcp/443 + the knock port + tcp/22 from the relay
   SG. Nothing on the host changes; the telemetry stays and just counts less.

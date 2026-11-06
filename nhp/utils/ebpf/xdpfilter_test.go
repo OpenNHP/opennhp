@@ -3,6 +3,7 @@ package ebpf
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -125,5 +126,27 @@ func TestAcIngressFilterAsksTheSocketTable(t *testing.T) {
 	}
 	if !strings.Contains(text, "ACT_AC_PASS_HOST_FLOW") {
 		t.Error("the AC's filter has no action code for the host's own flow")
+	}
+}
+
+// TestExpiredKnocksAreNotScans pins that the AC's expired-knock class stays
+// out of the per-port and per-source tables behind the [NHP-SCAN] summary.
+//
+// A peer whose knock window closed is a legitimate peer that came back too
+// late. It is dropped -- the verdict is unchanged -- but it is not a scan,
+// and counting it would put an authorized user's address into the table the
+// summary publishes as the top sources. The published site excludes the class
+// from its attacker totals for the same reason.
+func TestExpiredKnocksAreNotScans(t *testing.T) {
+	text := acIngressSource(t)
+
+	matches := regexp.MustCompile(`record_event\(ctx, ACT_AC_DROP_KNOCK_EXPIRED,[^;]*\);`).FindAllString(text, -1)
+	if len(matches) == 0 {
+		t.Fatal("the AC's filter records no expired-knock event")
+	}
+	for _, m := range matches {
+		if !strings.HasSuffix(m, ", true, false);") {
+			t.Errorf("the expired-knock class is recorded as a scan hit: %s", m)
+		}
 	}
 }

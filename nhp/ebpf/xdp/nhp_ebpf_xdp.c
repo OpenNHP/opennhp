@@ -615,8 +615,15 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             if (iw_val->expire_time < now) {
                 bpf_map_delete_elem(&icmpwhitelist, &icmpkey);
                 /* The entry existed but its window closed: a peer that did
-                 * knock, unlike one that never did. */
-                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
+                 * knock, unlike one that never did.
+                 *
+                 * drop=false: an expired knock is not a scan. It is a
+                 * legitimate peer that came back too late, and counting it
+                 * would put an authorized user's address into the per-source
+                 * table behind the [NHP-SCAN] summary -- and, through the
+                 * site's own totals, into the published attacker counts. See
+                 * CatKnockExpired in endpoints/xdplog-report/classify.go. */
+                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
                 return XDP_DROP;
             }
             // Check if source IP is icmpwhitelisted and allowed
@@ -870,8 +877,14 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         if (expire_time < now) {
             bpf_map_delete_elem(&spp, &key);
             /* The peer knocked and its window has closed. A legitimate peer
-             * that came back too late, as opposed to one that never knocked. */
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
+             * that came back too late, as opposed to one that never knocked.
+             *
+             * drop=false: an expired knock is not a scan, so it stays out of
+             * the per-port and per-source tables behind the [NHP-SCAN]
+             * summary. The published site excludes the class from its
+             * attacker totals for the same reason -- see CatKnockExpired in
+             * endpoints/xdplog-report/classify.go. */
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_DROP;
         }
         if (w_val->allowed == 1) {
@@ -882,7 +895,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = sd_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&sdwhitelist, &sdkey);
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_DROP;
         }
         if (sd_val->allowed == 1) {
@@ -894,7 +907,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = sp_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&src_port, &spkey);
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_DROP;
         }
         if (sp_val->allowed == 1) {
@@ -906,7 +919,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = pl_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&port_list, &pl_key);
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_DROP;
         }
         if (pl_val->allowed == 1) {
@@ -917,7 +930,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         __u64 expire_time = pp_val->expire_time;
         if (expire_time < now) {
             bpf_map_delete_elem(&protocol_port, &pp_key);
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, true);
+            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_DROP;
         }
         if (pp_val->allowed == 1) {

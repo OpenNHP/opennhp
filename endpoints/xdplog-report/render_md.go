@@ -26,6 +26,7 @@ func renderMarkdown(w io.Writer, r *Report) error {
 	p("- Attack = `[NHP-DROP]`; `PASS` is allowed traffic, shown only as a baseline.\n")
 	p("- **Exact** packet totals come from the per-minute `[NHP-STAT]` lines (PKTS summed, duplicates removed).\n")
 	p("- **Sampled** counts come from per-packet lines, which the filter rate-limits per class; bulk classes may have none. Rankings (IP, geo, port) use sampled events and are not comparable in volume across classes.\n")
+	p("- A drop that is not an attack - a peer whose knock window closed - is left out of every attack figure here and counted on its own. It is a legitimate peer that came back too late, not a scanner.\n")
 	p("- The log has no date per line; dates come from file names.\n\n")
 
 	p("## Overview\n\n")
@@ -34,6 +35,9 @@ func renderMarkdown(w io.Writer, r *Report) error {
 	p("| Time range | %s – %s |\n", r.From, r.To)
 	p("| Total packets (exact) | %d |\n", r.TotalPkts)
 	p("| Attack (DROP) packets (exact) | %d (%s) |\n", r.DropPkts, pc(r.DropShare))
+	if r.NonAttackPkts > 0 {
+		p("| Dropped, not an attack (exact) | %d |\n", r.NonAttackPkts)
+	}
 	p("| Allowed (PASS) packets (exact) | %d |\n", r.PassPkts)
 	p("| Sampled DROP events | %d |\n", r.DropEvents)
 	p("| Sampling rate (events / exact DROP) | %s |\n", pc(r.SamplingRate))

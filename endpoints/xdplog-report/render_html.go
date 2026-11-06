@@ -125,6 +125,7 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <li>Attack = <code>[NHP-DROP]</code>; <code>PASS</code> is allowed traffic, shown only as a baseline.</li>
 <li><strong>Exact</strong> packet totals come from the per-minute <code>[NHP-STAT]</code> lines (PKTS summed, duplicates removed).</li>
 <li><strong>Sampled</strong> counts come from per-packet lines, which the filter rate-limits per class; bulk classes may have none. Rankings (IP, geo, port) use sampled events and are not comparable in volume across classes.</li>
+<li>A drop that is not an attack &mdash; a peer whose knock window closed &mdash; is left out of every attack figure here and counted on its own. It is a legitimate peer that came back too late, not a scanner.</li>
 <li>The log has no date per line; dates come from file names.</li>
 </ul>
 
@@ -132,6 +133,7 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <div class="cards">
 <div class="card"><div class="k">Total packets (exact)</div><div class="v">{{.TotalPkts}}</div></div>
 <div class="card"><div class="k">Attack (DROP) packets</div><div class="v">{{.DropPkts}} <span class="muted" style="font-size:13px;font-weight:400">{{pct .DropShare}}</span></div></div>
+{{if .NonAttackPkts}}<div class="card"><div class="k">Dropped, not an attack</div><div class="v">{{.NonAttackPkts}}</div></div>{{end}}
 <div class="card"><div class="k">Allowed (PASS) packets</div><div class="v">{{.PassPkts}}</div></div>
 <div class="card"><div class="k">Sampled DROP events</div><div class="v">{{.DropEvents}}</div></div>
 <div class="card"><div class="k">Sampling rate</div><div class="v">{{pct .SamplingRate}}</div></div>

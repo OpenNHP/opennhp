@@ -25,6 +25,11 @@ type reasonAgg struct {
 	verdict string
 	pkts    uint64 // exact, from STAT
 	events  uint64 // sampled, from per-packet lines
+	// attack says whether this reason counts towards the attack totals. A
+	// drop that is not an attack -- an expired knock -- is still counted
+	// here, so the day's own record shows it, but it is kept out of every
+	// published attacker figure. See isAttackReason.
+	attack bool
 }
 
 type statKey struct{ day, minute, verdict, reason string }
@@ -139,15 +144,16 @@ func (a *Analyzer) add(rec Record, day string) {
 
 		ra := a.reason(rec.Reason, rec.Verdict)
 		ra.pkts += rec.Pkts
-		if rec.Verdict == "DROP" {
+		if rec.Verdict == "DROP" && ra.attack {
 			a.noteUnknown(rec.Reason)
 			a.hourly[day+" "+rec.Clock[:2]] += rec.Pkts
 			a.daily[day] += rec.Pkts
 		}
 	case kindEvent:
 		a.totalEvents++
-		a.reason(rec.Reason, rec.Verdict).events++
-		if rec.Verdict != "DROP" {
+		ra := a.reason(rec.Reason, rec.Verdict)
+		ra.events++
+		if rec.Verdict != "DROP" || !ra.attack {
 			return
 		}
 		a.noteUnknown(rec.Reason)
@@ -181,7 +187,7 @@ func (a *Analyzer) add(rec Record, day string) {
 func (a *Analyzer) reason(name, verdict string) *reasonAgg {
 	ra := a.reasons[name]
 	if ra == nil {
-		ra = &reasonAgg{verdict: verdict}
+		ra = &reasonAgg{verdict: verdict, attack: isAttackReason(name)}
 		a.reasons[name] = ra
 	}
 	return ra
@@ -252,6 +258,15 @@ type Report struct {
 	SamplingRate float64 `json:"drop_sampling_rate"`
 	UniqueIPs    int     `json:"unique_attack_ips"`
 	ReservedIPs  int     `json:"private_reserved_ips"`
+
+	// NonAttackPkts is the number of dropped packets that were not attacks:
+	// a peer whose knock window closed before it spoke again. They are
+	// counted in TotalPkts, because the filter did see them, and excluded
+	// from every attack figure on this page -- the packet total, the source
+	// and country counts, the per-source and per-port rankings and the day's
+	// facts. They are reported here so the exclusion is stated rather than
+	// silent.
+	NonAttackPkts uint64 `json:"non_attack_drop_pkts"`
 
 	BudgetExhausted map[string]string `json:"budget_exhausted,omitempty"`
 
@@ -346,10 +361,19 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 	}
 
 	// Type distribution.
+	//
+	// A drop that is not an attack -- an expired knock -- is counted in
+	// TotalPkts (the filter did see the packet) and reported on its own, but
+	// it is not added to DropPkts: every figure this site publishes is about
+	// attacks, and a legitimate peer whose window closed is not one.
 	var dropEvents uint64
 	for _, ra := range a.reasons {
 		rep.TotalPkts += ra.pkts
 		if ra.verdict == "DROP" {
+			if !ra.attack {
+				rep.NonAttackPkts += ra.pkts
+				continue
+			}
 			rep.DropPkts += ra.pkts
 			dropEvents += ra.events
 		} else {
@@ -361,7 +385,7 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 	rep.SamplingRate = ratio(dropEvents, rep.DropPkts)
 	catAgg := map[Category]*CategoryRow{}
 	for name, ra := range a.reasons {
-		if ra.verdict != "DROP" {
+		if ra.verdict != "DROP" || !ra.attack {
 			continue
 		}
 		cat, _ := classify(name)

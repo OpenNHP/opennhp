@@ -96,6 +96,15 @@ be given (or discovered) in chronological order for restart detection to work.
   one per reason.
 - **Unknown reasons** mean the classifier is older than the deployed XDP build.
   Add the reason to `dropCategories` in `classify.go`, then run the tests.
+- **A drop that is not an attack** is counted apart, not in the attack
+  figures. `KNOCK_EXPIRED` — the nhp-ac's own class, a peer whose knock window
+  closed before it spoke again — is a legitimate peer arriving late, not a
+  scanner, so it is left out of the packet total, the source and country
+  counts, the per-source and per-port rankings and the day's facts, and
+  reported on its own as `non_attack_drop_pkts`. The packets are dropped by the
+  filter either way; this is about the accounting. A reason the classifier
+  does not know is treated as an attack, so a new class is never silently
+  under-reported.
 
 ### Output formats
 
@@ -620,6 +629,11 @@ go build -o bin/xdplog-report ./xdplog-report
   因此报告只显示一条记录，而不是每个 reason 一条。
 - **Unknown reasons** 表示分类器落后于线上部署的 XDP 版本。在 `classify.go` 的
   `dropCategories` 中补上该 reason，然后运行测试。
+- **不是攻击的丢包**单独计数，不计入攻击口径。`KNOCK_EXPIRED` 是 nhp-ac 自己的
+  类别：某个 peer 敲过门，但窗口在它再次发包前就关了——这是合法用户来晚了，不是
+  扫描。因此它不计入包数、来源与国家总数、来源/端口排行以及当天的 facts，而是
+  单独记为 `non_attack_drop_pkts`。这些包在过滤器那里照样被丢弃，区别只在统计口径。
+  分类器不认识的 reason 一律按攻击计，避免新类别被悄悄少报。
 
 ### 输出格式
 

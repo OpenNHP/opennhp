@@ -441,6 +441,15 @@ type HttpConfig struct {
 	ReadTimeoutMs  int
 	WriteTimeoutMs int
 	IdleTimeoutMs  int
+	// TrustedProxies lists the network origins (IPv4/IPv6 addresses or CIDR
+	// prefixes) whose X-Forwarded-For / X-Real-IP headers the HTTP knock
+	// module believes. Absent or empty means none, which is the right answer
+	// for every deployment that is not actually behind a reverse proxy: the
+	// knock source then comes from the TCP peer and cannot be chosen by the
+	// caller. Listing a proxy here only makes sense when that proxy
+	// *overwrites* the forwarding headers and the listener is bound where
+	// nothing else can reach it. See applyTrustedProxies in httpserver.go.
+	TrustedProxies []string
 
 	// /storage API (ZTDO upload by nhp-db, download by agents). Read when
 	// the HTTP server starts. Uploads and metadata require a request
@@ -519,21 +528,45 @@ func (s *UdpServer) loadHttpConfig() error {
 	}
 	var httpConf HttpConfig
 	if unmarshalErr := toml.Unmarshal(content, &httpConf); unmarshalErr != nil {
-		log.Error("failed to unmarshal http config: %v", unmarshalErr)
-	}
-	if err = s.updateHttpConfig(httpConf); err != nil {
-		// ignore error
-		_ = err
+		// Do not apply a half-decoded struct. go-toml v2 stops at the first
+		// error with the fields ahead of it already populated, so what is left
+		// is a configuration nobody wrote -- and TrustedProxies is now one of
+		// the fields that could be in it. Leaving the HTTP listener down until
+		// the file is fixed is the lesser outcome; the UDP knock service is
+		// driven by config.toml and is unaffected. The watcher is still
+		// installed below, so repairing the file recovers without a restart.
+		log.Error("failed to unmarshal http config, the HTTP server will not start: %v", unmarshalErr)
+	} else if err = s.updateHttpConfig(httpConf); err != nil {
+		// updateHttpConfig has already logged why (a TrustedProxies list that
+		// does not parse, or a listener the attached XDP filter would
+		// black-hole). Carry on without the HTTP surface rather than failing
+		// the daemon.
+		log.Error("http config was not applied: %v", err)
 	}
 
 	httpConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("http config: %s has been updated", fileName)
-		if content, err = s.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &httpConf); err == nil {
-				_ = s.updateHttpConfig(httpConf)
-			}
+		newContent, loadErr := s.loadConfigFile(fileName)
+		if loadErr != nil {
+			return
 		}
-
+		// Decode into a fresh HttpConfig on every reload. go-toml v2 does not
+		// zero fields the new document omits, so reusing one struct across
+		// reloads lets a deleted key keep the value it had two files ago --
+		// for TrustedProxies, a proxy the operator just removed would be read
+		// back as still configured, and would then be handed to the next
+		// listener that starts. Same reasoning as loadBaseConfig above.
+		//
+		// This fixes what the daemon *reads*. It does not revoke trust from a
+		// listener that is already running: updateHttpConfig does not restart
+		// one, so the live engine keeps its list until EnableHttp is cycled.
+		// That gap is logged rather than silent -- see trustedProxiesPending.
+		var newConf HttpConfig
+		if unmarshalErr := toml.Unmarshal(newContent, &newConf); unmarshalErr != nil {
+			log.Error("failed to unmarshal http config on reload, keeping the running config: %v", unmarshalErr)
+			return
+		}
+		_ = s.updateHttpConfig(newConf)
 	})
 	return nil
 }
@@ -869,10 +902,14 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 // Loopback binds are not a conflict: the program is attached to the host's
 // default-route interface, so traffic to 127.0.0.1 never reaches it.
 func (s *UdpServer) xdpServiceConflict() string {
-	if port, enabled := s.GetHttpPort(); enabled {
-		if !isLoopbackListenAddr(s.httpConfig.HttpListenIp) {
+	// One Load for both the port and the address: dereferencing s.httpConfig
+	// again after GetHttpPort could read a newer config and report a listener
+	// nobody ever bound.
+	conf := s.httpConfig.Load()
+	if port, enabled := s.GetHttpPort(); enabled && conf != nil {
+		if !isLoopbackListenAddr(conf.HttpListenIp) {
 			return fmt.Sprintf("the HTTP knock listener is enabled on %s:%d",
-				listenAddrForLog(s.httpConfig.HttpListenIp), port)
+				listenAddrForLog(conf.HttpListenIp), port)
 		}
 	}
 	if s.config != nil && s.config.Metrics.Enabled && !isLoopbackListenAddr(s.config.Metrics.ListenIp) {
@@ -1466,6 +1503,14 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 			if err != nil {
 				return err
 			}
+		} else if s.httpServer.trustedProxiesPending(httpConf.TrustedProxies) {
+			// The listener is already up and this call does not restart it, so
+			// the engine keeps the proxy list it started with. Say so: for
+			// every other field the lag is cosmetic, but this one decides
+			// whether a caller can choose the source IP the AC opens a rule
+			// for, and an operator who just removed a proxy has every reason
+			// to believe the removal took effect.
+			log.Critical("TrustedProxies changed in the HTTP config but the running listener still enforces the list it started with. The new list takes effect only after the HTTP server restarts: set EnableHttp = false, then back to true. Until then X-Forwarded-For / X-Real-IP are still believed from the previous origins.")
 		}
 	} else {
 		// stop http server
@@ -1475,7 +1520,7 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 		}
 	}
 
-	s.httpConfig = &httpConf
+	s.httpConfig.Store(&httpConf)
 	return err
 }
 

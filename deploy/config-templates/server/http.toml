@@ -32,3 +32,17 @@ HttpListenPort = 8443
 # StorageMaxUploadMB = 20480
 # StorageMinFreeMB = 1024
 # StorageMaxConcurrentUploads = 4
+
+# TrustedProxies: the origins whose X-Forwarded-For / X-Real-IP headers the
+# HTTP knock module believes when deciding the source address it asks the AC to
+# open a rule for. Empty means none, so the TCP peer is used and a caller
+# cannot choose the address (CWE-348).
+#
+# Kept empty even though deploy/nginx/server.conf.template would qualify
+# (it sets X-Forwarded-For to $remote_addr rather than appending): EnableHttp
+# is false here and that vhost is torn down, so there is no proxy in front of
+# this listener to trust. If the demo login page is ever re-enabled -- which
+# means restoring the tcp/443 ingress, the demologin CNAME and the vhost
+# together, see CLAUDE.md -- set this to ["127.0.0.1"] in the same change,
+# because HttpListenIp is loopback and nginx is same-host.
+TrustedProxies = []

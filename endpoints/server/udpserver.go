@@ -40,8 +40,14 @@ type UdpServer struct {
 		totalSendBytes uint64
 	}
 
-	config        *Config
-	httpConfig    *HttpConfig
+	config *Config
+	// httpConfig is replaced wholesale by updateHttpConfig, which runs on
+	// the http.toml watcher goroutine and on the etcd watcher goroutine,
+	// while GetHttpPort / GetHttpTLSStatus / xdpServiceConflict read it from
+	// the main goroutine. An atomic pointer keeps that swap from being a data
+	// race; readers must Load once and use the local, never dereference the
+	// field twice and assume they saw the same config.
+	httpConfig    atomic.Pointer[HttpConfig]
 	log           *log.Logger
 	listenAddr    *net.UDPAddr
 	listenAddrStr string
@@ -804,10 +810,11 @@ func (s *UdpServer) GetListenPort() int {
 
 // GetHttpPort returns the HTTP listening port and whether HTTP is enabled
 func (s *UdpServer) GetHttpPort() (int, bool) {
-	if s.httpConfig == nil || !s.httpConfig.EnableHttp {
+	conf := s.httpConfig.Load()
+	if conf == nil || !conf.EnableHttp {
 		return 0, false
 	}
-	port := s.httpConfig.HttpListenPort
+	port := conf.HttpListenPort
 	if port == 0 {
 		port = s.GetListenPort() // falls back to UDP port
 	}
@@ -816,7 +823,7 @@ func (s *UdpServer) GetHttpPort() (int, bool) {
 
 // GetHttpTLSStatus returns TLS status as a string
 func (s *UdpServer) GetHttpTLSStatus() string {
-	if s.httpConfig != nil && s.httpConfig.EnableTLS {
+	if conf := s.httpConfig.Load(); conf != nil && conf.EnableTLS {
 		return "enabled"
 	}
 	return "disabled"

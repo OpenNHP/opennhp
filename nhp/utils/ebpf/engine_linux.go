@@ -388,6 +388,43 @@ func EngineLoad(params EngineLoadParams) (*EngineHandle, error) {
 	}
 }
 
+// acScanReportSettings returns the [NHP-SCAN] window and depth for an AC load,
+// and whether the summary should run at all.
+//
+// The nhp-server resolves its own knobs in endpoints/server/config.go, where an
+// unset value takes the shared default and an out-of-range one turns the
+// summary off (the filter still attaches: the summary is telemetry, and
+// telemetry must never decide whether the host is protected).
+//
+// The AC has no such knob and no config file to carry one: endpoints/ac/ebpf
+// loads the filter without setting either value. So a zero here means what a
+// zero means there -- "not set" -- and takes the shared default.
+//
+// Without this the AC never started the reporter at all: the guard wanted
+// both values to be positive, both were zero, and the summary never ran. The
+// AC's per-port and per-source tables filled up on every dropped packet,
+// churned their LRU, and nobody read them -- while the published site, which
+// parses the AC's log with the server's parser, had no [NHP-SCAN] line to
+// show for the AC at all.
+//
+// The nhp-server does *not* come through here: by the time its load runs,
+// resolveScanReport has already turned "unset" into the default and
+// "out of range" into zero, and zero there means "off".
+func acScanReportSettings(params EngineLoadParams) (time.Duration, int, bool) {
+	interval := params.ScanReportInterval
+	if interval == 0 {
+		interval = DefaultScanReportIntervalSeconds * time.Second
+	}
+	topN := params.ScanReportTopN
+	if topN == 0 {
+		topN = DefaultScanReportTopN
+	}
+	if interval <= 0 || topN <= 0 {
+		return interval, topN, false
+	}
+	return interval, topN, true
+}
+
 func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retErr error) {
 	specPath := params.ProgObjPath
 	tcSpecPath := params.TcProgObjPath
@@ -573,8 +610,13 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 	if objs.ActionStats != nil {
 		go reportEventStats(objs.ActionStats, acStop, params.ComponentId, h.AcStatsLogger, acActionName)
 	}
-	if objs.PortHits != nil && objs.SrcHits != nil && params.ScanReportInterval > 0 && params.ScanReportTopN > 0 {
-		go reportEventScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
+	scanInterval, scanTopN, scanEnabled := acScanReportSettings(params)
+	if scanEnabled && objs.PortHits != nil && objs.SrcHits != nil {
+		// Said out loud, because an AC that writes no [NHP-SCAN] line looks
+		// exactly like an AC that is not being attacked, and the published
+		// site says so in as many words.
+		log.Info("AC XDP scan summary: every %ds, the %d busiest ports and sources", int(scanInterval.Seconds()), scanTopN)
+		go reportEventScan(objs.PortHits, objs.SrcHits, scanInterval, scanTopN,
 			acStop, params.ComponentId, h.AcStatsLogger)
 	}
 	go pruneEventLogs(logDir, acStop, []string{acEventLogName})

@@ -1501,3 +1501,57 @@ func TestTopN(t *testing.T) {
 		t.Errorf("n=0: got %v", got)
 	}
 }
+
+// The AC's [NHP-SCAN] summary has to run.
+//
+// The reporter was started only when both parameters were positive, and
+// endpoints/ac/ebpf sets neither: the AC's loader got both as zero and
+// started nothing. The published site parses the AC's log with the server's
+// parser, so an AC with no [NHP-SCAN] line is an AC the site cannot say
+// anything about -- and the AC's per-port and per-source tables filled up on
+// every dropped packet, churned their LRU, and were read by nobody.
+//
+// The nhp-server is not affected: its own resolver (endpoints/server/config.go)
+// turns an unset value into the default before the load runs, and an
+// out-of-range one into zero, which means "off" there.
+func TestAcLoadSchedulesTheScanReporter(t *testing.T) {
+	interval, topN, enabled := acScanReportSettings(EngineLoadParams{Variant: VariantAC})
+	if !enabled {
+		t.Fatal("an AC load with default parameters does not schedule the [NHP-SCAN] summary")
+	}
+	if want := DefaultScanReportIntervalSeconds * time.Second; interval != want {
+		t.Errorf("scan window = %s, want %s", interval, want)
+	}
+	if topN != DefaultScanReportTopN {
+		t.Errorf("scan depth = %d, want %d", topN, DefaultScanReportTopN)
+	}
+
+	// The loader must read the resolved values. A raw parameter is zero on
+	// every AC load, and reading it is what used to switch the summary off.
+	src, err := os.ReadFile("engine_linux.go")
+	if err != nil {
+		t.Fatalf("read engine_linux.go: %v", err)
+	}
+	body := goFuncBody(t, string(src), "func loadAcEngine(")
+	if strings.Contains(body, "params.ScanReportInterval") || strings.Contains(body, "params.ScanReportTopN") {
+		t.Error("the AC's load reads the raw scan-report parameters; it must use acScanReportSettings")
+	}
+	if !strings.Contains(body, "acScanReportSettings(params)") {
+		t.Error("the AC's load does not call acScanReportSettings")
+	}
+}
+
+// goFuncBody returns the text of the function whose definition starts with
+// the given prefix, up to the next top-level "func ".
+func goFuncBody(t *testing.T, src, prefix string) string {
+	t.Helper()
+	start := strings.Index(src, prefix)
+	if start < 0 {
+		t.Fatalf("%s not found", prefix)
+	}
+	rest := src[start:]
+	if end := strings.Index(rest[1:], "\nfunc "); end >= 0 {
+		return rest[:end+1]
+	}
+	return rest
+}

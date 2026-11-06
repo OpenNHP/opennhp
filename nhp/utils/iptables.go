@@ -281,6 +281,14 @@ func (table *IPTables) changeIptablesRule(inputPolicy, forwardPolicy, outputPoli
 // Older versions used untagged rules, which cannot safely be claimed as ours.
 const failurePolicyComment = "opennhp-ac-fail-open"
 
+// Older iptables supports bare -w but not a numeric wait. Bound the whole
+// command so lock contention cannot stall startup or shutdown indefinitely.
+func (table *IPTables) failurePolicyCommand(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, table.Binary, append([]string{"-w"}, args...)...).CombinedOutput()
+}
+
 // InitializeFailurePolicy removes fallback rules left by an interrupted AC.
 // Fail-closed refuses legacy unconditional ACCEPT rules rather than deleting
 // potentially operator-owned rules. It does not install the baseline firewall.
@@ -292,13 +300,13 @@ func (table *IPTables) InitializeFailurePolicy(failClosed bool) error {
 	}
 	if failClosed {
 		for _, chain := range []string{"INPUT", "FORWARD"} {
-			out, err := exec.Command(table.Binary, "-w", "5", "-S", chain).CombinedOutput()
+			out, err := table.failurePolicyCommand("-S", chain)
 			if err != nil {
 				return fmt.Errorf("inspect %s: %w: %s", chain, err, out)
 			}
 			for _, line := range strings.Split(string(out), "\n") {
 				if line == "-A "+chain+" -j ACCEPT" || line == "-A "+chain+" -d 0.0.0.0/0 -j ACCEPT" {
-					return fmt.Errorf("fail-closed: untagged unconditional ACCEPT in %s; inspect and remove legacy fallback rules before restarting (existing firewall is still in effect)", chain)
+					return fmt.Errorf("fail-closed: untagged unconditional ACCEPT in %s: %q; inspect and remove legacy fallback rules before restarting (existing firewall is still in effect)", chain, line)
 				}
 			}
 		}
@@ -312,7 +320,7 @@ func (table *IPTables) InitializeFailurePolicy(failClosed bool) error {
 func (table *IPTables) setFailurePolicyRules(open bool) error {
 	table.failurePolicyInitialized = false
 	for _, chain := range []string{"INPUT", "FORWARD"} {
-		out, err := exec.Command(table.Binary, "-w", "5", "-S", chain).CombinedOutput()
+		out, err := table.failurePolicyCommand("-S", chain)
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w: %s", chain, err, out)
 		}
@@ -329,15 +337,15 @@ func (table *IPTables) setFailurePolicyRules(open bool) error {
 			wanted = 1
 		}
 		for count > wanted {
-			args := append([]string{"-w", "5", "-D", chain}, rule...)
-			if out, err := exec.Command(table.Binary, args...).CombinedOutput(); err != nil {
+			args := append([]string{"-D", chain}, rule...)
+			if out, err := table.failurePolicyCommand(args...); err != nil {
 				return fmt.Errorf("remove AC fallback in %s: %w: %s", chain, err, out)
 			}
 			count--
 		}
 		if count < wanted {
-			args := append([]string{"-w", "5", "-I", chain}, rule...)
-			if out, err := exec.Command(table.Binary, args...).CombinedOutput(); err != nil {
+			args := append([]string{"-I", chain}, rule...)
+			if out, err := table.failurePolicyCommand(args...); err != nil {
 				return fmt.Errorf("insert AC fallback in %s: %w: %s", chain, err, out)
 			}
 		}

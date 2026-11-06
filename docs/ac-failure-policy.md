@@ -1,11 +1,19 @@
+---
+layout: page
+title: AC discovery failure policy
+nav_exclude: true
+permalink: /ac-failure-policy/
+---
+
 # AC discovery failure policy
 
-For the IPv4 iptables AC (`FilterMode = 0`), set in `etc/config.toml`
-(or `BaseConfig.failurePolicy` in remote JSON configuration):
+For the IPv4 iptables AC (`FilterMode = 0`), set in `etc/config.toml`:
 
 ```toml
 FailurePolicy = "fail-closed"
 ```
+
+For remote etcd TOML configuration, place this setting under `[BaseConfig]`.
 
 Omitted, empty, or `"fail-open"` preserves existing behavior: when all server
 discoveries fail, the AC inserts broad INPUT and FORWARD ACCEPT rules.
@@ -15,7 +23,8 @@ and grant lifetimes are unchanged. IPv6 and XDP are unchanged;
 selecting fail-closed with XDP is rejected.
 
 The setting requires a restart. Invalid values fail startup. A live policy change
-rejects the base-config update and logs that a restart is required.
+rejects the base-config update and logs that a restart is required. During an etcd
+reload, independent HTTP and server-peer sections are still applied.
 
 The AC tags its broad fallback rules with `opennhp-ac-fail-open`. On startup,
 both modes remove those owned rules, including duplicates left after a crash.
@@ -34,3 +43,6 @@ Fail-open does not remove these untagged rules. Neither mode audits arbitrary ru
 or installs the baseline; operators must supply the normal iptables/ipset baseline.
 Only one AC may own fallback rules in a network namespace. External firewall rewrites
 are outside this feature's scope.
+
+With no configured servers, fail-open retains the existing behavior of opening
+access on the next discovery check; fail-closed does not insert fallback rules.

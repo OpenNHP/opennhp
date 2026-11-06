@@ -15,7 +15,9 @@ func TestFailurePolicyRules(t *testing.T) {
 	binary := filepath.Join(dir, "iptables")
 	script := `#!/bin/sh
 cd "$(dirname "$0")" || exit 2
-shift 2
+# Emulate older iptables: bare -w only; a numeric wait becomes an invalid operation.
+[ "$1" = -w ] || exit 2
+shift
 op=$1; chain=$2
 shift 2
 [ -e "$chain" ] || : > "$chain"
@@ -106,7 +108,7 @@ esac
 		if err := os.WriteFile(filepath.Join(dir, chain), []byte(legacy), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if err := restarted.InitializeFailurePolicy(true); err == nil || !strings.Contains(err.Error(), "untagged") {
+		if err := restarted.InitializeFailurePolicy(true); err == nil || !strings.Contains(err.Error(), strings.TrimSpace(legacy)) {
 			t.Fatalf("legacy rule accepted: %v", err)
 		}
 		b, _ := os.ReadFile(filepath.Join(dir, chain))
@@ -119,5 +121,19 @@ esac
 		if err := os.WriteFile(filepath.Join(dir, chain), nil, 0600); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestFailurePolicyCommandTimeout(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "iptables")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexec sleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	table := &IPTables{Binary: binary}
+	if err := table.InitializeFailurePolicy(false); err == nil {
+		t.Fatal("hung firewall command did not fail startup")
+	}
+	if table.failurePolicyInitialized {
+		t.Fatal("timed-out cleanup marked complete")
 	}
 }

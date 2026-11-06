@@ -8,6 +8,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/OpenNHP/opennhp/nhp/common/clusterconfig"
+	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -90,22 +92,52 @@ func TestFailurePolicyMalformedConfigRefusesStartup(t *testing.T) {
 	}
 }
 
-func TestFailurePolicyEtcdReloadRejectsChange(t *testing.T) {
+func TestFailurePolicyEtcdReloadKeepsIndependentSections(t *testing.T) {
 	a := &UdpAC{log: log.NewLogger("policy-test", 0, t.TempDir(), "test")}
 	defer a.log.Close()
 	if err := a.updateBaseConfig(Config{FailurePolicy: FailurePolicyClosed}); err != nil {
 		t.Fatal(err)
 	}
-	for _, policy := range []string{FailurePolicyOpen, "typo", ""} {
-		content, err := toml.Marshal(ACEtcdConfig{BaseConfig: Config{FailurePolicy: policy, DefaultIp: "192.0.2.1"}})
+	key := make([]byte, core.PrivateKeySize)
+	key[0] = 1
+	a.device = core.NewDevice(core.NHP_AC, key, nil)
+	if a.device == nil {
+		t.Fatal("device initialization failed")
+	}
+	defer a.device.Stop()
+	for i, policy := range []string{FailurePolicyClosed, FailurePolicyOpen, "typo", ""} {
+		port := 62206 + i
+		defaultIP := "192.0.2.9"
+		if i == 0 {
+			defaultIP = "192.0.2.1"
+		}
+		base := map[string]any{"DefaultIp": defaultIP}
+		if policy != "" {
+			base["FailurePolicy"] = policy
+		}
+		content, err := toml.Marshal(map[string]any{
+			"BaseConfig": base,
+			"HttpConfig": HttpConfig{HttpListenPort: 8000 + i},
+			"Servers": []*clusterconfig.ClusterConfig{{
+				PubKeyBase64: a.device.PublicKeyBase64(), Ip: "192.0.2.2", Port: port,
+			}},
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := a.updateEtcdConfig(content, true); err == nil {
-			t.Fatalf("etcd change %q accepted", policy)
+		if err := a.updateEtcdConfig(content, true); err != nil {
+			t.Fatalf("independent sections rejected for policy %q: %v", policy, err)
 		}
-		if a.config.FailurePolicy != FailurePolicyClosed || a.config.DefaultIp != "" {
-			t.Fatal("rejected etcd update changed running config")
+		if a.config.FailurePolicy != FailurePolicyClosed || a.config.DefaultIp != "192.0.2.1" {
+			t.Fatal("rejected policy changed running base config")
+		}
+		if a.httpConfig == nil || a.httpConfig.HttpListenPort != 8000+i {
+			t.Fatal("HTTP configuration was dropped")
+		}
+		peer := &core.UdpPeer{PubKeyBase64: a.device.PublicKeyBase64(), Ip: "192.0.2.2", Port: port}
+		if len(a.serverPeerMap) != 1 || a.serverPeerMap[endpointKey(peer)] == nil ||
+			len(a.config.Servers) != 1 || a.config.Servers[0].Port != port {
+			t.Fatalf("server replacement was dropped for policy %q", policy)
 		}
 	}
 }

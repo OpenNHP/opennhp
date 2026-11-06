@@ -503,8 +503,8 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	}
 
 	if baseLoad {
-		if err = a.updateBaseConfig(acEtcdConfig.BaseConfig); err != nil {
-			return err
+		if baseErr := a.updateBaseConfig(acEtcdConfig.BaseConfig); baseErr != nil {
+			log.Error("etcd reload: retaining running base config; continuing HTTP and server-peer updates: %v", baseErr)
 		}
 	}
 

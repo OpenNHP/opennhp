@@ -1,3 +1,9 @@
+# FailurePolicy (-): iptables discovery fallback; restart required.
+# Omitted/empty or "fail-open" preserves availability; "fail-closed" keeps
+# normal firewall/grant expiry. See docs/ac-failure-policy.md for migration
+# from legacy broad ACCEPT rules and established-session limitations.
+# FailurePolicy = "fail-open"
+
 # NHP-AC base config
 # field with (-) does not support dynamic update
 

@@ -127,6 +127,10 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return
 		}
 
+		if err = a.iptables.InitializeFailurePolicy(a.config.FailurePolicy == FailurePolicyClosed); err != nil {
+			return fmt.Errorf("initialize AC failure policy: %w", err)
+		}
+
 		a.ipset, err = utils.NewIPSet(false)
 		if err != nil {
 			log.Error("ipset command not found")
@@ -652,7 +656,11 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 
 	// reset iptables before exiting
 	if a.config.FilterMode == FilterMode_IPTABLES {
-		defer a.iptables.ResetAllInput()
+		defer func() {
+			if err := a.iptables.ResetAllInput(); err != nil {
+				log.Error("reset AC failure policy on shutdown: %v", err)
+			}
+		}()
 	}
 
 	var discoveryRoutineWg sync.WaitGroup
@@ -678,13 +686,14 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 		a.serverPeerMutex.Unlock()
 
 		// check whether all server discovery failed.
-		// If so, open all blocked input
+		// If so, apply the configured failure policy without changing discovery timing.
 		quitCheck := make(chan struct{})
 		discoveryQuitArr = append(discoveryQuitArr, quitCheck)
 		discoveryRoutineWg.Add(1)
 		go func() {
 			defer discoveryRoutineWg.Done()
 
+			var lastState, lastError string
 			for {
 				select {
 				case <-a.signals.stop:
@@ -697,15 +706,31 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 						totalFail += atomic.LoadInt32(status)
 					}
 
-					if totalFail < int32(len(discoveryFailStatusArr)) {
-						if a.config.FilterMode == FilterMode_IPTABLES {
-							a.iptables.ResetAllInput()
-						}
-					} else {
-						if a.config.FilterMode == FilterMode_IPTABLES {
-							a.iptables.AcceptAllInput()
-						}
+					if a.config.FilterMode != FilterMode_IPTABLES {
+						continue
 					}
+					allFailed := totalFail == int32(len(discoveryFailStatusArr))
+					state := "not all server discoveries have failed"
+					if allFailed {
+						state = "all server discoveries failed: " + a.config.FailurePolicy
+					}
+					var err error
+					if allFailed && a.config.FailurePolicy == FailurePolicyOpen {
+						err = a.iptables.AcceptAllInput()
+					} else {
+						err = a.iptables.ResetAllInput()
+					}
+					if err != nil {
+						if err.Error() != lastError {
+							log.Error("AC failure policy: %v (will retry)", err)
+						}
+						lastError = err.Error()
+						continue
+					}
+					if state != lastState || lastError != "" {
+						log.Info("AC failure policy: %s", state)
+					}
+					lastState, lastError = state, ""
 				}
 			}
 		}()

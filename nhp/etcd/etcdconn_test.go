@@ -1,6 +1,7 @@
 package etcd
 
 import (
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -115,4 +116,36 @@ func TestEtcdUninitializedOperations(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestEtcdOperationsAfterFailedStatus(t *testing.T) {
+	// Keep the port reserved without serving etcd, so Status times out rather
+	// than accidentally connecting to a service on a guessed unused port.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	c := &EtcdConn{Endpoints: []string{"http://" + listener.Addr().String()}, Key: "failed-status"}
+	defer c.Close()
+	if err := c.InitClient(); err == nil {
+		t.Fatal("Status unexpectedly succeeded")
+	}
+	if c.client == nil || c.ctx == nil || c.ctx.Err() == nil {
+		t.Fatal("failed Status did not close initialized client")
+	}
+	if _, err := c.GetValue(); err == nil {
+		t.Error("read after failed Status succeeded")
+	}
+	if err := c.SetValue("value"); err == nil {
+		t.Error("write after failed Status succeeded")
+	}
+	done := make(chan struct{})
+	go func() { c.WatchValue(func([]byte) { t.Error("callback after failed Status") }); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(requestTimeout):
+		t.Fatal("watch after failed Status did not return")
+	}
+	c.Close() // deferred Close repeats cleanup
 }

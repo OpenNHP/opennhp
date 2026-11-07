@@ -29,6 +29,8 @@ type EtcdConn struct {
 	cancel    context.CancelFunc
 }
 
+// InitClient must be called once per EtcdConn, before concurrent use.
+// After an initialization failure or Close, create a new EtcdConn to retry.
 func (conn *EtcdConn) InitClient() error {
 	if len(conn.Endpoints) == 0 {
 		return errors.New("no etcd endpoints configured")

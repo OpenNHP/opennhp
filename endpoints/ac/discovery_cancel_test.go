@@ -28,7 +28,7 @@ func TestDiscoveryCancellation(t *testing.T) {
 					}
 					quit := make(chan struct{})
 					var wg sync.WaitGroup
-					var failed int32
+					var failed serverDiscoveryState
 					wg.Add(1)
 					done := make(chan struct{})
 					go func() { a.serverDiscovery(peer, &wg, &failed, quit); close(done) }()

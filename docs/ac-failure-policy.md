@@ -26,7 +26,7 @@ The setting requires a restart. Invalid values fail startup. During reload, a
 valid policy change is logged and deferred until restart; the running policy and
 filter mode remain active while live settings such as `LogLevel` and `DefaultIp`
 are applied. An invalid policy rejects the base-config update. Independent HTTP
-and server-peer sections of an etcd reload are still applied. Failure observations
+and server-peer sections of an etcd reload are still applied. Completed retry counts and failure observations
 for unchanged endpoints survive reload, so an unrelated edit cannot close an
 active fail-open fallback during an outage; a successful discovery clears that
 endpoint's failed state.

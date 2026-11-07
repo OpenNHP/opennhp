@@ -654,6 +654,13 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	a.maintainServerConnections(func(open bool) error { return a.iptables.SetFailurePolicyOpen(open) })
 }
 
+// Retries belong to an endpoint, not one discovery goroutine. Maintenance joins
+// the old goroutine before handing this state to its replacement.
+type serverDiscoveryState struct {
+	failed  int32 // read by maintenance through atomic operations
+	retries int   // used only by the endpoint's discovery goroutine
+}
+
 func (a *UdpAC) maintainServerConnections(setFailurePolicyOpen func(bool) error) {
 	defer a.wg.Done()
 	defer log.Info("maintainServerConnectionRoutine stopped")
@@ -673,7 +680,7 @@ func (a *UdpAC) maintainServerConnections(setFailurePolicyOpen func(bool) error)
 	defer discoveryRoutineWg.Wait()
 
 	// Preserve observations for unchanged endpoints across configuration reloads.
-	failureStatus := make(map[string]*int32)
+	failureStatus := make(map[string]*serverDiscoveryState)
 discoveryCycles:
 	for {
 		// Consume notifications before taking the peer snapshot. Updates before
@@ -686,14 +693,14 @@ discoveryCycles:
 		a.serverPeerMutex.Lock()
 		var serverCount int32 = int32(len(a.serverPeerMap))
 		discoveryQuitArr := make([]chan struct{}, 0, serverCount)
-		discoveryFailStatusArr := make([]*int32, 0, serverCount)
+		discoveryFailStatusArr := make([]*serverDiscoveryState, 0, serverCount)
 
-		nextFailureStatus := make(map[string]*int32, serverCount)
+		nextFailureStatus := make(map[string]*serverDiscoveryState, serverCount)
 		for key, server := range a.serverPeerMap {
 			// New endpoints start unknown; an existing failure clears on a reply.
 			fail := failureStatus[key]
 			if fail == nil {
-				fail = new(int32)
+				fail = new(serverDiscoveryState)
 			}
 			nextFailureStatus[key] = fail
 			discoveryFailStatusArr = append(discoveryFailStatusArr, fail)
@@ -728,7 +735,7 @@ discoveryCycles:
 			case <-time.After(MinialServerDiscoveryInterval * time.Second):
 				var totalFail int32
 				for _, status := range discoveryFailStatusArr {
-					totalFail += atomic.LoadInt32(status)
+					totalFail += atomic.LoadInt32(&status.failed)
 				}
 
 				if a.config.FilterMode != FilterMode_IPTABLES {
@@ -787,11 +794,11 @@ func (a *UdpAC) waitForDiscoveryAddress(resolve func() (net.Addr, error), failed
 	}
 }
 
-func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
+func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, state *serverDiscoveryState, quit <-chan struct{}) {
 	defer discoveryRoutineWg.Done()
 
 	acId := a.config.ACId
-	sendAddr := a.waitForDiscoveryAddress(server.SendAddrErr, serverFailCount, quit)
+	sendAddr := a.waitForDiscoveryAddress(server.SendAddrErr, &state.failed, quit)
 	if sendAddr == nil {
 		return
 	}
@@ -800,8 +807,6 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 
 	defer log.Info("server discovery sub-routine at %s stopped", addrStr)
 	log.Info("server discovery sub-routine at %s started", addrStr)
-
-	var failCount int
 
 	for {
 		var lastSendTime int64
@@ -885,9 +890,9 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 							conn.connected.Store(false)
 						}
 
-						failCount += 1
-						if failCount%ServerDiscoveryRetryBeforeFail == 0 {
-							atomic.StoreInt32(serverFailCount, 1)
+						state.retries += 1
+						if state.retries%ServerDiscoveryRetryBeforeFail == 0 {
+							atomic.StoreInt32(&state.failed, 1)
 							// remove failed connection. The map lookup can race
 							// with another teardown path that already removed
 							// the entry; conn==nil is the legitimate "already
@@ -929,8 +934,8 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 				}
 
 				// server discovery succeeded
-				failCount = 0
-				atomic.StoreInt32(serverFailCount, 0)
+				state.retries = 0
+				atomic.StoreInt32(&state.failed, 0)
 				a.remoteConnectionMutex.Lock()
 				conn = a.remoteConnectionMap[addrStr] // conn must be available at this point
 				conn.connected.Store(true)

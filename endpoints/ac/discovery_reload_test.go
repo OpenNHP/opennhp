@@ -1,11 +1,16 @@
 package ac
 
 import (
+	"errors"
+	"fmt"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 func TestDiscoveryWaitsForFirewallUpdate(t *testing.T) {
@@ -125,4 +130,94 @@ func TestPeerReloadNotifiesDiscovery(t *testing.T) {
 	default:
 		t.Error("new peer map installed without notifying active discovery")
 	}
+}
+
+func TestDiscoveryConsumesStartupNotificationBeforeSnapshot(t *testing.T) {
+	logger := log.NewLogger("", 1, "", "")
+	defer logger.Close()
+	defer log.SetGlobalLogger(log.NewLogger("", 3, "", ""))
+	synctest.Test(t, func(t *testing.T) {
+		var starts int
+		logger.Info = func(format string, args ...any) {
+			if format == "server discovery sub-routine at %s started" {
+				starts++
+			}
+		}
+		log.SetGlobalLogger(logger)
+		a := &UdpAC{config: &Config{FilterMode: FilterMode_EBPFXDP}, device: &core.Device{}, sendMsgCh: make(chan *core.MsgData), serverPeerMap: map[string]*core.UdpPeer{"initial": {Ip: "127.0.0.1", Port: 62206}}}
+		a.running.Store(true)
+		a.signals.stop = make(chan struct{})
+		a.signals.serverMapUpdated = make(chan struct{}, 1)
+		a.notifyServerMapUpdated() // initial load happened before maintenance started
+		a.wg.Add(1)
+		go a.maintainServerConnections(func(bool) error { return nil })
+		synctest.Wait()
+		if starts != 1 {
+			t.Errorf("startup launched %d discovery routines, want one", starts)
+		}
+		// A subsequent update must still replace discovery with the latest peer.
+		a.serverPeerMutex.Lock()
+		a.serverPeerMap = map[string]*core.UdpPeer{"new": {Ip: "127.0.0.1", Port: 62207}}
+		a.serverPeerMutex.Unlock()
+		a.notifyServerMapUpdated()
+		synctest.Wait()
+		if starts != 2 {
+			t.Errorf("reload launched %d total routines, want two", starts)
+		}
+		request := <-a.sendMsgCh
+		if request.RemoteAddr.Port != 62207 {
+			t.Errorf("discovery used stale peer: %v", request.RemoteAddr)
+		}
+		close(a.signals.stop)
+		a.wg.Wait()
+	})
+}
+
+func TestDiscoveryReportsFailedFallback(t *testing.T) {
+	logger := log.NewLogger("", 1, "", "")
+	defer logger.Close()
+	defer log.SetGlobalLogger(log.NewLogger("", 3, "", ""))
+	synctest.Test(t, func(t *testing.T) {
+		critical := make(chan string, 8)
+		logger.Critical = func(format string, args ...any) { critical <- fmt.Sprintf(format, args...) }
+		log.SetGlobalLogger(logger)
+		a := &UdpAC{config: &Config{FailurePolicy: FailurePolicyOpen}, serverPeerMap: map[string]*core.UdpPeer{}}
+		a.signals.stop = make(chan struct{})
+		a.signals.serverMapUpdated = make(chan struct{}, 1)
+		failure := errors.New("comment match unavailable")
+		var fail atomic.Bool
+		fail.Store(true)
+		a.wg.Add(1)
+		go a.maintainServerConnections(func(open bool) error {
+			if open && fail.Load() {
+				return failure
+			}
+			return nil
+		})
+		synctest.Wait()
+		tick := func() { time.Sleep(MinialServerDiscoveryInterval * time.Second); synctest.Wait() }
+		for i := 0; i < 3; i++ {
+			tick()
+		}
+		select {
+		case alert := <-critical:
+			if !strings.Contains(alert, "fallback could not open") || !strings.Contains(alert, "comment match unavailable") {
+				t.Errorf("incomplete alert: %s", alert)
+			}
+		default:
+			t.Error("missing outage alert")
+		}
+		if len(critical) != 0 {
+			t.Error("repeated outage alert")
+		}
+		fail.Store(false)
+		tick()
+		fail.Store(true)
+		tick()
+		if len(critical) != 1 {
+			t.Errorf("new failure produced %d alerts, want one", len(critical))
+		}
+		close(a.signals.stop)
+		a.wg.Wait()
+	})
 }

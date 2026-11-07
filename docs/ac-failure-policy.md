@@ -38,9 +38,19 @@ is available in the host kernel and iptables installation, including for contain
 deployments. Fail-open startup verifies support by inserting a comment-bearing
 RETURN rule in a temporary, unreferenced chain, then removing that chain. Failure
 of the probe or its cleanup is logged in fail-open mode, and startup continues.
+If fallback cannot open during an outage, the AC logs a critical error when the
+failure begins; retries do not repeat the same alert on every tick.
 Discovery retries failed rule changes; fallback cannot open until comment support
 is available. The probe does not open traffic. Fail-closed skips the insertion
 probe and still refuses startup if required cleanup or inspection fails.
+
+The exact chain name `NHP-AC-COMMENT-PROBE` is reserved for this check. The AC
+never links it to a traffic chain. After an interrupted startup, it reuses only
+an empty, unreferenced chain or one containing exactly its tagged RETURN rule.
+Unfamiliar rules or references cause an error and require operator inspection.
+Cleanup deletes the exact probe rule and chain; it never flushes arbitrary rules
+or deletes chains by prefix. Earlier draft versions used random `NHP-AC-*` probe
+names; inspect any such leftovers manually before removing them.
 
 On startup, both modes attempt to remove those owned rules, including duplicates
 left after a crash.
@@ -83,7 +93,13 @@ Reload and shutdown wait for an in-flight firewall update. Each command has a
 five-second timeout; this is not a limit on the whole update. A normal change
 uses up to four commands, and stale duplicates require additional deletions.
 Shutdown also attempts a final cleanup. Allow for these operations in service
-stop timeouts.
+stop timeouts. For systemd deployments, check the AC unit's `TimeoutStopSec`
+with `systemctl cat <ac-unit>` and size it for cleanup under lock contention.
+An interrupted update followed by final cleanup can take tens of seconds;
+duplicates and DNS resolution can add more. There is no universal safe fixed
+value. If systemd kills the process before cleanup finishes, fail-open rules may
+remain until the next successful AC startup. Do not disable the stop deadline
+as a substitute for investigating repeated cleanup failures.
 
 Hostname resolution uses the existing system resolver. An in-progress DNS lookup
 can also delay discovery replacement or shutdown.

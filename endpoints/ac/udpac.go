@@ -674,6 +674,12 @@ func (a *UdpAC) maintainServerConnections(setFailurePolicyOpen func(bool) error)
 
 discoveryCycles:
 	for {
+		// Consume notifications before taking the peer snapshot. Updates before
+		// the snapshot are included; updates after it leave a notification queued.
+		select {
+		case <-a.signals.serverMapUpdated:
+		default:
+		}
 		// make a local copy of servers then iterate because next operations are time consuming (too long to use locked iteration)
 		a.serverPeerMutex.Lock()
 		var serverCount int32 = int32(len(a.serverPeerMap))
@@ -698,7 +704,9 @@ discoveryCycles:
 		// An in-flight rule update finishes before a replacement cycle starts.
 		// Reload and shutdown wait for it: each iptables command has a 5s timeout,
 		// not the whole update. Duplicate cleanup needs one extra command per rule.
+		// FailurePolicy and FilterMode are immutable after startup.
 		var lastState, lastError string
+		var openingFailed bool
 		for {
 			select {
 			case <-a.signals.stop:
@@ -731,12 +739,17 @@ discoveryCycles:
 					err = setFailurePolicyOpen(false)
 				}
 				if err != nil {
-					if err.Error() != lastError {
+					failedToOpen := allFailed && a.config.FailurePolicy == FailurePolicyOpen
+					if failedToOpen && !openingFailed {
+						log.Critical("all server discoveries failed, but fail-open fallback could not open: %v; traffic remains subject to the current firewall; will retry", err)
+					} else if err.Error() != lastError {
 						log.Error("AC failure policy: %v (will retry)", err)
 					}
+					openingFailed = failedToOpen
 					lastError = err.Error()
 					continue
 				}
+				openingFailed = false
 				if state != lastState || lastError != "" {
 					log.Info("AC failure policy: %s", state)
 				}

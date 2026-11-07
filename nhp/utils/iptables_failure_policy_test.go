@@ -11,6 +11,49 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
+func failurePolicyTestTable(t *testing.T) (*IPTables, string) {
+	t.Helper()
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "iptables")
+	script := `#!/bin/sh
+cd "$(dirname "$0")" || exit 2
+[ "$1" = -w ] || exit 2
+shift
+op=$1; chain=$2
+if [ "$op" = -S ] && [ -z "$chain" ]; then
+    for c in INPUT FORWARD NHP-AC-*; do
+        [ -f "$c" ] || continue
+        case "$c" in NHP-AC-*) echo "-N $c" ;; esac
+        cat "$c"
+    done
+    exit 0
+fi
+shift 2
+case "$chain" in INPUT|FORWARD) [ -e "$chain" ] || : > "$chain" ;; esac
+if [ -f fail ] && [ "$chain" = FORWARD ]; then echo injected-error >&2; exit 2; fi
+if [ -f fail-before ] && [ "$(cat fail-before)" = "$op" ]; then rm fail-before; exit 2; fi
+case "$op" in
+-N) [ ! -e "$chain" ] || exit 1; : > "$chain" ;;
+-A|-I) if [ -f no-comment ]; then echo comment-unavailable >&2; exit 2; fi
+    [ -f "$chain" ] || exit 1
+    echo "-A $chain $*" >> "$chain" ;;
+-F) [ -f "$chain" ] || exit 1; : > "$chain" ;;
+-X) [ -f "$chain" ] && [ ! -s "$chain" ] || exit 1
+    rm "$chain" ;;
+-S) cat "$chain" || exit 1 ;;
+-D) if [ -f fail-probe-cleanup ] && [ "$chain" = NHP-AC-COMMENT-PROBE ]; then echo cleanup-failed >&2; exit 2; fi
+    awk -v rule="-A $chain $*" '$0 == rule && !removed { removed=1; next } { print } END { if (!removed) exit 1 }' "$chain" > next || exit 1
+    mv next "$chain" ;;
+*) exit 2 ;;
+esac
+if [ -f fail-after ] && [ "$(cat fail-after)" = "$op" ]; then rm fail-after; exit 2; fi
+`
+	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return &IPTables{Binary: binary}, dir
+}
+
 // A fake executable exercises command errors and partial reconciliation without
 // requiring root or ever invoking the host firewall. Real enforcement is tested
 // separately in the disposable integration lab.
@@ -22,34 +65,8 @@ func TestFailurePolicyRules(t *testing.T) {
 	}
 	log.SetGlobalLogger(logger)
 	t.Cleanup(func() { log.SetGlobalLogger(log.NewLogger("", 3, "", "")) })
-	dir := t.TempDir()
-	binary := filepath.Join(dir, "iptables")
-	script := `#!/bin/sh
-cd "$(dirname "$0")" || exit 2
-# Emulate older iptables: bare -w only; a numeric wait becomes an invalid operation.
-[ "$1" = -w ] || exit 2
-shift
-op=$1; chain=$2
-shift 2
-[ -e "$chain" ] || : > "$chain"
-if [ -f fail ] && [ "$chain" = FORWARD ]; then echo injected-error >&2; exit 2; fi
-case "$op" in
--N) : > "$chain" ;;
--A) if [ -f no-comment ]; then echo comment-unavailable >&2; exit 2; fi
-    echo "-A $chain $*" >> "$chain" ;;
--F) if [ -f fail-probe-cleanup ]; then echo cleanup-failed >&2; exit 2; fi
-    : > "$chain" ;;
--X) rm "$chain" ;;
--S) cat "$chain" ;;
--I) echo "-A $chain $*" >> "$chain" ;;
--D) awk -v rule="-A $chain $*" '$0 == rule && !removed { removed=1; next } { print }' "$chain" > next; mv next "$chain" ;;
-*) exit 2 ;;
-esac
-`
-	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	table := &IPTables{Binary: binary}
+	table, dir := failurePolicyTestTable(t)
+	binary := table.Binary
 	count := func(chain string) int {
 		b, err := os.ReadFile(filepath.Join(dir, chain))
 		if err != nil {
@@ -134,7 +151,7 @@ esac
 	}
 	for _, chain := range []string{"INPUT", "FORWARD"} {
 		legacyRule := "-A " + chain + " -j ACCEPT"
-		legacy := "-A " + chain + " -s 192.0.2.1 -j DROP\n" + legacyRule + "\n"
+		legacy := "-A " + chain + " -s 192.0.2.1 -j DROP\n" + strings.ReplaceAll(legacyRule, " ", "  ") + "\n"
 		if err := os.WriteFile(filepath.Join(dir, chain), []byte(legacy), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -248,5 +265,88 @@ func TestFailurePolicyRuleOwnership(t *testing.T) {
 		if isFailurePolicyRule(line, "INPUT") {
 			t.Fatalf("operator rule claimed: %s", line)
 		}
+	}
+}
+
+func TestFailurePolicyProbeRecovery(t *testing.T) {
+	for _, leftover := range []string{"empty", "populated"} {
+		t.Run(leftover, func(t *testing.T) {
+			table, dir := failurePolicyTestTable(t)
+			rule := ""
+			if leftover == "populated" {
+				rule = "-A " + failurePolicyProbeChain + " -m comment --comment " + failurePolicyComment + " -j RETURN\n"
+			}
+			if err := os.WriteFile(filepath.Join(dir, failurePolicyProbeChain), []byte(rule), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := table.InitializeFailurePolicy(false); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, failurePolicyProbeChain)); !os.IsNotExist(err) {
+				t.Fatalf("probe remains: %v", err)
+			}
+		})
+	}
+	for _, phase := range []string{"before", "after"} {
+		for _, op := range []string{"-N", "-A", "-D", "-X"} {
+			t.Run(phase+op, func(t *testing.T) {
+				table, dir := failurePolicyTestTable(t)
+				if err := os.WriteFile(filepath.Join(dir, "fail-"+phase), []byte(op), 0600); err != nil {
+					t.Fatal(err)
+				}
+				// Failure after -N can be recovered immediately by inspecting the chain.
+				initErr := table.InitializeFailurePolicy(false)
+				if initErr == nil && !(phase == "after" && op == "-N") {
+					t.Fatal("failure ignored")
+				}
+				for i := 0; i < 3; i++ {
+					restarted := &IPTables{Binary: table.Binary}
+					if err := restarted.InitializeFailurePolicy(false); err != nil {
+						t.Fatal(err)
+					}
+				}
+				leftovers, err := filepath.Glob(filepath.Join(dir, "NHP-AC-*"))
+				if err != nil || len(leftovers) != 0 {
+					t.Fatalf("leaked probe chains: %v, %v", leftovers, err)
+				}
+			})
+		}
+	}
+}
+
+func TestFailurePolicyProbePreservesUnfamiliarChains(t *testing.T) {
+	for _, kind := range []string{"operator-rule", "referenced", "goto", "similar-name"} {
+		t.Run(kind, func(t *testing.T) {
+			table, dir := failurePolicyTestTable(t)
+			name := failurePolicyProbeChain
+			rule := "-A " + name + " -m comment --comment " + failurePolicyComment + " -j RETURN\n"
+			input := ""
+			switch kind {
+			case "operator-rule":
+				rule = "-A " + name + " -j DROP\n"
+			case "referenced":
+				input = "-A INPUT -j " + name + "\n"
+			case "goto":
+				input = "-A INPUT -g " + name + "\n"
+			case "similar-name":
+				name += "-OTHER"
+				rule = strings.ReplaceAll(rule, failurePolicyProbeChain, name)
+			}
+			for file, content := range map[string]string{name: rule, "INPUT": input} {
+				if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := table.InitializeFailurePolicy(false)
+			if (err != nil) != (kind != "similar-name") {
+				t.Fatalf("unexpected result: %v", err)
+			}
+			for file, want := range map[string]string{name: rule, "INPUT": input} {
+				got, err := os.ReadFile(filepath.Join(dir, file))
+				if err != nil || string(got) != want {
+					t.Fatalf("changed %s: %q, %v", file, got, err)
+				}
+			}
+		})
 	}
 }

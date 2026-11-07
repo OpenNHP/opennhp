@@ -3,7 +3,6 @@ package utils
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -296,21 +295,64 @@ func (table *IPTables) failurePolicyCommand(args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, table.Binary, append([]string{"-w"}, args...)...).CombinedOutput()
 }
 
+// This exact name is reserved for the AC's unreferenced capability probe. Reuse
+// bounds crash leftovers to one chain; unfamiliar contents are never flushed.
+const failurePolicyProbeChain = "NHP-AC-COMMENT-PROBE"
+
 // probeFailurePolicyComment checks kernel support without changing packet handling.
-// The randomly named chain is never referenced by a traffic-processing chain.
 func (table *IPTables) probeFailurePolicyComment() (err error) {
-	chain := "NHP-AC-" + rand.Text()[:16]
+	chain := failurePolicyProbeChain
+	rule := []string{"-m", "comment", "--comment", failurePolicyComment, "-j", "RETURN"}
+	present := false
 	if out, cmdErr := table.failurePolicyCommand("-N", chain); cmdErr != nil {
-		return fmt.Errorf("create failure-policy probe: %w: %s", cmdErr, out)
-	}
-	defer func() {
-		for _, op := range []string{"-F", "-X"} {
-			if out, cleanupErr := table.failurePolicyCommand(op, chain); cleanupErr != nil {
-				err = errors.Join(err, fmt.Errorf("clean up probe %s (%s): %w: %s", chain, op, cleanupErr, out))
+		// A previous process may have died after creating or populating the probe.
+		// Inspect the whole table to reject references as well as unfamiliar rules.
+		rules, inspectErr := table.failurePolicyCommand("-S")
+		if inspectErr != nil {
+			return fmt.Errorf("create failure-policy probe: %w: %s; inspect: %v: %s", cmdErr, out, inspectErr, rules)
+		}
+		found := false
+		for _, line := range strings.Split(string(rules), "\n") {
+			fields := strings.Fields(line)
+			if strings.Join(fields, " ") == "-N "+chain {
+				found = true
+			}
+			for i := 0; i+1 < len(fields); i++ {
+				if (fields[i] == "-j" || fields[i] == "-g") && fields[i+1] == chain {
+					return fmt.Errorf("probe chain %s is referenced; inspect it manually", chain)
+				}
+			}
+			if len(fields) >= 2 && fields[0] == "-A" && fields[1] == chain {
+				if present || !isFailurePolicyRuleTarget(line, chain, "RETURN") {
+					return fmt.Errorf("probe chain %s has unfamiliar contents: %q; inspect it manually", chain, line)
+				}
+				present = true
 			}
 		}
+		if !found {
+			return fmt.Errorf("create failure-policy probe: %w: %s", cmdErr, out)
+		}
+	}
+	defer func() {
+		// Delete only our exact rule. Never flush a chain, even the reserved one.
+		if present {
+			if out, cleanupErr := table.failurePolicyCommand(append([]string{"-D", chain}, rule...)...); cleanupErr != nil {
+				err = errors.Join(err, fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out))
+			}
+		}
+		if out, cleanupErr := table.failurePolicyCommand("-X", chain); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out))
+		}
 	}()
-	if out, cmdErr := table.failurePolicyCommand("-A", chain, "-m", "comment", "--comment", failurePolicyComment, "-j", "RETURN"); cmdErr != nil {
+	if present {
+		if out, cmdErr := table.failurePolicyCommand(append([]string{"-D", chain}, rule...)...); cmdErr != nil {
+			return fmt.Errorf("remove stale probe rule: %w: %s", cmdErr, out)
+		}
+	}
+	// Recheck support even when recovering an old probe. A command can apply
+	// its rule before reporting failure or timing out, so always attempt deletion.
+	present = true
+	if out, cmdErr := table.failurePolicyCommand(append([]string{"-A", chain}, rule...)...); cmdErr != nil {
 		return fmt.Errorf("fail-open requires iptables comment match support: %w: %s", cmdErr, out)
 	}
 	return nil
@@ -319,9 +361,13 @@ func (table *IPTables) probeFailurePolicyComment() (err error) {
 // Match the entire owned rule, allowing only whitespace and comment quoting
 // differences. A substring match could claim an operator's restricted rule.
 func isFailurePolicyRule(line, chain string) bool {
+	return isFailurePolicyRuleTarget(line, chain, "ACCEPT")
+}
+
+func isFailurePolicyRuleTarget(line, chain, target string) bool {
 	line = strings.Join(strings.Fields(line), " ")
 	for _, comment := range []string{failurePolicyComment, "\"" + failurePolicyComment + "\"", "'" + failurePolicyComment + "'"} {
-		if line == "-A "+chain+" -m comment --comment "+comment+" -j ACCEPT" {
+		if line == "-A "+chain+" -m comment --comment "+comment+" -j "+target {
 			return true
 		}
 	}
@@ -343,6 +389,7 @@ func (table *IPTables) InitializeFailurePolicy(failClosed bool) error {
 			return fmt.Errorf("inspect %s: %w: %s", chain, err, out)
 		}
 		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.Join(strings.Fields(line), " ")
 			if line == "-A "+chain+" -j ACCEPT" || line == "-A "+chain+" -d 0.0.0.0/0 -j ACCEPT" {
 				if failClosed {
 					return fmt.Errorf("fail-closed: untagged unconditional ACCEPT in %s: %q; inspect and remove legacy fallback rules before restarting (existing firewall is still in effect)", chain, line)

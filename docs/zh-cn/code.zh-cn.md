@@ -370,3 +370,13 @@ IP放行模式分为两种：
 Logger对象可以单独创建使用（**NewLogger()**），也可以在应用程序启动时指定Package全局变量**glbLogger**，供整个工程使用。
 
 注意：应用程序结束前，需调用Logger.Close()，确保最后缓存的日志能够写入文件。
+
+## 10. eBPF / XDP 过滤层
+
+OpenNHP 的入站过滤是在内核中实现的，源码位于 `nhp/ebpf/xdp/`：
+
+- `nhp_server_xdp.c`：NHP-Server 的入站过滤器，按固定策略放行敲门端口、白名单来源的 SSH，以及主机自己发起流的应答。
+- `nhp_ebpf_xdp.c` 与 `tc_egress.c`：NHP-AC 的按次放行过滤器，XDP 入站加 TC 出站两个程序协同工作。
+- `nhp/utils/ebpf/engine_linux.go`：两个守护进程共用的加载器，负责加载、挂载、能力回收与白名单热重载。
+
+加载顺序、能力（capability）回收的语义，以及 `etc/xdp.toml` 每个字段的生效方式，详见 [eBPF 原理](/zh-cn/ebpf/)。

@@ -40,7 +40,7 @@ The `nhp` module contains the core NHP protocol implementation:
 | `plugins/` | Server plugin system interfaces |
 | `log/` | Async logging framework |
 | `etcd/` | etcd integration for distributed configuration |
-| `ebpf/` | eBPF programs for XDP and traffic control |
+| `ebpf/` | eBPF programs for XDP and traffic control — see [eBPF Internals](/ebpf/) |
 | `test/` | Unit tests |
 
 ### Key Files in `core/`

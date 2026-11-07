@@ -747,15 +747,16 @@ func (s *UdpServer) Stop() {
 	}
 	s.running.Store(false)
 	s.healthy.Store(false)
+	// Drain remote config callbacks before tearing down resources they can change.
+	if s.etcdConn != nil {
+		s.etcdConn.Close()
+	}
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
 	}
 	if s.metricsServer != nil {
 		s.metricsServer.stop()
-	}
-	if s.etcdConn != nil {
-		s.etcdConn.Close()
 	}
 	close(s.signals.stop)
 	s.listenConn.Close()

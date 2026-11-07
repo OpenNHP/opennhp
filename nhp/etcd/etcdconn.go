@@ -3,6 +3,7 @@ package etcd
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -20,13 +21,14 @@ type EtcdConfig struct {
 }
 
 type EtcdConn struct {
-	Endpoints []string
-	Username  string
-	Password  string
-	Key       string
-	client    *clientv3.Client
-	ctx       context.Context
-	cancel    context.CancelFunc
+	Endpoints  []string
+	Username   string
+	Password   string
+	Key        string
+	client     *clientv3.Client
+	ctx        context.Context
+	cancel     context.CancelFunc
+	callbackMu sync.Mutex
 }
 
 // InitClient must be called once per EtcdConn, before concurrent use.
@@ -88,6 +90,8 @@ func (conn *EtcdConn) SetValue(v string) error {
 	return err
 }
 
+// WatchValue delivers callbacks serially. A callback must return before Close
+// can finish, and must not call Close synchronously.
 func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 	if conn.client == nil || conn.ctx == nil {
 		log.Error("cannot watch etcd configuration: client not initialized")
@@ -115,7 +119,13 @@ func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 			for _, ev := range resp.Events {
 				switch ev.Type {
 				case clientv3.EventTypePut:
-					callbackFunc(ev.Kv.Value)
+					func() {
+						conn.callbackMu.Lock()
+						defer conn.callbackMu.Unlock()
+						if conn.ctx.Err() == nil {
+							callbackFunc(ev.Kv.Value)
+						}
+					}()
 				case clientv3.EventTypeDelete:
 					log.Debug("[DELETE] Key: %s\n", string(ev.Kv.Key))
 				}
@@ -127,10 +137,13 @@ func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 
 }
 
+// Close cancels requests and waits for any active configuration callback.
 func (conn *EtcdConn) Close() {
 	if conn.cancel != nil {
 		conn.cancel()
 	}
+	conn.callbackMu.Lock()
+	defer conn.callbackMu.Unlock()
 	if conn.client != nil {
 		conn.client.Close()
 	}

@@ -3,6 +3,7 @@ package etcd
 import (
 	"net"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -148,4 +149,79 @@ func TestEtcdOperationsAfterFailedStatus(t *testing.T) {
 		t.Fatal("watch after failed Status did not return")
 	}
 	c.Close() // deferred Close repeats cleanup
+}
+
+// Shutdown must not return while a config callback can still mutate the daemon.
+func TestEtcdCloseWaitsForCallback(t *testing.T) {
+	endpoint := os.Getenv("OPENNHP_TEST_ETCD")
+	if endpoint == "" {
+		t.Skip("set OPENNHP_TEST_ETCD to a disposable etcd endpoint")
+	}
+	c := &EtcdConn{Endpoints: []string{endpoint}, Key: "opennhp-close-callback-test"}
+	if err := c.InitClient(); err != nil {
+		t.Fatal(err)
+	}
+	entered, release, watchDone := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	go func() {
+		defer close(watchDone)
+		c.WatchValue(func([]byte) {
+			calls.Add(1)
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-release
+		})
+	}()
+	// Release the callback before cleanup, even when an assertion fails.
+	defer c.Close()
+	defer close(release)
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.After(5 * time.Second)
+waiting:
+	for {
+		select {
+		case <-entered:
+			break waiting
+		case <-ticker.C:
+			if err := c.SetValue("update"); err != nil {
+				t.Fatal(err)
+			}
+		case <-deadline:
+			t.Fatal("watch did not deliver update")
+		}
+	}
+	// Queue another event while the first callback is held.
+	if err := c.SetValue("queued"); err != nil {
+		t.Fatal(err)
+	}
+	closed := make(chan struct{}, 2)
+	for range 2 {
+		go func() { c.Close(); closed <- struct{}{} }()
+	}
+	<-c.ctx.Done()
+	select {
+	case <-closed:
+		t.Fatal("Close returned while a callback was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	// The deferred release must happen only once.
+	release <- struct{}{}
+	for range 2 {
+		select {
+		case <-closed:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Close did not finish after callback returned")
+		}
+	}
+	select {
+	case <-watchDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("watch did not stop")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("queued callback ran during shutdown: %d calls", got)
+	}
 }

@@ -3,7 +3,6 @@ package utils
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -295,84 +294,16 @@ func (table *IPTables) failurePolicyCommand(args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, table.Binary, append([]string{"-w"}, args...)...).CombinedOutput()
 }
 
-// This exact name is reserved for the AC's unreferenced capability probe. Reuse
-// bounds crash leftovers to one chain; unfamiliar contents are never flushed.
-const failurePolicyProbeChain = "NHP-AC-COMMENT-PROBE"
+// The exact chain name is reserved for AC fallback ownership. It uses only
+// built-in iptables features; the comment extension is not required.
+const failurePolicyChain = "NHP-AC-FALLBACK"
 
-// probeFailurePolicyComment checks kernel support without changing packet handling.
-func (table *IPTables) probeFailurePolicyComment() (err error) {
-	chain := failurePolicyProbeChain
-	rule := []string{"-m", "comment", "--comment", failurePolicyComment, "-j", "RETURN"}
-	present := false
-	if out, cmdErr := table.failurePolicyCommand("-N", chain); cmdErr != nil {
-		// A previous process may have died after creating or populating the probe.
-		// Inspect the whole table to reject references as well as unfamiliar rules.
-		rules, inspectErr := table.failurePolicyCommand("-S")
-		if inspectErr != nil {
-			return fmt.Errorf("create failure-policy probe: %w: %s; inspect: %v: %s", cmdErr, out, inspectErr, rules)
-		}
-		found := false
-		for _, line := range strings.Split(string(rules), "\n") {
-			fields := strings.Fields(line)
-			if strings.Join(fields, " ") == "-N "+chain {
-				found = true
-			}
-			for i := 0; i+1 < len(fields); i++ {
-				if (fields[i] == "-j" || fields[i] == "-g") && fields[i+1] == chain {
-					return fmt.Errorf("probe chain %s is referenced; inspect it manually", chain)
-				}
-			}
-			if len(fields) >= 2 && fields[0] == "-A" && fields[1] == chain {
-				if present || !isFailurePolicyRuleTarget(line, chain, "RETURN") {
-					return fmt.Errorf("probe chain %s has unfamiliar contents: %q; inspect it manually", chain, line)
-				}
-				present = true
-			}
-		}
-		if !found {
-			return fmt.Errorf("create failure-policy probe: %w: %s", cmdErr, out)
-		}
-	}
-	defer func() {
-		// Delete only our exact rule. Never flush a chain, even the reserved one.
-		var deleteErr error
-		if present {
-			if out, cleanupErr := table.failurePolicyCommand(append([]string{"-D", chain}, rule...)...); cleanupErr != nil {
-				deleteErr = fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out)
-			}
-		}
-		if out, cleanupErr := table.failurePolicyCommand("-X", chain); cleanupErr != nil {
-			err = errors.Join(err, deleteErr, fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out))
-		} else if err == nil {
-			err = deleteErr
-		}
-		// If insertion failed and -X succeeded, the chain is gone: a failed
-		// -D for a rule that was never inserted is not a cleanup failure.
-	}()
-	if present {
-		if out, cmdErr := table.failurePolicyCommand(append([]string{"-D", chain}, rule...)...); cmdErr != nil {
-			return fmt.Errorf("remove stale probe rule: %w: %s", cmdErr, out)
-		}
-	}
-	// Recheck support even when recovering an old probe. A command can apply
-	// its rule before reporting failure or timing out, so always attempt deletion.
-	present = true
-	if out, cmdErr := table.failurePolicyCommand(append([]string{"-A", chain}, rule...)...); cmdErr != nil {
-		return fmt.Errorf("fail-open requires iptables comment match support: %w: %s", cmdErr, out)
-	}
-	return nil
-}
-
-// Match the entire owned rule, allowing only whitespace and comment quoting
-// differences. A substring match could claim an operator's restricted rule.
+// Recognize the exact comment-tagged rules used by earlier drafts, so an
+// interrupted deployment of those versions can also be cleaned up safely.
 func isFailurePolicyRule(line, chain string) bool {
-	return isFailurePolicyRuleTarget(line, chain, "ACCEPT")
-}
-
-func isFailurePolicyRuleTarget(line, chain, target string) bool {
 	line = strings.Join(strings.Fields(line), " ")
 	for _, comment := range []string{failurePolicyComment, "\"" + failurePolicyComment + "\"", "'" + failurePolicyComment + "'"} {
-		if line == "-A "+chain+" -m comment --comment "+comment+" -j "+target {
+		if line == "-A "+chain+" -m comment --comment "+comment+" -j ACCEPT" {
 			return true
 		}
 	}
@@ -403,48 +334,101 @@ func (table *IPTables) InitializeFailurePolicy(failClosed bool) error {
 			}
 		}
 	}
-	if !failClosed {
-		if err := table.probeFailurePolicyComment(); err != nil {
-			table.failurePolicyStateKnown = false
-			return err
-		}
-	}
 	return nil
 }
 
-// setFailurePolicyRules reconciles tagged rules from the kernel, including
+// setFailurePolicyRules reconciles owned rules from the kernel, including
 // duplicates and partial updates. On error the next discovery tick retries.
 // The caller holds failurePolicyMutex; one AC owns each network namespace.
 func (table *IPTables) setFailurePolicyRules(open bool) error {
 	table.failurePolicyStateKnown = false
+	out, err := table.failurePolicyCommand("-S")
+	if err != nil {
+		return fmt.Errorf("inspect AC fallback: %w: %s", err, out)
+	}
+	present, accepts := false, 0
+	jumps := map[string]int{"INPUT": 0, "FORWARD": 0}
+	legacy := map[string]int{"INPUT": 0, "FORWARD": 0}
+	// Validate the whole reserved chain and all references before changing it.
+	// Never flush unknown contents or claim a conditional/operator reference.
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		rule := strings.Join(fields, " ")
+		if rule == "-N "+failurePolicyChain {
+			present = true
+		}
+		if len(fields) < 2 || fields[0] != "-A" {
+			continue
+		}
+		chain := fields[1]
+		if chain == failurePolicyChain {
+			if rule != "-A "+failurePolicyChain+" -j ACCEPT" {
+				return fmt.Errorf("reserved AC chain has unfamiliar rule %q; inspect before restarting", line)
+			}
+			accepts++
+		}
+		// -S renders a user-chain jump/goto last (there are no target options).
+		// Checking that suffix avoids mistaking text inside a comment for a jump.
+		if strings.HasSuffix(rule, " -j "+failurePolicyChain) || strings.HasSuffix(rule, " -g "+failurePolicyChain) {
+			if _, owned := jumps[chain]; !owned || rule != "-A "+chain+" -j "+failurePolicyChain {
+				return fmt.Errorf("reserved AC chain has unfamiliar reference %q; inspect before restarting", line)
+			}
+			jumps[chain]++
+		}
+		if _, owned := legacy[chain]; owned && isFailurePolicyRule(line, chain) {
+			legacy[chain]++
+		}
+	}
+	run := func(args ...string) error {
+		if out, err := table.failurePolicyCommand(args...); err != nil {
+			return fmt.Errorf("AC fallback %s: %w: %s", strings.Join(args, " "), err, out)
+		}
+		return nil
+	}
+	if open {
+		if !present {
+			if err := run("-N", failurePolicyChain); err != nil {
+				return err
+			}
+		}
+		if accepts == 0 {
+			if err := run("-A", failurePolicyChain, "-j", "ACCEPT"); err != nil {
+				return err
+			}
+			accepts = 1
+		}
+	}
+	wanted := 0
+	if open {
+		wanted = 1
+	}
 	for _, chain := range []string{"INPUT", "FORWARD"} {
-		out, err := table.failurePolicyCommand("-S", chain)
-		if err != nil {
-			return fmt.Errorf("inspect %s: %w: %s", chain, err, out)
+		for jumps[chain] > wanted {
+			if err := run("-D", chain, "-j", failurePolicyChain); err != nil {
+				return err
+			}
+			jumps[chain]--
 		}
-		rule := []string{"-m", "comment", "--comment", failurePolicyComment, "-j", "ACCEPT"}
-		count := 0
-		for _, line := range strings.Split(string(out), "\n") {
-			if isFailurePolicyRule(line, chain) {
-				count++
+		if jumps[chain] < wanted {
+			if err := run("-I", chain, "-j", failurePolicyChain); err != nil {
+				return err
 			}
 		}
-		wanted := 0
-		if open {
-			wanted = 1
-		}
-		for count > wanted {
-			args := append([]string{"-D", chain}, rule...)
-			if out, err := table.failurePolicyCommand(args...); err != nil {
-				return fmt.Errorf("remove AC fallback in %s: %w: %s", chain, err, out)
+		for i := 0; i < legacy[chain]; i++ {
+			if err := run("-D", chain, "-m", "comment", "--comment", failurePolicyComment, "-j", "ACCEPT"); err != nil {
+				return err
 			}
-			count--
 		}
-		if count < wanted {
-			args := append([]string{"-I", chain}, rule...)
-			if out, err := table.failurePolicyCommand(args...); err != nil {
-				return fmt.Errorf("insert AC fallback in %s: %w: %s", chain, err, out)
-			}
+	}
+	for accepts > wanted {
+		if err := run("-D", failurePolicyChain, "-j", "ACCEPT"); err != nil {
+			return err
+		}
+		accepts--
+	}
+	if !open && present {
+		if err := run("-X", failurePolicyChain); err != nil {
+			return err
 		}
 	}
 	table.AcceptInputMode = open

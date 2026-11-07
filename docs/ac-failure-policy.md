@@ -16,8 +16,7 @@ FailurePolicy = "fail-closed"
 For remote etcd TOML configuration, place this setting under `[BaseConfig]`.
 
 Omitted, empty, or `"fail-open"` selects the availability policy: when all server
-discoveries fail, the AC inserts broad INPUT and FORWARD ACCEPT rules. Unlike
-older versions, this fallback requires the iptables comment match described below.
+discoveries fail, the AC opens IPv4 INPUT and FORWARD traffic through its reserved fallback chain.
 `"fail-closed"` prevents that fallback. Existing grants keep their normal lifetime;
 established connections may survive grant expiry. Discovery/reporting intervals
 and grant lifetimes are unchanged. IPv6 and XDP are unchanged;
@@ -35,40 +34,26 @@ endpoint's failed state.
 Local startup now reports a missing or malformed `etc/config.toml` immediately,
 instead of continuing with an empty configuration and failing later.
 
-The AC requires the iptables `comment` match (`xt_comment` on legacy iptables)
-to tag its broad fallback rules with `opennhp-ac-fail-open`. Ensure this support
-is available in the host kernel and iptables installation, including for container
-deployments. Fail-open startup verifies support by inserting a comment-bearing
-RETURN rule in a temporary, unreferenced chain, then removing that chain. Failure
-of the probe or its cleanup is logged in fail-open mode, and startup continues.
-If fallback cannot open during an outage, the AC logs a critical error when the
-failure begins; retries do not repeat the same alert on every tick.
-Discovery retries failed rule changes; fallback cannot open until comment support
-is available. The probe does not open traffic. Fail-closed skips the insertion
-probe and still refuses startup if required cleanup or inspection fails.
-After upgrading a fail-open deployment, inspect the startup log for the critical
-`initialize AC failure policy` diagnostic. An `iptables -m comment --help` check
-alone verifies the userspace extension, not whether the kernel accepts the rule.
-Verify outage and recovery behavior in a staging environment before relying on
-the fallback; fix any comment-support or probe error reported at startup.
+The chain name `NHP-AC-FALLBACK` is reserved for the AC. When fallback is open,
+it contains an unconditional ACCEPT rule, with unconditional jumps from INPUT
+and FORWARD. This uses built-in iptables features and does not require the
+`comment` match. Do not add operator rules or references to this chain.
+The AC inspects the chain and all its references before modifying it. Unfamiliar
+contents or references cause an error; the AC never flushes the chain or deletes
+chains by prefix.
 
-The exact chain name `NHP-AC-COMMENT-PROBE` is reserved for this check. The AC
-never links it to a traffic chain. After an interrupted startup, it reuses only
-an empty, unreferenced chain or one containing exactly its tagged RETURN rule.
-Unfamiliar rules or references cause an error and require operator inspection.
-Cleanup deletes the exact probe rule and chain; it never flushes arbitrary rules
-or deletes chains by prefix. Earlier draft versions used random `NHP-AC-*` probe
-names; inspect any such leftovers manually before removing them.
+On startup, both modes remove owned jumps and the fallback chain, including
+partial updates and duplicates left after a crash. Exact `opennhp-ac-fail-open`
+comment-tagged rules from earlier drafts are also removed. Switching from
+fail-open to fail-closed therefore needs no manual cleanup of these owned rules.
+After successful cleanup, fail-open starts with the normal firewall baseline and
+opens again only after the usual discovery failure threshold.
 
-On startup, both modes attempt to remove those owned rules, including duplicates
-left after a crash.
-Switching from fail-open to fail-closed therefore needs no manual rule cleanup
-when the rules were created by this version. After successful cleanup, fail-open
-starts with the normal firewall baseline and opens again only after the usual
-discovery failure threshold.
-Failed firewall commands are reported and retried on subsequent discovery ticks;
-fail-closed refuses startup if owned-rule cleanup fails. Fail-open logs the failure
-and continues startup, so leftover owned rules may remain until cleanup succeeds.
+Failed firewall commands are reported and retried on subsequent discovery ticks.
+Fail-closed refuses startup if required cleanup or inspection fails. Fail-open
+logs the failure and continues startup, so leftover owned rules may remain until
+cleanup succeeds. If fallback cannot open during an outage, the AC logs a critical
+error when the failure begins; retries do not repeat that alert on every tick.
 
 Older versions created untagged unconditional ACCEPT rules. They cannot safely be
 distinguished from operator rules. Before upgrading, stop the old AC gracefully
@@ -99,7 +84,7 @@ The IPv6 methods retain their existing behavior; this setting only controls IPv4
 
 Reload and shutdown wait for an in-flight firewall update. Each command has a
 five-second timeout; this is not a limit on the whole update. A normal change
-uses up to four commands, and stale duplicates require additional deletions.
+uses up to five commands, and stale duplicates require additional deletions.
 Shutdown also attempts a final cleanup. Allow for these operations in service
 stop timeouts. For systemd deployments, check the AC unit's `TimeoutStopSec`
 with `systemctl cat <ac-unit>` and size it for cleanup under lock contention.

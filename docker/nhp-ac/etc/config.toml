@@ -2,7 +2,7 @@
 # field with (-) does not support dynamic update
 
 # FailurePolicy (-): iptables discovery fallback; restart required.
-# Omitted/empty or "fail-open" enables fallback (requires iptables comment match).
+# Omitted/empty or "fail-open" enables fallback.
 # "fail-closed" keeps normal firewall/grant expiry. See docs/ac-failure-policy.md
 # for migration from legacy ACCEPT rules and established-session limitations.
 # FailurePolicy = "fail-open"

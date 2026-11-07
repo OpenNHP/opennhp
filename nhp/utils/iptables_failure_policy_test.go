@@ -34,14 +34,14 @@ if [ -f fail ] && [ "$chain" = FORWARD ]; then echo injected-error >&2; exit 2; 
 if [ -f fail-before ] && [ "$(cat fail-before)" = "$op" ]; then rm fail-before; exit 2; fi
 case "$op" in
 -N) [ ! -e "$chain" ] || exit 1; : > "$chain" ;;
--A|-I) if [ -f no-comment ]; then echo comment-unavailable >&2; exit 2; fi
+-A|-I) case " $* " in *" -m comment "*) if [ -f no-comment ]; then echo comment-unavailable >&2; exit 2; fi ;; esac
     [ -f "$chain" ] || exit 1
     echo "-A $chain $*" >> "$chain" ;;
 -F) [ -f "$chain" ] || exit 1; : > "$chain" ;;
 -X) [ -f "$chain" ] && [ ! -s "$chain" ] || exit 1
     rm "$chain" ;;
 -S) cat "$chain" || exit 1 ;;
--D) if [ -f fail-probe-cleanup ] && [ "$chain" = NHP-AC-COMMENT-PROBE ]; then echo cleanup-failed >&2; exit 2; fi
+-D)
     awk -v rule="-A $chain $*" '$0 == rule && !removed { removed=1; next } { print } END { if (!removed) exit 1 }' "$chain" > next || exit 1
     mv next "$chain" ;;
 *) exit 2 ;;
@@ -72,7 +72,7 @@ func TestFailurePolicyRules(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return strings.Count(string(b), failurePolicyComment)
+		return strings.Count(string(b), "-j "+failurePolicyChain)
 	}
 	if err := table.InitializeFailurePolicy(true); err != nil {
 		t.Fatal(err)
@@ -193,46 +193,34 @@ func TestFailurePolicyRules(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "INPUT"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "fail-probe-cleanup"), nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "clean up probe") {
-		t.Fatalf("probe cleanup failure ignored: %v", err)
-	}
-	if restarted.failurePolicyStateKnown {
-		t.Fatal("failed probe cleanup marked complete")
-	}
-	if err := os.Remove(filepath.Join(dir, "fail-probe-cleanup")); err != nil {
-		t.Fatal(err)
-	}
+}
 
-	// Probe kernel comment support before a fail-open outage, leaving no scratch chains.
+// Default fail-open must still work on kernels without the comment match.
+func TestFailurePolicyWithoutCommentSupport(t *testing.T) {
+	table, dir := failurePolicyTestTable(t)
 	if err := os.WriteFile(filepath.Join(dir, "no-comment"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "comment match") || strings.Contains(err.Error(), "clean up probe") {
-		t.Fatalf("missing comment support accepted: %v", err)
+	if err := table.InitializeFailurePolicy(false); err != nil {
+		t.Fatal(err)
 	}
-	if restarted.failurePolicyStateKnown {
-		t.Fatal("failed probe marked initialized")
+	if err := table.SetFailurePolicyOpen(true); err != nil {
+		t.Fatal(err)
 	}
+	for _, chain := range []string{"INPUT", "FORWARD"} {
+		got, err := os.ReadFile(filepath.Join(dir, chain))
+		if err != nil || string(got) != "-A "+chain+" -j "+failurePolicyChain+"\n" {
+			t.Fatalf("fallback missing: %q, %v", got, err)
+		}
+	}
+	// Crash while open, then select fail-closed: no manual cleanup required.
+	restarted := &IPTables{Binary: table.Binary}
 	if err := restarted.InitializeFailurePolicy(true); err != nil {
-		t.Fatalf("fail-closed needlessly requires insert support: %v", err)
-	}
-	if err := os.Remove(filepath.Join(dir, "no-comment")); err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.InitializeFailurePolicy(false); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(dir, failurePolicyChain)); !os.IsNotExist(err) {
+		t.Fatalf("fallback chain remains: %v", err)
 	}
-	leftovers, globErr := filepath.Glob(filepath.Join(dir, "NHP-AC-*"))
-	if globErr != nil || len(leftovers) != 0 {
-		t.Fatalf("probe chains remain: %v, %v", leftovers, globErr)
-	}
-	if count("INPUT") != 0 || count("FORWARD") != 0 {
-		t.Fatal("probe changed traffic chains")
-	}
-
 }
 
 func TestFailurePolicyCommandTimeout(t *testing.T) {
@@ -268,85 +256,140 @@ func TestFailurePolicyRuleOwnership(t *testing.T) {
 	}
 }
 
-func TestFailurePolicyProbeRecovery(t *testing.T) {
-	for _, leftover := range []string{"empty", "populated"} {
-		t.Run(leftover, func(t *testing.T) {
-			table, dir := failurePolicyTestTable(t)
-			rule := ""
-			if leftover == "populated" {
-				rule = "-A " + failurePolicyProbeChain + " -m comment --comment " + failurePolicyComment + " -j RETURN\n"
-			}
-			if err := os.WriteFile(filepath.Join(dir, failurePolicyProbeChain), []byte(rule), 0600); err != nil {
-				t.Fatal(err)
-			}
-			if err := table.InitializeFailurePolicy(false); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := os.Stat(filepath.Join(dir, failurePolicyProbeChain)); !os.IsNotExist(err) {
-				t.Fatalf("probe remains: %v", err)
-			}
-		})
-	}
-	for _, phase := range []string{"before", "after"} {
-		for _, op := range []string{"-N", "-A", "-D", "-X"} {
-			t.Run(phase+op, func(t *testing.T) {
+func TestFailurePolicyChainRecovery(t *testing.T) {
+	for _, leftover := range []string{"empty", "populated", "input", "both", "duplicates"} {
+		for _, closed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/closed=%v", leftover, closed), func(t *testing.T) {
 				table, dir := failurePolicyTestTable(t)
-				if err := os.WriteFile(filepath.Join(dir, "fail-"+phase), []byte(op), 0600); err != nil {
-					t.Fatal(err)
+				rule := "-A " + failurePolicyChain + " -j ACCEPT\n"
+				files := map[string]string{failurePolicyChain: rule}
+				if leftover == "empty" {
+					files[failurePolicyChain] = ""
 				}
-				// Failure after -N can be recovered immediately by inspecting the chain.
-				initErr := table.InitializeFailurePolicy(false)
-				if initErr == nil && !(phase == "after" && op == "-N") {
-					t.Fatal("failure ignored")
+				if leftover == "input" || leftover == "both" || leftover == "duplicates" {
+					files["INPUT"] = "-A INPUT -j " + failurePolicyChain + "\n"
 				}
-				for i := 0; i < 3; i++ {
-					restarted := &IPTables{Binary: table.Binary}
-					if err := restarted.InitializeFailurePolicy(false); err != nil {
+				if leftover == "both" || leftover == "duplicates" {
+					files["FORWARD"] = "-A FORWARD -j " + failurePolicyChain + "\n"
+				}
+				if leftover == "duplicates" {
+					for key, value := range files {
+						files[key] = value + value
+					}
+				}
+				for file, content := range files {
+					if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0600); err != nil {
 						t.Fatal(err)
 					}
 				}
-				leftovers, err := filepath.Glob(filepath.Join(dir, "NHP-AC-*"))
-				if err != nil || len(leftovers) != 0 {
-					t.Fatalf("leaked probe chains: %v, %v", leftovers, err)
+				if err := table.InitializeFailurePolicy(closed); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Stat(filepath.Join(dir, failurePolicyChain)); !os.IsNotExist(err) {
+					t.Fatalf("chain remains: %v", err)
+				}
+				for _, chain := range []string{"INPUT", "FORWARD"} {
+					got, err := os.ReadFile(filepath.Join(dir, chain))
+					if err != nil || len(got) != 0 {
+						t.Fatalf("fallback remains: %q, %v", got, err)
+					}
+				}
+			})
+		}
+	}
+	for _, phase := range []string{"before", "after"} {
+		for _, op := range []string{"-N", "-A", "-I", "-D", "-X"} {
+			t.Run(phase+op, func(t *testing.T) {
+				table, dir := failurePolicyTestTable(t)
+				closing := op == "-D" || op == "-X"
+				if closing {
+					if err := table.SetFailurePolicyOpen(true); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.WriteFile(filepath.Join(dir, "fail-"+phase), []byte(op), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := table.SetFailurePolicyOpen(!closing); err == nil {
+					t.Fatal("failure ignored")
+				}
+				if table.failurePolicyStateKnown {
+					t.Fatal("failed update marked complete")
+				}
+				if err := table.SetFailurePolicyOpen(!closing); err != nil {
+					t.Fatalf("retry failed: %v", err)
+				}
+				for i := 0; i < 3; i++ {
+					restarted := &IPTables{Binary: table.Binary}
+					if err := restarted.InitializeFailurePolicy(true); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := os.Stat(filepath.Join(dir, failurePolicyChain)); !os.IsNotExist(err) {
+					t.Fatalf("chain remains: %v", err)
 				}
 			})
 		}
 	}
 }
 
-func TestFailurePolicyProbePreservesUnfamiliarChains(t *testing.T) {
-	for _, kind := range []string{"operator-rule", "referenced", "goto", "similar-name"} {
-		t.Run(kind, func(t *testing.T) {
-			table, dir := failurePolicyTestTable(t)
-			name := failurePolicyProbeChain
-			rule := "-A " + name + " -m comment --comment " + failurePolicyComment + " -j RETURN\n"
-			input := ""
-			switch kind {
-			case "operator-rule":
-				rule = "-A " + name + " -j DROP\n"
-			case "referenced":
-				input = "-A INPUT -j " + name + "\n"
-			case "goto":
-				input = "-A INPUT -g " + name + "\n"
-			case "similar-name":
-				name += "-OTHER"
-				rule = strings.ReplaceAll(rule, failurePolicyProbeChain, name)
-			}
-			for file, content := range map[string]string{name: rule, "INPUT": input} {
-				if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0600); err != nil {
-					t.Fatal(err)
+func TestFailurePolicyPreservesUnfamiliarChains(t *testing.T) {
+	for _, kind := range []string{"operator-rule", "conditional-reference", "other-chain", "goto", "similar-name"} {
+		for _, open := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/open=%v", kind, open), func(t *testing.T) {
+				table, dir := failurePolicyTestTable(t)
+				name := failurePolicyChain
+				rule := "-A " + name + " -j ACCEPT\n"
+				input := ""
+				switch kind {
+				case "operator-rule":
+					rule = "-A " + name + " -j DROP\n"
+				case "conditional-reference":
+					input = "-A INPUT -s 192.0.2.1 -j " + name + "\n"
+				case "other-chain":
+					input = "-A OUTPUT -j " + name + "\n"
+				case "goto":
+					input = "-A INPUT -g " + name + "\n"
+				case "similar-name":
+					name += "-OTHER"
+					rule = strings.ReplaceAll(rule, failurePolicyChain, name)
 				}
-			}
-			err := table.InitializeFailurePolicy(false)
-			if (err != nil) != (kind != "similar-name") {
-				t.Fatalf("unexpected result: %v", err)
-			}
-			for file, want := range map[string]string{name: rule, "INPUT": input} {
-				got, err := os.ReadFile(filepath.Join(dir, file))
-				if err != nil || string(got) != want {
-					t.Fatalf("changed %s: %q, %v", file, got, err)
+				for file, content := range map[string]string{name: rule, "INPUT": input} {
+					if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0600); err != nil {
+						t.Fatal(err)
+					}
 				}
-			}
-		})
+				err := table.SetFailurePolicyOpen(open)
+				if (err != nil) != (kind != "similar-name") {
+					t.Fatalf("unexpected result: %v", err)
+				}
+				got, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil || string(got) != rule {
+					t.Fatalf("changed %s: %q, %v", name, got, err)
+				}
+				if kind != "similar-name" {
+					got, err = os.ReadFile(filepath.Join(dir, "INPUT"))
+					if err != nil || string(got) != input {
+						t.Fatalf("changed reference: %q, %v", got, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+// A comment mentioning the reserved chain is not a reference to that chain.
+func TestFailurePolicyIgnoresOperatorComment(t *testing.T) {
+	table, dir := failurePolicyTestTable(t)
+	rule := "-A INPUT -m comment --comment \"do not use -j " + failurePolicyChain + " in operator rules\" -j DROP\n"
+	if err := os.WriteFile(filepath.Join(dir, "INPUT"), []byte(rule), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.InitializeFailurePolicy(true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "INPUT"))
+	if err != nil || string(got) != rule {
+		t.Fatalf("operator rule changed: %q, %v", got, err)
 	}
 }

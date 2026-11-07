@@ -389,7 +389,9 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 	}
 	a.serverPeerMap = serverPeerMap
 	// Unrelated etcd edits and identical file reloads must not interrupt a
-	// pending discovery transaction or reset its retry progress.
+	// pending discovery transaction or reset its retry progress. Device metadata
+	// is refreshed above; existing discovery routines keep their peer objects
+	// because their public key and remote address have not changed.
 	if changed {
 		a.notifyServerMapUpdated()
 	}

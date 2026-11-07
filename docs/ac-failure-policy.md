@@ -34,6 +34,10 @@ endpoint's failed state.
 Local startup now reports a missing or malformed `etc/config.toml` immediately,
 instead of continuing with an empty configuration and failing later.
 
+This feature requires iptables 1.4.20 or newer for the bare `-w` lock option.
+Earlier binaries are unsupported: they reject the option, so fallback and cleanup
+cannot work. Check `iptables --version` before upgrading.
+
 The chain name `NHP-AC-FALLBACK` is reserved for the AC. When fallback is open,
 it contains an unconditional ACCEPT rule, with unconditional jumps from INPUT
 and FORWARD. This uses built-in iptables features and does not require the

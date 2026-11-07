@@ -24,7 +24,7 @@ func TestEtcdLifecycle(t *testing.T) {
 		t.Fatalf("read after initialization: %q, %v", value, err)
 	}
 	// Client lifetime must outlast the startup status request's timeout.
-	time.Sleep(3100 * time.Millisecond)
+	time.Sleep(requestTimeout + 100*time.Millisecond)
 	if _, err := c.GetValue(); err != nil {
 		t.Fatal(err)
 	}

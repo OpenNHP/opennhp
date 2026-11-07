@@ -101,7 +101,11 @@ func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 		case resp, ok := <-watchChan:
 			if !ok || resp.Canceled {
 				if conn.ctx.Err() == nil {
-					log.Error("etcd watch for %q ended unexpectedly: %v; remote configuration updates have stopped", conn.Key, resp.Err())
+					err := resp.Err()
+					if !ok {
+						err = errors.New("watch channel closed")
+					}
+					log.Error("etcd watch for %q ended unexpectedly: %v; remote configuration updates have stopped", conn.Key, err)
 				}
 				return
 			}

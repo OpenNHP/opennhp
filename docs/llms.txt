@@ -37,6 +37,8 @@ Spec: https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trus
 - [Understand the Code](https://docs.opennhp.org/code/): Repository tour (nhp/, endpoints/).
 - [Server Plugins](https://docs.opennhp.org/server_plugin/): Writing a Go plugin for NHP-Server.
 - [Client SDKs](https://docs.opennhp.org/agent_sdk/): Embedding the NHP-Agent in applications.
+- [eBPF Internals](https://docs.opennhp.org/ebpf/): How the XDP/eBPF ingress filter and the AC's per-knock filter work, and what each field of etc/xdp.toml controls.
+- [eBPF 原理](https://docs.opennhp.org/zh-cn/ebpf/): OpenNHP 的 XDP/eBPF 入站过滤器与 AC 按次放行过滤器的工作原理，以及 etc/xdp.toml 每个字段的作用。
 
 ## Protocol reference
 

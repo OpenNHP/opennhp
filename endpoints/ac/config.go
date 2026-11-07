@@ -43,7 +43,13 @@ type ACEtcdConfig struct {
 	Servers    []*clusterconfig.ClusterConfig
 }
 
+const (
+	FailurePolicyOpen   = "fail-open"
+	FailurePolicyClosed = "fail-closed"
+)
+
 type Config struct {
+	FailurePolicy           string          `json:"failurePolicy"`           // Restart-only; empty selects fail-open (iptables only).
 	AOPReplayCacheEntries   int             `json:"aopReplayCacheEntries"`   // Restart-only; zero selects 100000.
 	AOPRecvStalenessSeconds int             `json:"aopRecvStalenessSeconds"` // Restart-only; zero selects 120 seconds, maximum 600.
 	PrivateKeyBase64        string          `json:"privateKey"`
@@ -131,11 +137,13 @@ func (a *UdpAC) loadBaseConfig() error {
 	content, err := os.ReadFile(fileName)
 	if err != nil {
 		log.Error("failed to read base config: %v", err)
+		return err
 	}
 
 	var conf Config
 	if unmarshalErr := toml.Unmarshal(content, &conf); unmarshalErr != nil {
 		log.Error("failed to unmarshal base config: %v", unmarshalErr)
+		return unmarshalErr
 	}
 	if updateErr := a.updateBaseConfig(conf); updateErr != nil {
 		// report base config error
@@ -145,8 +153,11 @@ func (a *UdpAC) loadBaseConfig() error {
 	baseConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("base config: %s has been updated", fileName)
 		if content, err = a.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &conf); err == nil {
-				_ = a.updateBaseConfig(conf)
+			var reloaded Config
+			if err = toml.Unmarshal(content, &reloaded); err == nil {
+				_ = a.updateBaseConfig(reloaded)
+			} else {
+				log.Error("failed to unmarshal base config on reload: %v; configuration unchanged", err)
 			}
 
 		}
@@ -245,6 +256,23 @@ func (a *UdpAC) updateBaseConfig(conf Config) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
+
+	if conf.FailurePolicy == "" {
+		conf.FailurePolicy = FailurePolicyOpen
+	}
+	if conf.FailurePolicy != FailurePolicyOpen && conf.FailurePolicy != FailurePolicyClosed {
+		err = fmt.Errorf("invalid FailurePolicy %q: expected fail-open or fail-closed", conf.FailurePolicy)
+		log.Error("%v; configuration unchanged", err)
+		return err
+	}
+	if a.config == nil && conf.FilterMode != FilterMode_IPTABLES && conf.FailurePolicy == FailurePolicyClosed {
+		err = fmt.Errorf("FailurePolicy fail-closed requires FilterMode = 0 (iptables)")
+		log.Error("%v; configuration unchanged", err)
+		return err
+	}
+	if a.config != nil && a.config.FailurePolicy != conf.FailurePolicy {
+		log.Warning("FailurePolicy change from %s to %s requires restart; retaining running policy and applying live settings", a.config.FailurePolicy, conf.FailurePolicy)
+	}
 
 	if a.config == nil {
 		a.config = &conf
@@ -352,7 +380,21 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 			a.device.RemovePeer(pubKey)
 		}
 	}
+	changed := len(a.serverPeerMap) != len(serverPeerMap)
+	for key := range a.serverPeerMap {
+		if _, exists := serverPeerMap[key]; !exists {
+			changed = true
+			break
+		}
+	}
 	a.serverPeerMap = serverPeerMap
+	// Unrelated etcd edits and identical file reloads must not interrupt a
+	// pending discovery transaction or reset its retry progress. Device metadata
+	// is refreshed above; existing discovery routines keep their peer objects
+	// because their public key and remote address have not changed.
+	if changed {
+		a.notifyServerMapUpdated()
+	}
 
 	return err
 }
@@ -473,7 +515,9 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	}
 
 	if baseLoad {
-		_ = a.updateBaseConfig(acEtcdConfig.BaseConfig)
+		if baseErr := a.updateBaseConfig(acEtcdConfig.BaseConfig); baseErr != nil {
+			log.Error("etcd reload: retaining running base config; continuing HTTP and server-peer updates: %v", baseErr)
+		}
 	}
 
 	_ = a.updateHttpConfig(acEtcdConfig.HttpConfig)

@@ -94,6 +94,9 @@ logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.startTime = time.Now()
+	// Configuration watchers can notify discovery during startup.
+	a.signals.stop = make(chan struct{})
+	a.signals.serverMapUpdated = make(chan struct{}, 1)
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -125,6 +128,13 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		if err != nil {
 			log.Error("iptables command not found")
 			return
+		}
+
+		if err = a.iptables.InitializeFailurePolicy(a.config.FailurePolicy == FailurePolicyClosed); err != nil {
+			if a.config.FailurePolicy == FailurePolicyClosed {
+				return fmt.Errorf("initialize AC failure policy: %w", err)
+			}
+			log.Critical("initialize AC failure policy: %v; continuing fail-open startup with reconciliation retries; leftover owned rules may remain, and fallback may fail to open until reconciliation succeeds", err)
 		}
 
 		a.ipset, err = utils.NewIPSet(false)
@@ -244,9 +254,6 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		}
 	}
 
-	a.signals.stop = make(chan struct{})
-	a.signals.serverMapUpdated = make(chan struct{}, 1)
-
 	a.recvMsgCh = a.device.DecryptedMsgQueue
 	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 
@@ -298,7 +305,6 @@ func (ac *UdpAC) Stop() {
 	ac.StopConfigWatch()
 	ac.wg.Wait()
 	close(ac.sendMsgCh)
-	close(ac.signals.serverMapUpdated)
 
 	log.Info("==========================")
 	log.Info("=== NHP-AC stopped ===")
@@ -497,7 +503,9 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 	// stop receiving packets and clean up
 	defer func() {
 		a.remoteConnectionMutex.Lock()
-		delete(a.remoteConnectionMap, addrStr)
+		if a.remoteConnectionMap[addrStr] == conn {
+			delete(a.remoteConnectionMap, addrStr)
+		}
 		a.remoteConnectionMutex.Unlock()
 
 		conn.Close()
@@ -645,6 +653,19 @@ func (a *UdpAC) recoverUDPHandler(headerType int) {
 
 // keep interaction between ac and server in certain time interval to keep outwards ip path active
 func (a *UdpAC) maintainServerConnectionRoutine() {
+	a.maintainServerConnections(func(open bool) error { return a.iptables.SetFailurePolicyOpen(open) })
+}
+
+// Each active endpoint owns one worker. Cancellation serializes with response
+// handling so retired workers cannot update connection state.
+type serverDiscoveryState struct {
+	mu       sync.Mutex
+	canceled bool
+	failed   int32 // read by maintenance through atomic operations
+	retries  int   // used only by the endpoint's discovery goroutine
+}
+
+func (a *UdpAC) maintainServerConnections(setFailurePolicyOpen func(bool) error) {
 	defer a.wg.Done()
 	defer log.Info("maintainServerConnectionRoutine stopped")
 
@@ -652,87 +673,136 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 
 	// reset iptables before exiting
 	if a.config.FilterMode == FilterMode_IPTABLES {
-		defer a.iptables.ResetAllInput()
+		defer func() {
+			if err := setFailurePolicyOpen(false); err != nil {
+				log.Error("reset AC failure policy on shutdown: %v", err)
+			}
+		}()
 	}
 
 	var discoveryRoutineWg sync.WaitGroup
-	defer discoveryRoutineWg.Wait()
-
-	for {
-		// make a local copy of servers then iterate because next operations are time consuming (too long to use locked iteration)
-		a.serverPeerMutex.Lock()
-		var serverCount int32 = int32(len(a.serverPeerMap))
-		discoveryQuitArr := make([]chan struct{}, 0, serverCount)
-		discoveryFailStatusArr := make([]*int32, 0, serverCount)
-
-		for _, server := range a.serverPeerMap {
-			// launch discovery routine for each server
-			fail := new(int32)
-			discoveryFailStatusArr = append(discoveryFailStatusArr, fail)
-			quit := make(chan struct{})
-			discoveryQuitArr = append(discoveryQuitArr, quit)
-
-			discoveryRoutineWg.Add(1)
-			go a.serverDiscovery(server, &discoveryRoutineWg, fail, quit)
+	type worker struct {
+		state *serverDiscoveryState
+		quit  chan struct{}
+	}
+	workers := make(map[string]*worker)
+	cancel := func(w *worker) {
+		w.state.mu.Lock()
+		w.state.canceled = true
+		close(w.quit)
+		w.state.mu.Unlock()
+	}
+	defer func() {
+		for _, w := range workers {
+			cancel(w)
 		}
-		a.serverPeerMutex.Unlock()
-
-		// check whether all server discovery failed.
-		// If so, open all blocked input
-		quitCheck := make(chan struct{})
-		discoveryQuitArr = append(discoveryQuitArr, quitCheck)
-		discoveryRoutineWg.Add(1)
-		go func() {
-			defer discoveryRoutineWg.Done()
-
-			for {
-				select {
-				case <-a.signals.stop:
-					return
-				case <-quitCheck:
-					return
-				case <-time.After(MinialServerDiscoveryInterval * time.Second):
-					var totalFail int32
-					for _, status := range discoveryFailStatusArr {
-						totalFail += atomic.LoadInt32(status)
-					}
-
-					if totalFail < int32(len(discoveryFailStatusArr)) {
-						if a.config.FilterMode == FilterMode_IPTABLES {
-							a.iptables.ResetAllInput()
-						}
-					} else {
-						if a.config.FilterMode == FilterMode_IPTABLES {
-							a.iptables.AcceptAllInput()
-						}
-					}
-				}
+		discoveryRoutineWg.Wait()
+	}()
+	updateWorkers := func() {
+		a.serverPeerMutex.Lock()
+		defer a.serverPeerMutex.Unlock()
+		for key, w := range workers {
+			if _, exists := a.serverPeerMap[key]; !exists {
+				cancel(w)
+				delete(workers, key)
 			}
-		}()
-
+		}
+		for key, peer := range a.serverPeerMap {
+			if _, exists := workers[key]; exists {
+				continue
+			}
+			w := &worker{state: new(serverDiscoveryState), quit: make(chan struct{})}
+			workers[key] = w
+			discoveryRoutineWg.Add(1)
+			go a.serverDiscovery(peer, &discoveryRoutineWg, w.state, w.quit)
+		}
+	}
+	// Consume startup notification before the snapshot. Later notifications are
+	// harmless: unchanged identities keep their outstanding work and timers.
+	select {
+	case <-a.signals.serverMapUpdated:
+	default:
+	}
+	updateWorkers()
+	ticker := time.NewTicker(MinialServerDiscoveryInterval * time.Second)
+	defer ticker.Stop()
+	var lastState, lastError string
+	var openingFailed bool
+	for {
 		select {
 		case <-a.signals.stop:
 			return
-		case _, ok := <-a.signals.serverMapUpdated:
-			if !ok {
+		case <-a.signals.serverMapUpdated:
+			updateWorkers()
+		case <-ticker.C:
+			// Do not begin another update when shutdown is already requested.
+			select {
+			case <-a.signals.stop:
 				return
+			default:
 			}
-			// stop all current discovery routines
-			for _, q := range discoveryQuitArr {
-				close(q)
+			if a.config.FilterMode != FilterMode_IPTABLES {
+				continue
 			}
-			// continue and restart with new server discovery cycle
+			allFailed := true // preserve historical behavior for an empty map
+			for _, w := range workers {
+				if atomic.LoadInt32(&w.state.failed) == 0 {
+					allFailed = false
+					break
+				}
+			}
+			state := "not all server discoveries have failed"
+			if allFailed {
+				state = "all server discoveries failed: " + a.config.FailurePolicy
+			}
+			open := allFailed && a.config.FailurePolicy == FailurePolicyOpen
+			if err := setFailurePolicyOpen(open); err != nil {
+				if open && !openingFailed {
+					log.Critical("all server discoveries failed, but fail-open fallback could not open: %v; traffic remains subject to the current firewall; will retry", err)
+				} else if err.Error() != lastError {
+					log.Error("AC failure policy: %v (will retry)", err)
+				}
+				openingFailed, lastError = open, err.Error()
+				continue
+			}
+			openingFailed = false
+			if state != lastState || lastError != "" {
+				log.Info("AC failure policy: %s", state)
+			}
+			lastState, lastError = state, ""
 		}
 	}
 }
 
-func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
+// A failed initial lookup must remain retryable without a config reload. Keep
+// the failure set until a discovery response proves the endpoint is reachable.
+func (a *UdpAC) waitForDiscoveryAddress(resolve func() (net.Addr, error), state *serverDiscoveryState, quit <-chan struct{}) net.Addr {
+	for {
+		addr, err := resolve()
+		if err == nil && addr != nil {
+			return addr
+		}
+		state.retries++
+		if state.retries >= ServerDiscoveryRetryBeforeFail {
+			atomic.StoreInt32(&state.failed, 1)
+		}
+		log.Error("server discovery address unavailable: %v; will retry", err)
+		select {
+		case <-a.signals.stop:
+			return nil
+		case <-quit:
+			return nil
+		case <-time.After(MinialServerDiscoveryInterval * time.Second):
+		}
+	}
+}
+
+func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, state *serverDiscoveryState, quit <-chan struct{}) {
 	defer discoveryRoutineWg.Done()
 
 	acId := a.config.ACId
-	sendAddr := server.SendAddr()
+	sendAddr := a.waitForDiscoveryAddress(server.SendAddrErr, state, quit)
 	if sendAddr == nil {
-		log.Error("Cannot connect to nil server address")
 		return
 	}
 
@@ -740,8 +810,6 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 
 	defer log.Info("server discovery sub-routine at %s stopped", addrStr)
 	log.Info("server discovery sub-routine at %s started", addrStr)
-
-	var failCount int
 
 	for {
 		var lastSendTime int64
@@ -787,7 +855,9 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 				Compress:      true,
 				PeerPk:        peerPbk,
 				Message:       aolBytes,
-				ResponseMsgCh: make(chan *core.PacketParserData),
+				// A transaction delivers one result. Leave room for a late reply
+				// after discovery is canceled, so its producer can still finish.
+				ResponseMsgCh: make(chan *core.PacketParserData, 1),
 			}
 
 			if !a.IsRunning() {
@@ -795,43 +865,61 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 				return
 			}
 
-			a.sendMsgCh <- aolMd // create new connection
+			select {
+			case <-a.signals.stop:
+				return
+			case <-quit:
+				return
+			case a.sendMsgCh <- aolMd: // create new connection
+			}
 			server.UpdateSend(currTime)
 
-			// block until transaction completes or timeouts
-			ppd := <-aolMd.ResponseMsgCh
-			close(aolMd.ResponseMsgCh)
+			// Do not close the response channel: the transaction may still reply
+			// after a reload or shutdown has canceled this discovery routine.
+			var ppd *core.PacketParserData
+			select {
+			case <-a.signals.stop:
+				return
+			case <-quit:
+				return
+			case ppd = <-aolMd.ResponseMsgCh:
+			}
 
 			var err error
+			var closeConn *UdpConn
 			func() {
+				state.mu.Lock()
+				defer state.mu.Unlock()
+				if state.canceled {
+					return
+				}
+				select {
+				case <-quit:
+					return
+				case <-a.signals.stop:
+					return
+				default:
+				}
 				defer func() {
-					if err != nil {
-						if conn != nil {
-							conn.connected.Store(false)
-						}
-
-						failCount += 1
-						if failCount%ServerDiscoveryRetryBeforeFail == 0 {
-							atomic.StoreInt32(serverFailCount, 1)
-							// remove failed connection. The map lookup can race
-							// with another teardown path that already removed
-							// the entry; conn==nil is the legitimate "already
-							// gone" signal and Close() must be skipped to
-							// avoid a nil deref.
-							a.remoteConnectionMutex.Lock()
-							conn = a.remoteConnectionMap[addrStr]
-							if conn != nil {
-								log.Info("server discovery failed, close local connection: %s", conn.ConnData.LocalAddr.String())
-								delete(a.remoteConnectionMap, addrStr)
-							}
-							a.remoteConnectionMutex.Unlock()
-							if conn != nil {
-								conn.Close()
-							}
-						}
-						log.Error("ac(%s#%d)[ACOnline] reporting to server %s failed", acId, aolMd.TransactionId, addrStr)
+					if err == nil {
+						return
 					}
-
+					state.retries++
+					threshold := state.retries%ServerDiscoveryRetryBeforeFail == 0
+					if threshold {
+						atomic.StoreInt32(&state.failed, 1)
+					}
+					a.remoteConnectionMutex.Lock()
+					current := a.remoteConnectionMap[addrStr]
+					if current != nil && current.ConnData == aolMd.ConnData {
+						current.connected.Store(false)
+						if threshold {
+							delete(a.remoteConnectionMap, addrStr)
+							closeConn = current
+						}
+					}
+					a.remoteConnectionMutex.Unlock()
+					log.Error("ac(%s#%d)[ACOnline] reporting to server %s failed", acId, aolMd.TransactionId, addrStr)
 				}()
 
 				if ppd.Error != nil {
@@ -853,16 +941,24 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 					return
 				}
 
-				// server discovery succeeded
-				failCount = 0
-				atomic.StoreInt32(serverFailCount, 0)
 				a.remoteConnectionMutex.Lock()
-				conn = a.remoteConnectionMap[addrStr] // conn must be available at this point
+				conn = a.remoteConnectionMap[addrStr]
+				if conn == nil || conn.ConnData != aolMd.ConnData {
+					a.remoteConnectionMutex.Unlock()
+					err = common.ErrTransactionFailedByClosedConnection
+					return
+				}
 				conn.connected.Store(true)
 				conn.externalAddr = aakMsg.ACAddr
 				a.remoteConnectionMutex.Unlock()
+				state.retries = 0
+				atomic.StoreInt32(&state.failed, 0)
 				log.Info("ac(%s#%d)[ACOnline] succeed. ac external address is %s, replied by server %s", acId, aolMd.TransactionId, aakMsg.ACAddr, addrStr)
 			}()
+			// Socket teardown can block; never hold the cancellation lock here.
+			if closeConn != nil {
+				closeConn.Close()
+			}
 
 		} else if connected {
 			if (currTime - lastSendTime) > int64(ServerKeepaliveInterval*time.Second) {
@@ -875,7 +971,13 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 					TransactionId: a.device.NextCounterIndex(),
 				}
 
-				a.sendMsgCh <- md // send NHP_KPL to server via existing connection
+				select {
+				case <-a.signals.stop:
+					return
+				case <-quit:
+					return
+				case a.sendMsgCh <- md: // send NHP_KPL via existing connection
+				}
 				server.UpdateSend(currTime)
 			}
 		}
@@ -904,9 +1006,7 @@ func (a *UdpAC) AddServerPeer(server *core.UdpPeer) {
 		a.serverPeerMutex.Unlock()
 
 		// renew server connection cycle
-		if len(a.signals.serverMapUpdated) == 0 {
-			a.signals.serverMapUpdated <- struct{}{}
-		}
+		a.notifyServerMapUpdated()
 	}
 }
 
@@ -940,8 +1040,15 @@ func (a *UdpAC) RemoveServerPeer(serverEndpointKey string) {
 	}
 
 	// renew server connection cycle
-	if len(a.signals.serverMapUpdated) == 0 {
-		a.signals.serverMapUpdated <- struct{}{}
+	a.notifyServerMapUpdated()
+}
+
+// Coalesce reloads without blocking callers. The stop channel owns shutdown;
+// this notification channel stays open so late callbacks cannot panic.
+func (a *UdpAC) notifyServerMapUpdated() {
+	select {
+	case a.signals.serverMapUpdated <- struct{}{}:
+	default:
 	}
 }
 

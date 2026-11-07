@@ -284,6 +284,9 @@ For high-availability deployments, consider:
 
 ### 4.4 Configuration Parameters Reference
 
+For iptables AC behavior during server outages, see the
+[AC discovery failure policy]({{ "/ac-failure-policy/" | relative_url }}) guide.
+
 Key configuration parameters across components:
 
 | Parameter | Component | Description |

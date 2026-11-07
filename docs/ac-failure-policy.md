@@ -27,7 +27,10 @@ The setting requires a restart. Invalid values fail startup. During reload, a
 valid policy change is logged and deferred until restart; the running policy and
 filter mode remain active while live settings such as `LogLevel` and `DefaultIp`
 are applied. An invalid policy rejects the base-config update. Independent HTTP
-and server-peer sections of an etcd reload are still applied.
+and server-peer sections of an etcd reload are still applied. Failure observations
+for unchanged endpoints survive reload, so an unrelated edit cannot close an
+active fail-open fallback during an outage; a successful discovery clears that
+endpoint's failed state.
 
 Local startup now reports a missing or malformed `etc/config.toml` immediately,
 instead of continuing with an empty configuration and failing later.
@@ -43,6 +46,11 @@ failure begins; retries do not repeat the same alert on every tick.
 Discovery retries failed rule changes; fallback cannot open until comment support
 is available. The probe does not open traffic. Fail-closed skips the insertion
 probe and still refuses startup if required cleanup or inspection fails.
+After upgrading a fail-open deployment, inspect the startup log for the critical
+`initialize AC failure policy` diagnostic. An `iptables -m comment --help` check
+alone verifies the userspace extension, not whether the kernel accepts the rule.
+Verify outage and recovery behavior in a staging environment before relying on
+the fallback; fix any comment-support or probe error reported at startup.
 
 The exact chain name `NHP-AC-COMMENT-PROBE` is reserved for this check. The AC
 never links it to a traffic chain. After an interrupted startup, it reuses only

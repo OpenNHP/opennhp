@@ -335,14 +335,19 @@ func (table *IPTables) probeFailurePolicyComment() (err error) {
 	}
 	defer func() {
 		// Delete only our exact rule. Never flush a chain, even the reserved one.
+		var deleteErr error
 		if present {
 			if out, cleanupErr := table.failurePolicyCommand(append([]string{"-D", chain}, rule...)...); cleanupErr != nil {
-				err = errors.Join(err, fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out))
+				deleteErr = fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out)
 			}
 		}
 		if out, cleanupErr := table.failurePolicyCommand("-X", chain); cleanupErr != nil {
-			err = errors.Join(err, fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out))
+			err = errors.Join(err, deleteErr, fmt.Errorf("clean up probe %s: %w: %s", chain, cleanupErr, out))
+		} else if err == nil {
+			err = deleteErr
 		}
+		// If insertion failed and -X succeeded, the chain is gone: a failed
+		// -D for a rule that was never inserted is not a cleanup failure.
 	}()
 	if present {
 		if out, cmdErr := table.failurePolicyCommand(append([]string{"-D", chain}, rule...)...); cmdErr != nil {

@@ -672,6 +672,8 @@ func (a *UdpAC) maintainServerConnections(setFailurePolicyOpen func(bool) error)
 	var discoveryRoutineWg sync.WaitGroup
 	defer discoveryRoutineWg.Wait()
 
+	// Preserve observations for unchanged endpoints across configuration reloads.
+	failureStatus := make(map[string]*int32)
 discoveryCycles:
 	for {
 		// Consume notifications before taking the peer snapshot. Updates before
@@ -686,9 +688,14 @@ discoveryCycles:
 		discoveryQuitArr := make([]chan struct{}, 0, serverCount)
 		discoveryFailStatusArr := make([]*int32, 0, serverCount)
 
-		for _, server := range a.serverPeerMap {
-			// launch discovery routine for each server
-			fail := new(int32)
+		nextFailureStatus := make(map[string]*int32, serverCount)
+		for key, server := range a.serverPeerMap {
+			// New endpoints start unknown; an existing failure clears on a reply.
+			fail := failureStatus[key]
+			if fail == nil {
+				fail = new(int32)
+			}
+			nextFailureStatus[key] = fail
 			discoveryFailStatusArr = append(discoveryFailStatusArr, fail)
 			quit := make(chan struct{})
 			discoveryQuitArr = append(discoveryQuitArr, quit)
@@ -696,6 +703,7 @@ discoveryCycles:
 			discoveryRoutineWg.Add(1)
 			go a.serverDiscovery(server, &discoveryRoutineWg, fail, quit)
 		}
+		failureStatus = nextFailureStatus
 		a.serverPeerMutex.Unlock()
 
 		// check whether all server discovery failed.

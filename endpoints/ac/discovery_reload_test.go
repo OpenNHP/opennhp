@@ -130,6 +130,18 @@ func TestPeerReloadNotifiesDiscovery(t *testing.T) {
 	default:
 		t.Error("new peer map installed without notifying active discovery")
 	}
+	// A fresh object with the same endpoint still updates peer metadata, but
+	// must not restart discovery (including an in-flight initial transaction).
+	unchanged := &core.UdpPeer{PubKeyBase64: device.PublicKeyBase64(), Ip: "192.0.2.2", Port: 62206, ExpireTime: 4102444800}
+	if err := a.updateServerPeers([]*core.UdpPeer{unchanged}); err != nil {
+		t.Fatal(err)
+	}
+	if a.serverPeerMap[endpointKey(unchanged)].ExpireTime != unchanged.ExpireTime {
+		t.Error("peer metadata was not updated")
+	}
+	if len(a.signals.serverMapUpdated) != 0 {
+		t.Error("unchanged endpoints restarted discovery")
+	}
 }
 
 func TestDiscoveryConsumesStartupNotificationBeforeSnapshot(t *testing.T) {
@@ -219,5 +231,77 @@ func TestDiscoveryReportsFailedFallback(t *testing.T) {
 		}
 		close(a.signals.stop)
 		a.wg.Wait()
+	})
+}
+
+func TestDiscoveryReloadPreservesFailedPeers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		peer := &core.UdpPeer{Ip: "127.0.0.1", Port: 62206}
+		a := &UdpAC{config: &Config{FailurePolicy: FailurePolicyOpen}, device: &core.Device{}, sendMsgCh: make(chan *core.MsgData), serverPeerMap: map[string]*core.UdpPeer{endpointKey(peer): peer}, remoteConnectionMap: make(map[string]*UdpConn)}
+		a.running.Store(true)
+		a.signals.stop = make(chan struct{})
+		a.signals.serverMapUpdated = make(chan struct{}, 1)
+		var unavailable atomic.Bool
+		unavailable.Store(true)
+		repliesDone := make(chan struct{})
+		go func() {
+			defer close(repliesDone)
+			for {
+				select {
+				case <-a.signals.stop:
+					return
+				case request := <-a.sendMsgCh:
+					if request.ResponseMsgCh == nil {
+						continue
+					}
+					response := &core.PacketParserData{Error: errors.New("server unavailable")}
+					if !unavailable.Load() {
+						a.remoteConnectionMutex.Lock()
+						a.remoteConnectionMap[request.RemoteAddr.String()] = &UdpConn{ConnData: &core.ConnectionData{LastLocalRecvTime: time.Now().UnixNano()}}
+						a.remoteConnectionMutex.Unlock()
+						response = &core.PacketParserData{HeaderType: core.NHP_AAK, BodyMessage: []byte(`{}`)}
+					}
+					request.ResponseMsgCh <- response
+				}
+			}
+		}()
+		policies := make(chan bool, 32)
+		a.wg.Add(1)
+		go a.maintainServerConnections(func(open bool) error { policies <- open; return nil })
+		defer func() { close(a.signals.stop); a.wg.Wait(); <-repliesDone }()
+		synctest.Wait()
+		time.Sleep((ServerDiscoveryRetryBeforeFail + 1) * MinialServerDiscoveryInterval * time.Second)
+		synctest.Wait()
+		last := false
+		for len(policies) > 0 {
+			last = <-policies
+		}
+		if !last {
+			t.Fatal("fallback did not open before reload")
+		}
+		for i := 0; i < 3; i++ {
+			// A reload creates fresh peer objects even when endpoints did not change.
+			a.serverPeerMutex.Lock()
+			a.serverPeerMap = map[string]*core.UdpPeer{endpointKey(peer): {Ip: peer.Ip, Port: peer.Port}}
+			a.serverPeerMutex.Unlock()
+			a.notifyServerMapUpdated()
+			synctest.Wait()
+			time.Sleep(MinialServerDiscoveryInterval * time.Second)
+			synctest.Wait()
+			for len(policies) > 0 {
+				if !<-policies {
+					t.Error("unchanged-peer reload closed fallback during outage")
+				}
+			}
+		}
+		unavailable.Store(false)
+		time.Sleep(2 * MinialServerDiscoveryInterval * time.Second)
+		synctest.Wait()
+		for len(policies) > 0 {
+			last = <-policies
+		}
+		if last {
+			t.Error("successful discovery did not close fallback")
+		}
 	})
 }

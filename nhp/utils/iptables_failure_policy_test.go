@@ -210,7 +210,7 @@ func TestFailurePolicyRules(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "no-comment"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "comment match") {
+	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "comment match") || strings.Contains(err.Error(), "clean up probe") {
 		t.Fatalf("missing comment support accepted: %v", err)
 	}
 	if restarted.failurePolicyStateKnown {

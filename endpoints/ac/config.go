@@ -380,8 +380,19 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 			a.device.RemovePeer(pubKey)
 		}
 	}
+	changed := len(a.serverPeerMap) != len(serverPeerMap)
+	for key := range a.serverPeerMap {
+		if _, exists := serverPeerMap[key]; !exists {
+			changed = true
+			break
+		}
+	}
 	a.serverPeerMap = serverPeerMap
-	a.notifyServerMapUpdated()
+	// Unrelated etcd edits and identical file reloads must not interrupt a
+	// pending discovery transaction or reset its retry progress.
+	if changed {
+		a.notifyServerMapUpdated()
+	}
 
 	return err
 }

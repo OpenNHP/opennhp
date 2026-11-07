@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -107,4 +108,52 @@ func TestDiscoveryReloadWithPendingResponse(t *testing.T) {
 		}
 		a.wg.Wait()
 	})
+}
+
+func TestDiscoveryAddressRetry(t *testing.T) {
+	for _, outcome := range []string{"recover", "stop", "reload"} {
+		t.Run(outcome, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				a := &UdpAC{}
+				a.signals.stop = make(chan struct{})
+				quit := make(chan struct{})
+				var failed int32
+				attempts := 0
+				want := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 62206}
+				resolve := func() (net.Addr, error) {
+					attempts++
+					if attempts == 1 {
+						return nil, errors.New("temporary DNS failure")
+					}
+					return want, nil
+				}
+				done := make(chan net.Addr, 1)
+				go func() { done <- a.waitForDiscoveryAddress(resolve, &failed, quit) }()
+				synctest.Wait()
+				if atomic.LoadInt32(&failed) != 1 {
+					t.Error("unresolved server counted as healthy")
+				}
+				switch outcome {
+				case "recover":
+					time.Sleep(MinialServerDiscoveryInterval * time.Second)
+				case "stop":
+					close(a.signals.stop)
+				case "reload":
+					close(quit)
+				}
+				synctest.Wait()
+				got := <-done
+				if outcome == "recover" {
+					if got != want || attempts != 2 {
+						t.Fatalf("resolution did not recover: %v, attempts=%d", got, attempts)
+					}
+				} else if got != nil || attempts != 1 {
+					t.Fatalf("canceled lookup retried: %v, attempts=%d", got, attempts)
+				}
+				if atomic.LoadInt32(&failed) != 1 {
+					t.Error("DNS recovery cleared failure before a discovery response")
+				}
+			})
+		})
+	}
 }

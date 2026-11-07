@@ -94,5 +94,8 @@ value. If systemd kills the process before cleanup finishes, fail-open rules may
 remain until the next successful AC startup. Do not disable the stop deadline
 as a substitute for investigating repeated cleanup failures.
 
-Hostname resolution uses the existing system resolver. An in-progress DNS lookup
+An initial hostname-resolution failure marks that endpoint failed and is retried
+without requiring a configuration reload. A successful lookup does not clear the
+failure until discovery receives a successful response. Hostname resolution uses
+the existing system resolver. An in-progress DNS lookup
 can also delay discovery replacement or shutdown.

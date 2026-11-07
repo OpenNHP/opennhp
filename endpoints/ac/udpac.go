@@ -134,7 +134,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			if a.config.FailurePolicy == FailurePolicyClosed {
 				return fmt.Errorf("initialize AC failure policy: %w", err)
 			}
-			log.Critical("initialize AC failure policy: %v; continuing fail-open startup with reconciliation retries; if iptables comment support is unavailable, fallback will NOT open on outage", err)
+			log.Critical("initialize AC failure policy: %v; continuing fail-open startup with reconciliation retries; leftover owned rules may remain, and fallback may fail to open until reconciliation succeeds", err)
 		}
 
 		a.ipset, err = utils.NewIPSet(false)
@@ -767,13 +767,32 @@ discoveryCycles:
 	}
 }
 
+// A failed initial lookup must remain retryable without a config reload. Keep
+// the failure set until a discovery response proves the endpoint is reachable.
+func (a *UdpAC) waitForDiscoveryAddress(resolve func() (net.Addr, error), failed *int32, quit <-chan struct{}) net.Addr {
+	for {
+		addr, err := resolve()
+		if err == nil && addr != nil {
+			return addr
+		}
+		atomic.StoreInt32(failed, 1)
+		log.Error("server discovery address unavailable: %v; will retry", err)
+		select {
+		case <-a.signals.stop:
+			return nil
+		case <-quit:
+			return nil
+		case <-time.After(MinialServerDiscoveryInterval * time.Second):
+		}
+	}
+}
+
 func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
 	defer discoveryRoutineWg.Done()
 
 	acId := a.config.ACId
-	sendAddr := server.SendAddr()
+	sendAddr := a.waitForDiscoveryAddress(server.SendAddrErr, serverFailCount, quit)
 	if sendAddr == nil {
-		log.Error("Cannot connect to nil server address")
 		return
 	}
 

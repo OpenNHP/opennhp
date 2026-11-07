@@ -51,9 +51,9 @@ type IPTables struct {
 	AcceptInputMode  bool
 	AcceptInput6Mode bool // separate tracking for IPv6
 
-	failurePolicyMutex       sync.Mutex
-	failurePolicyInitialized bool
-	failurePolicyTimeout     time.Duration
+	failurePolicyMutex      sync.Mutex
+	failurePolicyStateKnown bool
+	failurePolicyTimeout    time.Duration
 }
 
 type IPTablesRuleOperation int32
@@ -329,31 +329,32 @@ func isFailurePolicyRule(line, chain string) bool {
 }
 
 // InitializeFailurePolicy removes fallback rules left by an interrupted AC.
-// Fail-closed refuses legacy unconditional ACCEPT rules rather than deleting
-// potentially operator-owned rules. It does not install the baseline firewall.
+// Legacy unconditional ACCEPT rules may belong to the operator: fail-closed
+// refuses them, while fail-open warns and preserves them. Neither installs a baseline.
 func (table *IPTables) InitializeFailurePolicy(failClosed bool) error {
 	table.failurePolicyMutex.Lock()
 	defer table.failurePolicyMutex.Unlock()
 	if err := table.setFailurePolicyRules(false); err != nil {
 		return err
 	}
-	if !failClosed {
-		if err := table.probeFailurePolicyComment(); err != nil {
-			table.failurePolicyInitialized = false
-			return err
+	for _, chain := range []string{"INPUT", "FORWARD"} {
+		out, err := table.failurePolicyCommand("-S", chain)
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w: %s", chain, err, out)
 		}
-	}
-	if failClosed {
-		for _, chain := range []string{"INPUT", "FORWARD"} {
-			out, err := table.failurePolicyCommand("-S", chain)
-			if err != nil {
-				return fmt.Errorf("inspect %s: %w: %s", chain, err, out)
-			}
-			for _, line := range strings.Split(string(out), "\n") {
-				if line == "-A "+chain+" -j ACCEPT" || line == "-A "+chain+" -d 0.0.0.0/0 -j ACCEPT" {
+		for _, line := range strings.Split(string(out), "\n") {
+			if line == "-A "+chain+" -j ACCEPT" || line == "-A "+chain+" -d 0.0.0.0/0 -j ACCEPT" {
+				if failClosed {
 					return fmt.Errorf("fail-closed: untagged unconditional ACCEPT in %s: %q; inspect and remove legacy fallback rules before restarting (existing firewall is still in effect)", chain, line)
 				}
+				log.Warning("untagged unconditional ACCEPT in %s: %q; this may be an old AC fallback or an operator rule; leaving it unchanged, so traffic it permits remains allowed after discovery recovers; inspect before upgrading", chain, line)
 			}
+		}
+	}
+	if !failClosed {
+		if err := table.probeFailurePolicyComment(); err != nil {
+			table.failurePolicyStateKnown = false
+			return err
 		}
 	}
 	return nil
@@ -363,7 +364,7 @@ func (table *IPTables) InitializeFailurePolicy(failClosed bool) error {
 // duplicates and partial updates. On error the next discovery tick retries.
 // The caller holds failurePolicyMutex; one AC owns each network namespace.
 func (table *IPTables) setFailurePolicyRules(open bool) error {
-	table.failurePolicyInitialized = false
+	table.failurePolicyStateKnown = false
 	for _, chain := range []string{"INPUT", "FORWARD"} {
 		out, err := table.failurePolicyCommand("-S", chain)
 		if err != nil {
@@ -395,7 +396,7 @@ func (table *IPTables) setFailurePolicyRules(open bool) error {
 		}
 	}
 	table.AcceptInputMode = open
-	table.failurePolicyInitialized = true
+	table.failurePolicyStateKnown = true
 	return nil
 }
 
@@ -420,7 +421,7 @@ func (table *IPTables) AcceptAllInput() {
 func (table *IPTables) SetFailurePolicyOpen(open bool) error {
 	table.failurePolicyMutex.Lock()
 	defer table.failurePolicyMutex.Unlock()
-	if table.failurePolicyInitialized && table.AcceptInputMode == open {
+	if table.failurePolicyStateKnown && table.AcceptInputMode == open {
 		return nil
 	}
 	return table.setFailurePolicyRules(open)

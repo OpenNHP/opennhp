@@ -1,17 +1,27 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 // A fake executable exercises command errors and partial reconciliation without
 // requiring root or ever invoking the host firewall. Real enforcement is tested
 // separately in the disposable integration lab.
 func TestFailurePolicyRules(t *testing.T) {
+	var warnings []string
+	logger := log.NewLogger("", 1, "", "")
+	logger.Warning = func(format string, args ...any) {
+		warnings = append(warnings, fmt.Sprintf(format, args...))
+	}
+	log.SetGlobalLogger(logger)
+	t.Cleanup(func() { log.SetGlobalLogger(log.NewLogger("", 3, "", "")) })
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "iptables")
 	script := `#!/bin/sh
@@ -32,7 +42,7 @@ case "$op" in
 -X) rm "$chain" ;;
 -S) cat "$chain" ;;
 -I) echo "-A $chain $*" >> "$chain" ;;
--D) sed '1d' "$chain" > next; mv next "$chain" ;;
+-D) awk -v rule="-A $chain $*" '$0 == rule && !removed { removed=1; next } { print }' "$chain" > next; mv next "$chain" ;;
 *) exit 2 ;;
 esac
 `
@@ -88,7 +98,7 @@ esac
 	if err := restarted.InitializeFailurePolicy(true); err == nil {
 		t.Fatal("firewall failure ignored")
 	}
-	if restarted.failurePolicyInitialized {
+	if restarted.failurePolicyStateKnown {
 		t.Fatal("partial operation marked complete")
 	}
 	if count("INPUT") != 0 || count("FORWARD") != 1 {
@@ -138,12 +148,22 @@ esac
 		if err := restarted.InitializeFailurePolicy(false); err != nil {
 			t.Fatal(err)
 		}
+		if len(warnings) == 0 || !strings.Contains(warnings[len(warnings)-1], legacyRule) {
+			t.Errorf("fail-open did not warn about preserved legacy rule %q: %v", legacyRule, warnings)
+		}
+		b, _ = os.ReadFile(filepath.Join(dir, chain))
+		if string(b) != legacy {
+			t.Fatal("fail-open changed an unowned rule")
+		}
 		if err := os.WriteFile(filepath.Join(dir, chain), nil, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	operator := "-A INPUT -s 192.0.2.1 -j DROP\n-A INPUT -m comment --comment operator-baseline -j ACCEPT\n"
-	if err := os.WriteFile(filepath.Join(dir, "INPUT"), []byte(operator), 0600); err != nil {
+	// Owned duplicates need not be at the top of the chain. Removing them must
+	// preserve an operator's rules and their order.
+	owned := "-A INPUT -m comment --comment " + failurePolicyComment + " -j ACCEPT\n"
+	if err := os.WriteFile(filepath.Join(dir, "INPUT"), []byte(operator+owned+owned), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := restarted.InitializeFailurePolicy(true); err != nil {
@@ -162,7 +182,7 @@ esac
 	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "clean up probe") {
 		t.Fatalf("probe cleanup failure ignored: %v", err)
 	}
-	if restarted.failurePolicyInitialized {
+	if restarted.failurePolicyStateKnown {
 		t.Fatal("failed probe cleanup marked complete")
 	}
 	if err := os.Remove(filepath.Join(dir, "fail-probe-cleanup")); err != nil {
@@ -176,7 +196,7 @@ esac
 	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "comment match") {
 		t.Fatalf("missing comment support accepted: %v", err)
 	}
-	if restarted.failurePolicyInitialized {
+	if restarted.failurePolicyStateKnown {
 		t.Fatal("failed probe marked initialized")
 	}
 	if err := restarted.InitializeFailurePolicy(true); err != nil {
@@ -207,7 +227,7 @@ func TestFailurePolicyCommandTimeout(t *testing.T) {
 	if err := table.InitializeFailurePolicy(false); err == nil {
 		t.Fatal("hung firewall command did not return an initialization error")
 	}
-	if table.failurePolicyInitialized {
+	if table.failurePolicyStateKnown {
 		t.Fatal("timed-out cleanup marked complete")
 	}
 }

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* **ac:** add restart-only `FailurePolicy` (`fail-open` by default, or `fail-closed`) for IPv4 iptables. The fallback now requires the iptables comment match, including with the default setting; without it, the AC logs a critical startup message and cannot open fallback access during an outage. Stop older AC versions gracefully before upgrading and inspect untagged ACCEPT rules: fail-open warns and preserves them, while fail-closed refuses startup. See [migration details](docs/ac-failure-policy.md).
+
 * **server:** an NHP-DB claiming a legacy data object over `NHP_DRG` must be online and acknowledged with the same key and `dbId`; otherwise the claim is rejected as unauthorized.
 * **server:** NHP-DB `DbId` values with leading or trailing whitespace, or no value, are rejected during online registration and object registration.
   This is an upgrade change: deployments with missing or malformed `DbId` values stop coming online, and existing objects with those values must be repaired manually in `etc/ztdo/data-<doId>.json`.

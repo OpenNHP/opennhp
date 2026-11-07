@@ -94,6 +94,9 @@ logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.startTime = time.Now()
+	// Configuration watchers can notify discovery during startup.
+	a.signals.stop = make(chan struct{})
+	a.signals.serverMapUpdated = make(chan struct{}, 1)
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -131,7 +134,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			if a.config.FailurePolicy == FailurePolicyClosed {
 				return fmt.Errorf("initialize AC failure policy: %w", err)
 			}
-			log.Error("initialize AC failure policy: %v; continuing fail-open startup, discovery will retry rule reconciliation; fallback cannot open without iptables comment support", err)
+			log.Critical("initialize AC failure policy: %v; continuing fail-open startup with reconciliation retries; if iptables comment support is unavailable, fallback will NOT open on outage", err)
 		}
 
 		a.ipset, err = utils.NewIPSet(false)
@@ -250,9 +253,6 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			}
 		}
 	}
-
-	a.signals.stop = make(chan struct{})
-	a.signals.serverMapUpdated = make(chan struct{}, 1)
 
 	a.recvMsgCh = a.device.DecryptedMsgQueue
 	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
@@ -651,6 +651,10 @@ func (a *UdpAC) recoverUDPHandler(headerType int) {
 
 // keep interaction between ac and server in certain time interval to keep outwards ip path active
 func (a *UdpAC) maintainServerConnectionRoutine() {
+	a.maintainServerConnections(func(open bool) error { return a.iptables.SetFailurePolicyOpen(open) })
+}
+
+func (a *UdpAC) maintainServerConnections(setFailurePolicyOpen func(bool) error) {
 	defer a.wg.Done()
 	defer log.Info("maintainServerConnectionRoutine stopped")
 
@@ -659,7 +663,7 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	// reset iptables before exiting
 	if a.config.FilterMode == FilterMode_IPTABLES {
 		defer func() {
-			if err := a.iptables.SetFailurePolicyOpen(false); err != nil {
+			if err := setFailurePolicyOpen(false); err != nil {
 				log.Error("reset AC failure policy on shutdown: %v", err)
 			}
 		}()
@@ -692,6 +696,8 @@ discoveryCycles:
 		// If so, apply the configured failure policy without changing discovery timing.
 		// This goroutine owns policy checks as well as generation changes.
 		// An in-flight rule update finishes before a replacement cycle starts.
+		// Reload and shutdown wait for it: each iptables command has a 5s timeout,
+		// not the whole update. Duplicate cleanup needs one extra command per rule.
 		var lastState, lastError string
 		for {
 			select {
@@ -720,9 +726,9 @@ discoveryCycles:
 				}
 				var err error
 				if allFailed && a.config.FailurePolicy == FailurePolicyOpen {
-					err = a.iptables.SetFailurePolicyOpen(true)
+					err = setFailurePolicyOpen(true)
 				} else {
-					err = a.iptables.SetFailurePolicyOpen(false)
+					err = setFailurePolicyOpen(false)
 				}
 				if err != nil {
 					if err.Error() != lastError {

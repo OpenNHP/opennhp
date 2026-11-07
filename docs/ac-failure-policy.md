@@ -15,8 +15,9 @@ FailurePolicy = "fail-closed"
 
 For remote etcd TOML configuration, place this setting under `[BaseConfig]`.
 
-Omitted, empty, or `"fail-open"` preserves existing behavior: when all server
-discoveries fail, the AC inserts broad INPUT and FORWARD ACCEPT rules.
+Omitted, empty, or `"fail-open"` selects the availability policy: when all server
+discoveries fail, the AC inserts broad INPUT and FORWARD ACCEPT rules. Unlike
+older versions, this fallback requires the iptables comment match described below.
 `"fail-closed"` prevents that fallback. Existing grants keep their normal lifetime;
 established connections may survive grant expiry. Discovery/reporting intervals
 and grant lifetimes are unchanged. IPv6 and XDP are unchanged;
@@ -62,15 +63,27 @@ its position and other conditions. Never use the reserved `opennhp-ac-fail-open`
 comment for operator rules. Fail-closed then leaves the labeled rule in place;
 traffic allowed by that rule remains allowed. This is not a baseline firewall audit.
 **Refusal leaves the existing firewall in effect, which may still allow traffic.**
-Fail-open does not remove these untagged rules. Neither mode audits arbitrary rules
+Fail-open warns with the exact untagged rule text and leaves it unchanged, so
+traffic it permits remains allowed even after discovery recovers. Neither mode
+audits arbitrary rules
 or installs the baseline; operators must supply the normal iptables/ipset baseline.
 Only one AC may own fallback rules in a network namespace. External firewall rewrites
 are outside this feature's scope.
 
-With no configured servers, fail-open retains the existing behavior of opening
-access on the next discovery check; fail-closed does not insert fallback rules.
+If the running peer map becomes empty, fail-open retains the existing behavior of
+opening access on the next discovery check; fail-closed does not insert fallback
+rules. This does not bypass validation of the server configuration at startup.
 
 The existing Go methods `AcceptAllInput()` and `ResetAllInput()` retain their
 no-return signatures for interface and callback compatibility and log failures.
 The AC uses `SetFailurePolicyOpen(bool) error` to handle failures and retry.
 The IPv6 methods retain their existing behavior; this setting only controls IPv4.
+
+Reload and shutdown wait for an in-flight firewall update. Each command has a
+five-second timeout; this is not a limit on the whole update. A normal change
+uses up to four commands, and stale duplicates require additional deletions.
+Shutdown also attempts a final cleanup. Allow for these operations in service
+stop timeouts.
+
+Hostname resolution uses the existing system resolver. An in-progress DNS lookup
+can also delay discovery replacement or shutdown.

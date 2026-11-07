@@ -265,6 +265,38 @@ tcp/22 from the relay SG; recovery of an unfiltered host is still
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
 
+**All-ports exposure on the AC (deliberate).** `aws_security_group.ac` is opened
+the same way, under `var.ac_open_all_ports` (the `infra-demo` `open_ac_all_ports`
+input, **opt-in, default `false`** like the server's), and for the same reason —
+only harder: a packet the security group drops never reaches the NIC, so the
+AC's XDP filter never sees it, never counts it, and the AC's column on
+stats.opennhp.org undercounts the attacks (in the narrow posture only tcp/443
+and the knock port are reachable, so most scans are gone before the filter can
+see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by `nhp-acd` in
+`FilterMode = 1`) is then the only inbound control on everything but tcp/22;
+tcp/22 stays restricted to the relay SG.
+
+The filter has to be as narrow as the server's for that to hold, and it now
+is. UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and
+by the answers to the host's own queries (the AC's conn_track, plus the
+kernel's socket table for a socket bound below the ephemeral range). IPv6 is
+filtered rather than passed, a non-first IPv4 fragment is not judged by bytes
+that are not a header, and an ICMP echo reply needs the same whitelist entry
+the echo request does. `nhp/utils/ebpf/xdpfilter_test.go` pins each of those.
+
+What the AC has that the server does not is the fail-closed netfilter backstop
+(`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`), which keeps the
+protected resource shut while the XDP link is detached — i.e. it covers the
+fail-open windows the link has whenever `nhp-acd` is restarting. **It covers
+tcp/443 and nothing else**: in every one of those windows every other port on
+the AC is unfiltered, exactly as on the server.
+`deploy-demo-v2` establishes that the filter is attached (`Verify the AC's XDP
+ingress filter attached`) and reports whether the group is actually wide open
+(`Check the AC's security group is open to the internet`); `infra-demo` refuses
+to widen a group whose host has no XDP program attached. Neither group is open
+by default in the pipeline — tick the input to open one, untick it to go back
+to the narrow posture.
+
 **Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
 unprivileged on the demo host and `443 < 1024`, the unit does not rely on
 `CAP_NET_BIND_SERVICE` — granting it would leave the daemon with a non-empty
@@ -367,6 +399,49 @@ as `nhp-server`** (`sourceLabel` in `render_index.go`) while `index.json` keeps
 the raw directory name — `source` is a published field and renaming it breaks
 existing parsers.
 
+**History baseline.** `xdplog-report site -history <path>` reads a
+`history.json` snapshot: the site's own numbers for the days before the
+publishing floor, which the collector's cache does not reach back to.
+`xdplog-report history` generates that file from a saved copy of the homepage
+(`-html`) or from what the site published (`-index` + `-totals`), and refuses
+to write one whose rows do not sum to the page's own all-time total — a
+parsing slip must not freeze a wrong baseline into the site's history. The
+A day the live site can produce is **not** frozen: it is analyzed from the log,
+published with a real detail page, and the snapshot's row for it is dropped, so
+the overlapping days are not counted twice (they would read `7,002,040` instead
+of `3,501,020`). The snapshot's rows are the fallback for the days the
+collector's cache no longer reaches; those carry `"history": true` in
+`index.json` plus a `history` chip on the homepage, and a frozen day has no
+detail page — the snapshot carries the day's summary, not its events — so its
+date renders as plain text. The pages the site published for those days earlier
+are left in place, unlinked (unlinked is not unpublished). `totals.blocked`
+must equal the sum of the snapshot's own days, so the hero total stays the sum
+of every row of `index.json`.
+
+The all-time source and country totals are the **union over every published
+day**, the snapshot's days included: each day's own set of attackers and of
+countries is unioned with the others', so an address seen on ten days — or in
+the snapshot's period and in the live one — is counted once. The snapshot's own
+`source_ips` and `countries` are therefore **not** added on top of that union:
+two unions can only be merged when both sets are present, and adding their
+sizes instead counts an address (or a country) seen in both periods twice,
+because the sum of two set sizes is at least their union, never at most it.
+What *is* added is the part of the snapshot's baseline that covers its own
+days whose per-day records are gone — the days the live site cannot produce at
+all — and only for those: nothing else carries those days' attackers, and the
+published figures are then upper bounds rather than exact counts. The
+publishing floor applies to the snapshot's days as well: a day below it is
+neither in the index nor in the hero total, and the snapshot's `since` cannot
+put the site below the floor either.
+A `-history` path that cannot be read
+fails the run — silently counting only the site's own days would shrink the
+published totals by an unquantifiable amount — and the file's fingerprint
+lives in `state.json`, so editing it rewrites the index. The snapshot is
+private: `/home/ec2-user/xdpstats/history.json` beside the state, never in the
+web root; `deploy-xdpstats` installs it from
+`deploy/config-templates/xdpstats/history.json` and `xdpstats-collect.sh`
+passes `-history` only when the file is readable.
+
 **Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
 that produced each day page, so bumping that constant in `site.go` re-renders
 every published day on the next run instead of only the days whose raw log
@@ -443,6 +518,30 @@ by the deploy) and says so in the collect log either way.
   under `/var/www/stats/`. nginx serves that directory at
   `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
   `relay.*` / `agent.*` / `reg.*` / `demo.*`.
+- **A deploy republishes the site.** `deploy-demo-v2`'s `deploy-xdpstats`
+  job runs the collector once with `XDPSTATS_SITE_FORCE=1` — the systemd
+  manager's environment, so the run still happens inside the unit's sandbox
+  (`ProtectSystem=full`, `ReadWritePaths`) rather than as a bare ssh
+  command — which makes the collector pass `-force` to `xdplog-report
+  site`: every cached day is re-analyzed and every page and the index are
+  rewritten. The forced rebuild is what makes a deploy that changes the
+  published figures, the hero or the markup reach the visitors at all:
+  `xdplog-report site` only rewrites the index when an input moved (a day's
+  log changed, a day was unpublished, the history snapshot's bytes
+  changed), so without it the site would keep serving the previous build.
+  The job then checks two things about the run it started, because the
+  collector's exit code cannot answer either question: a run that lost the
+  collector's lock exits zero without touching the site, and a run that
+  could not list a source exits non-zero with the site perfectly rebuilt.
+  The collect log lines *that run* wrote must contain the forced-rebuild
+  line, and the published `index.html` must be newer than a marker created
+  before the run — the flag reached the collector, and the file nginx serves
+  was rewritten. A source that could not be listed is a warning, not a
+  failure. The job also fails if the published country figure is
+  implausible (there are only ~250 ISO 3166-1 alpha-2 codes), and a step
+  after it guarantees the force flag did not outlive the deploy and that
+  the daily timer is running. The daily timer run is not forced — the
+  incremental path is the point there.
 
 **Three directories, three permission stories.** The web root is
 `/var/www/stats` (0755), not under `$HOME`: `/home/ec2-user` is 0700 on

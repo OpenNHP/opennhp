@@ -57,6 +57,9 @@ EBPF_SRC_TC_EGRESS = ./nhp/ebpf/xdp/tc_egress.c
 EBPF_SRC_SERVER_XDP = ./nhp/ebpf/xdp/nhp_server_xdp.c
 # Shared map definitions included by both sources; a change here must rebuild both.
 EBPF_HDR_MAPS = ./nhp/ebpf/xdp/nhp_maps.h
+# The XDP telemetry mechanism, shared by the server's and the AC's ingress
+# filter; a change here must rebuild both.
+EBPF_HDR_STATS = ./nhp/ebpf/xdp/nhp_xdp_stats.h
 EBPF_OBJ_XDP = ./release/nhp-ac/etc/nhp_ebpf_xdp.o
 EBPF_OBJ_TC_EGRESS = ./release/nhp-ac/etc/tc_egress.o
 EBPF_OBJ_SERVER_XDP = ./release/nhp-server/etc/nhp_server_xdp.o
@@ -83,7 +86,7 @@ ebpf: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) $(EBPF_OBJ_SERVER_XDP) generate-vers
 ebpf-objs: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) $(EBPF_OBJ_SERVER_XDP)
 	@echo "$(COLOUR_GREEN)[eBPF] Object files compiled$(END_COLOUR)"
 
-$(EBPF_OBJ_XDP): $(EBPF_SRC_XDP) $(EBPF_HDR_MAPS)
+$(EBPF_OBJ_XDP): $(EBPF_SRC_XDP) $(EBPF_HDR_MAPS) $(EBPF_HDR_STATS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_XDP) -o $(EBPF_OBJ_XDP)
@@ -91,7 +94,7 @@ $(EBPF_OBJ_TC_EGRESS): $(EBPF_SRC_TC_EGRESS) $(EBPF_HDR_MAPS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_TC_EGRESS) -o $(EBPF_OBJ_TC_EGRESS)
-$(EBPF_OBJ_SERVER_XDP): $(EBPF_SRC_SERVER_XDP)
+$(EBPF_OBJ_SERVER_XDP): $(EBPF_SRC_SERVER_XDP) $(EBPF_HDR_STATS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_SERVER_XDP) -o $(EBPF_OBJ_SERVER_XDP)

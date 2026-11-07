@@ -205,7 +205,7 @@ func TestFailurePolicyCommandTimeout(t *testing.T) {
 	}
 	table := &IPTables{Binary: binary, failurePolicyTimeout: 100 * time.Millisecond}
 	if err := table.InitializeFailurePolicy(false); err == nil {
-		t.Fatal("hung firewall command did not fail startup")
+		t.Fatal("hung firewall command did not return an initialization error")
 	}
 	if table.failurePolicyInitialized {
 		t.Fatal("timed-out cleanup marked complete")

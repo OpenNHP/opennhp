@@ -41,13 +41,15 @@ Discovery retries failed rule changes; fallback cannot open until comment suppor
 is available. The probe does not open traffic. Fail-closed skips the insertion
 probe and still refuses startup if required cleanup or inspection fails.
 
-On startup, both modes remove those owned rules, including duplicates left after
-a crash.
+On startup, both modes attempt to remove those owned rules, including duplicates
+left after a crash.
 Switching from fail-open to fail-closed therefore needs no manual rule cleanup
-when the rules were created by this version. Fail-open starts with the normal
-firewall baseline and opens again only after the usual discovery failure threshold.
+when the rules were created by this version. After successful cleanup, fail-open
+starts with the normal firewall baseline and opens again only after the usual
+discovery failure threshold.
 Failed firewall commands are reported and retried on subsequent discovery ticks;
-startup fails if owned-rule cleanup fails.
+fail-closed refuses startup if owned-rule cleanup fails. Fail-open logs the failure
+and continues startup, so leftover owned rules may remain until cleanup succeeds.
 
 Older versions created untagged unconditional ACCEPT rules. They cannot safely be
 distinguished from operator rules. Before upgrading, stop the old AC gracefully

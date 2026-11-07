@@ -131,7 +131,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			if a.config.FailurePolicy == FailurePolicyClosed {
 				return fmt.Errorf("initialize AC failure policy: %w", err)
 			}
-			log.Error("initialize AC failure policy: %v; continuing fail-open startup, discovery will retry rule reconciliation", err)
+			log.Error("initialize AC failure policy: %v; continuing fail-open startup, discovery will retry rule reconciliation; fallback cannot open without iptables comment support", err)
 		}
 
 		a.ipset, err = utils.NewIPSet(false)
@@ -801,7 +801,9 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 				Compress:      true,
 				PeerPk:        peerPbk,
 				Message:       aolBytes,
-				ResponseMsgCh: make(chan *core.PacketParserData),
+				// A transaction delivers one result. Leave room for a late reply
+				// after discovery is canceled, so its producer can still finish.
+				ResponseMsgCh: make(chan *core.PacketParserData, 1),
 			}
 
 			if !a.IsRunning() {
@@ -809,12 +811,25 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 				return
 			}
 
-			a.sendMsgCh <- aolMd // create new connection
+			select {
+			case <-a.signals.stop:
+				return
+			case <-quit:
+				return
+			case a.sendMsgCh <- aolMd: // create new connection
+			}
 			server.UpdateSend(currTime)
 
-			// block until transaction completes or timeouts
-			ppd := <-aolMd.ResponseMsgCh
-			close(aolMd.ResponseMsgCh)
+			// Do not close the response channel: the transaction may still reply
+			// after a reload or shutdown has canceled this discovery routine.
+			var ppd *core.PacketParserData
+			select {
+			case <-a.signals.stop:
+				return
+			case <-quit:
+				return
+			case ppd = <-aolMd.ResponseMsgCh:
+			}
 
 			var err error
 			func() {
@@ -889,7 +904,13 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 					TransactionId: a.device.NextCounterIndex(),
 				}
 
-				a.sendMsgCh <- md // send NHP_KPL to server via existing connection
+				select {
+				case <-a.signals.stop:
+					return
+				case <-quit:
+					return
+				case a.sendMsgCh <- md: // send NHP_KPL via existing connection
+				}
 				server.UpdateSend(currTime)
 			}
 		}

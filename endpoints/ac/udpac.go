@@ -128,7 +128,10 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		}
 
 		if err = a.iptables.InitializeFailurePolicy(a.config.FailurePolicy == FailurePolicyClosed); err != nil {
-			return fmt.Errorf("initialize AC failure policy: %w", err)
+			if a.config.FailurePolicy == FailurePolicyClosed {
+				return fmt.Errorf("initialize AC failure policy: %w", err)
+			}
+			log.Error("initialize AC failure policy: %v; continuing fail-open startup, discovery will retry rule reconciliation", err)
 		}
 
 		a.ipset, err = utils.NewIPSet(false)
@@ -302,7 +305,6 @@ func (ac *UdpAC) Stop() {
 	ac.StopConfigWatch()
 	ac.wg.Wait()
 	close(ac.sendMsgCh)
-	close(ac.signals.serverMapUpdated)
 
 	log.Info("==========================")
 	log.Info("=== NHP-AC stopped ===")
@@ -666,6 +668,7 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	var discoveryRoutineWg sync.WaitGroup
 	defer discoveryRoutineWg.Wait()
 
+discoveryCycles:
 	for {
 		// make a local copy of servers then iterate because next operations are time consuming (too long to use locked iteration)
 		a.serverPeerMutex.Lock()
@@ -687,67 +690,52 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 
 		// check whether all server discovery failed.
 		// If so, apply the configured failure policy without changing discovery timing.
-		quitCheck := make(chan struct{})
-		discoveryQuitArr = append(discoveryQuitArr, quitCheck)
-		discoveryRoutineWg.Add(1)
-		go func() {
-			defer discoveryRoutineWg.Done()
-
-			var lastState, lastError string
-			for {
-				select {
-				case <-a.signals.stop:
-					return
-				case <-quitCheck:
-					return
-				case <-time.After(MinialServerDiscoveryInterval * time.Second):
-					var totalFail int32
-					for _, status := range discoveryFailStatusArr {
-						totalFail += atomic.LoadInt32(status)
-					}
-
-					if a.config.FilterMode != FilterMode_IPTABLES {
-						continue
-					}
-					// An empty peer map intentionally retains the historical fail-open behavior.
-					allFailed := totalFail == int32(len(discoveryFailStatusArr))
-					state := "not all server discoveries have failed"
-					if allFailed {
-						state = "all server discoveries failed: " + a.config.FailurePolicy
-					}
-					var err error
-					if allFailed && a.config.FailurePolicy == FailurePolicyOpen {
-						err = a.iptables.SetFailurePolicyOpen(true)
-					} else {
-						err = a.iptables.SetFailurePolicyOpen(false)
-					}
-					if err != nil {
-						if err.Error() != lastError {
-							log.Error("AC failure policy: %v (will retry)", err)
-						}
-						lastError = err.Error()
-						continue
-					}
-					if state != lastState || lastError != "" {
-						log.Info("AC failure policy: %s", state)
-					}
-					lastState, lastError = state, ""
-				}
-			}
-		}()
-
-		select {
-		case <-a.signals.stop:
-			return
-		case _, ok := <-a.signals.serverMapUpdated:
-			if !ok {
+		// This goroutine owns policy checks as well as generation changes.
+		// An in-flight rule update finishes before a replacement cycle starts.
+		var lastState, lastError string
+		for {
+			select {
+			case <-a.signals.stop:
 				return
+			case <-a.signals.serverMapUpdated:
+				for _, q := range discoveryQuitArr {
+					close(q)
+				}
+				discoveryRoutineWg.Wait()
+				continue discoveryCycles
+			case <-time.After(MinialServerDiscoveryInterval * time.Second):
+				var totalFail int32
+				for _, status := range discoveryFailStatusArr {
+					totalFail += atomic.LoadInt32(status)
+				}
+
+				if a.config.FilterMode != FilterMode_IPTABLES {
+					continue
+				}
+				// An empty peer map intentionally retains the historical fail-open behavior.
+				allFailed := totalFail == int32(len(discoveryFailStatusArr))
+				state := "not all server discoveries have failed"
+				if allFailed {
+					state = "all server discoveries failed: " + a.config.FailurePolicy
+				}
+				var err error
+				if allFailed && a.config.FailurePolicy == FailurePolicyOpen {
+					err = a.iptables.SetFailurePolicyOpen(true)
+				} else {
+					err = a.iptables.SetFailurePolicyOpen(false)
+				}
+				if err != nil {
+					if err.Error() != lastError {
+						log.Error("AC failure policy: %v (will retry)", err)
+					}
+					lastError = err.Error()
+					continue
+				}
+				if state != lastState || lastError != "" {
+					log.Info("AC failure policy: %s", state)
+				}
+				lastState, lastError = state, ""
 			}
-			// stop all current discovery routines
-			for _, q := range discoveryQuitArr {
-				close(q)
-			}
-			// continue and restart with new server discovery cycle
 		}
 	}
 }
@@ -930,9 +918,7 @@ func (a *UdpAC) AddServerPeer(server *core.UdpPeer) {
 		a.serverPeerMutex.Unlock()
 
 		// renew server connection cycle
-		if len(a.signals.serverMapUpdated) == 0 {
-			a.signals.serverMapUpdated <- struct{}{}
-		}
+		a.notifyServerMapUpdated()
 	}
 }
 
@@ -966,8 +952,15 @@ func (a *UdpAC) RemoveServerPeer(serverEndpointKey string) {
 	}
 
 	// renew server connection cycle
-	if len(a.signals.serverMapUpdated) == 0 {
-		a.signals.serverMapUpdated <- struct{}{}
+	a.notifyServerMapUpdated()
+}
+
+// Coalesce reloads without blocking callers. The stop channel owns shutdown;
+// this notification channel stays open so late callbacks cannot panic.
+func (a *UdpAC) notifyServerMapUpdated() {
+	select {
+	case a.signals.serverMapUpdated <- struct{}{}:
+	default:
 	}
 }
 

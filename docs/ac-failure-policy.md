@@ -22,12 +22,11 @@ established connections may survive grant expiry. Discovery/reporting intervals
 and grant lifetimes are unchanged. IPv6 and XDP are unchanged;
 selecting fail-closed with XDP is rejected.
 
-The setting requires a restart. Invalid values fail startup. A live policy change
-rejects the entire base-config update and logs that a restart is required. An
-invalid policy also rejects the entire update. Other base fields in the same edit
-(including `LogLevel` and `DefaultIp`) remain unchanged; keep the running policy
-value to apply those fields without restarting. During an etcd reload, independent
-HTTP and server-peer sections are still applied.
+The setting requires a restart. Invalid values fail startup. During reload, a
+valid policy change is logged and deferred until restart; the running policy and
+filter mode remain active while live settings such as `LogLevel` and `DefaultIp`
+are applied. An invalid policy rejects the base-config update. Independent HTTP
+and server-peer sections of an etcd reload are still applied.
 
 Local startup now reports a missing or malformed `etc/config.toml` immediately,
 instead of continuing with an empty configuration and failing later.
@@ -37,8 +36,10 @@ to tag its broad fallback rules with `opennhp-ac-fail-open`. Ensure this support
 is available in the host kernel and iptables installation, including for container
 deployments. Fail-open startup verifies support by inserting a comment-bearing
 RETURN rule in a temporary, unreferenced chain, then removing that chain. Failure
-of the probe or its cleanup stops startup; the probe does not open traffic.
-Fail-closed does not require this insertion probe.
+of the probe or its cleanup is logged in fail-open mode, and startup continues.
+Discovery retries failed rule changes; fallback cannot open until comment support
+is available. The probe does not open traffic. Fail-closed skips the insertion
+probe and still refuses startup if required cleanup or inspection fails.
 
 On startup, both modes remove those owned rules, including duplicates left after
 a crash.

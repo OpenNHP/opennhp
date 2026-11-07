@@ -1,9 +1,9 @@
 package ac
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/pelletier/go-toml/v2"
@@ -54,11 +54,11 @@ func TestFailurePolicyConfig(t *testing.T) {
 				changed.FailurePolicy = FailurePolicyOpen
 			}
 			changed.DefaultIp = "192.0.2.9"
-			if err := a.updateBaseConfig(changed); err == nil || !strings.Contains(err.Error(), "requires restart") {
+			if err := a.updateBaseConfig(changed); err != nil {
 				t.Fatalf("reload error: %v", err)
 			}
-			if a.config.FailurePolicy != original.FailurePolicy || a.config.DefaultIp != original.DefaultIp {
-				t.Fatal("restart-only reload changed live config")
+			if a.config.FailurePolicy != original.FailurePolicy || a.config.DefaultIp != changed.DefaultIp {
+				t.Fatal("reload failed to retain policy while applying live settings")
 			}
 			changed.FailurePolicy = "invalid"
 			if err := a.updateBaseConfig(changed); err == nil {
@@ -105,11 +105,12 @@ func TestFailurePolicyEtcdReloadKeepsIndependentSections(t *testing.T) {
 		t.Fatal("device initialization failed")
 	}
 	defer a.device.Stop()
+	expectedIP := ""
 	for i, policy := range []string{FailurePolicyClosed, FailurePolicyOpen, "typo", ""} {
 		port := 62206 + i
-		defaultIP := "192.0.2.9"
-		if i == 0 {
-			defaultIP = "192.0.2.1"
+		defaultIP := fmt.Sprintf("192.0.2.%d", 10+i)
+		if policy != "typo" {
+			expectedIP = defaultIP
 		}
 		base := map[string]any{"DefaultIp": defaultIP}
 		if policy != "" {
@@ -128,7 +129,7 @@ func TestFailurePolicyEtcdReloadKeepsIndependentSections(t *testing.T) {
 		if err := a.updateEtcdConfig(content, true); err != nil {
 			t.Fatalf("independent sections rejected for policy %q: %v", policy, err)
 		}
-		if a.config.FailurePolicy != FailurePolicyClosed || a.config.DefaultIp != "192.0.2.1" {
+		if a.config.FailurePolicy != FailurePolicyClosed || a.config.DefaultIp != expectedIP {
 			t.Fatal("rejected policy changed running base config")
 		}
 		if a.httpConfig == nil || a.httpConfig.HttpListenPort != 8000+i {
@@ -138,6 +139,22 @@ func TestFailurePolicyEtcdReloadKeepsIndependentSections(t *testing.T) {
 		if len(a.serverPeerMap) != 1 || a.serverPeerMap[endpointKey(peer)] == nil ||
 			len(a.config.Servers) != 1 || a.config.Servers[0].Port != port {
 			t.Fatalf("server replacement was dropped for policy %q", policy)
+		}
+	}
+}
+
+func TestFailurePolicyReloadKeepsRunningFilterMode(t *testing.T) {
+	a := &UdpAC{log: log.NewLogger("policy-test", 0, t.TempDir(), "test")}
+	defer a.log.Close()
+	if err := a.updateBaseConfig(Config{FailurePolicy: FailurePolicyClosed}); err != nil {
+		t.Fatal(err)
+	}
+	for _, policy := range []string{FailurePolicyClosed, FailurePolicyOpen, ""} {
+		if err := a.updateBaseConfig(Config{FailurePolicy: policy, FilterMode: FilterMode_EBPFXDP, DefaultIp: "192.0.2.9", LogLevel: 2}); err != nil {
+			t.Fatal(err)
+		}
+		if a.config.FilterMode != FilterMode_IPTABLES || a.config.FailurePolicy != FailurePolicyClosed || a.config.DefaultIp != "192.0.2.9" || a.config.LogLevel != 2 {
+			t.Fatal("reload did not preserve restart-only settings and apply live settings")
 		}
 	}
 }

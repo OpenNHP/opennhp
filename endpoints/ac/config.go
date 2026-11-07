@@ -265,15 +265,13 @@ func (a *UdpAC) updateBaseConfig(conf Config) (err error) {
 		log.Error("%v; configuration unchanged", err)
 		return err
 	}
-	if conf.FilterMode != FilterMode_IPTABLES && conf.FailurePolicy == FailurePolicyClosed {
+	if a.config == nil && conf.FilterMode != FilterMode_IPTABLES && conf.FailurePolicy == FailurePolicyClosed {
 		err = fmt.Errorf("FailurePolicy fail-closed requires FilterMode = 0 (iptables)")
 		log.Error("%v; configuration unchanged", err)
 		return err
 	}
 	if a.config != nil && a.config.FailurePolicy != conf.FailurePolicy {
-		err = fmt.Errorf("FailurePolicy change from %s to %s requires restart; configuration unchanged", a.config.FailurePolicy, conf.FailurePolicy)
-		log.Error("%v", err)
-		return err
+		log.Warning("FailurePolicy change from %s to %s requires restart; retaining running policy and applying live settings", a.config.FailurePolicy, conf.FailurePolicy)
 	}
 
 	if a.config == nil {
@@ -383,6 +381,7 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 		}
 	}
 	a.serverPeerMap = serverPeerMap
+	a.notifyServerMapUpdated()
 
 	return err
 }

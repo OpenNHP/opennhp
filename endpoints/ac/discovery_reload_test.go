@@ -258,6 +258,7 @@ func TestDiscoveryReloadPreservesFailedPeers(t *testing.T) {
 					if !unavailable.Load() {
 						a.remoteConnectionMutex.Lock()
 						a.remoteConnectionMap[request.RemoteAddr.String()] = &UdpConn{ConnData: &core.ConnectionData{LastLocalRecvTime: time.Now().UnixNano()}}
+						request.ConnData = a.remoteConnectionMap[request.RemoteAddr.String()].ConnData
 						a.remoteConnectionMutex.Unlock()
 						response = &core.PacketParserData{HeaderType: core.NHP_AAK, BodyMessage: []byte(`{}`)}
 					}

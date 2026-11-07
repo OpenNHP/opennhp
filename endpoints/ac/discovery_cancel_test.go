@@ -111,47 +111,75 @@ func TestDiscoveryReloadWithPendingResponse(t *testing.T) {
 }
 
 func TestDiscoveryAddressRetry(t *testing.T) {
-	for _, outcome := range []string{"recover", "stop", "reload"} {
+	for _, outcome := range []string{"recover", "stop", "reload", "sustained"} {
 		t.Run(outcome, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				a := &UdpAC{}
 				a.signals.stop = make(chan struct{})
 				quit := make(chan struct{})
-				var failed int32
-				attempts := 0
+				var state serverDiscoveryState
+				var attempts atomic.Int32
+				var recoverDNS atomic.Bool
 				want := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 62206}
 				resolve := func() (net.Addr, error) {
-					attempts++
-					if attempts == 1 {
-						return nil, errors.New("temporary DNS failure")
+					attempts.Add(1)
+					if recoverDNS.Load() {
+						return want, nil
 					}
-					return want, nil
+					return nil, errors.New("temporary DNS failure")
 				}
 				done := make(chan net.Addr, 1)
-				go func() { done <- a.waitForDiscoveryAddress(resolve, &failed, quit) }()
-				synctest.Wait()
-				if atomic.LoadInt32(&failed) != 1 {
-					t.Error("unresolved server counted as healthy")
+				start := func() { go func() { done <- a.waitForDiscoveryAddress(resolve, &state, quit) }(); synctest.Wait() }
+				start()
+				if atomic.LoadInt32(&state.failed) != 0 {
+					t.Error("first DNS failure crossed retry threshold")
 				}
 				switch outcome {
 				case "recover":
+					recoverDNS.Store(true)
 					time.Sleep(MinialServerDiscoveryInterval * time.Second)
 				case "stop":
 					close(a.signals.stop)
-				case "reload":
-					close(quit)
+				case "reload", "sustained":
+					for attempts.Load() < ServerDiscoveryRetryBeforeFail {
+						if outcome == "reload" {
+							close(quit)
+							synctest.Wait()
+							if <-done != nil {
+								t.Fatal("canceled lookup returned an address")
+							}
+							quit = make(chan struct{})
+							start()
+						} else {
+							time.Sleep(MinialServerDiscoveryInterval * time.Second)
+							synctest.Wait()
+						}
+						wantFailed := int32(0)
+						if attempts.Load() >= ServerDiscoveryRetryBeforeFail {
+							wantFailed = 1
+						}
+						if atomic.LoadInt32(&state.failed) != wantFailed {
+							t.Errorf("after %d attempts: failed=%d, want %d", attempts.Load(), atomic.LoadInt32(&state.failed), wantFailed)
+						}
+					}
+					recoverDNS.Store(true)
+					time.Sleep(MinialServerDiscoveryInterval * time.Second)
 				}
 				synctest.Wait()
 				got := <-done
-				if outcome == "recover" {
-					if got != want || attempts != 2 {
-						t.Fatalf("resolution did not recover: %v, attempts=%d", got, attempts)
+				if outcome == "stop" {
+					if got != nil || attempts.Load() != 1 {
+						t.Fatalf("canceled lookup retried: %v, attempts=%d", got, attempts.Load())
 					}
-				} else if got != nil || attempts != 1 {
-					t.Fatalf("canceled lookup retried: %v, attempts=%d", got, attempts)
+				} else if got != want {
+					t.Fatalf("resolution did not recover: %v", got)
 				}
-				if atomic.LoadInt32(&failed) != 1 {
-					t.Error("DNS recovery cleared failure before a discovery response")
+				wantFailed := int32(0)
+				if outcome == "reload" || outcome == "sustained" {
+					wantFailed = 1
+				}
+				if atomic.LoadInt32(&state.failed) != wantFailed {
+					t.Error("DNS recovery changed failure state before a discovery reply")
 				}
 			})
 		})

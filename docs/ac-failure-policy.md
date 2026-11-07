@@ -98,8 +98,11 @@ value. If systemd kills the process before cleanup finishes, fail-open rules may
 remain until the next successful AC startup. Do not disable the stop deadline
 as a substitute for investigating repeated cleanup failures.
 
-An initial hostname-resolution failure marks that endpoint failed and is retried
-without requiring a configuration reload. A successful lookup does not clear the
+Initial hostname-resolution failures are retried without a configuration reload
+and count toward the same three-attempt failure threshold as unsuccessful
+discovery requests. One failed lookup alone does not open fallback. Unlike older
+versions, persistently unresolved hostnames can trigger fail-open after the
+threshold; fail-closed never opens fallback. A successful lookup does not clear the
 failure until discovery receives a successful response. Hostname resolution uses
 the existing system resolver. An in-progress DNS lookup
 can also delay discovery replacement or shutdown.

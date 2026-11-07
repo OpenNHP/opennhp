@@ -776,13 +776,16 @@ discoveryCycles:
 
 // A failed initial lookup must remain retryable without a config reload. Keep
 // the failure set until a discovery response proves the endpoint is reachable.
-func (a *UdpAC) waitForDiscoveryAddress(resolve func() (net.Addr, error), failed *int32, quit <-chan struct{}) net.Addr {
+func (a *UdpAC) waitForDiscoveryAddress(resolve func() (net.Addr, error), state *serverDiscoveryState, quit <-chan struct{}) net.Addr {
 	for {
 		addr, err := resolve()
 		if err == nil && addr != nil {
 			return addr
 		}
-		atomic.StoreInt32(failed, 1)
+		state.retries++
+		if state.retries >= ServerDiscoveryRetryBeforeFail {
+			atomic.StoreInt32(&state.failed, 1)
+		}
 		log.Error("server discovery address unavailable: %v; will retry", err)
 		select {
 		case <-a.signals.stop:
@@ -798,7 +801,7 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 	defer discoveryRoutineWg.Done()
 
 	acId := a.config.ACId
-	sendAddr := a.waitForDiscoveryAddress(server.SendAddrErr, &state.failed, quit)
+	sendAddr := a.waitForDiscoveryAddress(server.SendAddrErr, state, quit)
 	if sendAddr == nil {
 		return
 	}

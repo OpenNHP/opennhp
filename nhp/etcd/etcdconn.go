@@ -24,13 +24,13 @@ type EtcdConn struct {
 	Key       string
 	client    *clientv3.Client
 	ctx       context.Context
-	watcher   clientv3.Watcher
-	signals   struct {
-		stop chan struct{}
-	}
+	cancel    context.CancelFunc
 }
 
 func (conn *EtcdConn) InitClient() error {
+	if len(conn.Endpoints) == 0 {
+		return errors.New("no etcd endpoints configured")
+	}
 	var err error
 	conn.client, err = clientv3.New(clientv3.Config{
 		Endpoints:   conn.Endpoints,
@@ -43,18 +43,21 @@ func (conn *EtcdConn) InitClient() error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	conn.ctx, conn.cancel = context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(conn.ctx, 3*time.Second)
 	defer cancel()
-	conn.ctx = ctx
-	_, err = conn.client.Status(conn.ctx, conn.Endpoints[0])
+	_, err = conn.client.Status(ctx, conn.Endpoints[0])
 	if err != nil {
+		conn.Close()
 		return err
 	}
 	return nil
 }
 
 func (conn *EtcdConn) GetValue() ([]byte, error) {
-	val, err := conn.client.Get(conn.ctx, conn.Key)
+	ctx, cancel := context.WithTimeout(conn.ctx, 3*time.Second)
+	defer cancel()
+	val, err := conn.client.Get(ctx, conn.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -69,19 +72,24 @@ func (conn *EtcdConn) GetValue() ([]byte, error) {
 }
 
 func (conn *EtcdConn) SetValue(v string) error {
-	_, err := conn.client.Put(conn.ctx, conn.Key, v)
+	ctx, cancel := context.WithTimeout(conn.ctx, 3*time.Second)
+	defer cancel()
+	_, err := conn.client.Put(ctx, conn.Key, v)
 	return err
 }
 
 func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 	// create etcd watcher
-	conn.watcher = clientv3.NewWatcher(conn.client)
-
-	watchChan := conn.watcher.Watch(context.Background(), conn.Key)
+	watcher := clientv3.NewWatcher(conn.client)
+	defer watcher.Close()
+	watchChan := watcher.Watch(conn.ctx, conn.Key)
 
 	for {
 		select {
-		case resp := <-watchChan:
+		case resp, ok := <-watchChan:
+			if !ok || resp.Canceled {
+				return
+			}
 			// handle change events
 			for _, ev := range resp.Events {
 				switch ev.Type {
@@ -91,8 +99,7 @@ func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 					log.Debug("[DELETE] Key: %s\n", string(ev.Kv.Key))
 				}
 			}
-		case <-conn.signals.stop:
-			conn.watcher.Close()
+		case <-conn.ctx.Done():
 			return
 		}
 	}
@@ -100,9 +107,10 @@ func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 }
 
 func (conn *EtcdConn) Close() {
+	if conn.cancel != nil {
+		conn.cancel()
+	}
 	if conn.client != nil {
-		// stop the etcd watcher
-		close(conn.signals.stop)
 		conn.client.Close()
 	}
 }

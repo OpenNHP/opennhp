@@ -71,6 +71,7 @@ func (hs *HttpAC) Start(uac *UdpAC, hc *HttpConfig) error {
 	}
 
 	hs.wg.Add(1)
+	hs.running.Store(true) // Both TLS and plain HTTP own a listener goroutine.
 	if hc.EnableTLS {
 		certFilePath := filepath.Join(ExeDirPath, hc.TLSCertFile)
 		keyFilePath := filepath.Join(ExeDirPath, hc.TLSKeyFile)
@@ -101,7 +102,6 @@ func (hs *HttpAC) Start(uac *UdpAC, hc *HttpConfig) error {
 		}
 	}()
 
-	hs.running.Store(true)
 	return nil
 }
 

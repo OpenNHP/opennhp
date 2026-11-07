@@ -29,6 +29,7 @@ var (
 )
 
 type UdpAC struct {
+	stopMu     sync.Mutex
 	config     *Config
 	httpConfig *HttpConfig
 	iptables   *utils.IPTables
@@ -100,6 +101,34 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.log = log.NewLogger("NHP-AC", logLevel, filepath.Join(ExeDirPath, "logs"), "ac")
 	log.SetGlobalLogger(a.log)
 
+	// Start may fail before normal Stop is usable. Release only resources
+	// already acquired, draining remote callbacks before their dependencies.
+	defer func() {
+		if err == nil {
+			return
+		}
+		if a.etcdConn != nil {
+			a.etcdConn.Close()
+		}
+		a.StopConfigWatch()
+		if a.httpServer != nil {
+			a.httpServer.Stop()
+		}
+		if a.device != nil {
+			a.device.Stop()
+		}
+		if a.config != nil && a.config.FilterMode == FilterMode_EBPFXDP {
+			ebpflocal.CleanupBPFFiles()
+		}
+		if ebpflocal.DenyLogger != nil {
+			ebpflocal.DenyLogger.Close()
+		}
+		if ebpflocal.AcLogger != nil {
+			ebpflocal.AcLogger.Close()
+		}
+		a.log.Close()
+	}()
+
 	log.Info("=========================================================")
 	log.Info("=== NHP-AC %s started                              ===", version.Version)
 	log.Info("=== REVISION %s ===", version.CommitId)
@@ -108,7 +137,10 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load remote config,init etcd client
 	err = a.initRemoteConn()
-	if err == nil && a.etcdConn == nil {
+	if err != nil {
+		return fmt.Errorf("initialize remote configuration: %w", err)
+	}
+	if a.etcdConn == nil {
 		// init config
 		err = a.loadBaseConfig()
 	} else {
@@ -188,7 +220,9 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.aopReplay = newAOPReplayCacheWithParams(entries, aopReplayCacheTTL)
 
 	if a.etcdConn != nil {
-		_ = a.loadRemoteConfig()
+		if err = a.loadRemoteConfig(); err != nil {
+			return fmt.Errorf("load initial remote configuration: %w", err)
+		}
 	} else {
 		// load http config and turn on http server if needed
 		_ = a.loadHttpConfig()
@@ -254,13 +288,12 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.device.Start()
 
 	// start ac routines
+	a.running.Store(true)
 	a.wg.Add(4)
 	go a.tokenStore.RunRefreshRoutine(&a.wg, a.signals.stop, TokenStoreRefreshInterval)
 	go a.sendMessageRoutine()
 	go a.recvMessageRoutine()
 	go a.maintainServerConnectionRoutine()
-
-	a.running.Store(true)
 
 	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
 	// Started after running=true so /healthz never reports "stopping" while
@@ -287,12 +320,20 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 }
 
 func (ac *UdpAC) Stop() {
+	ac.stopMu.Lock()
+	defer ac.stopMu.Unlock()
+	if !ac.running.Load() {
+		return
+	}
 	ac.running.Store(false)
 	ac.healthy.Store(false)
 	close(ac.signals.stop)
 	ac.metricsEndpoint.Stop()
 	if ac.etcdConn != nil {
 		ac.etcdConn.Close()
+	}
+	if ac.httpServer != nil {
+		ac.httpServer.Stop()
 	}
 	ac.device.Stop()
 	ac.StopConfigWatch()

@@ -200,6 +200,7 @@ func (d *Device) FindLocalTransaction(id uint64) *LocalTransaction {
 }
 
 func (t *LocalTransaction) Run() {
+	defer t.mad.device.wg.Done()
 	log.Debug("Local transaction %d start", t.transactionId)
 	defer log.Debug("Local transaction %d quit", t.transactionId)
 
@@ -220,7 +221,6 @@ func (t *LocalTransaction) Run() {
 			t.mad.ResponseMsgCh <- &PacketParserData{Error: err}
 		}
 
-		device.wg.Done()
 	}()
 
 	timer := time.NewTimer(time.Duration(t.timeout) * time.Millisecond)
@@ -291,6 +291,7 @@ func (c *ConnectionData) FindRemoteTransaction(id uint64) *RemoteTransaction {
 }
 
 func (t *RemoteTransaction) Run() {
+	defer t.connData.Done()
 	log.Debug("Remote transaction %d start", t.transactionId)
 	defer log.Debug("Remote transaction %d quit", t.transactionId)
 
@@ -304,7 +305,6 @@ func (t *RemoteTransaction) Run() {
 		close(t.done)
 		conn.RemoteTransactionMutex.Unlock()
 
-		conn.Done()
 	}()
 
 	timer := time.NewTimer(time.Duration(t.timeout) * time.Millisecond)

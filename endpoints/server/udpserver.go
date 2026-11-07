@@ -35,7 +35,8 @@ var (
 )
 
 type UdpServer struct {
-	stats struct {
+	stopMu sync.Mutex
+	stats  struct {
 		totalRecvBytes uint64
 		totalSendBytes uint64
 	}
@@ -347,6 +348,35 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.log = log.NewLogger("NHP-Server", logLevel, filepath.Join(ExeDirPath, "logs"), "server")
 	log.SetGlobalLogger(s.log)
 
+	// Start may fail before normal Stop is usable. Release only resources
+	// already acquired, draining remote callbacks before their dependencies.
+	defer func() {
+		if err == nil {
+			return
+		}
+		if s.etcdConn != nil {
+			s.etcdConn.Close()
+		}
+		s.StopConfigWatch()
+		if s.httpServer != nil {
+			s.httpServer.Stop()
+		}
+		if s.device != nil {
+			s.device.Stop()
+		}
+		if s.listenConn != nil {
+			_ = s.listenConn.Close()
+		}
+		if s.keyStore != nil {
+			s.keyStore.Close()
+		}
+		s.ClosePlugins()
+		if ebpflocal.Loaded() {
+			ebpflocal.CleanupBPFFiles()
+		}
+		s.log.Close()
+	}()
+
 	log.Info("=========================================================")
 	log.Info("=== NHP-Server %s started              ===", version.Version)
 	log.Info("=== REVISION %s ===", version.CommitId)
@@ -355,7 +385,10 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	// load remote config,init etcd client
 	err = s.initRemoteConn()
-	if err == nil && s.etcdConn == nil {
+	if err != nil {
+		return fmt.Errorf("initialize remote configuration: %w", err)
+	}
+	if s.etcdConn == nil {
 		// init config
 		err = s.loadBaseConfig()
 	} else {
@@ -597,7 +630,9 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.pluginHandlerMap = make(map[string]plugins.PluginHandler)
 	if s.etcdConn != nil {
 		// load nhp server
-		_ = s.loadRemoteConfig()
+		if err = s.loadRemoteConfig(); err != nil {
+			return fmt.Errorf("load initial remote configuration: %w", err)
+		}
 	} else {
 		// load peers
 		_ = s.loadPeers()
@@ -697,6 +732,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.device.Start()
 
 	// start server routines
+	s.running.Store(true)
 	s.wg.Add(5)
 	go s.tokenStore.RunRefreshRoutine(&s.wg, s.signals.stop, TokenStoreRefreshInterval)
 	go s.BlockAddrRefreshRoutine()
@@ -736,26 +772,28 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		}()
 	}
 
-	s.running.Store(true)
 	return nil
 }
 
 func (s *UdpServer) Stop() {
+	s.stopMu.Lock()
+	defer s.stopMu.Unlock()
 	if !s.running.Load() {
 		// already stopped, do nothing
 		return
 	}
 	s.running.Store(false)
 	s.healthy.Store(false)
+	// Drain remote config callbacks before tearing down resources they can change.
+	if s.etcdConn != nil {
+		s.etcdConn.Close()
+	}
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
 	}
 	if s.metricsServer != nil {
 		s.metricsServer.stop()
-	}
-	if s.etcdConn != nil {
-		s.etcdConn.Close()
 	}
 	close(s.signals.stop)
 	s.listenConn.Close()

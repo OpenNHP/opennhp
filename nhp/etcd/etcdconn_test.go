@@ -85,3 +85,34 @@ func TestEtcdEmptyEndpoints(t *testing.T) {
 	}
 	c.Close()
 }
+
+func TestEtcdUninitializedOperations(t *testing.T) {
+	for _, setup := range []string{"uninitialized", "empty-endpoints"} {
+		for _, method := range []string{"get", "set", "watch"} {
+			t.Run(setup+"/"+method, func(t *testing.T) {
+				c := &EtcdConn{}
+				defer c.Close()
+				if setup != "uninitialized" && c.InitClient() == nil {
+					t.Fatal("invalid endpoints accepted")
+				}
+				defer func() {
+					if p := recover(); p != nil {
+						t.Errorf("operation after failed/missing initialization panicked: %v", p)
+					}
+				}()
+				switch method {
+				case "get":
+					if _, err := c.GetValue(); err == nil {
+						t.Error("uninitialized read succeeded")
+					}
+				case "set":
+					if err := c.SetValue("value"); err == nil {
+						t.Error("uninitialized write succeeded")
+					}
+				case "watch":
+					c.WatchValue(func([]byte) { t.Error("uninitialized watch delivered a value") })
+				}
+			})
+		}
+	}
+}

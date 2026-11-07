@@ -10,6 +10,8 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
+const requestTimeout = 3 * time.Second
+
 type EtcdConfig struct {
 	Key       string
 	Endpoints []string
@@ -44,7 +46,7 @@ func (conn *EtcdConn) InitClient() error {
 		return err
 	}
 	conn.ctx, conn.cancel = context.WithCancel(context.Background())
-	ctx, cancel := context.WithTimeout(conn.ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(conn.ctx, requestTimeout)
 	defer cancel()
 	_, err = conn.client.Status(ctx, conn.Endpoints[0])
 	if err != nil {
@@ -55,7 +57,10 @@ func (conn *EtcdConn) InitClient() error {
 }
 
 func (conn *EtcdConn) GetValue() ([]byte, error) {
-	ctx, cancel := context.WithTimeout(conn.ctx, 3*time.Second)
+	if conn.client == nil || conn.ctx == nil {
+		return nil, errors.New("etcd client not initialized")
+	}
+	ctx, cancel := context.WithTimeout(conn.ctx, requestTimeout)
 	defer cancel()
 	val, err := conn.client.Get(ctx, conn.Key)
 	if err != nil {
@@ -72,13 +77,20 @@ func (conn *EtcdConn) GetValue() ([]byte, error) {
 }
 
 func (conn *EtcdConn) SetValue(v string) error {
-	ctx, cancel := context.WithTimeout(conn.ctx, 3*time.Second)
+	if conn.client == nil || conn.ctx == nil {
+		return errors.New("etcd client not initialized")
+	}
+	ctx, cancel := context.WithTimeout(conn.ctx, requestTimeout)
 	defer cancel()
 	_, err := conn.client.Put(ctx, conn.Key, v)
 	return err
 }
 
 func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
+	if conn.client == nil || conn.ctx == nil {
+		log.Error("cannot watch etcd configuration: client not initialized")
+		return
+	}
 	// create etcd watcher
 	watcher := clientv3.NewWatcher(conn.client)
 	defer watcher.Close()
@@ -88,6 +100,9 @@ func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 		select {
 		case resp, ok := <-watchChan:
 			if !ok || resp.Canceled {
+				if conn.ctx.Err() == nil {
+					log.Error("etcd watch for %q ended unexpectedly: %v; remote configuration updates have stopped", conn.Key, resp.Err())
+				}
 				return
 			}
 			// handle change events

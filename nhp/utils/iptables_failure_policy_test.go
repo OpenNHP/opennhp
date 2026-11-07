@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A fake executable exercises command errors and partial reconciliation without
@@ -23,6 +24,12 @@ shift 2
 [ -e "$chain" ] || : > "$chain"
 if [ -f fail ] && [ "$chain" = FORWARD ]; then echo injected-error >&2; exit 2; fi
 case "$op" in
+-N) : > "$chain" ;;
+-A) if [ -f no-comment ]; then echo comment-unavailable >&2; exit 2; fi
+    echo "-A $chain $*" >> "$chain" ;;
+-F) if [ -f fail-probe-cleanup ]; then echo cleanup-failed >&2; exit 2; fi
+    : > "$chain" ;;
+-X) rm "$chain" ;;
 -S) cat "$chain" ;;
 -I) echo "-A $chain $*" >> "$chain" ;;
 -D) sed '1d' "$chain" > next; mv next "$chain" ;;
@@ -43,15 +50,27 @@ esac
 	if err := table.InitializeFailurePolicy(true); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.AcceptAllInput(); err != nil {
+	if err := table.SetFailurePolicyOpen(true); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.AcceptAllInput(); err != nil {
+	if err := table.SetFailurePolicyOpen(true); err != nil {
 		t.Fatal(err)
 	}
 	if count("INPUT") != 1 || count("FORWARD") != 1 {
 		t.Fatal("duplicate or missing rule")
 	}
+	// Preserve method-value and interface compatibility for existing callers.
+	var legacy interface {
+		AcceptAllInput()
+		ResetAllInput()
+	} = table
+	var reset func() = legacy.ResetAllInput
+	reset()
+	legacy.AcceptAllInput()
+	if count("INPUT") != 1 || count("FORWARD") != 1 {
+		t.Fatal("legacy wrappers failed")
+	}
+
 	// Simulate a crash, duplicates, and one chain failing during startup cleanup.
 	f, err := os.OpenFile(filepath.Join(dir, "INPUT"), os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
@@ -88,27 +107,28 @@ esac
 	if err := os.WriteFile(filepath.Join(dir, "fail"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.AcceptAllInput(); err == nil {
+	if err := restarted.SetFailurePolicyOpen(true); err == nil {
 		t.Fatal("insert failure ignored")
 	}
 	if err := os.Remove(filepath.Join(dir, "fail")); err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.AcceptAllInput(); err != nil {
+	if err := restarted.SetFailurePolicyOpen(true); err != nil {
 		t.Fatal(err)
 	}
 	if count("INPUT") != 1 || count("FORWARD") != 1 {
 		t.Fatal("retry duplicated rule")
 	}
-	if err := restarted.ResetAllInput(); err != nil {
+	if err := restarted.SetFailurePolicyOpen(false); err != nil {
 		t.Fatal(err)
 	}
 	for _, chain := range []string{"INPUT", "FORWARD"} {
-		legacy := "-A " + chain + " -j ACCEPT\n"
+		legacyRule := "-A " + chain + " -j ACCEPT"
+		legacy := "-A " + chain + " -s 192.0.2.1 -j DROP\n" + legacyRule + "\n"
 		if err := os.WriteFile(filepath.Join(dir, chain), []byte(legacy), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if err := restarted.InitializeFailurePolicy(true); err == nil || !strings.Contains(err.Error(), strings.TrimSpace(legacy)) {
+		if err := restarted.InitializeFailurePolicy(true); err == nil || !strings.Contains(err.Error(), legacyRule) {
 			t.Fatalf("legacy rule accepted: %v", err)
 		}
 		b, _ := os.ReadFile(filepath.Join(dir, chain))
@@ -122,6 +142,60 @@ esac
 			t.Fatal(err)
 		}
 	}
+	operator := "-A INPUT -s 192.0.2.1 -j DROP\n-A INPUT -m comment --comment operator-baseline -j ACCEPT\n"
+	if err := os.WriteFile(filepath.Join(dir, "INPUT"), []byte(operator), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.InitializeFailurePolicy(true); err != nil {
+		t.Fatal(err)
+	}
+	preserved, readErr := os.ReadFile(filepath.Join(dir, "INPUT"))
+	if readErr != nil || string(preserved) != operator {
+		t.Fatalf("intentional operator baseline changed: %s, %v", preserved, readErr)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "INPUT"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fail-probe-cleanup"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "clean up probe") {
+		t.Fatalf("probe cleanup failure ignored: %v", err)
+	}
+	if restarted.failurePolicyInitialized {
+		t.Fatal("failed probe cleanup marked complete")
+	}
+	if err := os.Remove(filepath.Join(dir, "fail-probe-cleanup")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Probe kernel comment support before a fail-open outage, leaving no scratch chains.
+	if err := os.WriteFile(filepath.Join(dir, "no-comment"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.InitializeFailurePolicy(false); err == nil || !strings.Contains(err.Error(), "comment match") {
+		t.Fatalf("missing comment support accepted: %v", err)
+	}
+	if restarted.failurePolicyInitialized {
+		t.Fatal("failed probe marked initialized")
+	}
+	if err := restarted.InitializeFailurePolicy(true); err != nil {
+		t.Fatalf("fail-closed needlessly requires insert support: %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, "no-comment")); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.InitializeFailurePolicy(false); err != nil {
+		t.Fatal(err)
+	}
+	leftovers, globErr := filepath.Glob(filepath.Join(dir, "NHP-AC-*"))
+	if globErr != nil || len(leftovers) != 0 {
+		t.Fatalf("probe chains remain: %v, %v", leftovers, globErr)
+	}
+	if count("INPUT") != 0 || count("FORWARD") != 0 {
+		t.Fatal("probe changed traffic chains")
+	}
+
 }
 
 func TestFailurePolicyCommandTimeout(t *testing.T) {
@@ -129,11 +203,30 @@ func TestFailurePolicyCommandTimeout(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexec sleep 30\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	table := &IPTables{Binary: binary}
+	table := &IPTables{Binary: binary, failurePolicyTimeout: 100 * time.Millisecond}
 	if err := table.InitializeFailurePolicy(false); err == nil {
 		t.Fatal("hung firewall command did not fail startup")
 	}
 	if table.failurePolicyInitialized {
 		t.Fatal("timed-out cleanup marked complete")
+	}
+}
+
+func TestFailurePolicyRuleOwnership(t *testing.T) {
+	for _, comment := range []string{failurePolicyComment, "\"" + failurePolicyComment + "\"", "'" + failurePolicyComment + "'"} {
+		if !isFailurePolicyRule("-A INPUT  -m comment --comment "+comment+" -j ACCEPT", "INPUT") {
+			t.Fatal("owned rule not recognized", comment)
+		}
+	}
+	for _, line := range []string{
+		"-A FORWARD -m comment --comment opennhp-ac-fail-open -j ACCEPT",
+		"-A INPUT -s 192.0.2.1 -m comment --comment opennhp-ac-fail-open -j ACCEPT",
+		"-A INPUT -m comment --comment opennhp-ac-fail-open-operator -j ACCEPT",
+		"-A INPUT -m comment --comment 'opennhp-ac-fail-open operator' -j ACCEPT",
+		"-A INPUT -m comment --comment opennhp-ac-fail-open -j DROP",
+	} {
+		if isFailurePolicyRule(line, "INPUT") {
+			t.Fatalf("operator rule claimed: %s", line)
+		}
 	}
 }

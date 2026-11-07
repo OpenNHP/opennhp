@@ -35,8 +35,10 @@ instead of continuing with an empty configuration and failing later.
 The AC requires the iptables `comment` match (`xt_comment` on legacy iptables)
 to tag its broad fallback rules with `opennhp-ac-fail-open`. Ensure this support
 is available in the host kernel and iptables installation, including for container
-deployments. Startup cleanup does not test insertion when no owned rules exist;
-missing comment support can therefore surface only when fail-open is needed.
+deployments. Fail-open startup verifies support by inserting a comment-bearing
+RETURN rule in a temporary, unreferenced chain, then removing that chain. Failure
+of the probe or its cleanup stops startup; the probe does not open traffic.
+Fail-closed does not require this insertion probe.
 
 On startup, both modes remove those owned rules, including duplicates left after
 a crash.
@@ -49,7 +51,13 @@ startup fails if owned-rule cleanup fails.
 Older versions created untagged unconditional ACCEPT rules. They cannot safely be
 distinguished from operator rules. Before upgrading, stop the old AC gracefully
 and inspect the firewall. Fail-closed startup refuses recognized untagged fallback
-rules in INPUT or FORWARD; inspect and remove confirmed leftovers before restarting.
+rules anywhere in INPUT or FORWARD, including intentional operator rules, not just
+rules at the first position. Inspect and remove confirmed AC leftovers before
+restarting. If an unconditional ACCEPT is intentional, give it a distinct operator
+comment (for example `-m comment --comment operator-baseline -j ACCEPT`), preserving
+its position and other conditions. Never use the reserved `opennhp-ac-fail-open`
+comment for operator rules. Fail-closed then leaves the labeled rule in place;
+traffic allowed by that rule remains allowed. This is not a baseline firewall audit.
 **Refusal leaves the existing firewall in effect, which may still allow traffic.**
 Fail-open does not remove these untagged rules. Neither mode audits arbitrary rules
 or installs the baseline; operators must supply the normal iptables/ipset baseline.
@@ -58,3 +66,8 @@ are outside this feature's scope.
 
 With no configured servers, fail-open retains the existing behavior of opening
 access on the next discovery check; fail-closed does not insert fallback rules.
+
+The existing Go methods `AcceptAllInput()` and `ResetAllInput()` retain their
+no-return signatures for interface and callback compatibility and log failures.
+The AC uses `SetFailurePolicyOpen(bool) error` to handle failures and retry.
+The IPv6 methods retain their existing behavior; this setting only controls IPv4.

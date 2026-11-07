@@ -657,7 +657,7 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	// reset iptables before exiting
 	if a.config.FilterMode == FilterMode_IPTABLES {
 		defer func() {
-			if err := a.iptables.ResetAllInput(); err != nil {
+			if err := a.iptables.SetFailurePolicyOpen(false); err != nil {
 				log.Error("reset AC failure policy on shutdown: %v", err)
 			}
 		}()
@@ -709,6 +709,7 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 					if a.config.FilterMode != FilterMode_IPTABLES {
 						continue
 					}
+					// An empty peer map intentionally retains the historical fail-open behavior.
 					allFailed := totalFail == int32(len(discoveryFailStatusArr))
 					state := "not all server discoveries have failed"
 					if allFailed {
@@ -716,9 +717,9 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 					}
 					var err error
 					if allFailed && a.config.FailurePolicy == FailurePolicyOpen {
-						err = a.iptables.AcceptAllInput()
+						err = a.iptables.SetFailurePolicyOpen(true)
 					} else {
-						err = a.iptables.ResetAllInput()
+						err = a.iptables.SetFailurePolicyOpen(false)
 					}
 					if err != nil {
 						if err.Error() != lastError {

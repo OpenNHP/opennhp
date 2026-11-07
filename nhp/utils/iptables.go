@@ -3,6 +3,8 @@ package utils
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -51,6 +53,7 @@ type IPTables struct {
 
 	failurePolicyMutex       sync.Mutex
 	failurePolicyInitialized bool
+	failurePolicyTimeout     time.Duration
 }
 
 type IPTablesRuleOperation int32
@@ -284,9 +287,45 @@ const failurePolicyComment = "opennhp-ac-fail-open"
 // Older iptables supports bare -w but not a numeric wait. Bound the whole
 // command so lock contention cannot stall startup or shutdown indefinitely.
 func (table *IPTables) failurePolicyCommand(args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	timeout := table.failurePolicyTimeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return exec.CommandContext(ctx, table.Binary, append([]string{"-w"}, args...)...).CombinedOutput()
+}
+
+// probeFailurePolicyComment checks kernel support without changing packet handling.
+// The randomly named chain is never referenced by a traffic-processing chain.
+func (table *IPTables) probeFailurePolicyComment() (err error) {
+	chain := "NHP-AC-" + rand.Text()[:16]
+	if out, cmdErr := table.failurePolicyCommand("-N", chain); cmdErr != nil {
+		return fmt.Errorf("create failure-policy probe: %w: %s", cmdErr, out)
+	}
+	defer func() {
+		for _, op := range []string{"-F", "-X"} {
+			if out, cleanupErr := table.failurePolicyCommand(op, chain); cleanupErr != nil {
+				err = errors.Join(err, fmt.Errorf("clean up probe %s (%s): %w: %s", chain, op, cleanupErr, out))
+			}
+		}
+	}()
+	if out, cmdErr := table.failurePolicyCommand("-A", chain, "-m", "comment", "--comment", failurePolicyComment, "-j", "RETURN"); cmdErr != nil {
+		return fmt.Errorf("fail-open requires iptables comment match support: %w: %s", cmdErr, out)
+	}
+	return nil
+}
+
+// Match the entire owned rule, allowing only whitespace and comment quoting
+// differences. A substring match could claim an operator's restricted rule.
+func isFailurePolicyRule(line, chain string) bool {
+	line = strings.Join(strings.Fields(line), " ")
+	for _, comment := range []string{failurePolicyComment, "\"" + failurePolicyComment + "\"", "'" + failurePolicyComment + "'"} {
+		if line == "-A "+chain+" -m comment --comment "+comment+" -j ACCEPT" {
+			return true
+		}
+	}
+	return false
 }
 
 // InitializeFailurePolicy removes fallback rules left by an interrupted AC.
@@ -297,6 +336,12 @@ func (table *IPTables) InitializeFailurePolicy(failClosed bool) error {
 	defer table.failurePolicyMutex.Unlock()
 	if err := table.setFailurePolicyRules(false); err != nil {
 		return err
+	}
+	if !failClosed {
+		if err := table.probeFailurePolicyComment(); err != nil {
+			table.failurePolicyInitialized = false
+			return err
+		}
 	}
 	if failClosed {
 		for _, chain := range []string{"INPUT", "FORWARD"} {
@@ -327,8 +372,7 @@ func (table *IPTables) setFailurePolicyRules(open bool) error {
 		rule := []string{"-m", "comment", "--comment", failurePolicyComment, "-j", "ACCEPT"}
 		count := 0
 		for _, line := range strings.Split(string(out), "\n") {
-			// iptables versions differ in whether the comment is quoted.
-			if strings.ReplaceAll(line, "\"", "") == "-A "+chain+" "+strings.Join(rule, " ") {
+			if isFailurePolicyRule(line, chain) {
 				count++
 			}
 		}
@@ -355,24 +399,31 @@ func (table *IPTables) setFailurePolicyRules(open bool) error {
 	return nil
 }
 
-// ResetAllInput removes the AC's IPv4 fail-open fallback, leaving grants intact.
-func (table *IPTables) ResetAllInput() error {
-	table.failurePolicyMutex.Lock()
-	defer table.failurePolicyMutex.Unlock()
-	if table.failurePolicyInitialized && !table.AcceptInputMode {
-		return nil
+// ResetAllInput removes the AC's IPv4 fallback. Kept as func() for API compatibility.
+// Call SetFailurePolicyOpen when the caller needs to handle an error.
+func (table *IPTables) ResetAllInput() {
+	if err := table.SetFailurePolicyOpen(false); err != nil {
+		log.Error("reset AC failure policy: %v", err)
 	}
-	return table.setFailurePolicyRules(false)
 }
 
-// AcceptAllInput inserts one tagged IPv4 ACCEPT rule in INPUT and FORWARD.
-func (table *IPTables) AcceptAllInput() error {
+// AcceptAllInput installs the AC's IPv4 fallback. Kept as func() for API compatibility.
+// Call SetFailurePolicyOpen when the caller needs to handle an error.
+func (table *IPTables) AcceptAllInput() {
+	if err := table.SetFailurePolicyOpen(true); err != nil {
+		log.Error("open AC failure policy: %v", err)
+	}
+}
+
+// SetFailurePolicyOpen reconciles owned IPv4 fallback rules, leaving grants intact.
+// A failed operation remains retryable, including through the legacy wrappers.
+func (table *IPTables) SetFailurePolicyOpen(open bool) error {
 	table.failurePolicyMutex.Lock()
 	defer table.failurePolicyMutex.Unlock()
-	if table.failurePolicyInitialized && table.AcceptInputMode {
+	if table.failurePolicyInitialized && table.AcceptInputMode == open {
 		return nil
 	}
-	return table.setFailurePolicyRules(true)
+	return table.setFailurePolicyRules(open)
 }
 
 // ResetAllInput6 resets ip6tables input rules (IPv6)

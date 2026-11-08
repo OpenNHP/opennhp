@@ -108,7 +108,16 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load remote config,init etcd client
 	err = a.initRemoteConn()
-	if err == nil && a.etcdConn == nil {
+	if err != nil {
+		return fmt.Errorf("initialize remote configuration: %w", err)
+	}
+	// A failed Start has no normal Stop; release the persistent etcd client.
+	defer func() {
+		if err != nil && a.etcdConn != nil {
+			a.etcdConn.Close()
+		}
+	}()
+	if a.etcdConn == nil {
 		// init config
 		err = a.loadBaseConfig()
 	} else {

@@ -359,7 +359,7 @@ func TestHistoryCountryTotalUnionsTheSnapshotDays(t *testing.T) {
 // TestHistoryFactsJoinTheUnion pins that a snapshot's day contributes its
 // attackers to the all-time union exactly once.
 //
-// The old behaviour added the snapshot's baseline on top of the union, which
+// The old behavior added the snapshot's baseline on top of the union, which
 // counted an address seen in both periods twice and published the sum as a
 // "lower bound" -- the opposite of what the sum is.
 func TestHistoryFactsJoinTheUnion(t *testing.T) {

@@ -170,7 +170,7 @@ const (
 // not outlive the test.
 func closeObjects(v any) {
 	rv := reflect.ValueOf(v)
-	for rv.Kind() == reflect.Ptr {
+	for rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return
 		}
@@ -294,13 +294,13 @@ func TestAcFilterAnswersTheHostsOwnPings(t *testing.T) {
 //
 // The two build the same 4-tuple for the same flow and look it up in the
 // same map: the ingress program writes the peer -> AC direction, and the
-// egress program rebuilds it in the other direction to recognise a flow the
+// egress program rebuilds it in the other direction to recognize a flow the
 // host itself opened. If the two read the packet differently -- one of them
 // starting at the Ethernet header and the other at the IP header -- the
 // tuples never line up, the host's own flows stop being answerable, and
 // nothing says so.
 //
-// The check is the behaviour the whole design rests on: the host sends a
+// The check is the behavior the whole design rests on: the host sends a
 // datagram, and the egress program records the flow it opened.
 func TestAcEgressProgramRecordsTheHostsOwnFlow(t *testing.T) {
 	pinDir := testPinDir(t)

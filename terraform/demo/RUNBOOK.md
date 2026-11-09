@@ -284,7 +284,38 @@ Verify CI still works by running the `deploy-demo-v2` workflow.
 
 `deploy/config-templates/ac/config.toml` ships `FilterMode = 1`, so the demo AC
 enforces its per-knock whitelist with XDP ingress + TC egress instead of
-iptables+ipset. Two operational consequences.
+iptables+ipset. Several operational consequences.
+
+### The host's own traffic
+
+Everything the AC's own processes send still has to be answered: the answer
+comes back in, and the ingress program has to admit it. UDP and TCP are
+covered twice — by the `conn_track`, where `tc_egress.c` records every flow
+the host opens, and by the kernel's socket table as a backstop for a socket
+bound to a fixed port below the ephemeral range. ICMP has neither a port to
+key a connection on nor a handshake to bind one to, so it is tracked
+separately:
+
+* `tc_egress.c` records every echo request the host sends in the `icmp_echo`
+  map, keyed by the peer's address and the identifier on the wire, with a
+  30-second expiry (`NHP_ICMP_ECHO_TTL_NS`).
+* The ingress program admits an echo reply only if that record exists and has
+  not expired, and counts it as `PASS_HOST_ECHO`. A reply with another
+  identifier, or from another peer, is still dropped.
+
+The practical effect is that `ping` on the AC still works, which is also how
+the AC's own reachability is checked. Two consequences are worth knowing:
+
+* The record lives for 30 seconds, so a ping answered later than that is
+  dropped. The kernel's own 10-second reply timeout is well inside it.
+* **ICMPv6 echo is not admitted at all.** The IPv6 tree passes ND, MLD and
+  PTB only — the same as the server's — so a v6 ping from the host is dropped
+  even though the v4 one is answered.
+
+Without the `icmp_echo` map an echo reply would have to be passed
+unconditionally, which with the security group open is a standing bypass into
+the host from anywhere; admitting it on the whitelist entry alone would
+instead break the host's own diagnostics.
 
 ### Kernel prerequisite: >= 6.6
 
@@ -1348,9 +1379,13 @@ scan-report knobs are set.
 - **What the filter lets through is the server's list.** With the group open,
   the AC's XDP filter is the only inbound control, so its rules are the
   server's: UDP only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and by
-  the answers to the host's own queries, IPv6 filtered rather than passed, a
-  non-first IPv4 fragment passed as inert, and an ICMP echo reply on the same
-  whitelist entry the echo request needs. `nhp/utils/ebpf/xdpfilter_test.go`
+  the answers to the host's own queries, IPv6 filtered rather than passed but
+  carrying the same two port pairs in their v6 spellings (547→546 and
+  123→123), a non-first IPv4 fragment passed as inert, and an ICMP echo reply
+  admitted on one of two grounds — the peer's ICMP whitelist entry (a peer
+  that knocked for ICMP access), or the record of an echo request the host
+  itself sent (see *The host's own traffic* below).
+  `nhp/utils/ebpf/xdpfilter_test.go`
   pins each of those, so a rule cannot quietly come back.
 - **Rollback** is unticking `open_ac_all_ports` and running `infra-demo apply`.
   The group returns exactly to tcp/443 + the knock port + tcp/22 from the relay

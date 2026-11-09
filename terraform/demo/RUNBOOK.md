@@ -485,6 +485,40 @@ tail -f /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log
 The `deploy-ac` job reads that file (not the journal) to confirm the perf ring
 buffer opened, and dumps both it and `journalctl` on every abort.
 
+### The AC's per-packet logs, and what bounds them
+
+The AC writes two per-packet logs besides its own, and both are bounded — a
+bound matters here because, with the security group open to the whole
+internet, every packet that reaches the filter is one somebody else chose to
+send, and one sender is enough to fill the disk the daemon runs on.
+
+| file | what it is | kernel bucket | daily budget | retention |
+| --- | --- | --- | --- | --- |
+| `nhp_ac_xdp-<date>.log` | the telemetry: `[NHP-DROP]` / `[NHP-STAT]` / `[NHP-SCAN]` | per class + a global cap, in the `nhp_event_rate` map | 64 MiB | 14 days, 256 MiB |
+| `nhp_deny-<date>.log` | the older audit log: one line per dropped packet | per class + a global cap, in the same map's second bank of slots | 16 MiB | 14 days, 64 MiB for the audit family |
+| `nhp_accept-<date>.log` | the older audit log: one line per admitted packet | as above | 16 MiB | as above |
+
+The three points to remember:
+
+- **A budget is a budget, and running out of it says so.** Each log gets one
+  line saying so, of the shape `HH:MM:SS <id> [NHP-DENY] EVENT_LOG_BUDGET_EXHAUSTED
+  BYTES=…` (the telemetry log's marker is `[NHP-STAT]`, which the published
+  site's parser recognizes). After that the file stops growing for the rest of
+  the day and starts again at the date rollover.
+- **The totals stay exact.** The per-class counters in `[NHP-STAT]` count every
+  packet the filter judged, budget or no, so a truncated log is a log with
+  fewer lines, never with wrong numbers. The site's numbers come from those
+  counters.
+- **The audit logs are swept separately from the telemetry log, on purpose.**
+  The collector pulls `nhp_ac_xdp-*.log` and the published site reads it, so
+  the audit family has its own size cap and cannot evict the file the site
+  depends on.
+
+```bash
+# is the AC's per-packet log over its budget today?
+grep -h EVENT_LOG_BUDGET_EXHAUSTED /home/ec2-user/nhp-ac/logs/*.log
+```
+
 ### eBPF map pin mismatch at startup
 
 `nhp-acd` loads two objects — `nhp_ebpf_xdp.o` and `tc_egress.o` — that share
@@ -1387,6 +1421,17 @@ scan-report knobs are set.
   itself sent (see *The host's own traffic* below).
   `nhp/utils/ebpf/xdpfilter_test.go`
   pins each of those, so a rule cannot quietly come back.
+- **The AC's per-packet logs are bounded.** With the group open, every packet
+  that reaches the filter is chosen by whoever sent it, so a log that grows per
+  packet is a way to fill the disk the daemon runs on — a denial of service
+  delivered through the defense. Both of the AC's per-packet channels are
+  bounded now (see *The AC's per-packet logs, and what bounds them* below): the
+  telemetry log by a token bucket in the kernel, a daily byte budget and a
+  retention sweep, and the older audit log by the same three, with a budget of
+  its own so a flood of deny lines cannot spend the allowance of the accept
+  log. The exact per-class totals stay in the `[NHP-STAT]` lines and are never
+  approximated: a line that was not written is a packet that was still
+  counted.
 - **Rollback** is unticking `open_ac_all_ports` and running `infra-demo apply`.
   The group returns exactly to tcp/443 + the knock port + tcp/22 from the relay
   SG. Nothing on the host changes; the telemetry stays and just counts less.

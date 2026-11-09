@@ -45,6 +45,17 @@ func acEgressSource(t *testing.T) string {
 	return string(b)
 }
 
+// xdpStatsSource reads the header both ingress filters share: the token
+// buckets, the counters and the per-port aggregation.
+func xdpStatsSource(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_xdp_stats.h"))
+	if err != nil {
+		t.Fatalf("read nhp_xdp_stats.h: %v", err)
+	}
+	return string(b)
+}
+
 // TestAcIngressFilterHasNoBlanketUdpExceptions pins that the AC's filter
 // does not wave through datagrams by their port number alone.
 func TestAcIngressFilterHasNoBlanketUdpExceptions(t *testing.T) {
@@ -254,5 +265,66 @@ func TestExpiredKnocksAreNotScans(t *testing.T) {
 		if !strings.HasSuffix(m, ", true, false);") {
 			t.Errorf("the expired-knock class is recorded as a scan hit: %s", m)
 		}
+	}
+}
+
+// TestAcAuditRingIsBehindABudget pins that the AC's legacy audit ring -- the
+// one that writes nhp_deny-*.log -- is no longer fed one line per packet.
+//
+// The ring is the AC's oldest reporting path and it predates every bound the
+// telemetry ring has. That was tolerable while the security group let in only
+// tcp/443 and the knock port, because almost nothing reached the filter to be
+// logged. It is not tolerable with the group open to the whole internet: every
+// packet that arrives is then chosen by whoever sent it, and one sender is
+// enough to fill the disk the daemon runs on -- a denial of service delivered
+// through the defense.
+//
+// The ring now sits behind a budget of its own in the kernel, and the files
+// behind it carry a daily byte budget and are swept (readAcEvents and
+// acEventLogGroups in nhp/utils/ebpf/engine_linux.go).
+func TestAcAuditRingIsBehindABudget(t *testing.T) {
+	ingress := acIngressSource(t)
+
+	// The ring's producer spends a budget before it emits.
+	if !strings.Contains(ingress, "if (!legacy_event_budget_available(class, now))") {
+		t.Error("the AC's audit ring is not behind a budget; every dropped packet still " +
+			"reaches nhp_deny-*.log, one line each")
+	}
+
+	// The budget is keyed on the packet's class, not on the verdict, so a
+	// flood of one kind cannot starve the others: a knock that was admitted
+	// and a knock that expired are both lines in the same file.
+	if !strings.Contains(ingress, "submit_event(ctx, 1, ACT_AC_PASS_KNOCK_ADMITTED,") {
+		t.Error("the audit ring's accept path does not key its budget on the packet's class")
+	}
+	if !strings.Contains(ingress, "submit_event(ctx, 0, drop_class,") {
+		t.Error("the audit ring's drop path does not key its budget on the packet's class")
+	}
+}
+
+// TestLegacyAuditBudgetHasBothBuckets pins the shape of the audit ring's
+// budget: a per-class bucket and a global cap across all of them.
+//
+// A per-class budget alone is not a bound on the log, and that was the first
+// version's mistake on the telemetry side: a sender picks the class, and
+// spreading the flows across the classes and the RSS queues fills every
+// bucket. The global cap is what makes the bound hold.
+func TestLegacyAuditBudgetHasBothBuckets(t *testing.T) {
+	stats := xdpStatsSource(t)
+
+	if !strings.Contains(stats, "static __always_inline bool legacy_event_budget_available(__u8 action, __u64 now)") {
+		t.Error("the audit ring has no budget of its own")
+	}
+	if !strings.Contains(stats, "spend_token(slot, NHP_EVENT_BURST, now)") {
+		t.Error("the audit ring's budget has no per-class bucket")
+	}
+	if !strings.Contains(stats, "spend_token(NHP_LEGACY_GLOBAL_SLOT, NHP_EVENT_GLOBAL_BURST, now)") {
+		t.Error("the audit ring's budget has no global cap across its classes")
+	}
+
+	// The buckets live in slots of their own, so a flood of one channel does
+	// not spend the other's budget.
+	if !strings.Contains(stats, "#define NHP_LEGACY_RATE_BASE (NHP_EVENT_ACTIONS + 1)") {
+		t.Error("the audit ring does not have its own bank of slots in the rate map")
 	}
 }

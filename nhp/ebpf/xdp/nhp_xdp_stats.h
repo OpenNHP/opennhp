@@ -101,7 +101,27 @@ struct {
 #define NHP_EVENT_BURST 16
 #define NHP_EVENT_GLOBAL_BURST 8
 #define NHP_EVENT_GLOBAL_SLOT NHP_EVENT_ACTIONS
-#define NHP_EVENT_RATE_SLOTS (NHP_EVENT_ACTIONS + 1)
+
+/* The legacy audit ring has its own bank of slots in the same map.
+ *
+ * The nhp-ac still writes one line per admitted or dropped packet to a second
+ * ring (the `events` map in nhp_ebpf_xdp.c), which lands in nhp_deny-*.log and
+ * nhp_accept-*.log. That ring is fed per packet, and with the security group
+ * open to the whole internet every one of those packets is chosen by whoever
+ * sent it -- so an unbounded ring is a way to fill the disk the daemon runs on.
+ *
+ * The bucket therefore sits here too, in slots of its own: the telemetry ring
+ * and the audit ring do not spend each other's budget, so a flood of one does
+ * not silence the other. The two banks are the same shape on purpose -- a
+ * per-class bucket and a global cap across all of them -- and the same rates.
+ *
+ * The slots have to stay inside the map: a slot past its end reads as "no
+ * budget information", which spend_token() treats as unlimited, so a drift
+ * between these numbers and the map's size would silently remove the limit.
+ * The Go side checks that in engine_linux_test.go. */
+#define NHP_LEGACY_RATE_BASE (NHP_EVENT_ACTIONS + 1)
+#define NHP_LEGACY_GLOBAL_SLOT (NHP_LEGACY_RATE_BASE + NHP_EVENT_ACTIONS)
+#define NHP_EVENT_RATE_SLOTS (NHP_LEGACY_GLOBAL_SLOT + 1)
 
 struct nhp_rate_state {
     __u64 window_start;
@@ -229,6 +249,24 @@ static __always_inline bool event_budget_available(__u8 action, __u64 now) {
         return false;
 
     return spend_token(NHP_EVENT_GLOBAL_SLOT, NHP_EVENT_GLOBAL_BURST, now);
+}
+
+/* The audit ring's budget: the same shape as the telemetry's, in its own
+ * slots, so the two channels do not spend each other's budget.
+ *
+ * `action` is the class the packet belongs to, which is what the per-class
+ * bucket is keyed on; a class at or past NHP_EVENT_ACTIONS has no bucket of
+ * its own and is judged by the global cap alone, exactly as on the telemetry
+ * side. */
+static __always_inline bool legacy_event_budget_available(__u8 action, __u64 now) {
+    if (action >= NHP_EVENT_ACTIONS)
+        return true;
+
+    __u32 slot = NHP_LEGACY_RATE_BASE + action;
+    if (!spend_token(slot, NHP_EVENT_BURST, now))
+        return false;
+
+    return spend_token(NHP_LEGACY_GLOBAL_SLOT, NHP_EVENT_GLOBAL_BURST, now);
 }
 
 /* Tick this action's total, which happens for every packet whatever the

@@ -1555,3 +1555,321 @@ func goFuncBody(t *testing.T, src, prefix string) string {
 	}
 	return rest
 }
+
+// cDefines extracts the #define lines of an eBPF C file into a map of name
+// to value, so a test can evaluate one instead of matching its text.
+func cDefines(t *testing.T, path string) map[string]string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	defs := make(map[string]string)
+	re := regexp.MustCompile(`(?m)^#define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+?)\s*$`)
+	for _, m := range re.FindAllStringSubmatch(string(b), -1) {
+		defs[m[1]] = m[2]
+	}
+	return defs
+}
+
+// cExprParser evaluates the small integer expressions the eBPF headers use in
+// their #define lines: literals, other #defines, parentheses and + - *.
+//
+// The rate map's slot numbers are defined in terms of each other
+// (NHP_LEGACY_GLOBAL_SLOT in terms of NHP_LEGACY_RATE_BASE and
+// NHP_EVENT_ACTIONS), so reading the numbers out of the source means
+// evaluating them. A substring match would pin the formatting instead of the
+// arithmetic, and the arithmetic is what matters: spend_token() treats a slot
+// the map cannot hand back as "has budget", so a slot number that drifted
+// past the map's size would remove a limit without a single error.
+type cExprParser struct {
+	t     *testing.T
+	toks  []string
+	pos   int
+	defs  map[string]string
+	depth int
+}
+
+// evalCIntExpr evaluates expr over defs.
+func evalCIntExpr(t *testing.T, defs map[string]string, expr string) int {
+	t.Helper()
+	p := &cExprParser{t: t, toks: tokenizeCExpr(expr), defs: defs}
+	v := p.parseExpr(t)
+	if p.pos != len(p.toks) {
+		t.Fatalf("trailing tokens in C expression %q", expr)
+	}
+	return v
+}
+
+func tokenizeCExpr(expr string) []string {
+	var toks []string
+	i := 0
+	for i < len(expr) {
+		c := expr[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			i++
+		case c >= '0' && c <= '9':
+			j := i
+			for j < len(expr) && expr[j] >= '0' && expr[j] <= '9' {
+				j++
+			}
+			toks = append(toks, expr[i:j])
+			i = j
+		case c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'):
+			j := i
+			for j < len(expr) && (expr[j] == '_' ||
+				(expr[j] >= 'A' && expr[j] <= 'Z') ||
+				(expr[j] >= 'a' && expr[j] <= 'z') ||
+				(expr[j] >= '0' && expr[j] <= '9')) {
+				j++
+			}
+			toks = append(toks, expr[i:j])
+			i = j
+		default:
+			toks = append(toks, string(c))
+			i++
+		}
+	}
+	return toks
+}
+
+func (p *cExprParser) peek() string {
+	if p.pos < len(p.toks) {
+		return p.toks[p.pos]
+	}
+	return ""
+}
+
+func (p *cExprParser) parseExpr(t *testing.T) int {
+	t.Helper()
+	v := p.parseTerm(t)
+	for {
+		switch p.peek() {
+		case "+":
+			p.pos++
+			v += p.parseTerm(t)
+		case "-":
+			p.pos++
+			v -= p.parseTerm(t)
+		default:
+			return v
+		}
+	}
+}
+
+func (p *cExprParser) parseTerm(t *testing.T) int {
+	t.Helper()
+	v := p.parseFactor(t)
+	for p.peek() == "*" {
+		p.pos++
+		v *= p.parseFactor(t)
+	}
+	return v
+}
+
+func (p *cExprParser) parseFactor(t *testing.T) int {
+	t.Helper()
+	tok := p.peek()
+	if tok == "" {
+		t.Fatal("C expression ended early")
+	}
+	if tok == "(" {
+		p.pos++
+		v := p.parseExpr(t)
+		if p.peek() != ")" {
+			t.Fatal("unbalanced parentheses in C expression")
+		}
+		p.pos++
+		return v
+	}
+	if tok[0] >= '0' && tok[0] <= '9' {
+		p.pos++
+		n, err := strconv.Atoi(tok)
+		if err != nil {
+			t.Fatalf("bad number %q in C expression: %v", tok, err)
+		}
+		return n
+	}
+
+	// An identifier: another #define.
+	p.pos++
+	if p.depth > 16 {
+		t.Fatalf("C expression recursion is too deep at %q", tok)
+	}
+	val, ok := p.defs[tok]
+	if !ok {
+		t.Fatalf("C expression refers to the unknown name %q", tok)
+	}
+	p.depth++
+	sub := &cExprParser{t: p.t, toks: tokenizeCExpr(val), defs: p.defs, depth: p.depth}
+	v := sub.parseExpr(p.t)
+	p.depth--
+	return v
+}
+
+// TestLegacyRateSlotsStayInsideTheRateMap pins the slot layout of the rate
+// map, which now carries two banks: the telemetry's and the legacy audit
+// ring's.
+//
+// The failure this prevents is silent. spend_token() treats a slot the map
+// cannot hand back as "has budget", so a legacy slot that drifted past the
+// map's size would remove the audit ring's limit without an error — which is
+// exactly the unbounded per-packet log the limit exists to stop.
+func TestLegacyRateSlotsStayInsideTheRateMap(t *testing.T) {
+	path := filepath.Join("..", "..", "ebpf", "xdp", "nhp_xdp_stats.h")
+	defs := cDefines(t, path)
+
+	for _, name := range []string{"NHP_EVENT_ACTIONS", "NHP_LEGACY_RATE_BASE", "NHP_LEGACY_GLOBAL_SLOT", "NHP_EVENT_RATE_SLOTS"} {
+		if _, ok := defs[name]; !ok {
+			t.Fatalf("%s is not defined in %s", name, path)
+		}
+	}
+
+	actions := evalCIntExpr(t, defs, defs["NHP_EVENT_ACTIONS"])
+	legacyBase := evalCIntExpr(t, defs, defs["NHP_LEGACY_RATE_BASE"])
+	legacyGlobal := evalCIntExpr(t, defs, defs["NHP_LEGACY_GLOBAL_SLOT"])
+	slots := evalCIntExpr(t, defs, defs["NHP_EVENT_RATE_SLOTS"])
+
+	// The telemetry bank: the per-class slots 0..actions-1, and the global
+	// slot at `actions`.
+	telemetryGlobal := actions
+
+	// The legacy bank must start past the telemetry's global slot, or the
+	// two channels spend each other's budget.
+	if legacyBase <= telemetryGlobal {
+		t.Errorf("the legacy bank starts at %d but the telemetry's global slot is %d; the two banks overlap",
+			legacyBase, telemetryGlobal)
+	}
+
+	// Its per-class slots must not run into its own global slot.
+	if legacyGlobal < legacyBase+actions {
+		t.Errorf("the legacy global slot (%d) is inside the legacy per-class bank (%d..%d)",
+			legacyGlobal, legacyBase, legacyBase+actions-1)
+	}
+
+	// And the map must be exactly big enough for every slot: the last
+	// usable index is slots-1.
+	if slots != legacyGlobal+1 {
+		t.Errorf("the rate map has %d slots but the last one used is %d", slots, legacyGlobal)
+	}
+
+	// The map is declared with that size, which is what makes the check
+	// above mean anything.
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if !regexp.MustCompile(`__uint\(max_entries,\s*NHP_EVENT_RATE_SLOTS\)`).Match(src) {
+		t.Error("the rate map is not declared with NHP_EVENT_RATE_SLOTS entries")
+	}
+}
+
+// TestAcSweepCoversEveryLogTheAcWrites pins that the retention sweep covers
+// every log family the AC writes, and that the legacy audit logs are swept
+// with a cap of their own.
+//
+// The audit logs used to be none of the sweep's business, which is how a
+// per-packet log with no size bound ended up living next to one with every
+// bound. And the two must not share a cap: the collector pulls
+// nhp_ac_xdp-*.log and the published site reads it, so a flood of deny lines
+// must not be able to evict the log the site depends on.
+func TestAcSweepCoversEveryLogTheAcWrites(t *testing.T) {
+	groups := acEventLogGroups()
+
+	covered := make(map[string]int64)
+	for _, g := range groups {
+		for _, p := range g.prefixes {
+			if _, dup := covered[p]; dup {
+				t.Errorf("the prefix %q is swept by two groups", p)
+			}
+			covered[p] = g.maxBytes
+		}
+	}
+
+	for _, p := range acEventLogPrefixes {
+		if _, ok := covered[p]; !ok {
+			t.Errorf("the AC writes %s-*.log but no sweep covers it", p)
+		}
+	}
+	if len(covered) != len(acEventLogPrefixes) {
+		t.Errorf("the sweep covers %d prefixes, the AC writes %d", len(covered), len(acEventLogPrefixes))
+	}
+
+	if covered[acDenyLogName] != acAuditLogRetentionBytes {
+		t.Errorf("the deny log is capped at %d bytes, want %d", covered[acDenyLogName], acAuditLogRetentionBytes)
+	}
+	if covered[acAcceptLogName] != acAuditLogRetentionBytes {
+		t.Errorf("the accept log is capped at %d bytes, want %d", covered[acAcceptLogName], acAuditLogRetentionBytes)
+	}
+	if covered[acEventLogName] != serverLogRetentionBytes {
+		t.Errorf("the telemetry log is capped at %d bytes, want %d", covered[acEventLogName], serverLogRetentionBytes)
+	}
+	if acAuditLogRetentionBytes >= serverLogRetentionBytes {
+		t.Errorf("the audit family's cap (%d) is not smaller than the telemetry log's (%d); a deny flood could evict the log the site reads",
+			acAuditLogRetentionBytes, serverLogRetentionBytes)
+	}
+}
+
+// TestSweepAcAuditLogsKeepsTodayAndForeignFiles pins that the audit family's
+// sweep touches the deny logs and nothing else.
+func TestSweepAcAuditLogsKeepsTodayAndForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	today := writeLogFile(t, dir, "nhp_deny-2026-09-29.log", now, 10)
+	recent := writeLogFile(t, dir, "nhp_deny-2026-09-27.log", now.AddDate(0, 0, -2), 10)
+	stale := writeLogFile(t, dir, "nhp_deny-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+	// The daemon's own log and the telemetry log belong to other groups:
+	// neither is this group's to delete.
+	foreign := writeLogFile(t, dir, "ac-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+	telemetry := writeLogFile(t, dir, "nhp_ac_xdp-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+
+	sweepEventLogs(dir, now, 14, 1<<30, []string{acDenyLogName, acAcceptLogName})
+
+	for _, path := range []string{today, recent, foreign, telemetry} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s should have survived: %v", filepath.Base(path), err)
+		}
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("%s should have been pruned (err=%v)", filepath.Base(stale), err)
+	}
+}
+
+// TestAcAuditBudgetStopsAtTheDailyLimit pins that the legacy audit log has a
+// daily byte budget of its own, and that the marker line says which log ran
+// out of it.
+//
+// The tag is the difference between the two files: nhp_deny-*.log and
+// nhp_accept-*.log are separate budgets, so a reader has to be able to tell
+// which one stopped growing.
+func TestAcAuditBudgetStopsAtTheDailyLimit(t *testing.T) {
+	dir := t.TempDir()
+	logger := log.NewLoggerDefine("", log.LogLevelInfo, dir, "ac_deny_test")
+	t.Cleanup(logger.Close)
+
+	b := &eventLogBudget{limit: 100, componentId: "ac1", tag: "NHP-DENY"}
+	day1 := time.Date(2026, 9, 29, 23, 0, 0, 0, time.UTC)
+
+	if !b.spend(day1, 60, logger) {
+		t.Fatal("the first line is inside the budget")
+	}
+	if b.spend(day1, 60, logger) {
+		t.Fatal("the budget is spent; further lines must be suppressed")
+	}
+
+	logger.Close() // flush the async writer before reading the file
+	matches, err := filepath.Glob(filepath.Join(dir, "ac_deny_test-*.log"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("the budget line was not written (matches=%v, err=%v)", matches, err)
+	}
+	content, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("reading the budget log: %v", err)
+	}
+	want := "23:00:00 ac1 [NHP-DENY] EVENT_LOG_BUDGET_EXHAUSTED"
+	if !strings.Contains(string(content), want) {
+		t.Errorf("the budget line does not carry the component id and the log's tag in the expected place\nwant a line containing %q\ngot:\n%s", want, content)
+	}
+}

@@ -566,7 +566,7 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 		"",
 		params.LogLevel,
 		filepath.Join(params.LogDirPath, "logs"),
-		"nhp_deny",
+		acDenyLogName,
 	)
 	h.DenyLogger.SetFlags(stdlog.Lmsgprefix)
 	// Set up the ACCEPT logger
@@ -574,7 +574,7 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 		"",
 		params.LogLevel,
 		filepath.Join(params.LogDirPath, "logs"),
-		"nhp_accept",
+		acAcceptLogName,
 	)
 	h.AcLogger.SetFlags(stdlog.Lmsgprefix)
 
@@ -644,10 +644,27 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 		go reportEventScan(objs.PortHits, objs.SrcHits, scanInterval, scanTopN,
 			acStop, params.ComponentId, h.AcStatsLogger)
 	}
-	go pruneEventLogs(logDir, acStop, []string{acEventLogName})
+	go pruneEventLogs(logDir, acStop, acEventLogGroups())
 
 	return h, nil
 }
+
+// acAuditLogDailyEventBytes is how much per-packet text the AC's legacy audit
+// log may append in one calendar day, per log.
+//
+// This is the writer's side of the bound on the audit ring, and it is the one
+// that actually caps the disk: the kernel-side buckets bound the rate, and a
+// rate is not a size -- a sender who spreads packets across the classes and
+// across the RSS queues sits just under the buckets forever, and a few dozen
+// lines a second is gigabytes a day. The retention sweep cannot answer that
+// either, because the file being appended to is the one file it must never
+// delete.
+//
+// The telemetry log next to it carries the same packets with the drop reason
+// attached and a larger allowance (serverLogDailyEventBytes); this one is the
+// older, thinner channel and is kept as an audit trail, not as the record of
+// record.
+const acAuditLogDailyEventBytes = 16 << 20 // 16 MiB
 
 func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Logger) {
 	perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
@@ -658,6 +675,24 @@ func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Lo
 	defer perfReader.Close()
 
 	log.Info("Start listening for eBPF events (PERF BUFFER)")
+
+	// Two budgets, one per file, and they are separate on purpose: a flood of
+	// dropped packets must not be able to spend the allowance of the log that
+	// records what was admitted. The marker line each one writes says which
+	// log ran out, so a reader can tell the two apart.
+	auditNote := "the exact per-class totals continue in the AC's telemetry log (" + acEventLogName + "-*.log)"
+	denyBudget := &eventLogBudget{
+		componentId: acId,
+		limit:       acAuditLogDailyEventBytes,
+		tag:         "NHP-DENY",
+		note:        auditNote,
+	}
+	acceptBudget := &eventLogBudget{
+		componentId: acId,
+		limit:       acAuditLogDailyEventBytes,
+		tag:         "NHP-ACCEPT",
+		note:        auditNote,
+	}
 
 	for {
 		record, err := perfReader.Read()
@@ -703,9 +738,18 @@ func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Lo
 			dstPort,
 		)
 
+		// Charged against today's allowance by the wall clock, not by the
+		// event's own (boot-relative) timestamp: the budget is about the file
+		// being appended to, and the logger picks that file by time.Now().
 		if action == 0 { // DENY
+			if !denyBudget.spend(time.Now(), len(logMsg), denyLogger) {
+				continue
+			}
 			denyLogger.Info("%s", logMsg)
 		} else { // ACCEPT
+			if !acceptBudget.spend(time.Now(), len(logMsg), acLogger) {
+				continue
+			}
 			acLogger.Info("%s", logMsg)
 		}
 	}
@@ -929,7 +973,9 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 		go reportEventScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
 			serverStop, params.ComponentId, h.ServerLogger)
 	}
-	go pruneEventLogs(logDir, serverStop, []string{serverEventLogName})
+	go pruneEventLogs(logDir, serverStop, []eventLogGroup{
+		{prefixes: []string{serverEventLogName}, maxBytes: serverLogRetentionBytes},
+	})
 
 	return h, nil
 }
@@ -983,6 +1029,33 @@ const serverEventLogName = "nhp_server_xdp"
 // caches them per source; a shared name would put two hosts' lines in one
 // file and make the counters unreadable.
 const acEventLogName = "nhp_ac_xdp"
+
+// acDenyLogName and acAcceptLogName are the AC's legacy audit logs: one line
+// per dropped or admitted packet, written by readAcEvents from the program's
+// own `events` ring.
+//
+// They are bounded like everything else now. The ring itself is fed behind a
+// budget of its own in the kernel (legacy_event_budget_available in
+// nhp/ebpf/xdp/nhp_xdp_stats.h), the writer charges every line against a daily
+// byte allowance (acAuditLogDailyEventBytes), and the files are swept with a
+// size cap of their own (acAuditLogRetentionBytes). Before that, the ring was
+// one line per packet with nothing on top of it, which was harmless while the
+// security group let in almost nothing and is a way to fill the disk the
+// daemon runs on once it is open to the whole internet.
+//
+// The log.Logger name is the file name prefix, so the two must not drift from
+// the names pruneEventLogs deletes by.
+const (
+	acDenyLogName   = "nhp_deny"
+	acAcceptLogName = "nhp_accept"
+)
+
+// acEventLogPrefixes are the log file prefixes the AC owns and sweeps: the
+// telemetry log and the two legacy audit logs.
+//
+// The sweep covers all of them and no others -- the daemon's own ac-*.log is
+// none of the filter's business.
+var acEventLogPrefixes = []string{acEventLogName, acDenyLogName, acAcceptLogName}
 
 // Action codes reported by nhp/ebpf/xdp/nhp_server_xdp.c. Keep in sync.
 const (
@@ -1213,10 +1286,38 @@ type eventLogBudget struct {
 	// so the line is read as a malformed STAT line and the day's budget
 	// flag never lights up.
 	componentId string
-	day         string
-	written     int64
-	limit       int64
-	exhausted   bool
+	// tag is the tag the marker line carries, without the brackets. The
+	// telemetry channel writes "NHP-STAT" — the site's parser recognizes
+	// that marker by position, so the id and the tag have to keep their
+	// places — and the AC's legacy accept/deny logs write their own
+	// ("NHP-DENY", "NHP-ACCEPT"), so a reader can tell which log ran out
+	// of budget.
+	tag string
+	// note is the tail of the marker line: where the exact per-class totals
+	// live. For the telemetry log they are in the same file, below; for
+	// the legacy logs they are in the AC's telemetry log, which is a
+	// different file with a different name.
+	note      string
+	day       string
+	written   int64
+	limit     int64
+	exhausted bool
+}
+
+// tagName is the marker line's tag, "[NHP-<tag>]".
+func (b *eventLogBudget) tagName() string {
+	if b.tag == "" {
+		return "NHP-STAT"
+	}
+	return b.tag
+}
+
+// noteText is the tail of the marker line.
+func (b *eventLogBudget) noteText() string {
+	if b.note == "" {
+		return "the [NHP-STAT] totals continue below"
+	}
+	return b.note
 }
 
 // spend reports whether a line of n bytes may still be written today, and
@@ -1238,10 +1339,10 @@ func (b *eventLogBudget) spend(now time.Time, n int, logger *log.Logger) bool {
 	}
 
 	b.exhausted = true
-	log.Warning("xdp event log: %d MiB of per-packet lines written today; suppressing further ones until tomorrow. Per-minute [NHP-STAT] totals continue and stay exact.",
-		b.limit>>20)
-	logger.Info("%s %s [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED BYTES=%d: per-packet lines suppressed for the rest of the day; totals continue below",
-		now.Format("15:04:05"), b.componentId, b.written)
+	log.Warning("%s: %d MiB of per-packet lines written today; suppressing further ones until tomorrow. The per-class totals continue and stay exact.",
+		b.tagName(), b.limit>>20)
+	logger.Info("%s %s [%s] EVENT_LOG_BUDGET_EXHAUSTED BYTES=%d: per-packet lines suppressed for the rest of the day; %s",
+		now.Format("15:04:05"), b.componentId, b.tagName(), b.written, b.noteText())
 	return false
 }
 
@@ -1439,14 +1540,52 @@ const (
 	serverLogRetentionDays  = 14
 	serverLogRetentionBytes = 256 << 20 // 256 MiB
 	serverLogSweepInterval  = time.Hour
+
+	// acAuditLogRetentionBytes is the size cap of the AC's legacy audit
+	// family (nhp_deny-* and nhp_accept-*).
+	//
+	// It is deliberately smaller than the telemetry log's own cap and it is
+	// swept separately, because the two must not compete for the same bytes:
+	// the collector pulls nhp_ac_xdp-*.log and the published site reads it, so
+	// a flood of deny lines must not be able to evict the telemetry log the
+	// site depends on. The audit logs are the older, thinner channel; the
+	// telemetry log is the one worth keeping in full.
+	acAuditLogRetentionBytes = 64 << 20 // 64 MiB
 )
 
-func pruneEventLogs(logDir string, stop <-chan struct{}, prefixes []string) {
+// eventLogGroup is one family of log files and the size that family is
+// allowed to occupy on disk.
+//
+// A sweep covers several families because they have different sizes and
+// different readers: one family's growth must not evict another's history.
+type eventLogGroup struct {
+	// prefixes are the log file name prefixes this group owns.
+	prefixes []string
+	// maxBytes is the size the group's files may occupy together.
+	maxBytes int64
+}
+
+// acEventLogGroups are the log families the AC's retention sweep owns.
+//
+// The telemetry log and the two legacy audit logs are swept as two groups, for
+// the reason given on acAuditLogRetentionBytes. Between them they cover
+// exactly acEventLogPrefixes; a test pins that, so a new log the AC writes
+// cannot be left unswept.
+func acEventLogGroups() []eventLogGroup {
+	return []eventLogGroup{
+		{prefixes: []string{acEventLogName}, maxBytes: serverLogRetentionBytes},
+		{prefixes: []string{acDenyLogName, acAcceptLogName}, maxBytes: acAuditLogRetentionBytes},
+	}
+}
+
+func pruneEventLogs(logDir string, stop <-chan struct{}, groups []eventLogGroup) {
 	ticker := time.NewTicker(serverLogSweepInterval)
 	defer ticker.Stop()
 
 	for {
-		sweepEventLogs(logDir, time.Now(), serverLogRetentionDays, serverLogRetentionBytes, prefixes)
+		for _, g := range groups {
+			sweepEventLogs(logDir, time.Now(), serverLogRetentionDays, g.maxBytes, g.prefixes)
+		}
 		select {
 		case <-stop:
 			return
@@ -1470,19 +1609,23 @@ func eventLogWriters(prefix string) []string {
 // rather than the constants above so a test can exercise the size path without
 // writing a quarter of a gigabyte.
 //
-// prefixes are the log file name prefixes this variant owns — the nhp-server
-// writes nhp_server_xdp-*, the nhp-ac writes nhp_ac_xdp-*. Only those
-// families are touched: the nhp-ac's logs directory also holds its
-// nhp_deny-*, nhp_accept-* and ac-* files, and the daemon's own log is none
-// of the sweep's business.
+// prefixes are the log file name prefixes this group owns — the nhp-server
+// writes nhp_server_xdp-*, the nhp-ac writes nhp_ac_xdp-* and the legacy
+// nhp_deny-* / nhp_accept-*. Only those families are touched: the nhp-ac's
+// logs directory also holds its own ac-* files, and the daemon's own log is
+// none of the sweep's business.
+//
+// The groups are swept separately, so one family's growth cannot evict
+// another's history (see eventLogGroup).
 //
 // Today's files are never deleted but they *are* counted. Leaving them out of
 // the total let a single day outgrow the whole budget while the sweep reported
 // itself satisfied; counting them means the day's own volume is what pushes the
 // history out, which is the behavior "cap the directory at maxBytes" was
 // always meant to describe. The day's growth itself is bounded by
-// serverLogDailyEventBytes on the writing side — the sweep cannot bound it,
-// because it must not touch the file being appended to.
+// serverLogDailyEventBytes (and acAuditLogDailyEventBytes) on the writing
+// side — the sweep cannot bound it, because it must not touch the file being
+// appended to.
 func sweepEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64, prefixes []string) {
 	type logFile struct {
 		path string

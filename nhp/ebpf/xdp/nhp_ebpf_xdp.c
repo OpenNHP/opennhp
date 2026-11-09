@@ -94,9 +94,26 @@
 /* The accept / deny audit channel.
  *
  * This ring and the one in nhp_xdp_stats.h are two independent paths: this
- * one carries every accepted and denied flow to the nhp_deny-*.log and
- * nhp_accept-*.log files, one line per packet, unbounded; the nhp_events ring
- * carries the counted, rate-limited telemetry that the stats site reads. */
+ * one carries the accepted and denied flows to the nhp_deny-*.log and
+ * nhp_accept-*.log files; the nhp_events ring carries the counted,
+ * rate-limited telemetry that the stats site reads.
+ *
+ * The audit ring used to be one line per packet with nothing on top of it.
+ * That was tolerable while the security group let in only tcp/443 and the
+ * knock port, because almost nothing reached the filter to be logged. It is
+ * not tolerable with the group open to the whole internet: every packet that
+ * arrives is then chosen by whoever sent it, and one sender is enough to fill
+ * the disk the daemon runs on. So the ring is fed behind a budget of its own
+ * -- the same per-class bucket and the same global cap the telemetry ring
+ * uses, in the telemetry map's second bank of slots (legacy_event_budget_
+ * available in nhp_xdp_stats.h) -- and the files behind it carry a daily byte
+ * budget and are swept like the telemetry log's (readAcEvents and
+ * acEventLogPrefixes in nhp/utils/ebpf/engine_linux.go).
+ *
+ * The verdict never depends on any of it: a packet that finds the budget
+ * spent is still judged the same way, and only the line is not written. The
+ * per-class totals in [NHP-STAT] count every packet, so what was not written
+ * is still counted. */
 struct event_t {
     __u64 timestamp;    
     __u8 action;        
@@ -114,10 +131,26 @@ struct {
 } events SEC(".maps");
 
 // Submit the event details including source and destination IP addresses, source and destination ports, protocol, and total packet length to the user space.
-static __always_inline int submit_event(void *ctx, __u8 action, __be32 src_ip, __be32 dst_ip, __be16 src_port, __be16 dst_port, __u8 protocol, __be16 len) {
+//
+// `verdict` is what lands in the log line (0 = DENY, 1 = ACCEPT); `class` is the
+// verdict class the packet belongs to and is what the audit ring's own budget
+// is keyed on. The two are different things: a knock admitted and a knock
+// expired are both ACCEPT/DENY but different classes, and a budget keyed on
+// the verdict alone would let a flood of one kind starve the other.
+//
+// The budget is spent before the event is emitted, so an over-budget packet
+// costs a map lookup and nothing else. The verdict does not depend on it: the
+// packet is judged exactly as before, only its line is not written. The
+// per-class totals in [NHP-STAT] count every packet whatever the budget says.
+static __always_inline int submit_event(void *ctx, __u8 verdict, __u8 class, __be32 src_ip, __be32 dst_ip, __be16 src_port, __be16 dst_port, __u8 protocol, __be16 len) {
     struct event_t ev = {};
-    ev.timestamp = bpf_ktime_get_ns();
-    ev.action = action; // 0 = DENY, 1 = ACCEPT
+    __u64 now = bpf_ktime_get_ns();
+
+    if (!legacy_event_budget_available(class, now))
+        return 0;
+
+    ev.timestamp = now;
+    ev.action = verdict; // 0 = DENY, 1 = ACCEPT
     ev.src_ip = src_ip;
     ev.dst_ip = dst_ip;
     ev.src_port = src_port;
@@ -223,7 +256,7 @@ static __always_inline int admit_ingress(void *ctx, struct iphdr *iph,
      * an attack, so it stays out of the per-port / per-source aggregation
      * behind the [NHP-SCAN] summary. */
     record_event(ctx, ACT_AC_PASS_KNOCK_ADMITTED, iph, ct_key->sport, ct_key->dport, 0, true, false);
-    submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key->sport, ct_key->dport, iph->protocol, iph->tot_len);
+    submit_event(ctx, 1, ACT_AC_PASS_KNOCK_ADMITTED, iph->saddr, iph->daddr, ct_key->sport, ct_key->dport, iph->protocol, iph->tot_len);
     if (ac_owns_flow)
         return XDP_PASS;
     nhp_record_knocked_peer(iph->saddr, ct_key->dport, iph->protocol, expire_time);
@@ -1034,8 +1067,9 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     /* No whitelist admitted the packet. Which class it is depends on what the
      * packet was trying to do; either way it is dropped. */
-    record_event(ctx, ac_classify_drop(iph->protocol, is_syn, is_ack, is_rst), iph, ct_key.sport, ct_key.dport, 0, true, true);
-    submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
+    __u8 drop_class = ac_classify_drop(iph->protocol, is_syn, is_ack, is_rst);
+    record_event(ctx, drop_class, iph, ct_key.sport, ct_key.dport, 0, true, true);
+    submit_event(ctx, 0, drop_class, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
     return XDP_DROP;
 }
 

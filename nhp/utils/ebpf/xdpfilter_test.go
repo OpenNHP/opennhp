@@ -34,6 +34,17 @@ func acIngressSource(t *testing.T) string {
 	return string(b)
 }
 
+// acEgressSource reads the AC's TC egress program, the other half of the pair
+// that lets the host's own traffic back in.
+func acEgressSource(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "tc_egress.c"))
+	if err != nil {
+		t.Fatalf("read tc_egress.c: %v", err)
+	}
+	return string(b)
+}
+
 // TestAcIngressFilterHasNoBlanketUdpExceptions pins that the AC's filter
 // does not wave through datagrams by their port number alone.
 func TestAcIngressFilterHasNoBlanketUdpExceptions(t *testing.T) {
@@ -126,6 +137,59 @@ func TestAcIngressFilterAsksTheSocketTable(t *testing.T) {
 	}
 	if !strings.Contains(text, "ACT_AC_PASS_HOST_FLOW") {
 		t.Error("the AC's filter has no action code for the host's own flow")
+	}
+}
+
+// TestAcFilterAnswersTheHostsOwnPings pins that an ICMP echo reply is
+// admitted on the record of the request the host itself sent.
+//
+// An echo reply used to be passed unconditionally, from anywhere. Closing
+// that hole also closed the host's own diagnostics with it: the AC could no
+// longer get answers to the pings an operator runs on the host, which is also
+// how the AC's own reachability is checked.
+//
+// The replacement is the shape the rest of the filter uses -- the host's own
+// traffic is admitted because the host opened the flow. tc_egress.c records
+// the echo request, the ingress program admits the reply that answers it, and
+// only that reply: the identifier is part of the key, so a reply to another
+// request, or from another peer, stays dropped.
+//
+// The kernel-level counterpart is acxdp_linux_test.go's
+// TestAcFilterAnswersTheHostsOwnPings; it needs the object files and
+// CAP_BPF, so these assertions are what pins the shape without either.
+func TestAcIngressFilterAnswersTheHostsOwnPings(t *testing.T) {
+	ingress := acIngressSource(t)
+	egress := acEgressSource(t)
+
+	// The egress program records the request: the peer and the identifier
+	// the request went out with.
+	if !strings.Contains(egress, "bpf_map_update_elem(&icmp_echo, &key, &val, BPF_ANY)") {
+		t.Error("the AC's egress program does not record the echo requests the host sends")
+	}
+	if !strings.Contains(egress, "NHP_ICMP_ECHO_TTL_NS") {
+		t.Error("the recorded echo request has no expiry; the record would outlive the request")
+	}
+
+	// The ingress program matches the reply against that record, checks the
+	// record has not expired, and only then passes it.
+	guarded := regexp.MustCompile(`(?s)icmp->type == ICMP_ECHOREPLY\).*?` +
+		`bpf_map_lookup_elem\(&icmp_echo, &echokey\).*?` +
+		`expire_time >= now.*?` +
+		`ACT_AC_PASS_HOST_ECHO.*?` +
+		`return XDP_PASS;`)
+	if !guarded.MatchString(ingress) {
+		t.Error("the AC's filter does not admit the reply to a ping the host sent itself")
+	}
+
+	// Nothing may pass the reply before the record has been consulted: the
+	// hole this replaces was exactly an unconditional pass.
+	branch := strings.Index(ingress, "icmp->type == ICMP_ECHOREPLY)")
+	lookup := strings.Index(ingress, "bpf_map_lookup_elem(&icmp_echo, &echokey)")
+	if branch < 0 || lookup < 0 || lookup < branch {
+		t.Fatal("the AC's filter no longer looks the echo record up")
+	}
+	if strings.Contains(ingress[branch:lookup], "XDP_PASS") {
+		t.Error("the AC's filter passes an echo reply before the record of the request has been consulted")
 	}
 }
 

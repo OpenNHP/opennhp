@@ -184,6 +184,15 @@ type bpfObjects struct {
 	// fails the load by name, the same reason Conntrack is assigned below.
 	KnockPeers *ebpf.Map `ebpf:"knock_peers"`
 
+	// Echo requests the AC itself sent, and the record that lets the reply
+	// be told apart from an unsolicited ping. Written by the TC egress
+	// program, read by the XDP one; see `icmp_echo` in nhp_maps.h.
+	//
+	// Assigned here for the same reason KnockPeers is: nothing in user
+	// space drives it, but a pin left over from a build with a different
+	// shape has to fail the load by name rather than be picked up silently.
+	IcmpEcho *ebpf.Map `ebpf:"icmp_echo"`
+
 	// The XDP telemetry maps, the same five the nhp-server's filter uses
 	// (nhp/ebpf/xdp/nhp_xdp_stats.h). The XDP program counts every packet it
 	// drops into them and the reporting half below turns those counters into
@@ -222,6 +231,13 @@ type tcBpfObjects struct {
 	// `conn_track` error naming the map — see "eBPF map pin mismatch" in
 	// terraform/demo/RUNBOOK.md.
 	Conntrack *ebpf.Map `ebpf:"conn_track"`
+	// The echo requests the AC sent itself, recorded by the TC program and
+	// read by the XDP one: the second ground on which an ICMP echo reply is
+	// admitted. Assigned for the same reason Conntrack is — a pin left over
+	// from a build with a different map shape has to fail here, at startup,
+	// with an `icmp_echo` error naming the map, rather than be picked up
+	// silently by the next load.
+	IcmpEcho *ebpf.Map `ebpf:"icmp_echo"`
 	// Runtime knobs for the TC program, filled in by setEbpfConfig below.
 	Config *ebpf.Map `ebpf:"nhp_config"`
 }
@@ -262,6 +278,7 @@ const defaultEphemeralPortMin uint32 = 32768
 var acPinnedNames = []string{
 	"xdp_white_prog",
 	"conn_track",
+	"icmp_echo",
 	"icmpwhitelist",
 	"port_list",
 	"protocol_port",
@@ -1087,6 +1104,9 @@ const (
 	ActAcPassV6Fragment    uint8 = 13
 	ActAcPassV6Established uint8 = 14
 	ActAcDropV6Other       uint8 = 15
+	// ActAcPassHostEcho is the reply to a ping the AC sent itself, admitted
+	// on the record tc_egress.c kept of the request.
+	ActAcPassHostEcho uint8 = 16
 )
 
 // acActionName is the nhp-ac's counterpart of serverActionName.
@@ -1135,6 +1155,8 @@ func acActionName(action uint8) (verdict, reason string) {
 		return "PASS", "V6_ESTABLISHED"
 	case ActAcDropV6Other:
 		return "DROP", "V6_OTHER"
+	case ActAcPassHostEcho:
+		return "PASS", "HOST_ECHO"
 	default:
 		return "DROP", fmt.Sprintf("UNKNOWN-%d", action)
 	}

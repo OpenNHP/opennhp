@@ -158,6 +158,18 @@ enum {
 #define NHP_EPHEMERAL_PORT_MIN 32768
 
 /*
+ * How long an echo request the AC sent may still be answered.
+ *
+ * An echo reply comes back in milliseconds; this is generous by three orders
+ * of magnitude and still short enough that an entry cannot outlive the
+ * identifier it was written for. The identifier is what makes the reply
+ * recognisable as ours, and the kernel hands the same identifier to the next
+ * process that pings -- so an entry that lived long enough would admit a
+ * stranger's ping.
+ */
+#define NHP_ICMP_ECHO_TTL_NS (30ULL * 1000000000ULL)
+
+/*
  * Connection-tracking key.
  *
  * NOTE: this struct is deliberately NOT packed. Its natural alignment makes it
@@ -381,6 +393,42 @@ struct {
     __uint(max_entries, MAX_ENTRIES);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } knock_peers SEC(".maps");
+
+/*
+ * Echo requests the AC itself sent.
+ *
+ * The AC's filter admits an ICMP echo reply on one of two grounds: the peer
+ * knocked for ICMP access (the `icmpwhitelist` entry above), or the AC pinged
+ * that peer itself and the reply answers that ping. This map is the second
+ * ground, and it is what keeps the host's own diagnostics working now that the
+ * reply is no longer waved through from anywhere.
+ *
+ * Written by tc_egress.c on every echo request the host sends, read by
+ * xdp_white_prog() on the reply. The identifier is part of the key, so a
+ * packet that does not answer the request we sent is not admitted; the
+ * sequence number is not, because the peer address and the identifier
+ * together already tell our own reply apart from anybody else's.
+ *
+ * The entry is a record of what we asked for, not a permission: nothing is
+ * admitted because of it except the reply to that exact request, and it
+ * expires in NHP_ICMP_ECHO_TTL_NS.
+ */
+struct icmp_echo_key {
+    __be32 peer_ip; /* the address the AC pinged */
+    __be16 id;      /* the echo identifier, as it appears on the wire */
+} __attribute__((packed));
+
+struct icmp_echo_value {
+    __u64 expire_time;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __type(key, struct icmp_echo_key);
+    __type(value, struct icmp_echo_value);
+    __uint(max_entries, MAX_ENTRIES);
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+} icmp_echo SEC(".maps");
 
 /*
  * Has `peer_ip` been admitted to `service_port` on the AC by a knock?

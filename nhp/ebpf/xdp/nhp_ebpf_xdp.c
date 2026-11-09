@@ -73,6 +73,7 @@
 #define ACT_AC_PASS_V6_FRAGMENT     13
 #define ACT_AC_PASS_V6_ESTABLISHED  14
 #define ACT_AC_DROP_V6_OTHER        15
+#define ACT_AC_PASS_HOST_ECHO       16
 
 /* The whitelist maps, conn_track and their key/value structs live in
  * nhp_maps.h -- they are shared with tc_egress.c through their pins. */
@@ -596,13 +597,39 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         if ((icmp->type == ICMP_ECHO && icmp->code == 0) ||
             (icmp->type == ICMP_ECHOREPLY && icmp->code == 0)) {
 
-            /* Both directions are decided by the same whitelist entry. An echo
-             * reply used to be passed unconditionally, from anywhere: with the
-             * security group open that let any host on the internet reach
-             * whatever answers its pings on this host. The reply is the answer
-             * to a ping of ours, so it is admitted on the same entry the
-             * request needs -- the peer that knocked for ICMP, and only while
-             * its window is open. */
+            /* The reply to a ping the AC sent itself.
+             *
+             * An echo reply used to be passed unconditionally, from anywhere:
+             * with the security group open that let any host on the internet
+             * reach whatever answers its pings on this host. Narrowing it to
+             * the whitelist entry the echo request needs closed that, but it
+             * also stopped the AC from getting answers to its own pings --
+             * a diagnostic the operator runs on the host, and the way the
+             * AC's own reachability is checked.
+             *
+             * So the reply is admitted on one of two grounds: the peer
+             * knocked for ICMP access (the whitelist entry below), or the AC
+             * pinged that peer itself and this is the answer (the `icmp_echo`
+             * entry tc_egress.c wrote when the request went out). The
+             * identifier is part of that key, so only the reply to the
+             * request we actually sent is admitted, and the entry expires in
+             * NHP_ICMP_ECHO_TTL_NS. */
+            if (icmp->type == ICMP_ECHOREPLY) {
+                struct icmp_echo_key echokey = {
+                    .peer_ip = iph->saddr,
+                    .id = icmp->un.echo.id,
+                };
+                struct icmp_echo_value *echo_val = bpf_map_lookup_elem(&icmp_echo, &echokey);
+                if (echo_val && echo_val->expire_time >= now) {
+                    record_event(ctx, ACT_AC_PASS_HOST_ECHO, iph, 0, 0, 0, false, false);
+                    return XDP_PASS;
+                }
+            }
+
+            /* Both directions are decided by the same whitelist entry. The
+             * reply is the answer to a ping of ours, so it is admitted on the
+             * same entry the request needs -- the peer that knocked for ICMP,
+             * and only while its window is open. */
             //Lookup icmpwhitelist entry
             struct icmpwhitelist_value *iw_val = bpf_map_lookup_elem(&icmpwhitelist, &icmpkey);
             if (!iw_val) {

@@ -138,6 +138,20 @@ jobs:
         cd ../endpoints
         go test -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
 
+    # The race detector is a separate run from the coverage one: the DHP
+    # console hands each request its own goroutine, so the agent's shared
+    # caches are only ever exercised concurrently in tests, and an
+    # unsynchronized map there is a Go runtime fatal error (not a panic —
+    # gin.Recovery() cannot catch it and the process exits). Coverage mode
+    # does not detect that; -race does. Same package selection as
+    # `make test-race`.
+    - name: Run tests with the race detector
+      run: |
+        cd nhp
+        go test -race $(go list ./... | grep -v 'wasm/policy')
+        cd ../endpoints
+        go test -race ./...
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:

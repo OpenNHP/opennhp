@@ -109,7 +109,15 @@ type EngineLoadParams struct {
 
 	// ScanReportInterval and ScanReportTopN drive the [NHP-SCAN] summary:
 	// the window length and how many ports / sources each window lists. Both
-	// the nhp-server and the nhp-ac use them. Zero values disable the report.
+	// the nhp-server and the nhp-ac use them.
+	//
+	// What a zero value means depends on the variant. For the nhp-server it
+	// disables the report: the server's caller resolves the settings before
+	// the load and the loader does not second-guess it. For the nhp-ac the
+	// loader fills the defaults in (acScanReportSettings), because the AC's
+	// summary is not optional: its port and source tables are drained by the
+	// reporter, and a load that started no reporter would leave them to
+	// fill up and never be read.
 	ScanReportInterval time.Duration
 	ScanReportTopN     int
 

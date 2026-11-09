@@ -37,6 +37,12 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		ComponentId:   acId,
 		LogDirPath:    dirPath,
 		LogLevel:      logLevel,
+		// ScanReportInterval and ScanReportTopN are deliberately left at
+		// zero: the loader fills the AC's defaults in (acScanReportSettings),
+		// so the [NHP-SCAN] summary runs whether or not the caller remembers
+		// to ask for it. The AC's port and source tables are drained by that
+		// reporter, and a load that started none would leave them to fill up
+		// and never be read.
 	})
 	if err != nil {
 		return err

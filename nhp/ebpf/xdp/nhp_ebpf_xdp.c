@@ -20,6 +20,12 @@
 #define DHCP_PORT_O 68
 #define NTP_PORT 123
 
+/* The v6 spelling of the DHCP pair, for the same reason as the v4 one below:
+ * a host that gets its v6 address from DHCPv6 rather than from SLAAC loses
+ * it at lease expiry if the reply (547 -> 546) is dropped. */
+#define DHCP6_PORT_SERVER 547
+#define DHCP6_PORT_CLIENT 546
+
 /* IPv6 next-header values: the three extension headers that may sit in front
  * of the L4 header on ordinary traffic (an MLD report carries a hop-by-hop
  * router alert), and ICMPv6. */
@@ -74,6 +80,13 @@
 #define ACT_AC_PASS_V6_ESTABLISHED  14
 #define ACT_AC_DROP_V6_OTHER        15
 #define ACT_AC_PASS_HOST_ECHO       16
+/* The v6 spellings of the two client protocols the socket table cannot answer
+ * for. They get their own codes rather than reusing the v4 ones because the
+ * IPv6 tree is a separate decision tree with its own classes -- V6_CONTROL,
+ * V6_FRAGMENT, V6_ESTABLISHED -- and an operator reading the AC's counters
+ * needs to be able to tell a v4 lease from a v6 one. */
+#define ACT_AC_PASS_V6_DHCP_CLIENT  17
+#define ACT_AC_PASS_V6_NTP_CLIENT   18
 
 /* The whitelist maps, conn_track and their key/value structs live in
  * nhp_maps.h -- they are shared with tc_egress.c through their pins. */
@@ -345,7 +358,13 @@ static __always_inline bool has_local_flow6(struct xdp_md *ctx, struct ipv6hdr *
  * client protocols, and the replies to the host's own v6 flows -- the same
  * shape as nhp_server_xdp.c, so a host on a v6 subnet still works and a
  * filter that says it drops everything but X does not have a hole the size
- * of an address family. */
+ * of an address family.
+ *
+ * The two client protocols are admitted by their port pair, not by the
+ * socket table: a DHCPv6 lease and a chronyd answer both arrive on a socket
+ * the kernel cannot tell apart from a listener, so the lookup below finds
+ * nothing and the answer would be dropped. Their IPv4 counterparts are
+ * admitted the same way, for the same reason. */
 static __always_inline int handle_ipv6(struct xdp_md *ctx, void *l3, void *data_end) {
     struct ipv6hdr *ip6h = l3;
     if ((void *)(ip6h + 1) > data_end)
@@ -431,6 +450,37 @@ static __always_inline int handle_ipv6(struct xdp_md *ctx, void *l3, void *data_
         struct udphdr *udp = cur;
         if ((void *)(udp + 1) > data_end)
             return XDP_DROP;
+
+        /* The v6 spellings of the two exceptions the socket table cannot
+         * answer for, reported under their own action codes so a v6 lease is
+         * not confused with a v4 one. Same reason, same shape, and the same
+         * order as the IPv4 branch below and as nhp_server_xdp.c: the port
+         * pair is the exception, the socket table is the fallback.
+         *
+         * DHCPv6: the host's own address depends on this getting in, and
+         * has_local_flow6() cannot let it -- the client receives the lease on
+         * a socket that is merely bound to udp/546, which the lookup refuses
+         * because it cannot tell it apart from a listener. Dropping it is
+         * terminal for the lease, and a host that loses its address loses
+         * every port with it. Reported per packet: a renewal is a few
+         * datagrams an hour, and it is the line an operator wants.
+         *
+         * NTPv6: chrony polls its servers from the socket it has bound to
+         * udp/123 rather than from a connected ephemeral one, and the answer
+         * (123 -> 123) then looks exactly like an unsolicited query to the
+         * lookup. Counted, not reported: chrony polls every 32-64s, so this
+         * would be a steady trickle of lines saying the same thing. */
+        if (udp->source == bpf_htons(DHCP6_PORT_SERVER) &&
+            udp->dest == bpf_htons(DHCP6_PORT_CLIENT)) {
+            record_v6_event(ctx, ACT_AC_PASS_V6_DHCP_CLIENT, ip6h, nexthdr,
+                            udp->source, udp->dest, true, false);
+            return XDP_PASS;
+        }
+        if (udp->source == bpf_htons(NTP_PORT) && udp->dest == bpf_htons(NTP_PORT)) {
+            record_v6_event(ctx, ACT_AC_PASS_V6_NTP_CLIENT, ip6h, nexthdr,
+                            udp->source, udp->dest, false, false);
+            return XDP_PASS;
+        }
 
         if (has_local_flow6(ctx, ip6h, udp->source, udp->dest, false)) {
             record_v6_event(ctx, ACT_AC_PASS_V6_ESTABLISHED, ip6h, nexthdr, udp->source, udp->dest, false, false);

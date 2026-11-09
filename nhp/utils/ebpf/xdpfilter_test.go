@@ -193,6 +193,48 @@ func TestAcIngressFilterAnswersTheHostsOwnPings(t *testing.T) {
 	}
 }
 
+// TestAcIngressFilterAdmitsTheV6ClientProtocols pins that the AC's IPv6
+// tree admits the same two client protocols the IPv4 tree admits.
+//
+// A DHCPv6 lease and a chronyd answer both arrive on a socket the kernel
+// cannot tell apart from a listener, so the socket-table lookup finds
+// nothing and the answer is dropped. The IPv4 branch admits them by their
+// port pair; the IPv6 branch has to do the same, or the day a v6 CIDR is
+// added to the VPC the AC loses its DHCPv6 lease -- and a host that loses
+// its address loses every port with it, about an hour after a deploy that
+// verified clean.
+func TestAcIngressFilterAdmitsTheV6ClientProtocols(t *testing.T) {
+	text := acIngressSource(t)
+
+	// The v6 branch keeps its own codes: a v6 lease must not be counted as
+	// a v4 one.
+	for _, tc := range []struct {
+		guard  string
+		action string
+		reason string
+	}{
+		{`udp->source == bpf_htons\(DHCP6_PORT_SERVER\)`, "ACT_AC_PASS_V6_DHCP_CLIENT", "DHCPv6"},
+		{`udp->source == bpf_htons\(NTP_PORT\)`, "ACT_AC_PASS_V6_NTP_CLIENT", "NTPv6"},
+	} {
+		re := regexp.MustCompile(`(?s)` + tc.guard + `.*?` + tc.action + `.*?return (XDP_\w+);`)
+		m := re.FindStringSubmatch(text)
+		if m == nil {
+			t.Errorf("the AC's filter does not admit the %s port pair under %s", tc.reason, tc.action)
+			continue
+		}
+		if m[1] != "XDP_PASS" {
+			t.Errorf("the %s branch returns %s, want XDP_PASS", tc.reason, m[1])
+		}
+	}
+
+	// Both the ports of a pair, never one of them: a datagram to a single
+	// well-known port is how a rule turns into a way in.
+	if strings.Contains(text, "bpf_htons(DHCP6_PORT_CLIENT) ||") ||
+		strings.Contains(text, "bpf_htons(DHCP6_PORT_SERVER) ||") {
+		t.Error("the AC's filter still admits a datagram by its destination port alone")
+	}
+}
+
 // TestExpiredKnocksAreNotScans pins that the AC's expired-knock class stays
 // out of the per-port and per-source tables behind the [NHP-SCAN] summary.
 //

@@ -1107,6 +1107,15 @@ const (
 	// ActAcPassHostEcho is the reply to a ping the AC sent itself, admitted
 	// on the record tc_egress.c kept of the request.
 	ActAcPassHostEcho uint8 = 16
+	// ActAcPassV6DhcpClient and ActAcPassV6NtpClient are the v6 spellings of
+	// the two client protocols the socket table cannot answer for. They get
+	// their own codes rather than reusing ActAcPassDhcpClient and
+	// ActAcPassNtpClient (which is what the server does) because the AC's
+	// IPv6 tree is a separate decision tree with its own classes, and an
+	// operator reading the AC's counters needs to be able to tell a v4 lease
+	// from a v6 one.
+	ActAcPassV6DhcpClient uint8 = 17
+	ActAcPassV6NtpClient  uint8 = 18
 )
 
 // acActionName is the nhp-ac's counterpart of serverActionName.
@@ -1157,6 +1166,10 @@ func acActionName(action uint8) (verdict, reason string) {
 		return "DROP", "V6_OTHER"
 	case ActAcPassHostEcho:
 		return "PASS", "HOST_ECHO"
+	case ActAcPassV6DhcpClient:
+		return "PASS", "V6_DHCP_CLIENT"
+	case ActAcPassV6NtpClient:
+		return "PASS", "V6_NTP_CLIENT"
 	default:
 		return "DROP", fmt.Sprintf("UNKNOWN-%d", action)
 	}

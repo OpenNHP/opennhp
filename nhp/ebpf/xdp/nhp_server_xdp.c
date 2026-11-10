@@ -146,6 +146,51 @@
 volatile const __u16 nhp_listen_port = 62206;
 volatile const __u16 nhp_min_udp_len = 240;
 
+/* The peers allowed to answer the two client protocols.
+ *
+ * The DHCP pair (67 -> 68) and the NTP pair (123 -> 123) are admitted by port
+ * pair alone, so any host that can reach this one can put a packet on the wire
+ * that looks exactly like the answer the host's own dhclient or chronyd is
+ * waiting for. Nothing downstream trusts those packets -- a DHCP reply is
+ * matched against the lease it answers, and chrony checks the transmit
+ * timestamp and the server it asked -- but on a host whose security group is
+ * open to the internet the pair is the last thing this filter admits with no
+ * whitelist behind it.
+ *
+ * These four constants narrow the two pairs to the sources the operator names:
+ * the address and the prefix mask of the range the answer may come from. The
+ * mask is 0 (the default) when no range was configured, which means "any
+ * source" -- the behaviour of this program before the constants existed. An
+ * operator who names a range gets the pair narrowed to it, and a packet from
+ * anywhere else is judged by the rest of the tree like any other.
+ *
+ * The address and the mask are written as the big-endian value of the
+ * address's bytes, and src_in_range() turns them back into the wire order
+ * with bpf_htonl() before it compares them with the packet's own field.
+ *
+ * `volatile const` puts them in .rodata, which is where the loader writes
+ * them (setServerConstants in nhp/utils/ebpf/engine_linux.go), the same way
+ * the knock port is written into this object. */
+volatile const __u32 nhp_server_dhcp_addr = 0;
+volatile const __u32 nhp_server_dhcp_mask = 0;
+volatile const __u32 nhp_server_ntp_addr = 0;
+volatile const __u32 nhp_server_ntp_mask = 0;
+
+/* Is this packet's source address inside the range the operator configured?
+ *
+ * `mask` is the prefix mask of the range, in the same byte order as `addr`:
+ * the loader writes both as the big-endian value of the address's bytes, and
+ * bpf_htonl() puts them back into the wire order here, where the packet's own
+ * saddr field already is.
+ *
+ * A zero mask means "no range was configured", and then every source is inside
+ * it -- the behaviour of this program before the constants existed. */
+static __always_inline bool src_in_range(__be32 saddr, __u32 addr, __u32 mask) {
+    if (mask == 0)
+        return true;
+    return (saddr & bpf_htonl(mask)) == (bpf_htonl(addr) & bpf_htonl(mask));
+}
+
 /* action codes reported to user space; see serverActionName() in
  * nhp/utils/ebpf/engine_linux.go, which formats them, and the decision table
  * in terraform/demo/VERIFY-server-xdp.zh-cn.md. */
@@ -591,8 +636,14 @@ int xdp_server_prog(struct xdp_md *ctx) {
              * in terraform/demo/RUNBOOK.md for the outage behind this. */
             if (udp->source == bpf_htons(DHCP_PORT_SERVER) &&
                 udp->dest == bpf_htons(DHCP_PORT_CLIENT)) {
-                record_packet(ctx, ACT_DHCP_CLIENT, iph, udp->source, udp->dest, 0, true);
-                return XDP_PASS;
+                /* The operator may narrow the pair to the host's own DHCP
+                 * server. An answer from anywhere else is not that server's,
+                 * so it falls through to the rest of the tree -- which drops
+                 * it, like any other datagram this port is not serving. */
+                if (src_in_range(iph->saddr, nhp_server_dhcp_addr, nhp_server_dhcp_mask)) {
+                    record_packet(ctx, ACT_DHCP_CLIENT, iph, udp->source, udp->dest, 0, true);
+                    return XDP_PASS;
+                }
             }
             /* NTP, for the same reason one layer up: unless it is configured
              * client-only (`port 0`), chronyd polls its servers from the
@@ -610,8 +661,12 @@ int xdp_server_prog(struct xdp_md *ctx) {
              * per-window [NHP-STAT] summary is where it belongs, and a clock
              * that stops being served shows up there as PKTS=0. */
             if (udp->source == bpf_htons(NTP_PORT) && udp->dest == bpf_htons(NTP_PORT)) {
-                record_packet(ctx, ACT_NTP_CLIENT, iph, udp->source, udp->dest, 0, false);
-                return XDP_PASS;
+                /* The same narrowing for the NTP pair: the answer may come
+                 * from the host's own time servers and from nowhere else. */
+                if (src_in_range(iph->saddr, nhp_server_ntp_addr, nhp_server_ntp_mask)) {
+                    record_packet(ctx, ACT_NTP_CLIENT, iph, udp->source, udp->dest, 0, false);
+                    return XDP_PASS;
+                }
             }
             /* The datagram answer to something the host asked for -- a DNS
              * reply above all, which is what nhp-serverd needs before it can

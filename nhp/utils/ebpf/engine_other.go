@@ -40,6 +40,12 @@ type EngineLoadParams struct {
 	ScanReportTopN     int
 
 	DisableEventLog bool
+
+	// DhcpSource and NtpSource narrow the two client-protocol pairs the
+	// filters admit. Off Linux nothing is loaded, so nothing reads them; they
+	// are here because the server's loader is portable and sets them.
+	DhcpSource SourceNet
+	NtpSource  SourceNet
 }
 
 type EngineHandle struct {

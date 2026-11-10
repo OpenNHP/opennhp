@@ -1434,6 +1434,34 @@ func TestEventLogBudgetStopsAtTheDailyLimitAndResetsOnTheNextDay(t *testing.T) {
 	}
 }
 
+// A budget of zero means no budget at all: the AC's audit trail is written for
+// as long as the host lives, which is the behaviour a deployment that reads
+// nhp_deny-*.log as an audit trail has to be able to ask for.
+func TestEventLogBudgetWithNoLimitNeverExhausts(t *testing.T) {
+	dir := t.TempDir()
+	logger := log.NewLoggerDefine("", log.LogLevelInfo, dir, "budget_unlimited_test")
+	t.Cleanup(logger.Close)
+
+	b := &eventLogBudget{limit: 0, componentId: "ac1"}
+	day := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 1000; i++ {
+		if !b.spend(day, 4096, logger) {
+			t.Fatalf("line %d was suppressed; a budget of zero means unbounded", i)
+		}
+	}
+	if b.exhausted {
+		t.Error("the budget reports itself exhausted with no limit set")
+	}
+
+	// A negative limit is the same answer, not an accidental exhaustion: it
+	// is what a configuration that subtracts one from zero would produce.
+	b2 := &eventLogBudget{limit: -1, componentId: "ac1"}
+	if !b2.spend(day, 4096, logger) {
+		t.Error("a negative limit was read as a spent budget")
+	}
+}
+
 func writeLogFile(t *testing.T, dir, name string, mod time.Time, size int) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -1556,158 +1584,6 @@ func goFuncBody(t *testing.T, src, prefix string) string {
 	return rest
 }
 
-// cDefines extracts the #define lines of an eBPF C file into a map of name
-// to value, so a test can evaluate one instead of matching its text.
-func cDefines(t *testing.T, path string) map[string]string {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	defs := make(map[string]string)
-	re := regexp.MustCompile(`(?m)^#define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+?)\s*$`)
-	for _, m := range re.FindAllStringSubmatch(string(b), -1) {
-		defs[m[1]] = m[2]
-	}
-	return defs
-}
-
-// cExprParser evaluates the small integer expressions the eBPF headers use in
-// their #define lines: literals, other #defines, parentheses and + - *.
-//
-// The rate map's slot numbers are defined in terms of each other
-// (NHP_LEGACY_GLOBAL_SLOT in terms of NHP_LEGACY_RATE_BASE and
-// NHP_EVENT_ACTIONS), so reading the numbers out of the source means
-// evaluating them. A substring match would pin the formatting instead of the
-// arithmetic, and the arithmetic is what matters: spend_token() treats a slot
-// the map cannot hand back as "has budget", so a slot number that drifted
-// past the map's size would remove a limit without a single error.
-type cExprParser struct {
-	t     *testing.T
-	toks  []string
-	pos   int
-	defs  map[string]string
-	depth int
-}
-
-// evalCIntExpr evaluates expr over defs.
-func evalCIntExpr(t *testing.T, defs map[string]string, expr string) int {
-	t.Helper()
-	p := &cExprParser{t: t, toks: tokenizeCExpr(expr), defs: defs}
-	v := p.parseExpr(t)
-	if p.pos != len(p.toks) {
-		t.Fatalf("trailing tokens in C expression %q", expr)
-	}
-	return v
-}
-
-func tokenizeCExpr(expr string) []string {
-	var toks []string
-	i := 0
-	for i < len(expr) {
-		c := expr[i]
-		switch {
-		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
-			i++
-		case c >= '0' && c <= '9':
-			j := i
-			for j < len(expr) && expr[j] >= '0' && expr[j] <= '9' {
-				j++
-			}
-			toks = append(toks, expr[i:j])
-			i = j
-		case c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'):
-			j := i
-			for j < len(expr) && (expr[j] == '_' ||
-				(expr[j] >= 'A' && expr[j] <= 'Z') ||
-				(expr[j] >= 'a' && expr[j] <= 'z') ||
-				(expr[j] >= '0' && expr[j] <= '9')) {
-				j++
-			}
-			toks = append(toks, expr[i:j])
-			i = j
-		default:
-			toks = append(toks, string(c))
-			i++
-		}
-	}
-	return toks
-}
-
-func (p *cExprParser) peek() string {
-	if p.pos < len(p.toks) {
-		return p.toks[p.pos]
-	}
-	return ""
-}
-
-func (p *cExprParser) parseExpr(t *testing.T) int {
-	t.Helper()
-	v := p.parseTerm(t)
-	for {
-		switch p.peek() {
-		case "+":
-			p.pos++
-			v += p.parseTerm(t)
-		case "-":
-			p.pos++
-			v -= p.parseTerm(t)
-		default:
-			return v
-		}
-	}
-}
-
-func (p *cExprParser) parseTerm(t *testing.T) int {
-	t.Helper()
-	v := p.parseFactor(t)
-	for p.peek() == "*" {
-		p.pos++
-		v *= p.parseFactor(t)
-	}
-	return v
-}
-
-func (p *cExprParser) parseFactor(t *testing.T) int {
-	t.Helper()
-	tok := p.peek()
-	if tok == "" {
-		t.Fatal("C expression ended early")
-	}
-	if tok == "(" {
-		p.pos++
-		v := p.parseExpr(t)
-		if p.peek() != ")" {
-			t.Fatal("unbalanced parentheses in C expression")
-		}
-		p.pos++
-		return v
-	}
-	if tok[0] >= '0' && tok[0] <= '9' {
-		p.pos++
-		n, err := strconv.Atoi(tok)
-		if err != nil {
-			t.Fatalf("bad number %q in C expression: %v", tok, err)
-		}
-		return n
-	}
-
-	// An identifier: another #define.
-	p.pos++
-	if p.depth > 16 {
-		t.Fatalf("C expression recursion is too deep at %q", tok)
-	}
-	val, ok := p.defs[tok]
-	if !ok {
-		t.Fatalf("C expression refers to the unknown name %q", tok)
-	}
-	p.depth++
-	sub := &cExprParser{t: p.t, toks: tokenizeCExpr(val), defs: p.defs, depth: p.depth}
-	v := sub.parseExpr(p.t)
-	p.depth--
-	return v
-}
-
 // TestLegacyRateSlotsStayInsideTheRateMap pins the slot layout of the rate
 // map, which now carries two banks: the telemetry's and the legacy audit
 // ring's.
@@ -1720,7 +1596,7 @@ func TestLegacyRateSlotsStayInsideTheRateMap(t *testing.T) {
 	path := filepath.Join("..", "..", "ebpf", "xdp", "nhp_xdp_stats.h")
 	defs := cDefines(t, path)
 
-	for _, name := range []string{"NHP_EVENT_ACTIONS", "NHP_LEGACY_RATE_BASE", "NHP_LEGACY_GLOBAL_SLOT", "NHP_EVENT_RATE_SLOTS"} {
+	for _, name := range []string{"NHP_EVENT_ACTIONS", "NHP_LEGACY_RATE_BASE", "NHP_LEGACY_GLOBAL_SLOT", "NHP_LEGACY_ACCEPT_GLOBAL_SLOT", "NHP_EVENT_RATE_SLOTS"} {
 		if _, ok := defs[name]; !ok {
 			t.Fatalf("%s is not defined in %s", name, path)
 		}
@@ -1729,6 +1605,7 @@ func TestLegacyRateSlotsStayInsideTheRateMap(t *testing.T) {
 	actions := evalCIntExpr(t, defs, defs["NHP_EVENT_ACTIONS"])
 	legacyBase := evalCIntExpr(t, defs, defs["NHP_LEGACY_RATE_BASE"])
 	legacyGlobal := evalCIntExpr(t, defs, defs["NHP_LEGACY_GLOBAL_SLOT"])
+	legacyAccept := evalCIntExpr(t, defs, defs["NHP_LEGACY_ACCEPT_GLOBAL_SLOT"])
 	slots := evalCIntExpr(t, defs, defs["NHP_EVENT_RATE_SLOTS"])
 
 	// The telemetry bank: the per-class slots 0..actions-1, and the global
@@ -1748,10 +1625,22 @@ func TestLegacyRateSlotsStayInsideTheRateMap(t *testing.T) {
 			legacyGlobal, legacyBase, legacyBase+actions-1)
 	}
 
+	// The accept channel's global slot must be a slot of its own: the two
+	// channels are capped separately, so that a flood of drops cannot spend
+	// the allowance of the log that records what was admitted.
+	if legacyAccept == legacyGlobal {
+		t.Errorf("the accept channel shares the deny channel's global slot (%d); a drop flood would silence the accepts",
+			legacyAccept)
+	}
+	if legacyAccept != legacyGlobal+1 {
+		t.Errorf("the accept channel's global slot is %d, want %d (the slot right after the deny channel's)",
+			legacyAccept, legacyGlobal+1)
+	}
+
 	// And the map must be exactly big enough for every slot: the last
 	// usable index is slots-1.
-	if slots != legacyGlobal+1 {
-		t.Errorf("the rate map has %d slots but the last one used is %d", slots, legacyGlobal)
+	if slots != legacyAccept+1 {
+		t.Errorf("the rate map has %d slots but the last one used is %d", slots, legacyAccept)
 	}
 
 	// The map is declared with that size, which is what makes the check
@@ -1774,8 +1663,17 @@ func TestLegacyRateSlotsStayInsideTheRateMap(t *testing.T) {
 // bound. And the two must not share a cap: the collector pulls
 // nhp_ac_xdp-*.log and the published site reads it, so a flood of deny lines
 // must not be able to evict the log the site depends on.
+//
+// The audit family's bounds are the caller's, and the caller's default is
+// unbounded -- a deployment whose audit trail matters keeps its history unless
+// it asks for the bounds. The telemetry log's bounds are the daemon's own and
+// do not move.
 func TestAcSweepCoversEveryLogTheAcWrites(t *testing.T) {
-	groups := acEventLogGroups()
+	groups := acEventLogGroups(EngineLoadParams{
+		AcAuditLogRetentionBytes:  acAuditLogRetentionBytes,
+		AcAuditLogRetentionDays:   serverLogRetentionDays,
+		AcAuditLogDailyEventBytes: acAuditLogDailyEventBytes,
+	})
 
 	covered := make(map[string]int64)
 	for _, g := range groups {
@@ -1808,6 +1706,97 @@ func TestAcSweepCoversEveryLogTheAcWrites(t *testing.T) {
 	if acAuditLogRetentionBytes >= serverLogRetentionBytes {
 		t.Errorf("the audit family's cap (%d) is not smaller than the telemetry log's (%d); a deny flood could evict the log the site reads",
 			acAuditLogRetentionBytes, serverLogRetentionBytes)
+	}
+}
+
+// TestAcAuditLogBoundsAreTheCallers pins that the AC's audit logs are swept
+// with the bounds the caller asked for, and that the caller's default asks
+// for none.
+//
+// The audit logs used to be kept for as long as the host lived. They were
+// then given a 14-day / 64 MiB sweep, which is a fine answer for a host on the
+// internet and the wrong one for a deployment that reads nhp_deny-*.log as a
+// compliance trail: the history went away at an upgrade nobody asked for.
+// The bounds are the caller's now, and a caller that says nothing keeps what
+// it had.
+func TestAcAuditLogBoundsAreTheCallers(t *testing.T) {
+	defaults := acEventLogGroups(EngineLoadParams{})
+	for _, g := range defaults {
+		for _, p := range g.prefixes {
+			if p == acEventLogName {
+				continue
+			}
+			if g.maxBytes != 0 || g.retainDays != 0 {
+				t.Errorf("the audit log %q is bounded by default (maxBytes=%d, retainDays=%d); a deployment that says nothing must keep its history",
+					p, g.maxBytes, g.retainDays)
+			}
+		}
+	}
+
+	asked := acEventLogGroups(EngineLoadParams{
+		AcAuditLogRetentionBytes:  64 << 20,
+		AcAuditLogRetentionDays:   30,
+		AcAuditLogDailyEventBytes: 16 << 20,
+	})
+	for _, g := range asked {
+		if g.prefixes[0] == acEventLogName {
+			// The telemetry log's bounds are the daemon's own and do not
+			// follow the caller's.
+			if g.maxBytes != serverLogRetentionBytes || g.retainDays != serverLogRetentionDays {
+				t.Errorf("the telemetry log's bounds moved with the audit log's: maxBytes=%d retainDays=%d",
+					g.maxBytes, g.retainDays)
+			}
+			continue
+		}
+		if g.maxBytes != 64<<20 || g.retainDays != 30 {
+			t.Errorf("the audit family's bounds are maxBytes=%d retainDays=%d, want 64 MiB and 30 days",
+				g.maxBytes, g.retainDays)
+		}
+	}
+}
+
+// TestSweepWithUnboundedBoundsKeepsEverything pins that a family with no
+// bounds is not swept at all.
+//
+// This is the audit trail's answer: with no age and no size, nothing is
+// removed, whatever the directory holds. A sweep that treated a zero bound as
+// "delete everything" would be the worst of both -- the history would be gone
+// and the log would say it was keeping it.
+func TestSweepWithUnboundedBoundsKeepsEverything(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	old := writeLogFile(t, dir, "nhp_deny-2020-01-01.log", now.AddDate(0, 0, -2000), 10)
+	huge := writeLogFile(t, dir, "nhp_accept-2020-01-01.log", now.AddDate(0, 0, -2000), 10)
+
+	sweepEventLogs(dir, now, 0, 0, []string{acDenyLogName, acAcceptLogName})
+
+	for _, path := range []string{old, huge} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s should have survived an unbounded sweep: %v", filepath.Base(path), err)
+		}
+	}
+}
+
+// The loader writes the AC's IPv6 knob into the object's .rodata, and refuses
+// an object it cannot write: an operator who asked for the IPv6 tree to be
+// off, and an object that cannot say so, would leave the tree on while the
+// configuration said it was off.
+func TestSetAcConstantsRefusesAnObjectWithoutTheKnob(t *testing.T) {
+	spec := &ebpf.CollectionSpec{}
+
+	err := setAcConstants(spec, EngineLoadParams{DisableIPv6Filter: true})
+	if err == nil {
+		t.Fatal("setAcConstants on an object with no constants returned nil, want an error")
+	}
+	if !strings.Contains(err.Error(), varNhpAcFilterIPv6) {
+		t.Errorf("error %q does not name the missing constant %q", err, varNhpAcFilterIPv6)
+	}
+
+	// Nothing asked for, nothing to rewrite: the object's own default (the
+	// tree on) stands.
+	if err := setAcConstants(spec, EngineLoadParams{}); err != nil {
+		t.Errorf("setAcConstants with no overrides: %v", err)
 	}
 }
 

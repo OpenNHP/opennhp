@@ -126,6 +126,67 @@ type EngineLoadParams struct {
 	// [NHP-STAT] and [NHP-SCAN] summaries are unaffected, and so is the
 	// filter's verdict.
 	DisableEventLog bool
+
+	// DisableIPv6Filter turns the nhp-ac's IPv6 tree off: every IPv6 packet
+	// is passed to the host, the way it was before the tree existed. The
+	// zero value keeps the tree on, which is the safe answer -- the tree is
+	// what keeps a v6 listener the AC was never meant to gate out of reach.
+	//
+	// It is a load parameter rather than something the caller writes
+	// afterwards because the value is a constant in the program's .rodata:
+	// the verifier folds it in when the object is loaded, so there is no
+	// later moment at which it could still be changed.
+	//
+	// Ignored by VariantServer, whose filter pins SSH to its relay
+	// whitelist in the program and has no v6 tree to turn off.
+	DisableIPv6Filter bool
+
+	// AcAuditLogRetentionDays, AcAuditLogRetentionBytes and
+	// AcAuditLogDailyEventBytes bound the nhp-ac's legacy audit logs --
+	// nhp_deny-*.log and nhp_accept-*.log.
+	//
+	// They exist because those two files used to be kept for as long as the
+	// host lived, and a deployment that reads them as an audit trail must
+	// not lose their history to an upgrade. Zero therefore means *unbounded*
+	// for all three: the files are never swept, and the day's lines are
+	// never suppressed. That is the behaviour the AC had before the bounds
+	// existed, so a deployment that says nothing keeps what it had.
+	//
+	// A deployment that wants the bounds sets them. The demo does
+	// (deploy/config-templates/ac/config.toml), because its host is on the
+	// internet and the disk it runs on is small.
+	//
+	// The kernel-side rate limit is not one of these knobs and does not
+	// depend on them: the audit ring is fed behind a budget whatever the
+	// files are allowed to grow to, so the log is a rate-bounded sample
+	// rather than a complete record either way. What these three bound is
+	// how much of that sample is kept, and how much of it is written.
+	//
+	// Ignored by VariantServer, which writes no audit logs.
+	AcAuditLogRetentionDays   int
+	AcAuditLogRetentionBytes  int64
+	AcAuditLogDailyEventBytes int64
+
+	// DhcpSource and NtpSource narrow the two client-protocol pairs both
+	// filters admit -- the DHCP answer (67 -> 68) and the NTP answer
+	// (123 -> 123) -- to the addresses the host's own servers answer from.
+	//
+	// The pair says what the answer looks like, not who sent it, so on a host
+	// whose security group is open to the whole internet the filter admits
+	// anything wearing the right ports. A range that is not set means no
+	// narrowing at all, which is the behaviour of the filters before these
+	// parameters existed: the default changes nothing.
+	//
+	// They are load parameters rather than something the caller writes
+	// afterwards because the values are constants in the program's .rodata:
+	// the verifier folds them in when the object is loaded, so there is no
+	// later moment at which they could still be changed.
+	//
+	// Each variant writes them into its own object: the AC's are
+	// nhp_ac_dhcp_*/nhp_ac_ntp_* and the server's nhp_server_dhcp_*/
+	// nhp_server_ntp_*.
+	DhcpSource SourceNet
+	NtpSource  SourceNet
 }
 
 // Names of the .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that
@@ -134,6 +195,16 @@ type EngineLoadParams struct {
 const (
 	varNhpListenPort = "nhp_listen_port"
 	varNhpMinUdpLen  = "nhp_min_udp_len"
+)
+
+// The .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that narrow the two
+// client-protocol pairs to the sources the host's own servers answer from.
+// Keep the names in sync with the declarations there.
+const (
+	varNhpServerDhcpAddr = "nhp_server_dhcp_addr"
+	varNhpServerDhcpMask = "nhp_server_dhcp_mask"
+	varNhpServerNtpAddr  = "nhp_server_ntp_addr"
+	varNhpServerNtpMask  = "nhp_server_ntp_mask"
 )
 
 // EngineHandle is what the caller keeps: the maps it drives from user space and
@@ -386,6 +457,113 @@ func init() {
 	log.Info("​​System boot time: %v", bootTime)
 }
 
+// varNhpAcFilterIPv6 is the .rodata constant in nhp/ebpf/xdp/nhp_ebpf_xdp.c
+// that decides whether the AC's IPv6 tree runs. Keep the name in sync with the
+// declaration there.
+const varNhpAcFilterIPv6 = "nhp_ac_filter_ipv6"
+
+// The .rodata constants in nhp/ebpf/xdp/nhp_ebpf_xdp.c that narrow the two
+// client-protocol pairs to the sources the host's own servers answer from.
+// Keep the names in sync with the declarations there.
+const (
+	varNhpAcDhcpAddr = "nhp_ac_dhcp_addr"
+	varNhpAcDhcpMask = "nhp_ac_dhcp_mask"
+	varNhpAcNtpAddr  = "nhp_ac_ntp_addr"
+	varNhpAcNtpMask  = "nhp_ac_ntp_mask"
+)
+
+// setAcConstants writes the AC's own load-time constants into the object's
+// .rodata, before the collection is loaded and the verifier folds them in.
+//
+// There are two kinds of them. The first is whether the IPv6 tree runs at
+// all: the default (the constant's own value in the object) is that it does,
+// so an ordinary load writes nothing and an object built before the constant
+// existed keeps working. Only a caller that asks for the other answer touches
+// it.
+//
+// The second kind is the source range each client-protocol pair is narrowed
+// to. The default (the constants' own values) is "any source", so an
+// ordinary load writes nothing there either.
+//
+// Refusing rather than warning when a constant is absent is deliberate, and
+// it is the refusal that matters here: the operator asked for the IPv6 tree to
+// be off, or for a pair to be narrowed, and an object that cannot say so
+// would leave the tree on, or the pair open, while the log said otherwise --
+// the opposite of what was asked for, on the knobs whose whole purpose is to
+// change what the filter admits. An object that predates the constants is a
+// stale nhp_ebpf_xdp.o next to a new binary; rebuilding it is the fix.
+func setAcConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
+	if err := setAcSourceNets(spec, params); err != nil {
+		return err
+	}
+
+	if !params.DisableIPv6Filter {
+		return nil
+	}
+
+	v, ok := spec.Variables[varNhpAcFilterIPv6]
+	if !ok {
+		log.Error("AC eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`", varNhpAcFilterIPv6)
+		return fmt.Errorf("AC eBPF object has no %q constant", varNhpAcFilterIPv6)
+	}
+	if err := v.Set(uint8(0)); err != nil {
+		log.Error("failed to set AC eBPF constant '%s': %v", varNhpAcFilterIPv6, err)
+		return err
+	}
+
+	// Said out loud, because the filter being attached says nothing about
+	// this: with the tree off, every IPv6 listener on the host is reachable
+	// from wherever the security group lets IPv6 in, and the deploy's
+	// "the filter is attached" check would still be green.
+	log.Warning("AC XDP filter: IPv6 filtering is DISABLED. Every IPv6 packet is passed to the host; the security group is the only thing restricting its IPv6 listeners.")
+	return nil
+}
+
+// setAcSourceNets writes the two source ranges into the object's .rodata.
+//
+// A range that is not set is left alone: the object's own default is "any
+// source", which is the behaviour of the filter before the constants existed.
+// A range that is set writes both its address and its mask, because the
+// filter compares the packet's source against the masked address.
+func setAcSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
+	ranges := []struct {
+		addrName string
+		maskName string
+		what     string
+		net      SourceNet
+	}{
+		{varNhpAcDhcpAddr, varNhpAcDhcpMask, "DHCP answer", params.DhcpSource},
+		{varNhpAcNtpAddr, varNhpAcNtpMask, "NTP answer", params.NtpSource},
+	}
+
+	for _, r := range ranges {
+		if !r.net.IsSet() {
+			continue
+		}
+
+		for _, c := range []struct {
+			name  string
+			value uint32
+		}{
+			{r.addrName, r.net.Addr},
+			{r.maskName, r.net.Mask},
+		} {
+			v, ok := spec.Variables[c.name]
+			if !ok {
+				log.Error("AC eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`", c.name)
+				return fmt.Errorf("AC eBPF object has no %q constant", c.name)
+			}
+			if err := v.Set(c.value); err != nil {
+				log.Error("failed to set AC eBPF constant '%s' to %d: %v", c.name, c.value, err)
+				return err
+			}
+		}
+
+		log.Info("AC XDP filter: the %s pair is narrowed to %s", r.what, r.net)
+	}
+	return nil
+}
+
 // EngineLoad compiles-in nothing itself: it loads the already-compiled object at
 // params.ProgObjPath, pins it, attaches it and starts the perf reader. A
 // returned error leaves nothing attached, which is what lets the server treat a
@@ -473,6 +651,13 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 	if err != nil {
 		log.Error("failed to load tc eBPF object")
 		return nil, err
+	}
+
+	// Rewrite the .rodata constants before LoadAndAssign: after the
+	// collection is loaded the verifier has already folded them, so this is
+	// the only moment the IPv6 knob can still be set.
+	if constErr := setAcConstants(spec, params); constErr != nil {
+		return nil, constErr
 	}
 
 	var objs bpfObjects
@@ -579,7 +764,8 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 	h.AcLogger.SetFlags(stdlog.Lmsgprefix)
 
 	// Start a goroutine to monitor Perf Buffer events
-	go readAcEvents(eventsMap, params.ComponentId, h.DenyLogger, h.AcLogger)
+	go readAcEvents(eventsMap, params.ComponentId, h.DenyLogger, h.AcLogger,
+		params.AcAuditLogDailyEventBytes)
 
 	// The XDP telemetry, in the nhp-server's log shape.
 	//
@@ -644,7 +830,7 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 		go reportEventScan(objs.PortHits, objs.SrcHits, scanInterval, scanTopN,
 			acStop, params.ComponentId, h.AcStatsLogger)
 	}
-	go pruneEventLogs(logDir, acStop, acEventLogGroups())
+	go pruneEventLogs(logDir, acStop, acEventLogGroups(params))
 
 	return h, nil
 }
@@ -664,9 +850,23 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 // attached and a larger allowance (serverLogDailyEventBytes); this one is the
 // older, thinner channel and is kept as an audit trail, not as the record of
 // record.
+//
+// This is the value the demo runs with, and it is what a deployment gets when
+// it asks for the bound at all: the number is a parameter
+// (EngineLoadParams.AcAuditLogDailyEventBytes), and zero means unbounded --
+// the days' lines are never suppressed and the file grows for as long as the
+// host lives. A deployment whose audit trail matters more than its disk says
+// zero; the demo, whose host is on the internet and whose disk is small,
+// says 16 MiB.
 const acAuditLogDailyEventBytes = 16 << 20 // 16 MiB
 
-func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Logger) {
+// readAcEvents turns the AC's audit ring into the accept/deny log lines.
+//
+// dailyLimit is how much per-packet text each of the two files may append in
+// one calendar day. Zero means unbounded: the lines are written for as long as
+// the host lives, which is what the audit trail is for and what the AC did
+// before the bound existed.
+func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Logger, dailyLimit int64) {
 	perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
 	if err != nil {
 		log.Error("failed to create perf reader: %v", err)
@@ -683,13 +883,13 @@ func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Lo
 	auditNote := "the exact per-class totals continue in the AC's telemetry log (" + acEventLogName + "-*.log)"
 	denyBudget := &eventLogBudget{
 		componentId: acId,
-		limit:       acAuditLogDailyEventBytes,
+		limit:       dailyLimit,
 		tag:         "NHP-DENY",
 		note:        auditNote,
 	}
 	acceptBudget := &eventLogBudget{
 		componentId: acId,
-		limit:       acAuditLogDailyEventBytes,
+		limit:       dailyLimit,
 		tag:         "NHP-ACCEPT",
 		note:        auditNote,
 	}
@@ -794,6 +994,53 @@ func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) erro
 	if params.NhpPort != 0 || params.NhpMinFrameBytes != 0 {
 		log.Info("server XDP filter configured for udp/%d with a %d-byte datagram floor (0 = the object's own default)",
 			params.NhpPort, params.NhpMinFrameBytes)
+	}
+
+	return setServerSourceNets(spec, params)
+}
+
+// setServerSourceNets writes the two source ranges into the server object's
+// .rodata.
+//
+// A range that is not set is left alone: the object's own default is "any
+// source", which is the behaviour of the filter before the constants existed.
+// A range that is set writes both its address and its mask, because the
+// filter compares the packet's source against the masked address.
+func setServerSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
+	ranges := []struct {
+		addrName string
+		maskName string
+		what     string
+		net      SourceNet
+	}{
+		{varNhpServerDhcpAddr, varNhpServerDhcpMask, "DHCP answer", params.DhcpSource},
+		{varNhpServerNtpAddr, varNhpServerNtpMask, "NTP answer", params.NtpSource},
+	}
+
+	for _, r := range ranges {
+		if !r.net.IsSet() {
+			continue
+		}
+
+		for _, c := range []struct {
+			name  string
+			value uint32
+		}{
+			{r.addrName, r.net.Addr},
+			{r.maskName, r.net.Mask},
+		} {
+			v, ok := spec.Variables[c.name]
+			if !ok {
+				log.Error("server eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`", c.name)
+				return fmt.Errorf("server eBPF object has no %q constant", c.name)
+			}
+			if err := v.Set(c.value); err != nil {
+				log.Error("failed to set server eBPF constant '%s' to %d: %v", c.name, c.value, err)
+				return err
+			}
+		}
+
+		log.Info("server XDP filter: the %s pair is narrowed to %s", r.what, r.net)
 	}
 	return nil
 }
@@ -1322,7 +1569,16 @@ func (b *eventLogBudget) noteText() string {
 
 // spend reports whether a line of n bytes may still be written today, and
 // logs the transition the first time it says no.
+//
+// A limit of zero (or less) means no budget at all: the lines are written for
+// as long as the host lives. That is the AC's audit trail when the deployment
+// asks for it, and the difference between a log that keeps its history and
+// one that silently loses the day.
 func (b *eventLogBudget) spend(now time.Time, n int, logger *log.Logger) bool {
+	if b.limit <= 0 {
+		return true
+	}
+
 	day := now.Format("2006-01-02")
 	if day != b.day {
 		b.day = day
@@ -1553,16 +1809,20 @@ const (
 	acAuditLogRetentionBytes = 64 << 20 // 64 MiB
 )
 
-// eventLogGroup is one family of log files and the size that family is
-// allowed to occupy on disk.
+// eventLogGroup is one family of log files and the bounds that family is
+// allowed to live under.
 //
 // A sweep covers several families because they have different sizes and
 // different readers: one family's growth must not evict another's history.
 type eventLogGroup struct {
 	// prefixes are the log file name prefixes this group owns.
 	prefixes []string
-	// maxBytes is the size the group's files may occupy together.
+	// maxBytes is the size the group's files may occupy together. Zero (or
+	// less) means no size bound: the family is never swept for space.
 	maxBytes int64
+	// retainDays is how long the family's files are kept. Zero (or less)
+	// means no age bound: the family is never swept for age.
+	retainDays int
 }
 
 // acEventLogGroups are the log families the AC's retention sweep owns.
@@ -1571,10 +1831,20 @@ type eventLogGroup struct {
 // the reason given on acAuditLogRetentionBytes. Between them they cover
 // exactly acEventLogPrefixes; a test pins that, so a new log the AC writes
 // cannot be left unswept.
-func acEventLogGroups() []eventLogGroup {
+//
+// The audit family's bounds are the caller's, not the constants above: an
+// AC that reads nhp_deny-*.log as an audit trail must not lose its history to
+// a retention policy it never asked for, so zero (unbounded) is what a
+// deployment that says nothing gets. The demo asks for the bounds, because
+// its host is on the internet and its disk is small.
+func acEventLogGroups(params EngineLoadParams) []eventLogGroup {
 	return []eventLogGroup{
-		{prefixes: []string{acEventLogName}, maxBytes: serverLogRetentionBytes},
-		{prefixes: []string{acDenyLogName, acAcceptLogName}, maxBytes: acAuditLogRetentionBytes},
+		{prefixes: []string{acEventLogName}, maxBytes: serverLogRetentionBytes, retainDays: serverLogRetentionDays},
+		{
+			prefixes:   []string{acDenyLogName, acAcceptLogName},
+			maxBytes:   params.AcAuditLogRetentionBytes,
+			retainDays: params.AcAuditLogRetentionDays,
+		},
 	}
 }
 
@@ -1584,7 +1854,7 @@ func pruneEventLogs(logDir string, stop <-chan struct{}, groups []eventLogGroup)
 
 	for {
 		for _, g := range groups {
-			sweepEventLogs(logDir, time.Now(), serverLogRetentionDays, g.maxBytes, g.prefixes)
+			sweepEventLogs(logDir, time.Now(), g.retainDays, g.maxBytes, g.prefixes)
 		}
 		select {
 		case <-stop:
@@ -1617,6 +1887,12 @@ func eventLogWriters(prefix string) []string {
 //
 // The groups are swept separately, so one family's growth cannot evict
 // another's history (see eventLogGroup).
+//
+// A bound of zero (or less) means that bound does not exist: retainDays <= 0
+// never ages a file out, maxBytes <= 0 never evicts one for space. The AC's
+// audit family is swept with the caller's bounds, and the caller's default is
+// unbounded -- a deployment whose nhp_deny-*.log is an audit trail keeps its
+// history unless it asks otherwise.
 //
 // Today's files are never deleted but they *are* counted. Leaving them out of
 // the total let a single day outgrow the whole budget while the sweep reported
@@ -1664,10 +1940,18 @@ func sweepEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64
 
 	sort.Slice(files, func(i, j int) bool { return files[i].mod.Before(files[j].mod) })
 
-	cutoff := now.AddDate(0, 0, -retainDays)
+	// A bound of zero (or less) means the family has no such bound: it is
+	// never swept for age, or never swept for space. That is how a
+	// deployment keeps an audit trail the AC would otherwise age out, and
+	// it is why both bounds are checked rather than assumed.
+	var cutoff time.Time
+	byAge := retainDays > 0
+	if byAge {
+		cutoff = now.AddDate(0, 0, -retainDays)
+	}
 	for _, f := range files {
-		overAge := f.mod.Before(cutoff)
-		overSize := totalBytes > maxBytes
+		overAge := byAge && f.mod.Before(cutoff)
+		overSize := maxBytes > 0 && totalBytes > maxBytes
 		if !overAge && !overSize {
 			break // sorted oldest first: nothing later can be over either bound
 		}

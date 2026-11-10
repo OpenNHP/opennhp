@@ -284,6 +284,58 @@ filtered rather than passed, a non-first IPv4 fragment is not judged by bytes
 that are not a header, and an ICMP echo reply needs the same whitelist entry
 the echo request does. `nhp/utils/ebpf/xdpfilter_test.go` pins each of those.
 
+**The two client-protocol pairs can be narrowed to a source address.** The
+67→68 and 123→123 pairs are admitted by port pair alone, because their
+answers arrive on a socket the kernel cannot tell from a listener
+(dhclient's raw AF_PACKET socket, chronyd's bound udp/123 socket), so the
+filter has to admit them before it can ask who sent them. `DhcpServerIP` and
+`NtpServerIP` in the AC's `etc/config.toml` narrow each pair to one address
+or CIDR prefix; both default to empty, which narrows nothing — the pair is
+admitted from any source, exactly as before the settings existed — so a
+deployment that says nothing keeps the behaviour it had. The demo leaves
+them unset: the peer addresses are a property of the VPC, not of the
+repository, and a wrong DHCP peer costs the host its lease, its address and
+its reachability, on a host with no break-glass path. Read the real address
+out of the daemon's own log before turning it on. A value that cannot be
+parsed stops the AC from starting rather than being quietly ignored. The v6
+tree's DHCPv6 and NTPv6 pairs are deliberately not narrowed: a 128-bit range
+is a different knob, and the demo's AC has no IPv6 address at all.
+
+**tcp/22 is passed on both address families.** The v6 tree has the same SSH
+exception the v4 tree has, and for the same reason: the security group is the
+layer that restricts SSH (on the AC it carves tcp/22 out of the open range and
+leaves it to the relay's group), so a filter that dropped v4 ssh and passed v6
+ssh would lock out every operator who manages the AC over IPv6. This is the
+same exposure the v4 path has always accepted; the v6 tree is otherwise closed
+(the demo's AC has no IPv6 address at all). `DisableIPv6Filter = true` in the
+AC's `etc/config.toml` turns the whole v6 tree off, back to passing every v6
+packet — a decision with a cost, so it is not the default; the loader logs a
+`Warning` when it is set. A v6 tree that has no knob cannot be turned off by a
+deployment that needs it.
+
+**The AC's audit logs are bounded by the AC's own configuration.** The legacy
+`nhp_deny-*.log` / `nhp_accept-*.log` family used to be kept for as long as the
+host lived. It now has three bounds — `AuditLogRetentionDays`,
+`AuditLogRetentionBytes` and `AuditLogDailyEventBytes` — and **all three
+default to `0` (= unbounded)**, so a deployment that says nothing keeps what it
+had and a deployment that reads those files as a compliance trail does not lose
+history at an upgrade nobody asked for. The demo asks for the bounds
+(14 days / 64 MiB / 16 MiB per day) in
+`deploy/config-templates/ac/config.toml`, because its group is open to the whole
+internet and its disk is small.
+
+The kernel-side rate limit is *not* one of those knobs and does not depend on
+them. The audit ring is fed behind a budget whatever the files are allowed to
+grow to: a per-class bucket per action class, **plus a global cap for the deny
+channel and a separate one for the accept channel** (`NHP_LEGACY_DENY_GLOBAL_SLOT`
+and `NHP_LEGACY_ACCEPT_GLOBAL_SLOT` in `nhp/ebpf/xdp/nhp_xdp_stats.h`). Two
+channels, not one, because a flood of drops must not be able to spend the
+allowance of the log that records what was *admitted* — otherwise the audit
+trail of who got in disappears exactly when the host is under attack. Admits
+are rare and already bounded by the knock rate. The log is therefore a
+rate-bounded sample either way; the three knobs bound how much of that sample
+is kept and how much of it is written.
+
 What the AC has that the server does not is the fail-closed netfilter backstop
 (`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`), which keeps the
 protected resource shut while the XDP link is detached — i.e. it covers the
@@ -400,6 +452,16 @@ filter (XDP)*.
   clients have no connected socket. Dropping the DHCP answer costs the host its
   address and every port with it, about an hour after a deploy that verified
   clean.
+- **The two client-protocol pairs can be narrowed to a source address.**
+  `DhcpServerIP` and `NtpServerIP` in `etc/xdp.toml` narrow the 67→68 and the
+  123→123 pair to one address or CIDR prefix each; both default to empty,
+  which narrows nothing and keeps the behaviour the filter had before the
+  settings existed. The demo leaves them unset (the peer addresses are a
+  property of the VPC, and a wrong DHCP peer costs the host its lease and
+  its address); read the real one out of `nhp_server_xdp-*.log` before
+  turning it on. A value that cannot be parsed refuses to attach the filter
+  rather than being ignored, so the deploy's "the XDP ingress filter is
+  attached" gate turns red instead of the host silently losing the pair.
 - **The capabilities go back on every path, including the ones that never
   load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) subtracts
   `CAP_BPF`, `CAP_NET_ADMIN` and `CAP_PERFMON` from ambient, permitted,

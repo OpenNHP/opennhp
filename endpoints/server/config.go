@@ -237,6 +237,28 @@ type XdpTomlConfig struct {
 	// filter still attaches and enforces. Read once at startup, like
 	// NhpMinFrameBytes.
 	EventLogEnabled *bool
+	// DhcpServerIP and NtpServerIP narrow the two client-protocol pairs the
+	// filter admits: the DHCP answer (67 -> 68) and the NTP answer (123 ->
+	// 123). Each is an IPv4 address ("169.254.169.253") or a CIDR prefix
+	// ("169.254.169.0/24"); empty means the pair is not narrowed, which is
+	// what the filter did before these settings existed.
+	//
+	// The port pair says what the answer looks like, not who sent it, so
+	// without a range the filter admits any packet wearing the right ports.
+	// Nothing downstream trusts those packets -- a DHCP reply is matched
+	// against the lease it answers, and chrony checks the server it asked --
+	// but on a host whose group is open to the whole internet that is the
+	// last exposure the pair rules leave, and only the operator knows which
+	// addresses their own servers answer from.
+	//
+	// A value that cannot be parsed refuses the attach (see startXdpFilter):
+	// an unreadable narrowing that was quietly ignored would leave the pair
+	// open while the file said it was closed, and a narrowing that was
+	// applied wrongly costs the host its DHCP lease -- and with it its
+	// address, and with that its reachability. Read once at startup, like
+	// NhpMinFrameBytes: the values are constants in the program's .rodata.
+	DhcpServerIP string
+	NtpServerIP  string
 }
 
 // DefaultNhpMinFrameBytes mirrors the nhp_min_udp_len default in
@@ -838,6 +860,17 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		return false
 	}
 
+	// The two source ranges narrow the DHCP and NTP pairs to the addresses
+	// this host's own servers answer from. A value that cannot be parsed is a
+	// refusal to attach, not a warning: the file says the pair is closed to
+	// everything but the host's own server, and attaching without that would
+	// leave the pair open while the log said it was closed -- and applying
+	// one that was parsed but is wrong would cost the host its lease.
+	dhcpSource, ntpSource, ok := xdpSourceNets(conf, fileName)
+	if !ok {
+		return false
+	}
+
 	scanSeconds, scanTopN := resolveScanReport(conf)
 
 	listenPort := s.GetListenPort()
@@ -883,6 +916,13 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		// Zero turns the [NHP-SCAN] summary off; the filter attaches regardless.
 		ScanReportInterval: time.Duration(scanSeconds) * time.Second,
 		ScanReportTopN:     scanTopN,
+
+		// The source ranges travel with the load rather than being written
+		// afterwards: the loader puts them in the program's .rodata before it
+		// attaches anything, so the filter is never live with a pair it was
+		// not configured with.
+		DhcpSource: dhcpSource,
+		NtpSource:  ntpSource,
 
 		DisableEventLog: conf.EventLogEnabled != nil && !*conf.EventLogEnabled,
 	}); err != nil {
@@ -989,6 +1029,33 @@ func xdpRelayPrefixes(conf *XdpTomlConfig, fileName string, refusalWhat string) 
 		return nil, false
 	}
 	return prefixes, true
+}
+
+// xdpSourceNets parses the two source ranges the DHCP and NTP pairs are
+// narrowed to. It reports false when either cannot be used, having said why.
+//
+// An empty value is not an error: it means the pair is not narrowed, which is
+// what the filter did before the settings existed. A value that is present
+// but unusable is a refusal to attach, the same way an unusable RelayIPs
+// entry is -- the file says the pair is closed to everything but the host's
+// own server, and a filter that cannot honour that would be enforcing
+// something the file does not say.
+func xdpSourceNets(conf *XdpTomlConfig, fileName string) (utilsebpf.SourceNet, utilsebpf.SourceNet, bool) {
+	dhcp, err := utilsebpf.ParseSourceNet(conf.DhcpServerIP)
+	if err != nil {
+		log.Critical("xdp config: %s has an unusable DhcpServerIP (%q): %v — refusing to attach the XDP ingress filter. It must be an IPv4 address or a CIDR prefix",
+			fileName, conf.DhcpServerIP, err)
+		return utilsebpf.SourceNet{}, utilsebpf.SourceNet{}, false
+	}
+
+	ntp, err := utilsebpf.ParseSourceNet(conf.NtpServerIP)
+	if err != nil {
+		log.Critical("xdp config: %s has an unusable NtpServerIP (%q): %v — refusing to attach the XDP ingress filter. It must be an IPv4 address or a CIDR prefix",
+			fileName, conf.NtpServerIP, err)
+		return utilsebpf.SourceNet{}, utilsebpf.SourceNet{}, false
+	}
+
+	return dhcp, ntp, true
 }
 
 // applyXdpConfig mirrors a parsed xdp.toml's whitelist into the kernel-side map.

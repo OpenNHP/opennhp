@@ -41,6 +41,8 @@ func TestXdpTomlConfigParsesDeployedShape(t *testing.T) {
 Enabled = true
 NhpMinFrameBytes = 240
 RelayIPs = ["1.2.3.4", "5.6.7.8"]
+DhcpServerIP = "169.254.169.0/24"
+NtpServerIP = ""
 `)
 
 	var conf XdpTomlConfig
@@ -55,6 +57,73 @@ RelayIPs = ["1.2.3.4", "5.6.7.8"]
 	}
 	if len(conf.RelayIPs) != 2 || conf.RelayIPs[0] != "1.2.3.4" || conf.RelayIPs[1] != "5.6.7.8" {
 		t.Errorf("RelayIPs = %v, want [1.2.3.4 5.6.7.8]", conf.RelayIPs)
+	}
+	if conf.DhcpServerIP != "169.254.169.0/24" {
+		t.Errorf("DhcpServerIP = %q, want %q", conf.DhcpServerIP, "169.254.169.0/24")
+	}
+	if conf.NtpServerIP != "" {
+		t.Errorf("NtpServerIP = %q, want it empty", conf.NtpServerIP)
+	}
+}
+
+// The two source ranges narrow the DHCP and NTP pairs to the addresses the
+// host's own servers answer from.
+//
+// An empty value is not an error: it means the pair is not narrowed, which is
+// what the filter did before the settings existed. A value that is present
+// but unusable refuses the attach -- a narrowing that was quietly ignored
+// would leave the pair open while the file said it was closed.
+func TestXdpSourceNets(t *testing.T) {
+	cases := []struct {
+		name    string
+		conf    XdpTomlConfig
+		wantOk  bool
+		wantSet bool
+	}{
+		{
+			name:   "unset narrows nothing",
+			conf:   XdpTomlConfig{},
+			wantOk: true,
+		},
+		{
+			name:    "an address narrows the pair",
+			conf:    XdpTomlConfig{DhcpServerIP: "169.254.169.253", NtpServerIP: "169.254.169.123"},
+			wantOk:  true,
+			wantSet: true,
+		},
+		{
+			name:   "a garbage address refuses",
+			conf:   XdpTomlConfig{DhcpServerIP: "not-an-address"},
+			wantOk: false,
+		},
+		{
+			name:   "a garbage prefix refuses",
+			conf:   XdpTomlConfig{NtpServerIP: "169.254.169.0/33"},
+			wantOk: false,
+		},
+		{
+			name:   "an IPv6 address refuses",
+			conf:   XdpTomlConfig{DhcpServerIP: "::1"},
+			wantOk: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dhcp, ntp, ok := xdpSourceNets(&c.conf, "xdp.toml")
+			if ok != c.wantOk {
+				t.Fatalf("xdpSourceNets() ok = %v, want %v", ok, c.wantOk)
+			}
+			if !c.wantOk {
+				return
+			}
+			if dhcp.IsSet() != c.wantSet || ntp.IsSet() != c.wantSet {
+				t.Errorf("narrowing = %v/%v, want both %v", dhcp.IsSet(), ntp.IsSet(), c.wantSet)
+			}
+			if c.wantSet && (dhcp.Addr == 0 || ntp.Addr == 0) {
+				t.Errorf("a narrowed pair has no address: %v %v", dhcp, ntp)
+			}
+		})
 	}
 }
 

@@ -15,7 +15,7 @@ var (
 	AcLogger   *log.Logger
 )
 
-func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
+func EbpfEngineLoad(dirPath string, logLevel int, acId string, opts LoadOptions) error {
 	_, err := utilsebpf.EngineLoad(utilsebpf.EngineLoadParams{
 		Variant:     utilsebpf.VariantAC,
 		ComponentId: acId,

@@ -24,6 +24,27 @@
 #define DHCP_PORT_CLIENT 68
 #define NTP_PORT 123
 
+/* How long a lapsed knock keeps being classified as a lapsed knock.
+ *
+ * A knock opens a port for a peer for a while, and the peer does not always
+ * notice that the window closed at the same moment the AC did: the last
+ * segment of a session is retransmitted, a FIN arrives late, a keepalive goes
+ * out after the AC stopped listening. Those packets are the tail of a
+ * session that was authorised, not a scan, and the published site counts a
+ * scan's source as an attacker -- so a legitimate peer's address, and the
+ * country it is in, would end up in the site's attacker totals.
+ *
+ * The entry is therefore kept for this long after it expired, and the
+ * packets in that window are still classified as the expired knock they
+ * are. After it, the entry is forgotten and the peer is an unknown source
+ * to a closed port again, which is what it is.
+ *
+ * 60 seconds, because that covers the TCP retransmission ladder (1, 2, 4, 8,
+ * 16 and 32 seconds) and a UDP keepalive or two, and because it is short
+ * next to the knock windows themselves (the temporary access window is 30
+ * seconds, the server's is longer). */
+#define NHP_KNOCK_EXPIRED_GRACE_SEC 60
+
 /* The v6 spelling of the DHCP pair, for the same reason as the v4 one below:
  * a host that gets its v6 address from DHCPv6 rather than from SLAAC loses
  * it at lease expiry if the reply (547 -> 546) is dropped. */
@@ -92,6 +113,60 @@
 #define ACT_AC_PASS_V6_DHCP_CLIENT  17
 #define ACT_AC_PASS_V6_NTP_CLIENT   18
 
+/* Whether the IPv6 tree runs at all.
+ *
+ * 1 (the default) = every v6 packet is judged by handle_ipv6(); 0 = every v6
+ * packet is passed, which is what this program did before the tree existed.
+ *
+ * The knob is here for the operator whose host runs an IPv6 service the AC
+ * was never meant to gate. The tree drops it, and it has to: the AC's
+ * whitelists are IPv4 tables, so "the peer that knocked may reach this port"
+ * is a policy this program cannot express over v6, and the tree therefore
+ * admits only what it can justify -- neighbour discovery, the two client
+ * protocols, and the replies to the host's own flows. A host that needs a v6
+ * listener reachable has to be able to say so.
+ *
+ * Turning it off is a decision with a cost: every v6 listener on the host
+ * becomes reachable from wherever the security group lets v6 in, and the
+ * deploy's "the filter is attached" check says nothing about it. So the
+ * default is on, the loader only touches this constant when an operator has
+ * asked for the other answer, and it says so in the log when it does.
+ *
+ * `volatile const` puts it in .rodata, which is where the loader writes it
+ * (setAcConstants in nhp/utils/ebpf/engine_linux.go), the same way the
+ * nhp-server's knock port is written into its own object. */
+volatile const __u8 nhp_ac_filter_ipv6 = 1;
+
+/* The peers whose answers to the two client protocols are admitted.
+ *
+ * The DHCP pair (67 -> 68) and the NTP pair (123 -> 123) are admitted by port
+ * pair alone, so any host that can reach the AC can put a packet on the wire
+ * that looks exactly like the answer the host's own dhclient or chronyd is
+ * waiting for. Nothing downstream trusts those packets -- a DHCP reply is
+ * matched against the lease it answers, and chrony checks the transmit
+ * timestamp and the server it asked -- but "the filter admits a packet that
+ * only the host's own server should send" is an exposure on a host whose
+ * security group is open to the internet, and it is the last one the pair
+ * rules leave.
+ *
+ * These four constants narrow the two pairs to the sources the operator names:
+ * the address and the prefix mask of the range the answer may come from. The
+ * mask is 0 (the default) when no range was configured, which means "any
+ * source" -- the behaviour of this program before the constants existed. An
+ * operator who names a range gets the pair narrowed to it, and a packet from
+ * anywhere else is judged by the rest of the tree like any other.
+ *
+ * The address and the mask are written as the big-endian value of the
+ * address's bytes, and src_in_range() turns them back into the wire order
+ * with bpf_htonl() before it compares them with the packet's own field.
+ *
+ * `volatile const` puts them in .rodata, which is where the loader writes
+ * them (setAcConstants in nhp/utils/ebpf/engine_linux.go). */
+volatile const __u32 nhp_ac_dhcp_addr = 0;
+volatile const __u32 nhp_ac_dhcp_mask = 0;
+volatile const __u32 nhp_ac_ntp_addr = 0;
+volatile const __u32 nhp_ac_ntp_mask = 0;
+
 /* The whitelist maps, conn_track and their key/value structs live in
  * nhp_maps.h -- they are shared with tc_egress.c through their pins. */
 
@@ -108,9 +183,11 @@
  * not tolerable with the group open to the whole internet: every packet that
  * arrives is then chosen by whoever sent it, and one sender is enough to fill
  * the disk the daemon runs on. So the ring is fed behind a budget of its own
- * -- the same per-class bucket and the same global cap the telemetry ring
- * uses, in the telemetry map's second bank of slots (legacy_event_budget_
- * available in nhp_xdp_stats.h) -- and the files behind it carry a daily byte
+ * -- the same per-class bucket the telemetry ring uses, in the telemetry map's
+ * second bank of slots (legacy_event_budget_available in nhp_xdp_stats.h),
+ * and with a global cap per channel: the deny channel and the accept channel
+ * are capped separately, so a flood of drops cannot silence the log that
+ * records what was admitted. The files behind the ring carry a daily byte
  * budget and are swept like the telemetry log's (readAcEvents and
  * acEventLogPrefixes in nhp/utils/ebpf/engine_linux.go).
  *
@@ -142,6 +219,12 @@ struct {
 // expired are both ACCEPT/DENY but different classes, and a budget keyed on
 // the verdict alone would let a flood of one kind starve the other.
 //
+// The verdict has one more job: it picks which of the audit ring's two global
+// caps this event spends. The deny channel and the accept channel are capped
+// separately, so a flood of dropped packets cannot spend the allowance of the
+// log that records what was admitted -- which is the record an incident
+// review reads, and the one that used to go missing exactly when it mattered.
+//
 // The budget is spent before the event is emitted, so an over-budget packet
 // costs a map lookup and nothing else. The verdict does not depend on it: the
 // packet is judged exactly as before, only its line is not written. The
@@ -150,7 +233,7 @@ static __always_inline int submit_event(void *ctx, __u8 verdict, __u8 class, __b
     struct event_t ev = {};
     __u64 now = bpf_ktime_get_ns();
 
-    if (!legacy_event_budget_available(class, now))
+    if (!legacy_event_budget_available(class, verdict, now))
         return 0;
 
     ev.timestamp = now;
@@ -308,6 +391,45 @@ static __always_inline __u8 ac_classify_drop(__u8 proto, bool is_syn, bool is_ac
     return ACT_AC_DROP_NON_TCP_UDP;
 }
 
+/* Is a knock that closed `expire_time` ago still within its grace?
+ *
+ * `now` is past `expire_time` in every caller, so the subtraction cannot
+ * wrap. */
+static __always_inline bool knock_within_grace(__u64 expire_time, __u64 now) {
+    return (now - expire_time) <= NHP_KNOCK_EXPIRED_GRACE_SEC * 1000000000ULL;
+}
+
+/* The verdict for a packet no whitelist admitted: the class it falls in, the
+ * telemetry, the scan accounting, the audit line, and the drop.
+ *
+ * The tail of xdp_white_prog() and the branches that forget a lapsed knock
+ * both end here, so a packet that arrives after its grace is judged exactly
+ * like a packet that was never admitted at all -- the same class, the same
+ * accounting, the same line in nhp_deny-*.log. */
+static __always_inline int reject_unadmitted(void *ctx, struct iphdr *iph,
+                                             __be16 sport, __be16 dport,
+                                             bool is_syn, bool is_ack, bool is_rst) {
+    __u8 drop_class = ac_classify_drop(iph->protocol, is_syn, is_ack, is_rst);
+    record_event(ctx, drop_class, iph, sport, dport, 0, true, true);
+    submit_event(ctx, 0, drop_class, iph->saddr, iph->daddr, sport, dport, iph->protocol, iph->tot_len);
+    return XDP_DROP;
+}
+
+/* Is this packet's source address inside the range the operator configured?
+ *
+ * `mask` is the prefix mask of the range, in the same byte order as `addr`:
+ * the loader writes both as the big-endian value of the address's bytes, and
+ * bpf_htonl() puts them back into the wire order here, where the packet's own
+ * saddr field already is.
+ *
+ * A zero mask means "no range was configured", and then every source is inside
+ * it -- the behaviour of this program before the constants existed. */
+static __always_inline bool src_in_range(__be32 saddr, __u32 addr, __u32 mask) {
+    if (mask == 0)
+        return true;
+    return (saddr & bpf_htonl(mask)) == (bpf_htonl(addr) & bpf_htonl(mask));
+}
+
 /* Does this packet belong to a UDP flow the host itself has a socket for?
  *
  * The AC's own answer to that question is its conn_track: tc_egress.c
@@ -386,10 +508,17 @@ static __always_inline bool has_local_flow6(struct xdp_md *ctx, struct ipv6hdr *
 /* The IPv6 half of the decision tree.
  *
  * Deliberately *not* symmetrical with IPv4 in one respect: there is no
- * service exception. The AC's whitelists are IPv4 tables, so this program
- * cannot tell one peer's v6 address from another's, and "the peer that
- * knocked may reach this port" is a policy it can only express over v4.
- * Nothing therefore reaches a knocked port over v6.
+ * service exception for the peers the AC admits. The AC's whitelists are
+ * IPv4 tables, so this program cannot tell one peer's v6 address from
+ * another's, and "the peer that knocked may reach this port" is a policy it
+ * can only express over v4. Nothing therefore reaches a knocked port over
+ * v6.
+ *
+ * SSH is the one exception, and it is the exception the IPv4 tree makes as
+ * well: tcp/22 is passed here and there alike, because the security group
+ * is the layer that restricts it. A filter that dropped v4 ssh and passed
+ * v6 ssh would lock out every operator who manages the AC over IPv6, and
+ * the group is where they close that port on both families.
  *
  * What does get in is neighbour discovery, the two address/clock-keeping
  * client protocols, and the replies to the host's own v6 flows -- the same
@@ -404,6 +533,13 @@ static __always_inline bool has_local_flow6(struct xdp_md *ctx, struct ipv6hdr *
  * admitted the same way, for the same reason. */
 static __always_inline int handle_ipv6(struct xdp_md *ctx, void *l3, void *data_end) {
     struct ipv6hdr *ip6h = l3;
+
+    /* The operator's answer to "this host needs its IPv6 listeners", if they
+     * gave one. See nhp_ac_filter_ipv6 above: the default is to judge every
+     * v6 packet, and only an explicit request skips the tree. */
+    if (!nhp_ac_filter_ipv6)
+        return XDP_PASS;
+
     if ((void *)(ip6h + 1) > data_end)
         return XDP_DROP;
 
@@ -473,6 +609,20 @@ static __always_inline int handle_ipv6(struct xdp_md *ctx, void *l3, void *data_
         struct tcphdr *tcp = cur;
         if ((void *)(tcp + 1) > data_end)
             return XDP_DROP;
+
+        /* SSH is passed here exactly as the IPv4 tree passes it: the
+         * security group is what restricts tcp/22, not this program. On v4
+         * the group carves tcp/22 out of the all-ports range and leaves it
+         * open to the relay's group only; the same rule has to hold for v6,
+         * because a filter that drops v4 ssh and passes v6 ssh locks out
+         * every operator who manages the AC over IPv6, and the group is
+         * where they close that port on both families.
+         *
+         * Not counted, exactly like the IPv4 exception: neither family's
+         * ssh traffic is a scan class, and the group is what limits it. */
+        if (tcp->dest == bpf_htons(22)) {
+            return XDP_PASS;
+        }
 
         /* The reply to a connection the host itself opened. */
         if (has_local_flow6(ctx, ip6h, tcp->source, tcp->dest, true)) {
@@ -667,6 +817,14 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * own, because knock packets carry a timestamp the server checks against
      * a window.
      *
+     * Both pairs can be narrowed to the sources the host's own servers answer
+     * from (nhp_ac_dhcp_* and nhp_ac_ntp_* above). The port pair says what
+     * the answer looks like; it does not say who sent it, and on a host whose
+     * group is open to the whole internet that is the difference between
+     * "the filter admits what the host's own server sends" and "the filter
+     * admits anything wearing the right ports". Narrowing is opt-in: with no
+     * range configured the pairs behave exactly as they always have.
+     *
      * DNS needs no exception of its own: it is admitted the same way the
      * AC's other client traffic is. The query goes out the interface
      * tc_egress.c is attached to -- the loader attaches both programs to the
@@ -692,14 +850,24 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * conn_track for v6 to admit the answers from. */
     if (iph->protocol == IPPROTO_UDP) {
         if (ct_key.sport == bpf_htons(DHCP_PORT_SERVER) && ct_key.dport == bpf_htons(DHCP_PORT_CLIENT)) {
-            record_event(ctx, ACT_AC_PASS_DHCP_CLIENT, iph, ct_key.sport, ct_key.dport, 0, true, false);
-            return XDP_PASS;
+            /* The operator may narrow the pair to the host's own DHCP server.
+             * An answer from anywhere else is not that server's, so it falls
+             * through to the rest of the tree and is judged like any other
+             * packet -- which is a drop, because no whitelist admits it. */
+            if (src_in_range(iph->saddr, nhp_ac_dhcp_addr, nhp_ac_dhcp_mask)) {
+                record_event(ctx, ACT_AC_PASS_DHCP_CLIENT, iph, ct_key.sport, ct_key.dport, 0, true, false);
+                return XDP_PASS;
+            }
         }
         if (ct_key.sport == bpf_htons(NTP_PORT) && ct_key.dport == bpf_htons(NTP_PORT)) {
-            /* Counted, not reported: chrony polls every 32-64s, so this would
-             * be a steady trickle of lines saying the same thing. */
-            record_event(ctx, ACT_AC_PASS_NTP_CLIENT, iph, ct_key.sport, ct_key.dport, 0, false, false);
-            return XDP_PASS;
+            /* The same narrowing for the NTP pair: the answer may come from
+             * the host's own time servers and from nowhere else. */
+            if (src_in_range(iph->saddr, nhp_ac_ntp_addr, nhp_ac_ntp_mask)) {
+                /* Counted, not reported: chrony polls every 32-64s, so this would
+                 * be a steady trickle of lines saying the same thing. */
+                record_event(ctx, ACT_AC_PASS_NTP_CLIENT, iph, ct_key.sport, ct_key.dport, 0, false, false);
+                return XDP_PASS;
+            }
         }
     }
     __u64 now = bpf_ktime_get_ns();
@@ -1022,7 +1190,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     if (w_val) {
         __u64 expire_time = w_val->expire_time;
         if (expire_time < now) {
-            bpf_map_delete_elem(&spp, &key);
             /* The peer knocked and its window has closed. A legitimate peer
              * that came back too late, as opposed to one that never knocked.
              *
@@ -1030,9 +1197,24 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
              * the per-port and per-source tables behind the [NHP-SCAN]
              * summary. The published site excludes the class from its
              * attacker totals for the same reason -- see CatKnockExpired in
-             * endpoints/xdplog-report/classify.go. */
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
-            return XDP_DROP;
+             * endpoints/xdplog-report/classify.go.
+             *
+             * The entry is kept for the grace (NHP_KNOCK_EXPIRED_GRACE_SEC)
+             * so the peer's late packets -- the retransmitted segment, the
+             * late FIN, the keepalive -- are still classified as the tail
+             * of an authorised session instead of as a scan. Without it only
+             * the first late packet was exempt and the rest of them landed
+             * in the scan classes, which put the authorised peer's address
+             * and country into the published attacker totals. */
+            if (knock_within_grace(expire_time, now)) {
+                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
+                return XDP_DROP;
+            }
+            /* The grace is over: the peer is an unknown source to a port
+             * that is no longer open. Forget it and judge the packet as
+             * that. */
+            bpf_map_delete_elem(&spp, &key);
+            return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
         }
         if (w_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
@@ -1041,6 +1223,16 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     if (sd_val) {
         __u64 expire_time = sd_val->expire_time;
         if (expire_time < now) {
+            /* No grace here, and the reason is the shape of this entry: it
+             * is keyed on the peer and the AC alone, with no port in it, so
+             * it covers everything the peer sends to the AC. Holding it for
+             * a grace would hold *all* of that peer's traffic -- and the
+             * peer can be the nhp-server itself, when the agent that knocks
+             * shares the server's address (NAT, or an agent on the server
+             * host). The AC's own channel to the server is admitted by this
+             * entry and by nothing else, so keeping it would take the AC off
+             * the air for the length of the grace. The port-scoped entries
+             * below carry the grace instead; a knock writes both. */
             bpf_map_delete_elem(&sdwhitelist, &sdkey);
             record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_DROP;
@@ -1053,9 +1245,15 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     if (sp_val) {
         __u64 expire_time = sp_val->expire_time;
         if (expire_time < now) {
+            /* The grace, as in the branch above: this entry is keyed on the
+             * peer and the port, so holding it holds that peer's traffic to
+             * that port and nothing else. */
+            if (knock_within_grace(expire_time, now)) {
+                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
+                return XDP_DROP;
+            }
             bpf_map_delete_elem(&src_port, &spkey);
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
-            return XDP_DROP;
+            return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
         }
         if (sp_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
@@ -1065,9 +1263,13 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     if (pl_val) {
         __u64 expire_time = pl_val->expire_time;
         if (expire_time < now) {
+            /* The grace again: keyed on the peer and a port range. */
+            if (knock_within_grace(expire_time, now)) {
+                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
+                return XDP_DROP;
+            }
             bpf_map_delete_elem(&port_list, &pl_key);
-            record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
-            return XDP_DROP;
+            return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
         }
         if (pl_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
@@ -1076,6 +1278,12 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     if (pp_val) {
         __u64 expire_time = pp_val->expire_time;
         if (expire_time < now) {
+            /* No grace here, and the reason is the shape of this entry: it
+             * is keyed on the port and the protocol alone, with no peer in
+             * it, so it says "anyone may use this port" and not "this peer
+             * may". Holding it would classify every packet to that port as
+             * an expired knock -- an attacker's included -- and keep them
+             * out of the published attacker totals. */
             bpf_map_delete_elem(&protocol_port, &pp_key);
             record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_DROP;
@@ -1104,10 +1312,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     /* No whitelist admitted the packet. Which class it is depends on what the
      * packet was trying to do; either way it is dropped. */
-    __u8 drop_class = ac_classify_drop(iph->protocol, is_syn, is_ack, is_rst);
-    record_event(ctx, drop_class, iph, ct_key.sport, ct_key.dport, 0, true, true);
-    submit_event(ctx, 0, drop_class, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-    return XDP_DROP;
+    return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
 }
 
 char _license[] SEC("license") = "Dual BSD/GPL";

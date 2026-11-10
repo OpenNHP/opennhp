@@ -1336,8 +1336,16 @@ the results with `scripts/xdp-attack-report.sh`.
   host's DHCP client (the source port is spoofable); UDP 123→123 reaches
   chronyd's bound socket; non-first IPv4 fragments are always passed; ICMP
   frag-needed is passed (anyone can lower a flow's PMTU). Narrowing options if
-  this stops being acceptable: DHCP only from the VPC DHCP server / link-local
-  range, NTP only from 169.254.169.123, or chrony `port 0`.
+  this stops being acceptable: `DhcpServerIP` and `NtpServerIP` in `etc/xdp.toml`
+  narrow the two port pairs to the addresses the host's own servers answer
+  from (`169.254.169.0/24` covers both the VPC's DHCP server at
+  169.254.169.253 and the Amazon Time Sync Service at 169.254.169.123); the
+  same two settings exist on the AC (`etc/config.toml`). The peer addresses are
+  a property of the VPC, not of this repository, so the demo leaves them unset
+  — a wrong DHCP peer costs the host its lease, and with it its address. Read
+  the real address out of the daemon's own log before setting it, and note that
+  an unusable value refuses the attach rather than being ignored. The other
+  option for the NTP half alone is chrony `port 0`.
 - **Order is the reverse of the knock port.** Run `deploy-demo-v2` first and
   confirm `Verify the XDP ingress filter attached` is green, then run
   `infra-demo apply`. Both workflows share `concurrency: demo-terraform`, so

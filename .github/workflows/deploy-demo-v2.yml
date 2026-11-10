@@ -3633,6 +3633,11 @@ jobs:
   #     falls back to the nhp-server's auth (or is denied). It also needs
   #     nhp-xdplog-export.sh installed there; deploy-server handles that
   #     too.
+  #   - deploy-ac is ordered before this job (the AC's half of the
+  #     collector needs the same public key in its authorized_keys) but a
+  #     failed AC deploy does not block the stats site: the collector
+  #     tolerates a source it cannot list and publishes the server's data
+  #     either way. The `if:` below says so explicitly.
   #   - This job needs an infra-demo apply to have happened FIRST: the
   #     stats.opennhp.org A record is cloudflare_record.stats in
   #     terraform/demo/dns.tf, and this workflow never applies Terraform
@@ -3642,7 +3647,23 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-xdpstats:
     needs: [configure, deploy-relay, deploy-jsagent, deploy-demoapp, deploy-server, deploy-ac]
-    if: github.event.inputs.confirm == 'deploy'
+    # The AC's deploy is ordered before this one but is not a hard
+    # dependency of it. The collector already tolerates a source it cannot
+    # list -- it logs the failure per source, carries on with the others,
+    # and the run's exit code is reported here as a warning, not a failure --
+    # so an AC that is down, or an AC deploy that failed, must not keep the
+    # server-only data path from being published. Everything this job does
+    # need is still required, and always() is what lets the job run at all
+    # when one of them failed (a skipped dependency would otherwise skip
+    # this job silently, and the summary would report "skipped" for a
+    # reason nobody can read).
+    if: >-
+      always() && github.event.inputs.confirm == 'deploy' &&
+      needs.configure.result == 'success' &&
+      needs.deploy-relay.result == 'success' &&
+      needs.deploy-jsagent.result == 'success' &&
+      needs.deploy-demoapp.result == 'success' &&
+      needs.deploy-server.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -4140,10 +4161,20 @@ jobs:
 
           # The published figures, and a bound on the country count. There
           # are only ~250 ISO 3166-1 alpha-2 codes, so a country total well
-          # above that is a double count — the history snapshot's own
-          # country count added to the live period's union — and must not be
-          # published. The site counts the live period's countries alone;
-          # see endpoints/xdplog-report/render_index.go.
+          # above that must not be published.
+          #
+          # The total is a union over every published day: the live days and
+          # the days the history snapshot stands in for. That union is exact
+          # while every published day contributes its own sources and
+          # countries. It stops being exact in two ways, and the site says
+          # which on stdout: when a published day's per-day records are gone
+          # the snapshot's own counts stand in for that day, so the total is
+          # an upper bound and an address or a country seen in both periods
+          # can be counted twice; and when the snapshot lists a day below
+          # the publishing floor its counts cannot be applied at all, so the
+          # total is a lower bound. See endpoints/xdplog-report/site.go and
+          # history.go — not render_index.go, which only draws the numbers
+          # the site computed.
           ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK $WEB_ROOT/totalnumber.js"
           blocked=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_BLOCKED $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
           sources=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_SOURCE_IPS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')

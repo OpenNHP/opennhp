@@ -133,7 +133,26 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return
 		}
 	case FilterMode_EBPFXDP:
-		err = ebpflocal.EbpfEngineLoad(dirPath, logLevel, a.config.ACId)
+		// The two source ranges are parsed before anything is loaded, and an
+		// unparsable one stops the daemon. It is not ignored, because an
+		// ignored narrowing leaves the pair open while the configuration
+		// says it is closed -- and it is not applied blindly, because a
+		// narrowing that is wrong in the other direction costs the host its
+		// DHCP lease, and with it its address.
+		dhcpSource, ntpSource, err := acSourceNets(a.config)
+		if err != nil {
+			log.Error("%v", err)
+			return err
+		}
+
+		err = ebpflocal.EbpfEngineLoad(dirPath, logLevel, a.config.ACId, ebpflocal.LoadOptions{
+			DisableIPv6Filter:       a.config.DisableIPv6Filter,
+			AuditLogRetentionDays:   a.config.AuditLogRetentionDays,
+			AuditLogRetentionBytes:  a.config.AuditLogRetentionBytes,
+			AuditLogDailyEventBytes: a.config.AuditLogDailyEventBytes,
+			DhcpSource:              dhcpSource,
+			NtpSource:               ntpSource,
+		})
 		if err != nil {
 			return err
 		}

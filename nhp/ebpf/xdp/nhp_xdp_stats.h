@@ -115,13 +115,23 @@ struct {
  * not silence the other. The two banks are the same shape on purpose -- a
  * per-class bucket and a global cap across all of them -- and the same rates.
  *
+ * The audit bank's global cap is *two* caps, one for each channel: the deny
+ * channel and the accept channel. One shared cap was a hole in the audit
+ * trail, and the hole was open exactly when the trail matters: a scan of a
+ * few packets a second spent the shared slot early in every one-second
+ * window, so the knock-admitted events -- the record of *who was let in* --
+ * never reached nhp_accept-*.log. The accept channel is the one an incident
+ * review reads; it now has a cap of its own, and a flood of drops cannot
+ * spend it.
+ *
  * The slots have to stay inside the map: a slot past its end reads as "no
  * budget information", which spend_token() treats as unlimited, so a drift
  * between these numbers and the map's size would silently remove the limit.
  * The Go side checks that in engine_linux_test.go. */
 #define NHP_LEGACY_RATE_BASE (NHP_EVENT_ACTIONS + 1)
 #define NHP_LEGACY_GLOBAL_SLOT (NHP_LEGACY_RATE_BASE + NHP_EVENT_ACTIONS)
-#define NHP_EVENT_RATE_SLOTS (NHP_LEGACY_GLOBAL_SLOT + 1)
+#define NHP_LEGACY_ACCEPT_GLOBAL_SLOT (NHP_LEGACY_GLOBAL_SLOT + 1)
+#define NHP_EVENT_RATE_SLOTS (NHP_LEGACY_ACCEPT_GLOBAL_SLOT + 1)
 
 struct nhp_rate_state {
     __u64 window_start;
@@ -257,8 +267,21 @@ static __always_inline bool event_budget_available(__u8 action, __u64 now) {
  * `action` is the class the packet belongs to, which is what the per-class
  * bucket is keyed on; a class at or past NHP_EVENT_ACTIONS has no bucket of
  * its own and is judged by the global cap alone, exactly as on the telemetry
- * side. */
-static __always_inline bool legacy_event_budget_available(__u8 action, __u64 now) {
+ * side.
+ *
+ * `verdict` picks which global cap the event spends: 1 (ACCEPT) spends the
+ * accept channel's cap, 0 (DENY) spends the deny channel's. The two are
+ * separate on purpose. The audit trail answers two different questions --
+ * what did the filter drop, and who did it let in -- and the second one is
+ * the one an incident review needs. With one shared cap, a scan of a few
+ * packets a second spent the window's allowance on drops before any knock
+ * was admitted, and nhp_accept-*.log stayed empty for the whole attack:
+ * the record of what was admitted was thinned out by whoever was attacking.
+ *
+ * The per-class buckets were already separate, so an admit's class is not
+ * starved either; it is the global cap that used to be shared, and that is
+ * what is split here. */
+static __always_inline bool legacy_event_budget_available(__u8 action, __u8 verdict, __u64 now) {
     if (action >= NHP_EVENT_ACTIONS)
         return true;
 
@@ -266,7 +289,8 @@ static __always_inline bool legacy_event_budget_available(__u8 action, __u64 now
     if (!spend_token(slot, NHP_EVENT_BURST, now))
         return false;
 
-    return spend_token(NHP_LEGACY_GLOBAL_SLOT, NHP_EVENT_GLOBAL_BURST, now);
+    __u32 global = (verdict == 1) ? NHP_LEGACY_ACCEPT_GLOBAL_SLOT : NHP_LEGACY_GLOBAL_SLOT;
+    return spend_token(global, NHP_EVENT_GLOBAL_BURST, now);
 }
 
 /* Tick this action's total, which happens for every packet whatever the

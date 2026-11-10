@@ -1435,7 +1435,7 @@ func TestEventLogBudgetStopsAtTheDailyLimitAndResetsOnTheNextDay(t *testing.T) {
 }
 
 // A budget of zero means no budget at all: the AC's audit trail is written for
-// as long as the host lives, which is the behaviour a deployment that reads
+// as long as the host lives, which is the behavior a deployment that reads
 // nhp_deny-*.log as an audit trail has to be able to ask for.
 func TestEventLogBudgetWithNoLimitNeverExhausts(t *testing.T) {
 	dir := t.TempDir()

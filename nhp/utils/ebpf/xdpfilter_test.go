@@ -557,7 +557,7 @@ func TestTheExpiredKnockGraceIsNotAVerdict(t *testing.T) {
 //
 // The default has to stay "any source", and it has to be the *object's* own
 // default rather than something the loader writes: a host that says nothing
-// keeps the behaviour it had, and a narrowing that is applied wrongly costs
+// keeps the behavior it had, and a narrowing that is applied wrongly costs
 // the host its DHCP lease -- and with it its address.
 func TestClientProtocolPairsCanBeNarrowedBySource(t *testing.T) {
 	filters := []struct {
@@ -799,7 +799,7 @@ func goFunctionBody(t *testing.T, src, name string) string {
 // With server_open_all_ports = true the filter is the only inbound control on
 // every port but tcp/22, so every new reason to refuse attaching is a way to
 // leave all ports open -- the invariant the server's other refusals are
-// limited by. The DHCP and NTP narrowings are defence in depth (nothing
+// limited by. The DHCP and NTP narrowings are defense in depth (nothing
 // downstream trusts those packets: the lease is matched against the request,
 // chrony checks the server it asked), so an unusable value must not cost the
 // host its filter. It is logged at Critical, the pair keeps the object's own
@@ -815,7 +815,7 @@ func TestServerSourceNetsNeverFailsTheLoad(t *testing.T) {
 	server := goFunctionBody(t, src, "setServerSourceNets")
 	for _, fatal := range []string{"return fmt.Errorf", "return err"} {
 		if strings.Contains(server, fatal) {
-			t.Errorf("setServerSourceNets contains %q; the server's source narrowings are defence in depth and must never fail the load", fatal)
+			t.Errorf("setServerSourceNets contains %q; the server's source narrowings are defense in depth and must never fail the load", fatal)
 		}
 	}
 	if !strings.Contains(server, "log.Critical") {

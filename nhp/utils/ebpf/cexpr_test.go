@@ -288,7 +288,7 @@ func TestLegacyAuditDropFloodCannotSilenceAdmits(t *testing.T) {
 		t.Fatal("the admit's own class bucket was spent by the flood; the model is not what it claims")
 	}
 	if spend(shared, legacyGlobal, globalBurst, now) {
-		t.Error("the model no longer reproduces the shared-cap behaviour; the test above is not pinning anything")
+		t.Error("the model no longer reproduces the shared-cap behavior; the test above is not pinning anything")
 	}
 }
 

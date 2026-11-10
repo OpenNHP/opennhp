@@ -73,7 +73,7 @@ NtpServerIP = ""
 // what the filter did before the settings existed.
 //
 // A value that is present but unusable is not a refusal either, and that is
-// the part worth pinning: these settings are defence in depth, and with
+// the part worth pinning: these settings are defense in depth, and with
 // server_open_all_ports = true the filter is the only inbound control on
 // every port but tcp/22. So an unusable value is logged at Critical, that
 // pair keeps the object's own default (any source), and the filter attaches.

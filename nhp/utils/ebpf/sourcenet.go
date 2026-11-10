@@ -33,7 +33,7 @@ import (
 // order -- and turns them back with bpf_htonl() before it does.
 //
 // A zero mask means "no range": every source is inside it. That is the
-// default, and it is the behaviour of the filter before the ranges existed.
+// default, and it is the behavior of the filter before the ranges existed.
 type SourceNet struct {
 	Addr uint32
 	Mask uint32

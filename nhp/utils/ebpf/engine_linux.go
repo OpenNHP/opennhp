@@ -149,7 +149,7 @@ type EngineLoadParams struct {
 	// host lived, and a deployment that reads them as an audit trail must
 	// not lose their history to an upgrade. Zero therefore means *unbounded*
 	// for all three: the files are never swept, and the day's lines are
-	// never suppressed. That is the behaviour the AC had before the bounds
+	// never suppressed. That is the behavior the AC had before the bounds
 	// existed, so a deployment that says nothing keeps what it had.
 	//
 	// A deployment that wants the bounds sets them. The demo does
@@ -174,7 +174,7 @@ type EngineLoadParams struct {
 	// The pair says what the answer looks like, not who sent it, so on a host
 	// whose security group is open to the whole internet the filter admits
 	// anything wearing the right ports. A range that is not set means no
-	// narrowing at all, which is the behaviour of the filters before these
+	// narrowing at all, which is the behavior of the filters before these
 	// parameters existed: the default changes nothing.
 	//
 	// They are load parameters rather than something the caller writes
@@ -522,7 +522,7 @@ func setAcConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
 // setAcSourceNets writes the two source ranges into the object's .rodata.
 //
 // A range that is not set is left alone: the object's own default is "any
-// source", which is the behaviour of the filter before the constants existed.
+// source", which is the behavior of the filter before the constants existed.
 // A range that is set writes both its address and its mask, because the
 // filter compares the packet's source against the masked address.
 func setAcSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
@@ -1004,11 +1004,11 @@ func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) erro
 // .rodata.
 //
 // A range that is not set is left alone: the object's own default is "any
-// source", which is the behaviour of the filter before the constants existed.
+// source", which is the behavior of the filter before the constants existed.
 // A range that is set writes both its address and its mask, because the
 // filter compares the packet's source against the masked address.
 //
-// Nothing in here fails the load. These two settings are defence in depth:
+// Nothing in here fails the load. These two settings are defense in depth:
 // the DHCP and NTP answers are admitted so the host keeps its lease and its
 // clock, and nothing downstream trusts them. A stale object, or a .rodata
 // write that did not take, must therefore not cost the host its ingress

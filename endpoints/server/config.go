@@ -863,7 +863,7 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 	// The two source ranges narrow the DHCP and NTP pairs to the addresses
 	// this host's own servers answer from. A value that cannot be parsed is
 	// logged and the pair is left at its default, not a refusal to attach:
-	// these settings are defence in depth, and with the security group open
+	// these settings are defense in depth, and with the security group open
 	// to every port the filter is the only inbound control on all of them --
 	// so a typo here must not trade a closed pair for an open host.
 	dhcpSource, ntpSource := xdpSourceNets(conf, fileName)
@@ -1035,7 +1035,7 @@ func xdpRelayPrefixes(conf *XdpTomlConfig, fileName string, refusalWhat string) 
 // what the filter did before the settings existed.
 //
 // A value that is present but unusable is *not* a refusal to attach, and the
-// difference matters. These two settings are defence in depth: nothing
+// difference matters. These two settings are defense in depth: nothing
 // downstream trusts a DHCP or NTP packet (the lease is matched against the
 // request, chrony checks the server it asked), so the narrowing is one more
 // layer on a pair the filter admits only so the host keeps its address and
@@ -1043,7 +1043,7 @@ func xdpRelayPrefixes(conf *XdpTomlConfig, fileName string, refusalWhat string) 
 // inbound control on every port but tcp/22, and the invariant this file's
 // other refusals exist to protect says the reasons to refuse attaching stay
 // limited to the ones that protect SSH reachability. A typo in a
-// defence-in-depth narrowing must not trade a closed pair for an open host.
+// defense-in-depth narrowing must not trade a closed pair for an open host.
 //
 // So an unusable value is logged at Critical, that pair keeps the object's
 // own default (any source), and the filter attaches -- exactly what

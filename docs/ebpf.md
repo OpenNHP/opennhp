@@ -329,7 +329,7 @@ frame
  ├─ iph->ihl < 5                → DROP   (not recorded)
  │
  ├─ TCP to dport 22             → PASS   (SSH to the AC is never knock-gated)
- ├─ UDP to dport 67 or 68, or with source port 53  → PASS   (DHCP and DNS replies — unconditionally, before any whitelist or conn_track lookup)
+ ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair, before any whitelist or conn_track lookup — the only UDP exception)
  │
  ├─ ICMP
  │    ├─ echo reply (type 0 code 0)   → PASS
@@ -356,6 +356,10 @@ frame
  │
  └─ otherwise                   → DROP
 ```
+
+DHCP is the only UDP exception, and it is matched as a **pair** (67 → 68). A source port is chosen by whoever sends the packet, so it is not evidence of anything; this block used to also pass `dport == 67 || dport == 68` from any source and — far worse — any datagram with `sport == 53`, both of them *before* conn_track and before every whitelist. That second one let anything sent from udp/53 reach any UDP port the AC protects (DNS, QUIC/HTTP3, WireGuard, game servers) with no knock at all.
+
+DNS needs no exception of its own: the AC's queries leave through the same interface `tc_egress.c` is attached to, and the answer is admitted by the reverse branch below from the EGRESS entry they left, the same way NTP's is. That covers a query whose *source* port gate 3 accepts — an ephemeral one, as a stub resolver (glibc, systemd-resolved) uses. A recursive resolver running **on the AC** that randomises its own outgoing port over 1024–65535 (BIND's default `use-v4-udp-ports`) falls under the same limitation as any other fixed-low-port UDP client on the AC: see *Known limitation: fixed low UDP source ports* in `terraform/demo/RUNBOOK.md`.
 
 Every whitelist entry carries an expiry, and an expired entry is **deleted** when a packet finds it — so an entry that ran out stops admitting traffic immediately.
 

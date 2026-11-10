@@ -15,9 +15,12 @@
 #define IPPROTO_UDP 17
 #define MIN_PORT 0
 #define MAX_PORT 65535
-#define DNS_PORT 53
-#define DHCP_PORT_R 67
-#define DHCP_PORT_O 68
+/* The only exception this program makes for a UDP packet nothing else can
+ * account for. Named by role, not by number, because the check below is
+ * direction-sensitive: 67 is the server's port, 68 the client's, and a rule
+ * that looked at either one alone would be the hole described there. */
+#define DHCP_PORT_SERVER 67
+#define DHCP_PORT_CLIENT 68
 
 /* The whitelist maps, conn_track and their key/value structs live in
  * nhp_maps.h -- they are shared with tc_egress.c through their pins. */
@@ -228,8 +231,56 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         ct_key.dport = udp->dest;
     }
 
+    /* DHCP, and nothing else.
+     *
+     * This is the one UDP exchange the conn_track machinery cannot cover. The
+     * client sends from 0.0.0.0:68 to 255.255.255.255:67, so the entry
+     * tc_egress.c would write is keyed on a broadcast address the reply does
+     * not come back from -- and the reply is received on a raw AF_PACKET
+     * socket, or on one merely bound to udp/68, either way nothing the reverse
+     * lookup can match. Dropping it costs the host its lease, and with the
+     * lease every port on it, about an hour after a deploy that looked clean.
+     *
+     * It is matched as a *pair* (67 -> 68), the way nhp_server_xdp.c matches
+     * it. Testing either port on its own is what made this block a bypass:
+     *
+     *   - `dport == 67 || dport == 68` let anyone reach udp/67 and udp/68 on
+     *     the AC and on every host behind it, including a neighbour's
+     *     broadcast DHCPDISCOVER;
+     *   - `sport == 53` was far worse. A source port is chosen by the sender,
+     *     so it proves nothing about who sent the packet, and this test ran
+     *     *before* conn_track and before every whitelist. Anything sent from
+     *     udp/53 therefore reached any UDP port the AC protects -- DNS, QUIC /
+     *     HTTP3, WireGuard, game servers -- with no knock at all, which is the
+     *     "nothing is visible until you knock" guarantee given away for a
+     *     single `--sport 53`.
+     *
+     * DNS does not need an exception here: it is admitted the same way the
+     * AC's other client traffic is. The query goes out the interface
+     * tc_egress.c is attached to -- the loader attaches both programs to the
+     * same one, as a pair, and tears both down if either attach fails -- and
+     * the EGRESS conn_track entry it leaves behind is what the reverse branch
+     * below answers the reply from. NTP is already admitted that way, which is
+     * why there is no 123 exception either.
+     *
+     * That holds for a query whose SOURCE port gate 3 in tc_egress.c accepts:
+     * at or above the host's ip_local_port_range floor, or one of the fixed
+     * client ports in is_wellknown_client_port(). A stub resolver (glibc,
+     * systemd-resolved) takes a kernel-assigned ephemeral port and is covered.
+     * A recursive resolver that randomises its own outgoing port over
+     * 1024-65535 -- BIND's default use-v4-udp-ports, Unbound configured the
+     * same way -- running ON the AC and over this interface is not: the
+     * answers to its low-port queries have no entry to be admitted from, and
+     * the symptom is intermittent rather than clean. That is the same
+     * limitation every other fixed-low-port UDP client on the AC already has;
+     * see "Known limitation: fixed low UDP source ports" in
+     * terraform/demo/RUNBOOK.md for the symptom and the ways out.
+     *
+     * Bringing `sport == 53` back is not one of them -- it does not identify
+     * a resolver, only a sender that typed 53. */
     if (iph->protocol == IPPROTO_UDP &&
-        (ct_key.dport == bpf_htons(DHCP_PORT_R) || ct_key.dport == bpf_htons(DHCP_PORT_O) || ct_key.sport == bpf_htons(DNS_PORT))) {
+        ct_key.sport == bpf_htons(DHCP_PORT_SERVER) &&
+        ct_key.dport == bpf_htons(DHCP_PORT_CLIENT)) {
         return XDP_PASS;
     }
     __u64 now = bpf_ktime_get_ns();

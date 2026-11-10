@@ -329,7 +329,7 @@ frame
  ├─ iph->ihl < 5                → DROP   (not recorded)
  │
  ├─ TCP to dport 22             → PASS   (SSH to the AC is never knock-gated)
- ├─ UDP to dport 67 or 68, or with source port 53  → PASS   (DHCP and DNS replies — unconditionally, before any whitelist or conn_track lookup)
+ ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair, before any whitelist or conn_track lookup — the only UDP exception)
  │
  ├─ ICMP
  │    ├─ echo reply (type 0 code 0)   → PASS
@@ -356,6 +356,10 @@ frame
  │
  └─ otherwise                   → DROP
 ```
+
+DHCP 是这里唯一的 UDP 例外，并且是按 **端口对**（67 → 68）匹配的。源端口由发送方自己决定，证明不了任何事；这个分支以前还会放行任意来源的 `dport == 67 || dport == 68`，以及——更糟的——任何 `sport == 53` 的报文，而且都发生在 conn_track 和全部白名单**之前**。后者意味着任何从 udp/53 发出的报文都能打到 AC 保护的任意 UDP 端口（DNS、QUIC/HTTP3、WireGuard、游戏服务等），完全不需要敲门。
+
+DNS 不需要专门的例外：AC 的查询从 `tc_egress.c` 所挂的同一个网卡发出，应答由下面的反向分支凭它留下的 EGRESS 条目放行，和 NTP 一样。这对**源端口**被 gate 3 接受的查询成立——也就是 ephemeral 端口，stub 解析器（glibc、systemd-resolved）用的就是它。**跑在 AC 上**、并且把出站端口随机化到 1024–65535 的递归解析器（BIND 的 `use-v4-udp-ports` 默认值）则落在和 AC 上其它固定低端口 UDP 客户端同一条限制里：见 `terraform/demo/RUNBOOK.md` 的 *Known limitation: fixed low UDP source ports*。
 
 每个白名单条目都带一个过期时间，而过期的条目会在某个报文发现它时**被删除**——于是一个已经跑完的条目立刻不再放行流量。
 

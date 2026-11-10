@@ -16,8 +16,12 @@
 #define IPPROTO_UDP 17
 #define MIN_PORT 0
 #define MAX_PORT 65535
-#define DHCP_PORT_R 67
-#define DHCP_PORT_O 68
+/* The client protocols this program admits by port pair, named by role and
+ * not by number, because the checks below are direction-sensitive: 67 is the
+ * DHCP server's port and 68 the client's, and a rule that looked at either one
+ * alone would be the hole described at the check. */
+#define DHCP_PORT_SERVER 67
+#define DHCP_PORT_CLIENT 68
 #define NTP_PORT 123
 
 /* The v6 spelling of the DHCP pair, for the same reason as the v4 one below:
@@ -632,9 +636,29 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * own a reason to extend it, because the alternative -- admit anything
      * addressed to a bound port -- throws the whole policy away.
      *
+     * Both halves of each pair are tested, and that is the whole point: a
+     * source port is chosen by whoever sends the packet, so it proves nothing
+     * about who sent it, and a rule that looked at either port on its own is
+     * what made this block a bypass.
+     *
+     *   - `dport == 67 || dport == 68` let anyone reach udp/67 and udp/68 on
+     *     the AC and on every host behind it, including a neighbour's
+     *     broadcast DHCPDISCOVER;
+     *   - `sport == 53` was far worse. It proved nothing about the sender and
+     *     this test ran *before* conn_track and before every whitelist, so
+     *     anything sent from udp/53 reached any UDP port the AC protects --
+     *     DNS, QUIC / HTTP3, WireGuard, game servers -- with no knock at all,
+     *     which is the "nothing is visible until you knock" guarantee given
+     *     away for a single `--sport 53`.
+     *
      * DHCP: the host's own address depends on the reply getting in, and its
-     * loss is terminal for the lease. The pair is narrow enough that a
-     * neighbour's broadcast DHCPDISCOVER to udp/67 is still dropped.
+     * loss is terminal for the lease. The client sends from 0.0.0.0:68 to
+     * 255.255.255.255:67, so the entry tc_egress.c would write is keyed on a
+     * broadcast address the reply does not come back from -- and the reply is
+     * received on a raw AF_PACKET socket, or on one merely bound to udp/68,
+     * either way nothing the reverse lookup can match. The pair is narrow
+     * enough that a neighbour's broadcast DHCPDISCOVER to udp/67 is still
+     * dropped.
      *
      * NTP: chronyd polls its servers from the socket it has bound to udp/123
      * rather than from a connected ephemeral one, so the answer (123 -> 123)
@@ -643,18 +667,31 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * own, because knock packets carry a timestamp the server checks against
      * a window.
      *
-     * What used to be here was a rule that passed any datagram addressed to
-     * udp/67 or udp/68, and any datagram *from* udp/53, to any destination
-     * port, from any address. With the security group open to the whole
-     * internet that was a standing bypass into every UDP listener on the
-     * host -- chronyd, the SSM agent, nhp-acd's own sockets -- because a
-     * source port is free to choose. The answer to a DNS query now comes in
-     * through the conn_track (the host's own query) or through the socket
-     * table (the host's own client socket), both of which ask the kernel
-     * which socket would receive the packet instead of trusting a port
-     * number. */
+     * DNS needs no exception of its own: it is admitted the same way the
+     * AC's other client traffic is. The query goes out the interface
+     * tc_egress.c is attached to -- the loader attaches both programs to the
+     * same one, as a pair, and tears both down if either attach fails -- and
+     * the EGRESS conn_track entry it leaves behind is what the reverse branch
+     * below answers the reply from. The same holds for the answer to a query
+     * whose SOURCE port gate 3 in tc_egress.c accepts: at or above the host's
+     * ip_local_port_range floor, or one of the fixed client ports in
+     * is_wellknown_client_port(). A stub resolver (glibc, systemd-resolved)
+     * takes a kernel-assigned ephemeral port and is covered. A recursive
+     * resolver that randomises its own outgoing port over 1024-65535 --
+     * BIND's default use-v4-udp-ports, Unbound configured the same way --
+     * running ON the AC and over this interface is not: the answers to its
+     * low-port queries have no entry to be admitted from, and the symptom is
+     * intermittent rather than clean. That is the same limitation every other
+     * fixed-low-port UDP client on the AC already has; see "Known limitation:
+     * fixed low UDP source ports" in terraform/demo/RUNBOOK.md for the
+     * symptom and the ways out. Bringing `sport == 53` back is not one of
+     * them -- it does not identify a resolver, only a sender that typed 53.
+     *
+     * The IPv6 tree above has its own pair for the same two protocols
+     * (DHCPv6 547 -> 546, NTPv6 123 -> 123), because there is no egress
+     * conn_track for v6 to admit the answers from. */
     if (iph->protocol == IPPROTO_UDP) {
-        if (ct_key.sport == bpf_htons(DHCP_PORT_R) && ct_key.dport == bpf_htons(DHCP_PORT_O)) {
+        if (ct_key.sport == bpf_htons(DHCP_PORT_SERVER) && ct_key.dport == bpf_htons(DHCP_PORT_CLIENT)) {
             record_event(ctx, ACT_AC_PASS_DHCP_CLIENT, iph, ct_key.sport, ct_key.dport, 0, true, false);
             return XDP_PASS;
         }

@@ -322,17 +322,23 @@ The AC's job is different: it is the component that actually *opens* a protected
 frame
  │
  ├─ ethertype
- │    ├─ ARP / IPv6              → PASS   (the AC does not filter IPv6 at all)
+ │    ├─ ARP                     → PASS   (the AC does not answer ARP itself)
+ │    ├─ IPv6                   → handle_ipv6()   [see below]
  │    ├─ IPv4                   → continue
  │    └─ otherwise              → DROP
  │
  ├─ iph->ihl < 5                → DROP   (not recorded)
  │
+ ├─ non-first IPv4 fragment     → PASS   (inert: it carries no L4 header to judge)
+ │
  ├─ TCP to dport 22             → PASS   (SSH to the AC is never knock-gated)
- ├─ UDP to dport 67 or 68, or with source port 53  → PASS   (DHCP and DNS replies — unconditionally, before any whitelist or conn_track lookup)
+ ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair, before any whitelist or conn_track lookup)
+ ├─ UDP 123 → 123 (NTP)         → PASS   (the chrony answer, by port pair — the same two exceptions the nhp-server's filter makes)
  │
  ├─ ICMP
- │    ├─ echo reply (type 0 code 0)   → PASS
+ │    ├─ echo reply (type 0 code 0)
+ │    │    ├─ the AC pinged that peer and this is the answer → PASS   (the `icmp_echo` record tc_egress.c wrote)
+ │    │    └─ otherwise         → the icmpwhitelist entry below decides it
  │    ├─ echo request (type 8 code 0)
  │    │    ├─ no icmpwhitelist entry → DROP
  │    │    ├─ entry expired           → DROP   (the entry is deleted)
@@ -354,8 +360,21 @@ frame
  │    └─ protocol_port(port + protocol)
  │         └─ yes, and not expired → PASS   (and the flow is recorded)
  │
+ ├─ UDP flow the kernel's socket table says belongs to a socket of the host's
+ │    └─ yes                  → PASS   (the backstop for a socket bound to a fixed port)
+ │
  └─ otherwise                   → DROP
 ```
+
+DHCP and NTP are the only UDP exceptions, and both are matched as a **pair** (67 → 68 and 123 → 123). A source port is chosen by whoever sends the packet, so it is not evidence of anything; this block used to also pass `dport == 67 || dport == 68` from any source and — far worse — any datagram with `sport == 53`, both of them *before* conn_track and before every whitelist. That second one let anything sent from udp/53 reach any UDP port the AC protects (DNS, QUIC/HTTP3, WireGuard, game servers) with no knock at all.
+
+The two pairs are the ones the nhp-server's own filter makes, and they are there for the same reason on both hosts: the answer arrives on a socket the kernel cannot tell apart from a listener. chronyd polls its servers from the socket it has bound to udp/123 rather than from a connected ephemeral one, so the reply (123 → 123) looks exactly like an unsolicited query; dropping it costs the clock rather than the address, but the clock is what the knock timestamps are checked against. The DHCP reply is worse: it comes back on a socket that is merely bound to udp/68, and a host that loses its lease loses every port on it.
+
+DNS needs no exception of its own: the AC's queries leave through the same interface `tc_egress.c` is attached to, and the answer is admitted by the reverse branch below from the EGRESS entry they left. That covers a query whose *source* port gate 3 accepts — an ephemeral one, as a stub resolver (glibc, systemd-resolved) uses. A recursive resolver running **on the AC** that randomises its own outgoing port over 1024–65535 (BIND's default `use-v4-udp-ports`) falls under the same limitation as any other fixed-low-port UDP client on the AC: see *Known limitation: fixed low UDP source ports* in `terraform/demo/RUNBOOK.md`.
+
+IPv6 is filtered with a tree of its own (`handle_ipv6()`) rather than passed. The demo hosts have no v6 address today, which is exactly why the pass was dangerous: the day a v6 CIDR is added, every v6 listener — sshd's `[::]:22` above all — would be reachable unfiltered with the deploy's "filter attached" check still green. The v6 tree admits ICMPv6's "packet too big" and the ND/MLD range, the two port pairs in their v6 spellings (DHCPv6 547 → 546 and NTPv6 123 → 123), and the replies to flows the host itself opened (`has_local_flow6()`); everything else is dropped. The v6 tree needs its own pairs because there is no v6 conn_track to admit a lease or an NTP answer from — `tc_egress.c` is IPv4 only — and the whitelists are IPv4 tables too, so no v6 packet is ever admitted by one.
+
+An echo reply is admitted on one of two grounds: the peer knocked for ICMP access (the whitelist entry below, which now decides both directions), or the AC pinged that peer itself and this is the answer — the `icmp_echo` entry `tc_egress.c` wrote when the request went out, keyed by the peer's address and the identifier on the wire, expiring in `NHP_ICMP_ECHO_TTL_NS`. The reply used to be passed unconditionally, from anywhere, which with the security group open was a standing bypass into the host. `ping` on the AC still works, which is also how the AC's own reachability is checked.
 
 Every whitelist entry carries an expiry, and an expired entry is **deleted** when a packet finds it — so an entry that ran out stops admitting traffic immediately.
 

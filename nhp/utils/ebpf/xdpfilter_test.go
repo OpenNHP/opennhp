@@ -73,13 +73,13 @@ func TestAcIngressFilterHasNoBlanketUdpExceptions(t *testing.T) {
 
 	// DHCP is the 67 -> 68 pair, and NTP is the 123 -> 123 pair. Both are
 	// matched on the source port as well as the destination one.
-	if !strings.Contains(text, "ct_key.sport == bpf_htons(DHCP_PORT_R) && ct_key.dport == bpf_htons(DHCP_PORT_O)") {
+	if !strings.Contains(text, "ct_key.sport == bpf_htons(DHCP_PORT_SERVER) && ct_key.dport == bpf_htons(DHCP_PORT_CLIENT)") {
 		t.Error("the AC's filter does not admit the DHCP 67 -> 68 port pair")
 	}
 	if !strings.Contains(text, "ct_key.sport == bpf_htons(NTP_PORT) && ct_key.dport == bpf_htons(NTP_PORT)") {
 		t.Error("the AC's filter does not admit the NTP 123 -> 123 port pair")
 	}
-	if strings.Contains(text, "bpf_htons(DHCP_PORT_R) ||") || strings.Contains(text, "bpf_htons(DHCP_PORT_O) ||") {
+	if strings.Contains(text, "bpf_htons(DHCP_PORT_SERVER) ||") || strings.Contains(text, "bpf_htons(DHCP_PORT_CLIENT) ||") {
 		t.Error("the AC's filter still admits a datagram by its destination port alone")
 	}
 }

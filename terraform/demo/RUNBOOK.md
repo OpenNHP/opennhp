@@ -890,6 +890,25 @@ whitelists the peer. In practice that means a daemon with an explicit low
 senders (syslog to 514, SNMP traps) are unaffected because they expect no
 reply.
 
+**DNS is in this class as of the removal of the `sport == 53` pass** from
+`nhp_ebpf_xdp.c` (that rule admitted any datagram sent from udp/53, from
+anyone, ahead of every whitelist — it identified no resolver, only a sender
+that typed 53). DNS answers are now admitted the way the AC's other client
+traffic is, from the EGRESS `conn_track` entry the query left behind, so what
+matters is the port the query went out **from**:
+
+- a stub resolver — glibc's, `systemd-resolved` — takes a kernel-assigned
+  ephemeral port and is covered, which is the demo AC's case (the VPC
+  resolver is reached through the stub);
+- a **recursive resolver running on the AC itself** that randomises its own
+  outgoing port across 1024–65535 is not. BIND's `use-v4-udp-ports` defaults
+  to `range 1024 65535` and Unbound can be configured the same way, so
+  roughly half of its upstream answers land on a low source port with no
+  entry to be admitted from. The symptom is intermittent SERVFAIL and
+  resolution timeouts rather than a clean failure, which is why it is called
+  out here: narrow its outgoing range to the ephemeral one (BIND
+  `use-v4-udp-ports { range 32768 60999; };`), or apply fix 1 or 3 below.
+
 Symptom: the AC's outbound UDP request is on the wire (`tcpdump -ni any udp`
 shows it leaving) but the reply never reaches the process, and the peer's
 address shows up in the deny log. Fixes, in order of preference:

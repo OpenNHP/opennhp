@@ -580,10 +580,12 @@ int xdp_server_prog(struct xdp_md *ctx) {
              * the socket lookup finds nothing, or finds something
              * indistinguishable from a listener. Dropping it is terminal for
              * the lease and takes the host off every port once the lease
-             * expires. Admitted by port pair instead, as the AC's program has
-             * always done it (`DHCP_PORT_R || DHCP_PORT_O` in
-             * nhp/ebpf/xdp/nhp_ebpf_xdp.c); the pair is narrow enough that a
-             * neighbour's broadcast DHCPDISCOVER to udp/67 is still dropped.
+             * expires. Admitted by port pair instead, which is also what the
+             * AC's program does now (nhp/ebpf/xdp/nhp_ebpf_xdp.c -- it used to
+             * test the destination port alone, `DHCP_PORT_R || DHCP_PORT_O`,
+             * and that shape is the bypass fixed there); the pair is narrow
+             * enough that a neighbour's broadcast DHCPDISCOVER to udp/67 is
+             * still dropped.
              * Reported per packet -- a renewal is a few datagrams an hour, and
              * it is the line an operator wants. See "Why each rule is there"
              * in terraform/demo/RUNBOOK.md for the outage behind this. */

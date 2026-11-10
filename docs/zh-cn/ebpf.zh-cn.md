@@ -322,17 +322,23 @@ AC 的职责不同：它才是那个在敲门被授权时真正*打开*受保护
 frame
  │
  ├─ ethertype
- │    ├─ ARP / IPv6              → PASS   (the AC does not filter IPv6 at all)
+ │    ├─ ARP                     → PASS   (the AC does not answer ARP itself)
+ │    ├─ IPv6                   → handle_ipv6()   [see below]
  │    ├─ IPv4                   → continue
  │    └─ otherwise              → DROP
  │
  ├─ iph->ihl < 5                → DROP   (not recorded)
  │
+ ├─ non-first IPv4 fragment     → PASS   (inert: it carries no L4 header to judge)
+ │
  ├─ TCP to dport 22             → PASS   (SSH to the AC is never knock-gated)
- ├─ UDP to dport 67 or 68, or with source port 53  → PASS   (DHCP and DNS replies — unconditionally, before any whitelist or conn_track lookup)
+ ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair, before any whitelist or conn_track lookup)
+ ├─ UDP 123 → 123 (NTP)         → PASS   (the chrony answer, by port pair — the same two exceptions the nhp-server's filter makes)
  │
  ├─ ICMP
- │    ├─ echo reply (type 0 code 0)   → PASS
+ │    ├─ echo reply (type 0 code 0)
+ │    │    ├─ the AC pinged that peer and this is the answer → PASS   (the `icmp_echo` record tc_egress.c wrote)
+ │    │    └─ otherwise         → the icmpwhitelist entry below decides it
  │    ├─ echo request (type 8 code 0)
  │    │    ├─ no icmpwhitelist entry → DROP
  │    │    ├─ entry expired           → DROP   (the entry is deleted)
@@ -354,8 +360,21 @@ frame
  │    └─ protocol_port(port + protocol)
  │         └─ yes, and not expired → PASS   (and the flow is recorded)
  │
+ ├─ UDP flow the kernel's socket table says belongs to a socket of the host's
+ │    └─ yes                  → PASS   (the backstop for a socket bound to a fixed port)
+ │
  └─ otherwise                   → DROP
 ```
+
+DHCP 和 NTP 是这里仅有的两个 UDP 例外，并且都是按 **端口对**（67 → 68 和 123 → 123）匹配的。源端口由发送方自己决定，证明不了任何事；这个分支以前还会放行任意来源的 `dport == 67 || dport == 68`，以及——更糟的——任何 `sport == 53` 的报文，而且都发生在 conn_track 和全部白名单**之前**。后者意味着任何从 udp/53 发出的报文都能打到 AC 保护的任意 UDP 端口（DNS、QUIC/HTTP3、WireGuard、游戏服务等），完全不需要敲门。
+
+这两个端口对和 nhp-server 自己的过滤器所放行的是同两个，理由在两台主机上也一样：应答落在内核无法与监听 socket 区分开的那个 socket 上。chronyd 是从它自己*绑定*在 udp/123 的 socket 发出轮询的，所以应答（123 → 123）看上去和一次主动查询一模一样；丢掉它损失的是时钟而不是地址，但敲门报文的时间戳正是拿时钟来比对的。DHCP 的应答更糟：它落在一个仅仅*绑定*在 udp/68 的 socket 上，主机丢了租约就等于丢了上面的每一个端口。
+
+DNS 不需要专门的例外：AC 的查询从 `tc_egress.c` 所挂的同一个网卡发出，应答由下面的反向分支凭它留下的 EGRESS 条目放行。这对**源端口**被 gate 3 接受的查询成立——也就是 ephemeral 端口，stub 解析器（glibc、systemd-resolved）用的就是它。**跑在 AC 上**、并且把出站端口随机化到 1024–65535 的递归解析器（BIND 的 `use-v4-udp-ports` 默认值）则落在和 AC 上其它固定低端口 UDP 客户端同一条限制里：见 `terraform/demo/RUNBOOK.md` 的 *Known limitation: fixed low UDP source ports*。
+
+IPv6 是用自己的一棵树（`handle_ipv6()`）过滤的，而不是直接放行。演示主机今天没有 v6 地址，而这恰恰是那个放行危险的地方：一旦 VPC 里加进一个 v6 CIDR，每一个 v6 监听端口——尤其是 sshd 的 `[::]:22`——都会在部署的"过滤器已挂载"检查依然是绿的情况下被无过滤地触达。v6 那棵树放行 ICMPv6 的 "packet too big" 和 ND/MLD 那一段、这两个端口对的 v6 写法（DHCPv6 547 → 546 和 NTPv6 123 → 123），以及主机自己发起的流的应答（`has_local_flow6()`）；其余一律丢弃。v6 这棵树需要自己的端口对，是因为没有 v6 的 conn_track 可以凭它放行租约和 NTP 应答——`tc_egress.c` 只处理 IPv4——白名单也都是 IPv4 的表，所以不会有任何 v6 报文被白名单放行。
+
+ICMP 的应答只按两个理由之一放行：那个对端为 ICMP 访问敲过门（下面那个白名单条目，现在两个方向都由它决定），或者 AC 自己 ping 过那个对端、而这就是那条应答——`tc_egress.c` 在请求发出去时写下的 `icmp_echo` 条目，键是对端地址和报文上的标识符，过期时间是 `NHP_ICMP_ECHO_TTL_NS`。这个应答以前是无条件放行的、来自任何地方，在安全组对全网开放时那是一条通往主机的常设旁路。AC 上的 `ping` 现在仍然可用，而这也是检查 AC 自身可达性的办法。
 
 每个白名单条目都带一个过期时间，而过期的条目会在某个报文发现它时**被删除**——于是一个已经跑完的条目立刻不再放行流量。
 

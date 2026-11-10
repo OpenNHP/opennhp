@@ -6,6 +6,8 @@
 *.dylib
 # Compiled Go plugin binaries (examples)
 examples/server_plugin/basic/basic
+examples/server_plugin/authenticator/authenticator
+examples/server_plugin/oidc/oidc
 .*
 !.vitepress/
 !.github/
@@ -49,6 +51,8 @@ deploy/configs/
 # (web/dist is embedded by the Docker/CI build, not committed)
 demoapp/data/
 demoapp/web/dist/
+# `go build` output when run inside demoapp/
+demoapp/demoapp
 
 # DHP console bearer tokens generated at first start
 **/etc/console.token

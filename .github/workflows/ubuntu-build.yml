@@ -161,3 +161,101 @@ jobs:
         verbose: true
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # The kernel is the only thing that can accept or reject an eBPF object, and
+  # on the AC a rejected object is an outage: nhp-acd cannot start, the
+  # fail-closed backstop keeps tcp/443 shut, and the demo is dark. The build
+  # job above only proves the objects *compile*; this one proves the kernel
+  # *accepts* them, by loading all three the way the daemons load them and
+  # running them against packets.
+  #
+  # It runs as root, because a load without CAP_BPF is refused with EPERM and
+  # the load tests used to skip in that case -- which is exactly how a
+  # verifier rejection could reach a deploy unnoticed. The tests now fail
+  # instead of skipping when the process holds the privilege (see
+  # requireCaps in nhp/utils/ebpf/privileged_linux_test.go), so a rejected
+  # object fails this job with the verifier log in the output.
+  ebpf-verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.26'
+        cache-dependency-path: nhp/go.sum
+
+    - name: Install the eBPF toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang libbpf-dev
+        # bpftool is the kernel's own loader and prints the verifier log. It
+        # is not in every Ubuntu release's archive, so it is optional here:
+        # the load tests below exercise the same objects either way.
+        sudo apt-get install -y bpftool || \
+          echo "::notice::bpftool is not available on this runner; the load tests below are the gate"
+
+    - name: Build the eBPF objects
+      run: make ebpf-objs
+
+    # The programs are loaded, not attached, but a load still needs a bpffs to
+    # pin the maps into.
+    - name: Mount bpffs
+      run: sudo mountpoint -q /sys/fs/bpf || sudo mount -t bpf bpf /sys/fs/bpf
+
+    - name: Load every object with bpftool
+      run: |
+        set -euo pipefail
+        if ! command -v bpftool >/dev/null 2>&1 && [ ! -x /usr/sbin/bpftool ]; then
+          echo "::notice::bpftool is not installed; skipping the bpftool load"
+          exit 0
+        fi
+        load() {
+          local obj="$1" name="$2"
+          echo "::group::$obj"
+          # A pin directory of its own, so this load cannot touch the pins a
+          # running daemon owns. `prog loadall` takes a directory: the
+          # programs and the maps are pinned inside it.
+          sudo rm -rf "/sys/fs/bpf/nhp-verify/$name"
+          sudo mkdir -p "/sys/fs/bpf/nhp-verify/$name"
+          sudo bpftool prog loadall "$obj" "/sys/fs/bpf/nhp-verify/$name"
+          sudo rm -rf "/sys/fs/bpf/nhp-verify/$name"
+          echo "::endgroup::"
+        }
+        load release/nhp-ac/etc/nhp_ebpf_xdp.o ac-xdp
+        load release/nhp-ac/etc/tc_egress.o ac-tc
+        load release/nhp-server/etc/nhp_server_xdp.o server-xdp
+
+    - name: Run the eBPF tests with CAP_BPF
+      working-directory: nhp
+      run: |
+        set -euo pipefail
+        go mod download
+        # Root holds CAP_BPF and CAP_NET_ADMIN, so the load tests do not skip:
+        # a kernel that refuses one of the objects fails the job here, with
+        # the verifier log in the output.
+        sudo env "PATH=$PATH" "HOME=/root" \
+          "GOCACHE=$(go env GOCACHE)" "GOMODCACHE=$(go env GOMODCACHE)" \
+          go test ./utils/ebpf/... -v -count=1 2>&1 | tee /tmp/ebpf-tests.log
+        # A load test that skipped proved nothing: this job exists to have the
+        # kernel accept the objects, so the tests that load them have to have
+        # run and passed. (Other tests may skip for an unrelated reason --
+        # a socket the runner will not let us bind -- so only these are
+        # required.)
+        for t in \
+          TestAcFilterAnswersTheHostsOwnPings \
+          TestAcEgressProgramRecordsTheHostsOwnFlow \
+          TestAcFilterKeepsTheKnockedEchoReply \
+          TestAcFilterAdmitsDespiteALapsedPortScopedKnock \
+          TestServerEngineLoadAttachesToLoopback
+        do
+          if ! grep -q -- "--- PASS: $t" /tmp/ebpf-tests.log; then
+            echo "::error::$t did not run and pass; the objects were not exercised"
+            exit 1
+          fi
+        done
+        # Anything else that skipped is worth seeing, but it is not this
+        # job's business.
+        grep -- '--- SKIP' /tmp/ebpf-tests.log || true

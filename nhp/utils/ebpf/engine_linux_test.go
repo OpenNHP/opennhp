@@ -57,7 +57,7 @@ func newRelayMapSized(t *testing.T, maxEntries uint32) *ebpf.Map {
 		Flags:      unix.BPF_F_NO_PREALLOC,
 	})
 	if err != nil {
-		t.Skipf("cannot create BPF map (needs CAP_BPF): %v", err)
+		requireCaps(t, err, "creating a BPF map", capBPF)
 	}
 	t.Cleanup(func() { m.Close() })
 	return m
@@ -336,7 +336,7 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 		RelayIPs: []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -410,7 +410,7 @@ func TestServerFilterPassesClientRepliesAndDropsUnsolicited(t *testing.T) {
 		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -505,7 +505,7 @@ func TestServerFilterFiltersIPv6(t *testing.T) {
 		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -738,7 +738,7 @@ func TestServerFilterKnocksOnTheConfiguredPort(t *testing.T) {
 		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -823,7 +823,7 @@ func TestServerEngineLoadLeavesNothingBehindOnFailure(t *testing.T) {
 		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	_ = h
 	CleanupBPFFiles(VariantServer)
@@ -880,7 +880,7 @@ func TestServerEngineLoadRefusesAnUnusableWhitelist(t *testing.T) {
 		NhpMinFrameBytes: 240,
 		RelayIPs:         []string{"127.0.0.1"},
 	}); err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	CleanupBPFFiles(VariantServer)
 

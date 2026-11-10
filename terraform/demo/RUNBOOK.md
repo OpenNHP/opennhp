@@ -1043,6 +1043,55 @@ readelf --version-info ./nhp-serverd | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tai
 ./scripts/check-glibc-compat.sh 2.34 ./nhp-serverd
 ```
 
+## The kernel's verdict on a new eBPF object
+
+Compiling an eBPF object proves nothing about it: the kernel's verifier decides
+whether a program is loadable at all, and it can say no to a program that
+compiled without a warning (an instruction or complexity limit, a helper the
+program type does not allow, a stack frame the verifier will not accept).
+
+On the AC a refused object is an outage — `nhp-acd` cannot start, the
+fail-closed backstop keeps tcp/443 shut, and the demo is dark — and on the
+server it is a silent loss of protection, because `nhp-serverd` falls open. So
+two gates answer the question before a deploy can act on it:
+
+1. **Every PR**: the `ebpf-verifier` job in `.github/workflows/ubuntu-build.yml`
+   builds the three objects and loads them into the runner's kernel — once with
+   `bpftool`, which prints the verifier log, and once through the Go load
+   tests in `nhp/utils/ebpf/acxdp_linux_test.go`, which run the programs
+   against packets. The job runs as root, because a load without CAP_BPF is
+   refused with EPERM and the tests used to *skip* in that case — which is
+   exactly how a verifier rejection could reach a deploy unnoticed. They now
+   fail instead of skipping when the process holds the privilege
+   (`requireCaps` in `nhp/utils/ebpf/privileged_linux_test.go`).
+
+2. **Every deploy**: `deploy-demo-v2` loads the new objects on the host with
+   `bpftool`, on the AL2023 kernel the demo actually runs, *before* it stops
+   the running daemon. The program is never attached and it is loaded under a
+   pin path of its own, so the running filter is untouched; a refusal aborts
+   the deploy with the service still up. AL2023 carries `bpftool` in its core
+   repository (`bpftool6.12` matches the kernel the AC runs).
+
+Checking it by hand, on a demo host, against an object you have just built:
+
+```bash
+# the script is the manual form of the deploy's gate: it loads the object,
+# never attaches it, and removes its pins again
+./scripts/check-ebpf-verifier.sh release/nhp-ac/etc/nhp_ebpf_xdp.o
+
+# what it does, if you would rather run it by hand
+sudo dnf install -y bpftool6.12        # or bpftool, for the default kernel
+sudo mkdir -p /sys/fs/bpf/nhp-verify
+sudo bpftool prog loadall ./nhp_ebpf_xdp.o /sys/fs/bpf/nhp-verify/ac-xdp
+sudo rm -rf /sys/fs/bpf/nhp-verify
+```
+
+A refusal prints the verifier's log: the number of instructions the program
+reached, the branch it could not follow, the helper it may not call. Read it
+before changing anything else — the usual causes are a program that grew past
+what the kernel accepts and a helper that XDP (or the TC egress hook) does
+not allow.
+
 ## nhp-server ingress filter (XDP)
 
 `nhp-serverd` attaches `nhp_server_xdp.o` at startup and drops everything at

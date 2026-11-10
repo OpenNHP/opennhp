@@ -401,6 +401,35 @@ so a mismatch fails `build` and no deploy job stops anything. The eBPF objects
 are BPF bytecode with no libc in them and are still compiled on the runner.
 Raise `TARGET_GLIBC` only when the demo AMI itself moves.
 
+#### The kernel's verdict on a new eBPF object
+
+Compiling an eBPF object proves nothing about it: the kernel's verifier
+decides whether a program is loadable at all, and it can refuse a program
+that compiled without a warning (an instruction or complexity limit, a helper
+the program type does not allow). On the AC a refused object is an outage —
+`nhp-acd` cannot start, the fail-closed backstop keeps tcp/443 shut — and on
+the server it is a silent loss of protection, because `nhp-serverd` falls
+open. Two gates answer the question before anything acts on it:
+
+- **Every PR**: the `ebpf-verifier` job in `.github/workflows/ubuntu-build.yml`
+  builds the three objects and loads them into the runner's kernel — with
+  `bpftool`, which prints the verifier log, and through the Go load tests,
+  which run the programs against packets. It runs as root: a load without
+  CAP_BPF is refused with EPERM, and the load tests used to *skip* in that
+  case, which is exactly how a verifier rejection could reach a deploy
+  unnoticed. They now fail instead of skipping when the process holds the
+  privilege (`requireCaps` in `nhp/utils/ebpf/privileged_linux_test.go`).
+- **Every deploy**: `deploy-demo-v2` loads the new objects on the host with
+  `bpftool`, on the AL2023 kernel the demo runs, *before* it stops the running
+  daemon. The programs are never attached and are loaded under a pin path of
+  their own, so the running filter is untouched; a refusal aborts the deploy
+  with the service still up.
+
+AL2023 carries `bpftool` in its core repository (`bpftool6.12` matches the
+kernel the AC runs). The manual equivalent is in
+[terraform/demo/RUNBOOK.md](terraform/demo/RUNBOOK.md) under *The kernel's
+verdict on a new eBPF object*.
+
 #### nhp-server eBPF/XDP ingress filter
 
 `nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces

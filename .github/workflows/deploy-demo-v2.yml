@@ -1215,6 +1215,39 @@ jobs:
           ssh nhp-server "sudo mkdir -p /opt/confidential-containers/kbs/repository/default/cosign-key && \
             sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} /opt/confidential-containers"
 
+          # The kernel's verifier is the only thing that can reject the new
+          # object, and the server's failure direction is open: nhp-serverd
+          # falls back to no filter at all rather than refusing to start, so a
+          # rejected object would leave the host with the exposure it had
+          # before the filter existed -- under a deploy that reported success.
+          #
+          # So the object is loaded on the host, on the AL2023 kernel the demo
+          # actually runs, before the running daemon is stopped. bpftool is
+          # the kernel's own loader and prints the verifier log. The program
+          # is never attached, it is loaded under a pin path of its own, and
+          # the pins are removed again right after, so the running filter is
+          # untouched.
+          echo "Checking that the kernel accepts the new server eBPF object..."
+          if ! ssh nhp-server "sudo sh -c 'command -v bpftool' >/dev/null 2>&1 || sudo dnf install -y bpftool6.12 </dev/null || sudo dnf install -y bpftool </dev/null"; then
+            echo "ERROR: bpftool is not available on the server host, so the"
+            echo "       kernel's verdict cannot be asked for. Nothing was"
+            echo "       stopped; install bpftool and re-run the deploy."
+            exit 1
+          fi
+          scp ./artifact/server/etc/nhp_server_xdp.o nhp-server:/tmp/nhp-verify-xdp.o
+          if ! ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify && sudo mkdir -p /sys/fs/bpf/nhp-verify && sudo bpftool prog loadall /tmp/nhp-verify-xdp.o /sys/fs/bpf/nhp-verify/server-xdp"; then
+            ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o" || true
+            echo "ERROR: the kernel refused the new server eBPF object."
+            echo "       Nothing was stopped: the running nhp-serverd and its"
+            echo "       filter are untouched, and the deploy is aborted here."
+            echo "       The verifier log is above. The usual causes are a"
+            echo "       program the kernel does not accept (an instruction or"
+            echo "       complexity limit, a helper XDP does not allow) and a"
+            echo "       mismatch between the object and the loader."
+            exit 1
+          fi
+          ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o"
+
           echo "Stopping nhp-serverd..."
           ssh nhp-server "sudo systemctl stop nhp-serverd || true"
 
@@ -2564,6 +2597,39 @@ jobs:
                 echo "WARNING: could not reinstall the backstop - tcp/$BACKSTOP_PORTS may be open"
             fi
           }
+
+          # The kernel's verifier is the only thing that can reject the new
+          # objects, and on the AC a rejected object is an outage: nhp-acd
+          # cannot start, the fail-closed backstop keeps tcp/443 shut, and the
+          # demo is dark. So both objects are loaded on the host, on the
+          # AL2023 kernel the demo actually runs, before the running daemon
+          # is stopped. bpftool is the kernel's own loader and prints the
+          # verifier log. The programs are never attached, they are loaded
+          # under a pin path of their own, and the pins are removed again
+          # right after, so the running filter is untouched.
+          if [ "$FILTER_MODE" = "1" ]; then
+            echo "Checking that the kernel accepts the new eBPF objects..."
+            if ! ssh nhp-ac "sudo sh -c 'command -v bpftool' >/dev/null 2>&1 || sudo dnf install -y bpftool6.12 </dev/null || sudo dnf install -y bpftool </dev/null"; then
+              echo "ERROR: bpftool is not available on the AC host, so the"
+              echo "       kernel's verdict cannot be asked for. Nothing was"
+              echo "       stopped; install bpftool and re-run the deploy."
+              exit 1
+            fi
+            scp ./artifact/ac/etc/nhp_ebpf_xdp.o nhp-ac:/tmp/nhp-verify-xdp.o
+            scp ./artifact/ac/etc/tc_egress.o nhp-ac:/tmp/nhp-verify-tc.o
+            if ! ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify && sudo mkdir -p /sys/fs/bpf/nhp-verify && sudo bpftool prog loadall /tmp/nhp-verify-xdp.o /sys/fs/bpf/nhp-verify/ac-xdp && sudo bpftool prog loadall /tmp/nhp-verify-tc.o /sys/fs/bpf/nhp-verify/ac-tc"; then
+              ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o" || true
+              echo "ERROR: the kernel refused one of the new eBPF objects."
+              echo "       Nothing was stopped: the running nhp-acd and its"
+              echo "       filter are untouched, and the deploy is aborted here."
+              echo "       The verifier log is above. The usual causes are a"
+              echo "       program the kernel does not accept (an instruction or"
+              echo "       complexity limit, a helper XDP does not allow) and a"
+              echo "       mismatch between the object and the loader."
+              exit 1
+            fi
+            ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o"
+          fi
 
           echo "Stopping nhp-acd..."
           ssh nhp-ac "sudo systemctl stop nhp-acd || true"

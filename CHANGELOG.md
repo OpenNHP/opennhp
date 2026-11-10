@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* **ci,deploy:** a new eBPF object is now loaded into a real kernel before anything acts on it.
+  Compiling an object proves nothing about it — the kernel's verifier decides whether a program is loadable, and on the AC a refused object is an outage (`nhp-acd` cannot start and the fail-closed backstop keeps tcp/443 shut), while on the server it is a silent loss of protection (`nhp-serverd` falls open).
+  Two gates answer the question: every PR runs the `ebpf-verifier` job, which loads the three objects into the runner's kernel and runs the programs against packets, and every demo deploy loads the new objects on the AL2023 host with `bpftool` before it stops the running daemon — a refusal aborts the deploy with the service still up.
+  The Go load tests no longer skip when a load fails while the process holds CAP_BPF: a verifier rejection is a failure, not a skip.
 * **ac:** the expired-knock grace no longer decides the verdict.
   A peer whose own port-scoped knock had just lapsed was locked out for the whole 60-second grace (`NHP_KNOCK_EXPIRED_GRACE_SEC`) of a port that a live `protocol_port` entry opens to everyone, and of a resource an `sdwhitelist` entry still covers: the grace ended in a drop of its own, before the other whitelists were consulted.
   The grace is a classification, not a verdict — the packet now goes on to the other whitelists, and only a packet that nothing admits is dropped as the expired knock it is.

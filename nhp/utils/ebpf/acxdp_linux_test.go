@@ -26,8 +26,11 @@ import (
 // instead -- and the reply is admitted on that record.
 //
 // These tests exercise the two programs against the kernel, with the real
-// object files, and skip when the objects are not built or the process has
-// no privilege to load them.
+// object files. They skip when the objects are not built, and when the process
+// has no privilege to load them -- but a load that fails *with* the privilege
+// is a failure, not a skip: see requireCaps in privileged_linux_test.go. A
+// program the verifier rejects is an outage on the AC, and a skip is how that
+// would otherwise reach a deploy unnoticed.
 
 // The verdicts the kernel returns, spelled out because x/sys/unix does not
 // carry them.
@@ -215,25 +218,28 @@ func closeObjects(v any) {
 func loadAcObjects(t *testing.T, pinDir string) (xdp *ebpf.Program, tc *ebpf.Program, maps *bpfObjects) {
 	t.Helper()
 
+	// Reading the object is not privileged: the file is right there (the path
+	// helper above skipped if it was not), so a failure here is a broken
+	// object, not a missing privilege, and it must not be skipped.
 	spec, err := ebpf.LoadCollectionSpec(acObjPath(t, "nhp_ebpf_xdp.o"))
 	if err != nil {
-		t.Skipf("cannot read the AC's XDP object: %v", err)
+		t.Fatalf("cannot read the AC's XDP object: %v", err)
 	}
 	tcSpec, err := ebpf.LoadCollectionSpec(acObjPath(t, "tc_egress.o"))
 	if err != nil {
-		t.Skipf("cannot read the AC's TC object: %v", err)
+		t.Fatalf("cannot read the AC's TC object: %v", err)
 	}
 
 	maps = &bpfObjects{}
 	opts := &ebpf.CollectionOptions{Maps: ebpf.MapOptions{PinPath: pinDir}}
 	if err := spec.LoadAndAssign(maps, opts); err != nil {
-		t.Skipf("cannot load the AC's XDP object (needs CAP_BPF): %v", err)
+		requireCaps(t, err, "loading the AC's XDP object", capBPF)
 	}
 	t.Cleanup(func() { closeObjects(maps) })
 
 	tcObjs := &tcBpfObjects{}
 	if err := tcSpec.LoadAndAssign(tcObjs, opts); err != nil {
-		t.Skipf("cannot load the AC's TC object (needs CAP_BPF): %v", err)
+		requireCaps(t, err, "loading the AC's TC object", capBPF)
 	}
 	t.Cleanup(func() { closeObjects(tcObjs) })
 
@@ -245,7 +251,7 @@ func runProgram(t *testing.T, prog *ebpf.Program, pkt []byte) uint32 {
 	t.Helper()
 	ret, _, err := prog.Test(pkt)
 	if err != nil {
-		t.Skipf("cannot run the program against a packet (needs CAP_BPF): %v", err)
+		requireCaps(t, err, "running the AC's program against a packet", capBPF)
 	}
 	return ret
 }

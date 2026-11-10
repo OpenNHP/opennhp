@@ -1,16 +1,16 @@
 module github.com/OpenNHP/opennhp/demoapp
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/gin-contrib/sessions v1.1.2
+	github.com/gin-contrib/sessions v1.1.3
 	github.com/gin-gonic/gin v1.12.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/crypto v0.58.0
-	golang.org/x/oauth2 v0.37.0
-	modernc.org/sqlite v1.61.0
+	golang.org/x/oauth2 v0.38.0
+	modernc.org/sqlite v1.61.1
 )
 
 require (

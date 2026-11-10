@@ -1187,6 +1187,20 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     //Lookup protocol_port entry
     struct protocol_port_value *pp_val= bpf_map_lookup_elem(&protocol_port, &pp_key);
 
+    /* Did this packet hit a port-scoped whitelist entry whose window had
+     * closed but whose grace has not run out?
+     *
+     * The grace is a classification and not a verdict: the entry is held for
+     * the window so the peer's late packets are not counted as a scan, but
+     * the packet still goes to the maps below, which may admit it. A peer
+     * whose own port-scoped knock has lapsed may still be covered by a live
+     * entry in one of them -- a protocol_port entry says anyone may use that
+     * port, an sdwhitelist entry covers the peer whatever it sends -- and
+     * dropping it here would lock it out of a port it is entitled to for the
+     * length of the grace. Only if nothing admits the packet does the grace
+     * decide anything, and then only what the packet is called. */
+    bool expired_in_grace = false;
+
     if (w_val) {
         __u64 expire_time = w_val->expire_time;
         if (expire_time < now) {
@@ -1207,16 +1221,15 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
              * in the scan classes, which put the authorised peer's address
              * and country into the published attacker totals. */
             if (knock_within_grace(expire_time, now)) {
-                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
-                return XDP_DROP;
+                expired_in_grace = true;
+            } else {
+                /* The grace is over: the peer is an unknown source to a port
+                 * that is no longer open. Forget it and judge the packet as
+                 * that. */
+                bpf_map_delete_elem(&spp, &key);
+                return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
             }
-            /* The grace is over: the peer is an unknown source to a port
-             * that is no longer open. Forget it and judge the packet as
-             * that. */
-            bpf_map_delete_elem(&spp, &key);
-            return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
-        }
-        if (w_val->allowed == 1) {
+        } else if (w_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
@@ -1247,15 +1260,16 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         if (expire_time < now) {
             /* The grace, as in the branch above: this entry is keyed on the
              * peer and the port, so holding it holds that peer's traffic to
-             * that port and nothing else. */
+             * that port and nothing else. The packet goes on to the maps
+             * below: the grace says what the packet is called, not whether it
+             * is let in. */
             if (knock_within_grace(expire_time, now)) {
-                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
-                return XDP_DROP;
+                expired_in_grace = true;
+            } else {
+                bpf_map_delete_elem(&src_port, &spkey);
+                return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
             }
-            bpf_map_delete_elem(&src_port, &spkey);
-            return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
-        }
-        if (sp_val->allowed == 1) {
+        } else if (sp_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
@@ -1265,13 +1279,12 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         if (expire_time < now) {
             /* The grace again: keyed on the peer and a port range. */
             if (knock_within_grace(expire_time, now)) {
-                record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
-                return XDP_DROP;
+                expired_in_grace = true;
+            } else {
+                bpf_map_delete_elem(&port_list, &pl_key);
+                return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
             }
-            bpf_map_delete_elem(&port_list, &pl_key);
-            return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
-        }
-        if (pl_val->allowed == 1) {
+        } else if (pl_val->allowed == 1) {
             return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
@@ -1312,6 +1325,16 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     /* No whitelist admitted the packet. Which class it is depends on what the
      * packet was trying to do; either way it is dropped. */
+    if (expired_in_grace) {
+        /* The packet hit a port-scoped entry whose window had closed, and no
+         * live entry took it: it is the tail of an authorised session that
+         * came back too late, and it is classified as that rather than as a
+         * scan. drop=false, for the reason the class has always had -- an
+         * expired knock is not an attack, and counting it would put an
+         * authorised peer's address into the published attacker totals. */
+        record_event(ctx, ACT_AC_DROP_KNOCK_EXPIRED, iph, ct_key.sport, ct_key.dport, 0, true, false);
+        return XDP_DROP;
+    }
     return reject_unadmitted(ctx, iph, ct_key.sport, ct_key.dport, is_syn, is_ack, is_rst);
 }
 

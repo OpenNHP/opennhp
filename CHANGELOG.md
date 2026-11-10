@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* **ac:** the expired-knock grace no longer decides the verdict.
+  A peer whose own port-scoped knock had just lapsed was locked out for the whole 60-second grace (`NHP_KNOCK_EXPIRED_GRACE_SEC`) of a port that a live `protocol_port` entry opens to everyone, and of a resource an `sdwhitelist` entry still covers: the grace ended in a drop of its own, before the other whitelists were consulted.
+  The grace is a classification, not a verdict — the packet now goes on to the other whitelists, and only a packet that nothing admits is dropped as the expired knock it is.
 * **demo:** the stats site's deploy no longer depends on the AC's deploy succeeding.
   The collector already tolerates a source it cannot list, so a failed AC deploy now leaves the server's own data published instead of blocking the whole site.
 

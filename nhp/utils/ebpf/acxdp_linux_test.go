@@ -109,6 +109,21 @@ func icmpEchoPacket(src, dst net.IP, typ uint8, id uint16) []byte {
 	return append(pkt, echo...)
 }
 
+// tcpSynPacket builds a whole Ethernet/IPv4/TCP frame carrying a pure SYN: a
+// peer asking to open a connection.
+//
+// The flags live in the byte after the data offset (SYN is 0x02), which is the
+// layout both the program and the kernel read.
+func tcpSynPacket(src, dst net.IP, sport, dport uint16) []byte {
+	tcp := make([]byte, 20)
+	binary.BigEndian.PutUint16(tcp[0:2], sport)
+	binary.BigEndian.PutUint16(tcp[2:4], dport)
+	tcp[12] = 5 << 4 // data offset: 5 words, no options
+	tcp[13] = 0x02   // SYN
+	pkt := append(testEth(src, dst), testIPv4(src, dst, 6, len(tcp))...)
+	return append(pkt, tcp...)
+}
+
 // ---- the maps, as Go sees them ----
 
 // wireIP and wirePort put a number into the form the eBPF maps use: the raw
@@ -420,5 +435,93 @@ func TestAcFilterKeepsTheKnockedEchoReply(t *testing.T) {
 	stranger := icmpEchoPacket(net.IPv4(10, 0, 0, 9), host, 0, 0x4321)
 	if ret := runProgram(t, xdpProg, stranger); ret != xdpDrop {
 		t.Errorf("a reply from a peer that never knocked was admitted (XDP %d)", ret)
+	}
+}
+
+// A lapsed port-scoped knock must not lock a peer out of a port that is open
+// to everyone.
+//
+// The grace on an expired knock is a classification, not a verdict. The entry
+// is held for the window so that the peer's late packets -- the retransmitted
+// segment, the late FIN -- are not counted as a scan, but the packet still
+// goes to the other whitelists, and one of them may admit it. A
+// protocol_port entry says anyone may use that port, so the peer that knocked
+// for it a moment ago is still entitled to it: dropping its packets for the
+// length of the grace locks it out of a port every other source can use.
+//
+// Before the fix the grace ended in a drop of its own, before the later maps
+// were consulted, so the peer was locked out for the whole window.
+//
+// The second half of the check is the other direction: the grace must not
+// become a way in. A peer whose only entry has lapsed, and whose port is not
+// open to anyone, is still dropped.
+func TestAcFilterAdmitsDespiteALapsedPortScopedKnock(t *testing.T) {
+	pinDir := testPinDir(t)
+	xdpProg, _, maps := loadAcObjects(t, pinDir)
+
+	host := net.IPv4(10, 0, 0, 1)
+	peer := net.IPv4(10, 0, 0, 2)
+	const openPort = 8443
+	const closedPort = 9443
+
+	// The clock the program compares against: bpf_ktime_get_ns(), i.e.
+	// CLOCK_MONOTONIC.
+	now, err := getBootTimeNanos()
+	if err != nil {
+		t.Skipf("cannot read the monotonic clock: %v", err)
+	}
+
+	// The peer's own port-scoped knock, one second past its window: expired,
+	// but not so long ago that the grace is over.
+	lapsed := whitelistValue{
+		Allowed:    1,
+		ExpireTime: now - uint64(time.Second),
+	}
+	sppKey := whitelistKey{
+		SrcIP:    wireIP(peer),
+		DstIP:    wireIP(host),
+		DstPort:  openPort,
+		Protocol: 6,
+	}
+	if err := maps.Whitelist.Put(sppKey.ToWlKey(), lapsed); err != nil {
+		t.Skipf("cannot write the whitelist: %v", err)
+	}
+	// A second lapsed knock, for a port nothing opens.
+	closedKey := whitelistKey{
+		SrcIP:    wireIP(peer),
+		DstIP:    wireIP(host),
+		DstPort:  closedPort,
+		Protocol: 6,
+	}
+	if err := maps.Whitelist.Put(closedKey.ToWlKey(), lapsed); err != nil {
+		t.Skipf("cannot write the whitelist: %v", err)
+	}
+
+	// And the port itself is open to anyone.
+	ppKey := procoPortKey{
+		DstPort:  wirePort(openPort),
+		Protocol: 6,
+	}
+	if err := maps.Protocolport.Put(ppKey.ToPpKey(), procoPortValue{
+		Allowed:    1,
+		ExpireTime: now + uint64(time.Minute),
+	}); err != nil {
+		t.Skipf("cannot write the protocol_port whitelist: %v", err)
+	}
+
+	// The peer opens a connection to the open port: the live protocol_port
+	// entry admits it, whatever the state of its own knock.
+	syn := tcpSynPacket(peer, host, 40000, openPort)
+	if ret := runProgram(t, xdpProg, syn); ret != xdpPass {
+		t.Errorf("the connection to a port that is open to everyone was dropped (XDP %d); "+
+			"the grace on the peer's lapsed knock must not decide the verdict", ret)
+	}
+
+	// The same peer to a port nothing opens: the lapsed knock is all it has,
+	// and the grace is a classification, not an admission.
+	closed := tcpSynPacket(peer, host, 40001, closedPort)
+	if ret := runProgram(t, xdpProg, closed); ret != xdpDrop {
+		t.Errorf("a connection to a port nothing opens was admitted (XDP %d); "+
+			"the grace must not turn a lapsed knock into a way in", ret)
 	}
 }

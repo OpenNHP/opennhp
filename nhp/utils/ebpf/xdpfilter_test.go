@@ -459,6 +459,92 @@ func TestLapsedKnocksKeepTheirGrace(t *testing.T) {
 	}
 }
 
+// TestTheExpiredKnockGraceIsNotAVerdict pins that the grace on a lapsed
+// port-scoped knock decides what a packet is *called*, not whether it is let
+// in.
+//
+// The grace was added for telemetry: a peer whose knock window closed is a
+// legitimate peer that came back too late, and its late packets must not be
+// counted as a scan. Holding the entry for the window does that. But the
+// grace used to end in a drop of its own, before the maps below were
+// consulted -- so a peer whose own port-scoped knock had just lapsed was
+// locked out of a port that a live entry opens to everyone (a protocol_port
+// entry says anyone may use that port), and out of a resource an
+// sdwhitelist entry still covers, for the whole window.
+//
+// The shape that is right: the grace remembers that the packet hit a lapsed
+// entry and lets it go on to the other maps, and the verdict at the end of
+// the program is the one that calls the packet an expired knock.
+func TestTheExpiredKnockGraceIsNotAVerdict(t *testing.T) {
+	text := acIngressSource(t)
+
+	for _, m := range []struct {
+		mapName string
+		val     string
+	}{
+		{"spp", "w_val"},
+		{"src_port", "sp_val"},
+		{"port_list", "pl_val"},
+	} {
+		del := "bpf_map_delete_elem(&" + m.mapName + ","
+		delAt := strings.Index(text, del)
+		if delAt < 0 {
+			t.Errorf("the %s entry is never deleted", m.mapName)
+			continue
+		}
+		graceAt := strings.LastIndex(text[:delAt], "if (knock_within_grace(")
+		if graceAt < 0 {
+			t.Errorf("the %s entry has no grace", m.mapName)
+			continue
+		}
+		branch := text[graceAt:delAt]
+
+		if strings.Contains(branch, "return ") {
+			t.Errorf("the %s branch returns from inside the grace; the grace is a classification, "+
+				"and a packet that a later whitelist admits must not be dropped here", m.mapName)
+		}
+		if !strings.Contains(branch, "expired_in_grace = true;") {
+			t.Errorf("the %s branch does not remember that the packet hit a lapsed entry; "+
+				"the verdict at the end of the program cannot tell it from a scan", m.mapName)
+		}
+
+		// And an entry that has run out must not admit anything on its own:
+		// the "allowed" test has to sit in the other arm of the expiry.
+		//
+		// The word boundary matters: the ICMP branch reads its own value
+		// through `iw_val`, which ends in the same letters.
+		admit := regexp.MustCompile(`\b` + m.val + `->allowed == 1`).FindStringIndex(text)
+		if admit == nil {
+			t.Errorf("the %s entry has no admission test of its own", m.mapName)
+			continue
+		}
+		branchAt := strings.LastIndex(text[:admit[0]], "if (expire_time < now) {")
+		if branchAt < 0 {
+			t.Errorf("the %s branch has no expiry test of its own", m.mapName)
+			continue
+		}
+		if !strings.Contains(text[branchAt:admit[0]], "} else") {
+			t.Errorf("the %s entry is admitted even when it has expired; an entry that ran out "+
+				"admits nothing, whatever its allowed flag says", m.mapName)
+		}
+	}
+
+	// And the verdict at the end of the program is the one that calls such a
+	// packet the expired knock it is.
+	tailAt := strings.Index(text, "if (expired_in_grace)")
+	if tailAt < 0 {
+		t.Fatal("the verdict does not know about the lapsed entries the grace remembered")
+	}
+	tail := text[tailAt:]
+	if end := strings.Index(tail, "}"); end >= 0 {
+		tail = tail[:end]
+	}
+	if !strings.Contains(tail, "ACT_AC_DROP_KNOCK_EXPIRED") {
+		t.Errorf("a packet that hit a lapsed entry and was admitted by nothing else is not "+
+			"classified as the expired knock it is: %s", tail)
+	}
+}
+
 // TestClientProtocolPairsCanBeNarrowedBySource pins that the two UDP pairs
 // both filters admit -- the DHCP answer (67 -> 68) and the NTP answer
 // (123 -> 123) -- can be narrowed to the addresses the host's own servers

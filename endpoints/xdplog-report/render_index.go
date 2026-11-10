@@ -83,6 +83,15 @@ type indexPageData struct {
 	// upper bounds rather than exact counts: an address seen both in the
 	// live period and in one of those days is counted once in each.
 	BaselineFromSnapshot bool
+	// SnapshotBelowFloor is true when the history snapshot lists days the
+	// site does not publish, so its own count could not be applied: a
+	// snapshot-level total cannot be split by day. Those days contribute
+	// nothing to the two figures.
+	SnapshotBelowFloor bool
+	// TotalsLowerBound is true when a published day contributed no source or
+	// country data and nothing stood in for it. The two figures are then
+	// lower bounds rather than exact counts.
+	TotalsLowerBound bool
 }
 
 // renderIndex writes index.html, index.json, countup.js and totalnumber.js
@@ -185,6 +194,8 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, bas
 		TotalCountries:       totalCountries,
 		HasHistory:           hasHistory,
 		BaselineFromSnapshot: baseline.Applied,
+		SnapshotBelowFloor:   baseline.Unavailable,
+		TotalsLowerBound:     baseline.LowerBound,
 	})
 }
 
@@ -306,6 +317,17 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 		b.WriteString("// Days whose per-day records are gone are covered by the snapshot's\n")
 		b.WriteString("// own count instead, which can count an address or a country seen in\n")
 		b.WriteString("// both periods twice: these two figures are upper bounds.\n")
+	}
+	if baseline.Unavailable {
+		b.WriteString("// The history snapshot lists days before the publishing floor, so\n")
+		b.WriteString("// its own count could not be applied: a snapshot-level total cannot\n")
+		b.WriteString("// be split by day. Those days contribute nothing to the two figures\n")
+		b.WriteString("// above.\n")
+	}
+	if baseline.LowerBound {
+		b.WriteString("// A published day whose per-day records are gone contributes no\n")
+		b.WriteString("// source or country data and nothing stands in for it: these two\n")
+		b.WriteString("// figures are lower bounds.\n")
 	}
 	if since != "" {
 		fmt.Fprintf(&b, "// Counting starts: %s (UTC).\n", since)
@@ -559,7 +581,8 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 Source IPs on the detail pages are <strong>not</strong> masked.
 {{end}}
 tcp/22 scans never reach the host's NIC and are not counted. During deploys or restarts the XDP filter is detached and the gap shows as missing minutes, not as zero attacks.
-{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and country totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own count stands in, which can count an address or a country seen in both periods twice: those two figures are upper bounds. {{end}}{{end}}
+{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and country totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own count stands in, which can count an address or a country seen in both periods twice: those two figures are upper bounds. {{end}}{{if .SnapshotBelowFloor}}The snapshot also lists days before the publishing floor, so its own count cannot be applied &mdash; a snapshot-level total cannot be split by day &mdash; and those days contribute nothing to the two figures. {{end}}{{end}}
+{{if .TotalsLowerBound}}A published day whose per-day records are gone contributes no source or country data, so the source IP and country totals are lower bounds. {{end}}
 </p>
 
 <h2>Daily index</h2>

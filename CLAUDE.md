@@ -536,6 +536,18 @@ published figures are then upper bounds rather than exact counts. The
 publishing floor applies to the snapshot's days as well: a day below it is
 neither in the index nor in the hero total, and the snapshot's `since` cannot
 put the site below the floor either.
+
+**A snapshot that lists days below the floor has no baseline at all.** The
+snapshot's own counts are a union over *all* its days, so the part of them
+that covers the unpublished days cannot be told apart from the part that
+covers the published ones — a snapshot-level total cannot be split by day.
+Subtracting the published days' facts would leave the unpublished days'
+attackers in the remainder, and adding that would count days the site does
+not publish. The baseline is therefore dropped, not trimmed: the published
+figures are the union over the published days and nothing else, and a
+published day whose records are gone then contributes nothing, so the two
+figures are lower bounds. The homepage and `totalnumber.js` say which of the
+two it is.
 A `-history` path that cannot be read
 fails the run — silently counting only the site's own days would shrink the
 published totals by an unquantifiable amount — and the file's fingerprint

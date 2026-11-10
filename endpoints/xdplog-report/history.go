@@ -201,6 +201,52 @@ type historyBaseline struct {
 	// Applied is true when the baseline contributed anything, i.e. when the
 	// published figures are an upper bound instead of an exact count.
 	Applied bool
+	// Unavailable is true when the baseline could not be applied at all: the
+	// snapshot lists days below the publishing floor, and a snapshot-level
+	// total cannot be split by day.
+	//
+	// The snapshot's own counts are a union over *all* its days. When some of
+	// those days are not published, the part of the counts that covers them
+	// cannot be told apart from the part that covers the published days, so
+	// subtracting the published days' own sets leaves the unpublished days'
+	// attackers in the remainder — and adding that remainder to the published
+	// totals counts days the site does not publish at all.
+	//
+	// The baseline is therefore dropped: the published figures are the union
+	// over the published days and nothing else, and a published day whose
+	// per-day records are gone contributes nothing to them.
+	Unavailable bool
+	// LowerBound is true when a published day contributed no source or
+	// country data and nothing stood in for it. The published figures are
+	// then lower bounds rather than exact counts.
+	//
+	// It is the counterpart of Applied: with the baseline applied the missing
+	// days are covered by the snapshot's own count (an upper bound, which can
+	// count an address twice), and without it they are simply missing (a
+	// lower bound).
+	LowerBound bool
+}
+
+// BelowFloor reports whether the snapshot lists any day the site does not
+// publish.
+//
+// The publishing floor applies to the snapshot's days as well: a day below it
+// is not published, is not in the index and does not reach the hero total. The
+// snapshot's own all-time counts, though, are a union over every day it
+// lists, so the part of them that covers the unpublished days cannot be
+// separated from the part that covers the published ones.
+//
+// The caller drops the baseline when this is true; see historyBaseline.
+func (h *SiteHistory) BelowFloor(publishes func(day string) bool) bool {
+	if h == nil || publishes == nil {
+		return false
+	}
+	for _, d := range h.Days {
+		if !publishes(d.Day) {
+			return true
+		}
+	}
+	return false
 }
 
 // baselineFor computes what the snapshot contributes to the all-time source
@@ -213,6 +259,11 @@ type historyBaseline struct {
 // already account for: the snapshot's baseline is the union over *all* its
 // days, so subtracting the part the facts cover leaves what the remaining
 // days alone can have contributed.
+//
+// The caller must not use this when the snapshot lists days below the
+// publishing floor: the "remaining days" would then include days the site
+// does not publish, and their attackers would be counted in the published
+// totals. See BelowFloor and historyBaseline.Unavailable.
 func (h *SiteHistory) baselineFor(snapUnion factsUnion, missing int) historyBaseline {
 	var b historyBaseline
 	if h == nil || missing == 0 {

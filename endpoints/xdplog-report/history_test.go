@@ -427,6 +427,95 @@ func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
 	}
 }
 
+// TestHistoryBaselineRespectsThePublishingFloor pins that a snapshot listing
+// days below the -since floor does not add its own counts to the published
+// totals.
+//
+// The snapshot's own source and country counts are a union over *all* the days
+// it lists. When some of those days are below the floor they are not
+// published, and the part of the counts that covers them cannot be told apart
+// from the part that covers the published days -- a snapshot-level total
+// cannot be split by day. Subtracting the published days' facts from the
+// snapshot's counts leaves the unpublished days' attackers in the remainder,
+// and adding that remainder to the union counts days the site does not
+// publish at all.
+//
+// The baseline is dropped instead: the published figures are the union over
+// the published days, and a published day whose per-day records are gone
+// contributes nothing to them -- so they are lower bounds.
+func TestHistoryBaselineRespectsThePublishingFloor(t *testing.T) {
+	logs, out := stageTestdata(t)
+	const (
+		belowFloor = "2026-10-10"
+		frozenDay  = "2026-10-18"
+	)
+	hist := validHistory()
+	hist.Days = []SiteDaySummary{
+		{Source: "server", Day: belowFloor, DropPkts: 70, UniqueIPs: 7, DropShare: 0.4},
+		{Source: "server", Day: frozenDay, DropPkts: 100, UniqueIPs: 10, DropShare: 0.5},
+	}
+	hist.Totals.Blocked = 170
+	hist.Totals.SourceIPs = 40
+	hist.Totals.Countries = 3
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-geo-csv", "testdata/geo.csv", "-history", path)
+
+	// The live union of the staged days, which is what the published
+	// figures have to be.
+	plainLogs, plainOut := stageTestdata(t)
+	runSiteCmd(t, plainLogs, plainOut, "-geo-csv", "testdata/geo.csv")
+	plain := readTotalNumbers(t, plainOut)
+	live := plain["NHP_TOTAL_ATTACK_SOURCE_IPS"]
+	if live == 0 {
+		t.Fatal("the fixture's live union is empty; the test's arithmetic depends on it")
+	}
+
+	totals := readTotalNumbers(t, out)
+	if got := totals["NHP_TOTAL_ATTACK_SOURCE_IPS"]; got != live {
+		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want %d (the union of the published days; the snapshot's own count covers a day below the floor and cannot be applied)",
+			got, live)
+	}
+	// The countries of the unpublished day must not be in the total either.
+	if got, want := totals["NHP_TOTAL_ATTACK_COUNTRIES"], plain["NHP_TOTAL_ATTACK_COUNTRIES"]; got != want {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want %d (the union of the published days; the snapshot's own count of 3 covers a day below the floor and cannot be applied)",
+			got, want)
+	}
+
+	// The packets of the day below the floor are not published either: the
+	// floor applies to the snapshot's days as well.
+	wantPkts := plain["NHP_TOTAL_ATTACK_BLOCKED"] + 100
+	if got := totals["NHP_TOTAL_ATTACK_BLOCKED"]; got != wantPkts {
+		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want %d (the published days plus the frozen day's 100; the day below the floor is not published)",
+			got, wantPkts)
+	}
+
+	// The day below the floor is not in the index either.
+	b, err := os.ReadFile(filepath.Join(out, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx []SiteDaySummary
+	if err := json.Unmarshal(b, &idx); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range idx {
+		if r.Day == belowFloor {
+			t.Errorf("index.json lists %s, which is below the publishing floor", belowFloor)
+		}
+	}
+
+	// The homepage says the figures are lower bounds: the frozen day's
+	// records are gone and nothing stands in for them.
+	page := string(readArtifact(t, out, "index.html"))
+	if !strings.Contains(page, "lower bounds") {
+		t.Error("the homepage does not say that the totals are lower bounds")
+	}
+	if strings.Contains(page, "upper bounds") {
+		t.Error("the homepage says the totals are upper bounds; the snapshot's own count is not applied at all")
+	}
+}
+
 // TestHistorySinceComesFromSnapshot pins that the counting start is the
 // snapshot's, not the earliest row's: the snapshot is what says the site's
 // numbers begin before its first published day.

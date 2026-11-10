@@ -309,6 +309,18 @@ Nothing else carries those days' attackers, and the published figures are then
 **upper bounds** rather than exact counts; the homepage says so when that
 happens.
 
+**A snapshot that lists days below the publishing floor has no baseline at
+all.** Its own `source_ips` and `countries` are a union over *all* the days it
+lists, so the part of them that covers the days below the floor cannot be told
+apart from the part that covers the published ones — a snapshot-level total
+cannot be split by day. Subtracting the published days' facts leaves the
+unpublished days' attackers in the remainder, and adding that remainder counts
+days the site does not publish. The baseline is dropped instead of trimmed: the
+published figures are the union over the published days and nothing else, and a
+published day whose per-day records are gone then contributes nothing to them,
+so the two figures are **lower bounds**. The homepage and `totalnumber.js` say
+which of the two it is.
+
 **A snapshot that cannot be read stops the run.** `-history` pointing at a
 missing or invalid file is an error, never a silent fallback to counting only
 the site's own days — that would shrink the published totals by an amount

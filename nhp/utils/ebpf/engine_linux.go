@@ -996,7 +996,8 @@ func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) erro
 			params.NhpPort, params.NhpMinFrameBytes)
 	}
 
-	return setServerSourceNets(spec, params)
+	setServerSourceNets(spec, params)
+	return nil
 }
 
 // setServerSourceNets writes the two source ranges into the server object's
@@ -1006,7 +1007,27 @@ func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) erro
 // source", which is the behaviour of the filter before the constants existed.
 // A range that is set writes both its address and its mask, because the
 // filter compares the packet's source against the masked address.
-func setServerSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
+//
+// Nothing in here fails the load. These two settings are defence in depth:
+// the DHCP and NTP answers are admitted so the host keeps its lease and its
+// clock, and nothing downstream trusts them. A stale object, or a .rodata
+// write that did not take, must therefore not cost the host its ingress
+// filter -- with server_open_all_ports = true the filter is the only inbound
+// control on every port but tcp/22, and refusing to attach over a narrowing
+// that was never more than an extra layer would trade a closed pair for an
+// open host. So the failure is logged at Critical, the pair keeps the
+// object's own default (any source) and the filter attaches.
+//
+// The write order matters for the same reason: the address is written first
+// and the mask second, and the mask is what turns the narrowing on. A
+// failure before the mask is written leaves the mask at zero, which the
+// filter reads as "any source" -- the pair open, which is the direction this
+// function is allowed to fail in.
+//
+// This is the server's half. The AC's half (setAcSourceNets) does refuse,
+// because the AC's failure direction is closed: it stops and the fail-closed
+// netfilter backstop keeps the protected resource shut.
+func setServerSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) {
 	ranges := []struct {
 		addrName string
 		maskName string
@@ -1022,6 +1043,7 @@ func setServerSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) err
 			continue
 		}
 
+		narrowed := true
 		for _, c := range []struct {
 			name  string
 			value uint32
@@ -1031,18 +1053,24 @@ func setServerSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) err
 		} {
 			v, ok := spec.Variables[c.name]
 			if !ok {
-				log.Error("server eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`", c.name)
-				return fmt.Errorf("server eBPF object has no %q constant", c.name)
+				log.Critical("server eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`. The %s pair is NOT narrowed and the XDP ingress filter still attaches",
+					c.name, r.what)
+				narrowed = false
+				break
 			}
 			if err := v.Set(c.value); err != nil {
-				log.Error("failed to set server eBPF constant '%s' to %d: %v", c.name, c.value, err)
-				return err
+				log.Critical("failed to set server eBPF constant '%s' to %d: %v — the %s pair is NOT narrowed and the XDP ingress filter still attaches",
+					c.name, c.value, err, r.what)
+				narrowed = false
+				break
 			}
+		}
+		if !narrowed {
+			continue
 		}
 
 		log.Info("server XDP filter: the %s pair is narrowed to %s", r.what, r.net)
 	}
-	return nil
 }
 
 // loadServerEngine is ordered so that everything that can fail happens *before*

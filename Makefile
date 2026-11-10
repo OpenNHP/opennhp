@@ -344,6 +344,26 @@ test-race:
 	cd endpoints && go test -race -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Race detection tests passed!$(END_COLOUR)"
 
+# Check the Linux build from any host
+#
+# The eBPF loader, the AC's engine and the server's engine are behind build
+# tags, so a machine that is not Linux compiles a different set of files than
+# the one that ships the daemon. A field the Linux files declare and the
+# others do not is a build failure on the server and a silent pass here, which
+# is how a renamed field reached a pull request: the darwin stub of
+# EngineLoadParams had the new names, so every local build was green and only
+# the Linux build was red.
+#
+# GOOS=linux selects the Linux file set, so this target compiles what the
+# daemon is actually built from, on a Mac as well as on a Linux host.
+check-linux:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Checking the Linux build...$(END_COLOUR)"
+	cd nhp && GOOS=linux go build ./...
+	cd nhp && GOOS=linux go vet ./...
+	cd endpoints && GOOS=linux go build ./...
+	cd endpoints && GOOS=linux go vet ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] The Linux build is OK!$(END_COLOUR)"
+
 # Format code
 fmt:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Formatting code...$(END_COLOUR)"
@@ -380,6 +400,7 @@ help:
 	@echo "  make test-race  - Run tests with race detection"
 	@echo "  make fmt        - Format code with gofmt"
 	@echo "  make lint       - Lint code with golangci-lint"
+	@echo "  make check-linux - Compile and vet both modules for Linux"
 	@echo "  make clean      - Remove build artifacts"
 	@echo ""
 	@echo "$(COLOUR_GREEN)Build:$(END_COLOUR)"

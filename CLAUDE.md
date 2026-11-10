@@ -434,7 +434,13 @@ filter (XDP)*.
   every new reason to refuse attaching is a way to leave all ports open. Telemetry
   settings (`ScanReportIntervalSeconds`, `ScanReportTopN`) never decide this: an
   out-of-range value is logged and disables only the `[NHP-SCAN]` summary
-  (`resolveScanReport`), and the filter attaches anyway.
+  (`resolveScanReport`), and the filter attaches anyway. The DHCP and NTP source
+  narrowings (`DhcpServerIP`, `NtpServerIP`) never decide it either: they are
+  defence in depth, so an unusable value is logged at Critical, that pair keeps
+  the object's own default (any source) and the filter attaches
+  (`xdpSourceNets`, `setServerSourceNets`). A setting that cannot narrow a pair
+  must not become a reason to leave every port open — the AC, whose failure
+  direction is closed, is the one that may refuse.
 - **The whitelist is installed before the program is attached**, as
   `EngineLoadParams.RelayIPs`, never written afterwards. Startup therefore never
   calls `applyXdpConfig`; that path is the config watcher's, and it always has a
@@ -459,9 +465,13 @@ filter (XDP)*.
   settings existed. The demo leaves them unset (the peer addresses are a
   property of the VPC, and a wrong DHCP peer costs the host its lease and
   its address); read the real one out of `nhp_server_xdp-*.log` before
-  turning it on. A value that cannot be parsed refuses to attach the filter
-  rather than being ignored, so the deploy's "the XDP ingress filter is
-  attached" gate turns red instead of the host silently losing the pair.
+  turning it on. A value that cannot be parsed is logged at Critical and
+  that pair keeps its default, and **the filter attaches anyway** — see the
+  refusal-reasons invariant above: these two settings are defence in depth,
+  and with `server_open_all_ports = true` the filter is the only inbound
+  control on every port but tcp/22, so a typo here must not cost the host
+  its filter. The AC's half is the other way round (an unusable value stops
+  the AC), because the AC's failure direction is closed.
 - **The capabilities go back on every path, including the ones that never
   load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) subtracts
   `CAP_BPF`, `CAP_NET_ADMIN` and `CAP_PERFMON` from ambient, permitted,

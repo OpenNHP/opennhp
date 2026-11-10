@@ -667,3 +667,90 @@ func TestLegacyAuditAcceptChannelHasItsOwnGlobalCap(t *testing.T) {
 		t.Error("submit_event does not pass the verdict to the audit ring's budget")
 	}
 }
+
+// loaderSource reads the shared loader, the code that writes the programs'
+// .rodata and decides whether a filter is attached at all.
+func loaderSource(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile("engine_linux.go")
+	if err != nil {
+		t.Fatalf("read engine_linux.go: %v", err)
+	}
+	return string(b)
+}
+
+// goFunctionBody returns the body of the Go function with the given name: the
+// text between its opening brace and the brace that closes it.
+func goFunctionBody(t *testing.T, src, name string) string {
+	t.Helper()
+	start := strings.Index(src, "func "+name+"(")
+	if start < 0 {
+		t.Fatalf("%s is not in the loader", name)
+	}
+	open := strings.Index(src[start:], "{")
+	if open < 0 {
+		t.Fatalf("%s has no body", name)
+	}
+	depth := 0
+	for i := start + open; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[start+open+1 : i]
+			}
+		}
+	}
+	t.Fatalf("%s has no closing brace", name)
+	return ""
+}
+
+// TestServerSourceNetsNeverFailsTheLoad pins the failure direction of the two
+// source narrowings on the nhp-server.
+//
+// With server_open_all_ports = true the filter is the only inbound control on
+// every port but tcp/22, so every new reason to refuse attaching is a way to
+// leave all ports open -- the invariant the server's other refusals are
+// limited by. The DHCP and NTP narrowings are defence in depth (nothing
+// downstream trusts those packets: the lease is matched against the request,
+// chrony checks the server it asked), so an unusable value must not cost the
+// host its filter. It is logged at Critical, the pair keeps the object's own
+// default (any source), and the filter attaches.
+//
+// The AC's half is the opposite on purpose, and pinning it here is what keeps
+// the asymmetry from being tidied away: the AC's failure direction is closed
+// -- it stops, and the fail-closed netfilter backstop holds the protected
+// resource shut -- so a stale object is a refusal there.
+func TestServerSourceNetsNeverFailsTheLoad(t *testing.T) {
+	src := loaderSource(t)
+
+	server := goFunctionBody(t, src, "setServerSourceNets")
+	for _, fatal := range []string{"return fmt.Errorf", "return err"} {
+		if strings.Contains(server, fatal) {
+			t.Errorf("setServerSourceNets contains %q; the server's source narrowings are defence in depth and must never fail the load", fatal)
+		}
+	}
+	if !strings.Contains(server, "log.Critical") {
+		t.Error("setServerSourceNets does not log at Critical when a narrowing cannot be applied")
+	}
+	if !strings.Contains(server, "narrowed = false") {
+		t.Error("setServerSourceNets does not leave the pair unnarrowed when a constant cannot be written")
+	}
+
+	ac := goFunctionBody(t, src, "setAcSourceNets")
+	if !strings.Contains(ac, "return fmt.Errorf") {
+		t.Error("setAcSourceNets no longer refuses a stale object; the AC's failure direction is closed, so it must keep refusing")
+	}
+
+	// And the call site: the narrowings are written last and their result is
+	// not propagated, so nothing about them can end the load.
+	constants := goFunctionBody(t, src, "setServerConstants")
+	if strings.Contains(constants, "return setServerSourceNets") {
+		t.Error("setServerConstants propagates the source-net result; the narrowings must not be able to fail the load")
+	}
+	if !strings.Contains(constants, "setServerSourceNets(spec, params)") {
+		t.Error("setServerConstants no longer writes the source ranges into the object's .rodata")
+	}
+}

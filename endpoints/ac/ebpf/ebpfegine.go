@@ -49,8 +49,8 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string, opts LoadOptions)
 		AcAuditLogRetentionDays:   opts.AuditLogRetentionDays,
 		AcAuditLogRetentionBytes:  opts.AuditLogRetentionBytes,
 		AcAuditLogDailyEventBytes: opts.AuditLogDailyEventBytes,
-		AcDhcpSource:              opts.DhcpSource,
-		AcNtpSource:               opts.NtpSource,
+		DhcpSource:                opts.DhcpSource,
+		NtpSource:                 opts.NtpSource,
 	})
 	if err != nil {
 		return err

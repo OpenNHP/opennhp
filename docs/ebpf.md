@@ -255,7 +255,11 @@ DhcpServerIP = "169.254.169.253"   # the host's own DHCP server
 NtpServerIP  = "169.254.169.0/24"  # the host's own time servers
 ```
 
-The port pair says what the answer looks like, not who sent it, so without a range the filter admits any packet wearing the right ports. Nothing downstream trusts those packets — a DHCP reply is matched against the lease it answers, and chrony checks the server it asked — so this is defence in depth rather than a fix for a hole. The default is **no narrowing**, and a value that cannot be parsed refuses the attach rather than being ignored: a narrowing that was quietly dropped would leave the pair open while the file said it was closed, and a narrowing that was applied wrongly costs the host its DHCP lease, and with it its address. The AC has the same two settings, in its `etc/config.toml`.
+The port pair says what the answer looks like, not who sent it, so without a range the filter admits any packet wearing the right ports. Nothing downstream trusts those packets — a DHCP reply is matched against the lease it answers, and chrony checks the server it asked — so this is defence in depth rather than a fix for a hole. The default is **no narrowing**.
+
+A value that cannot be parsed is **logged at Critical and the filter attaches anyway**: the pair keeps the object's own default (any source) and the rest of the file is honoured. The server's reasons to refuse attaching are limited to the ones that protect SSH reachability — with the security group open to every port, the filter is the only inbound control on all of them, so refusing to attach over a defence-in-depth narrowing would trade a closed pair for an open host. An operator who meant to narrow gets a loud log line and a filter that is still protecting the host.
+
+The AC has the same two settings in its `etc/config.toml`, and there an unusable value **stops the AC from starting**: the AC's failure direction is closed (it stops, and the fail-closed netfilter backstop keeps the protected resource shut), so there the price of a typo is a host that stays dark rather than a host that stays open.
 
 ### IPv6, and why SSH must arrive over IPv4
 
@@ -389,7 +393,9 @@ NtpServerIP  = "169.254.169.0/24"  # the host's own time servers
 
 The default is **no narrowing**: the pairs behave exactly as they always have, and a host that says nothing keeps what it had. An address that cannot be parsed stops the AC from starting rather than being ignored — a narrowing that was quietly dropped would leave the pair open while the configuration said it was closed, and a narrowing that was applied wrongly costs the host its DHCP lease, and with it its address and every port on it.
 
-The narrowing covers the IPv4 pairs. The IPv6 tree's own pairs (DHCPv6 547 → 546 and NTPv6 123 → 123) are not narrowed: they would need a 128-bit range, and the demo's AC has no IPv6 address at all. The nhp-server's own filter has the same two pairs and no such knob yet — its operator's addresses live in the SSH whitelist instead.
+The nhp-server's filter has the same two pairs and the same two settings, and its half of this runs the other way round: there, an unusable value is logged at Critical, the pair keeps its default and **the filter attaches anyway**, because the server's reasons to refuse attaching are limited to the ones that protect SSH reachability — with the security group open to every port, the filter is the only inbound control on all of them.
+
+The narrowing covers the IPv4 pairs. The IPv6 tree's own pairs (DHCPv6 547 → 546 and NTPv6 123 → 123) are not narrowed: they would need a 128-bit range, and the demo's AC has no IPv6 address at all.
 
 DNS needs no exception of its own: the AC's queries leave through the same interface `tc_egress.c` is attached to, and the answer is admitted by the reverse branch below from the EGRESS entry they left. That covers a query whose *source* port gate 3 accepts — an ephemeral one, as a stub resolver (glibc, systemd-resolved) uses. A recursive resolver running **on the AC** that randomises its own outgoing port over 1024–65535 (BIND's default `use-v4-udp-ports`) falls under the same limitation as any other fixed-low-port UDP client on the AC: see *Known limitation: fixed low UDP source ports* in `terraform/demo/RUNBOOK.md`.
 

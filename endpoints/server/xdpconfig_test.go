@@ -70,58 +70,67 @@ NtpServerIP = ""
 // host's own servers answer from.
 //
 // An empty value is not an error: it means the pair is not narrowed, which is
-// what the filter did before the settings existed. A value that is present
-// but unusable refuses the attach -- a narrowing that was quietly ignored
-// would leave the pair open while the file said it was closed.
+// what the filter did before the settings existed.
+//
+// A value that is present but unusable is not a refusal either, and that is
+// the part worth pinning: these settings are defence in depth, and with
+// server_open_all_ports = true the filter is the only inbound control on
+// every port but tcp/22. So an unusable value is logged at Critical, that
+// pair keeps the object's own default (any source), and the filter attaches.
+// The two settings are independent: one unusable value does not cost the
+// other its narrowing.
 func TestXdpSourceNets(t *testing.T) {
 	cases := []struct {
-		name    string
-		conf    XdpTomlConfig
-		wantOk  bool
-		wantSet bool
+		name     string
+		conf     XdpTomlConfig
+		wantDhcp bool
+		wantNtp  bool
 	}{
 		{
-			name:   "unset narrows nothing",
-			conf:   XdpTomlConfig{},
-			wantOk: true,
+			name: "unset narrows nothing",
+			conf: XdpTomlConfig{},
 		},
 		{
-			name:    "an address narrows the pair",
-			conf:    XdpTomlConfig{DhcpServerIP: "169.254.169.253", NtpServerIP: "169.254.169.123"},
-			wantOk:  true,
-			wantSet: true,
+			name:     "an address narrows the pair",
+			conf:     XdpTomlConfig{DhcpServerIP: "169.254.169.253", NtpServerIP: "169.254.169.123"},
+			wantDhcp: true,
+			wantNtp:  true,
 		},
 		{
-			name:   "a garbage address refuses",
-			conf:   XdpTomlConfig{DhcpServerIP: "not-an-address"},
-			wantOk: false,
+			name:     "a prefix narrows the pair",
+			conf:     XdpTomlConfig{DhcpServerIP: "169.254.169.0/24"},
+			wantDhcp: true,
 		},
 		{
-			name:   "a garbage prefix refuses",
-			conf:   XdpTomlConfig{NtpServerIP: "169.254.169.0/33"},
-			wantOk: false,
+			name:    "a garbage address leaves that pair open and keeps the other one narrowed",
+			conf:    XdpTomlConfig{DhcpServerIP: "not-an-address", NtpServerIP: "169.254.169.123"},
+			wantNtp: true,
 		},
 		{
-			name:   "an IPv6 address refuses",
-			conf:   XdpTomlConfig{DhcpServerIP: "::1"},
-			wantOk: false,
+			name:     "a garbage prefix leaves that pair open and keeps the other one narrowed",
+			conf:     XdpTomlConfig{DhcpServerIP: "169.254.169.253", NtpServerIP: "169.254.169.0/33"},
+			wantDhcp: true,
+		},
+		{
+			name: "an IPv6 address leaves that pair open",
+			conf: XdpTomlConfig{DhcpServerIP: "::1"},
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			dhcp, ntp, ok := xdpSourceNets(&c.conf, "xdp.toml")
-			if ok != c.wantOk {
-				t.Fatalf("xdpSourceNets() ok = %v, want %v", ok, c.wantOk)
+			dhcp, ntp := xdpSourceNets(&c.conf, "xdp.toml")
+			if dhcp.IsSet() != c.wantDhcp {
+				t.Errorf("dhcp narrowing = %v, want %v", dhcp.IsSet(), c.wantDhcp)
 			}
-			if !c.wantOk {
-				return
+			if ntp.IsSet() != c.wantNtp {
+				t.Errorf("ntp narrowing = %v, want %v", ntp.IsSet(), c.wantNtp)
 			}
-			if dhcp.IsSet() != c.wantSet || ntp.IsSet() != c.wantSet {
-				t.Errorf("narrowing = %v/%v, want both %v", dhcp.IsSet(), ntp.IsSet(), c.wantSet)
+			if c.wantDhcp && dhcp.Addr == 0 {
+				t.Errorf("a narrowed pair has no address: %v", dhcp)
 			}
-			if c.wantSet && (dhcp.Addr == 0 || ntp.Addr == 0) {
-				t.Errorf("a narrowed pair has no address: %v %v", dhcp, ntp)
+			if c.wantNtp && ntp.Addr == 0 {
+				t.Errorf("a narrowed pair has no address: %v", ntp)
 			}
 		})
 	}

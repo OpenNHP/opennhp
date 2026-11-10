@@ -1343,8 +1343,11 @@ the results with `scripts/xdp-attack-report.sh`.
   same two settings exist on the AC (`etc/config.toml`). The peer addresses are
   a property of the VPC, not of this repository, so the demo leaves them unset
   — a wrong DHCP peer costs the host its lease, and with it its address. Read
-  the real address out of the daemon's own log before setting it, and note that
-  an unusable value refuses the attach rather than being ignored. The other
+  the real address out of the daemon's own log before setting it. An unusable
+  value is logged at Critical and that pair keeps its default; the filter
+  still attaches, because with the group open to every port it is the only
+  inbound control on all of them (the AC is the other way round: its failure
+  direction is closed, so an unusable value stops it). The other
   option for the NTP half alone is chrony `port 0`.
 - **Order is the reverse of the knock port.** Run `deploy-demo-v2` first and
   confirm `Verify the XDP ingress filter attached` is green, then run

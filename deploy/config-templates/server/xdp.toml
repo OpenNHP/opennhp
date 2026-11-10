@@ -102,9 +102,15 @@ EventLogEnabled = ${XDP_EVENT_LOG_ENABLED}
 # the VPC and of the host's own configuration, not of this repository, and
 # getting the DHCP one wrong costs the host its lease -- and with it its
 # address, and with that its reachability, on a demo that has no break-glass
-# path. A value that cannot be parsed refuses the attach (the daemon then runs
-# with no ingress filter, as it does for any other unusable value in this
-# file), so a typo is loud.
+# path.
+#
+# A value that cannot be parsed is logged at Critical and the pair is left
+# unnarrowed; the filter still attaches. These two settings are defence in
+# depth, and with the security group open to every port the filter is the
+# only inbound control on all of them -- so a typo here must not cost the
+# host its filter. That is the other way round from the AC, where an
+# unusable value stops the daemon: the AC's failure direction is closed, so
+# its price is a host that stays dark rather than a host that stays open.
 #
 # To find the real peer address before setting it, read it out of the
 # daemon's own log -- the DHCP answer is reported per packet:

@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is an upgrade change: deployments with missing or malformed `DbId` values stop coming online, and existing objects with those values must be repaired manually in `etc/ztdo/data-<doId>.json`.
 * **server:** the nhp-server's XDP ingress filter can narrow the two client-protocol port pairs to a source address or prefix: `DhcpServerIP` and `NtpServerIP` in `etc/xdp.toml`.
   Both default to empty, which narrows nothing — the pair is admitted from any source, exactly as before the settings existed — so a deployment that says nothing keeps the behaviour it had.
-  A value that cannot be parsed refuses to attach the filter, and the deploy's "the XDP ingress filter is attached" gate turns red.
+  A value that cannot be parsed is logged at Critical and that pair keeps its default; the filter still attaches, because the server's reasons to refuse attaching stay limited to the ones that protect SSH reachability and these two settings are defence in depth.
+  The AC has the same two settings in its `etc/config.toml`, where an unusable value stops the AC from starting — its failure direction is closed.
 
 ### Fixed
 

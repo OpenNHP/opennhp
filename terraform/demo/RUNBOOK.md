@@ -1056,35 +1056,56 @@ server it is a silent loss of protection, because `nhp-serverd` falls open. So
 two gates answer the question before a deploy can act on it:
 
 1. **Every PR**: the `ebpf-verifier` job in `.github/workflows/ubuntu-build.yml`
-   builds the three objects and loads them into the runner's kernel — once with
-   `bpftool`, which prints the verifier log, and once through the Go load
-   tests in `nhp/utils/ebpf/acxdp_linux_test.go`, which run the programs
-   against packets. The job runs as root, because a load without CAP_BPF is
-   refused with EPERM and the tests used to *skip* in that case — which is
-   exactly how a verifier rejection could reach a deploy unnoticed. They now
-   fail instead of skipping when the process holds the privilege
-   (`requireCaps` in `nhp/utils/ebpf/privileged_linux_test.go`).
+   builds the three objects and loads them into the runner's kernel — once
+   through `nhp-ebpf-verify`, which asks the kernel the way the daemon asks
+   it and prints the verifier log, and once through the Go load tests in
+   `nhp/utils/ebpf/acxdp_linux_test.go`, which run the programs against
+   packets. The job runs as root, because a load without CAP_BPF is refused
+   with EPERM and the tests used to *skip* in that case — which is exactly
+   how a verifier rejection could reach a deploy unnoticed. They now fail
+   instead of skipping when the process holds the privilege (`requireCaps` in
+   `nhp/utils/ebpf/privileged_linux_test.go`).
 
 2. **Every deploy**: `deploy-demo-v2` loads the new objects on the host with
-   `bpftool`, on the AL2023 kernel the demo actually runs, *before* it stops
-   the running daemon. The program is never attached and it is loaded under a
-   pin path of its own, so the running filter is untouched; a refusal aborts
-   the deploy with the service still up. AL2023 carries `bpftool` in its core
-   repository (`bpftool6.12` matches the kernel the AC runs).
+   the same tool, on the AL2023 kernel the demo actually runs, *before* it
+   stops the running daemon. The program is never attached, the load pins
+   into a directory of its own and removes it again, so the running filter's
+   maps are neither reused nor touched; a refusal aborts the deploy with the
+   service still up.
+
+The load goes through the loader the daemons use, not through `bpftool`:
+
+- `bpftool`'s libbpf refuses these objects outright — *"program
+  `xdp_white_prog` is static and not supported"* — because the programs are
+  declared `static` in the C sources. A gate built on it never asked the
+  kernel anything: it reported its own plumbing.
+- `bpftool` sets no libbpf pin root, so a `LIBBPF_PIN_BY_NAME` map lands in
+  `/sys/fs/bpf/<name>` — the very entries the running daemon pins into. The
+  load would open the live `conn_track`, `spp` and `nhp_relay_ips` and bind
+  the throwaway program to them, and a map that did not exist before would be
+  pinned in the live directory and left there.
 
 Checking it by hand, on a demo host, against an object you have just built:
 
 ```bash
-# the script is the manual form of the deploy's gate: it loads the object,
-# never attaches it, and removes its pins again
-./scripts/check-ebpf-verifier.sh release/nhp-ac/etc/nhp_ebpf_xdp.o
+# the script is the manual form of the deploy's gate: it loads the object the
+# way the daemon loads it, never attaches it, and removes its pins again
+./scripts/check-ebpf-verifier.sh --variant ac \
+    --obj release/nhp-ac/etc/nhp_ebpf_xdp.o \
+    --tc-obj release/nhp-ac/etc/tc_egress.o
+
+./scripts/check-ebpf-verifier.sh --variant server \
+    --obj release/nhp-server/etc/nhp_server_xdp.o --port 62206
 
 # what it does, if you would rather run it by hand
-sudo dnf install -y bpftool6.12        # or bpftool, for the default kernel
-sudo mkdir -p /sys/fs/bpf/nhp-verify
-sudo bpftool prog loadall ./nhp_ebpf_xdp.o /sys/fs/bpf/nhp-verify/ac-xdp
-sudo rm -rf /sys/fs/bpf/nhp-verify
+make ebpf-verify                       # the tool: release/nhp-ebpf-verify/nhp-ebpf-verify
+sudo release/nhp-ebpf-verify --variant ac \
+    --obj ./nhp_ebpf_xdp.o --tc-obj ./tc_egress.o
 ```
+
+It needs CAP_BPF, so it runs as root. The pins it makes live in
+`/sys/fs/bpf/nhp-verify-<pid>/` and are removed again when it exits; the
+running daemon's pins (`/sys/fs/bpf/conn_track` and friends) are not touched.
 
 A refusal prints the verifier's log: the number of instructions the program
 reached, the branch it could not follow, the helper it may not call. Read it

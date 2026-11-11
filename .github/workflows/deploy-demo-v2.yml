@@ -233,6 +233,29 @@ jobs:
             sh -c 'go build -o /src/artifact/xdplog-report/xdplog-report ./xdplog-report'
           chmod +x artifact/xdplog-report/xdplog-report
 
+          # The tool that asks the kernel whether it accepts an eBPF object. It
+          # runs on the demo hosts, on the kernel they actually run on, before
+          # the running daemon is stopped -- so an object the verifier refuses
+          # is caught while the service is still up, instead of after the
+          # daemon has been stopped and replaced with one that cannot start.
+          #
+          # It is built inside the same AL2023 container as the daemons it
+          # checks, for the same glibc reason, and from the same commit as the
+          # objects it is given.
+          mkdir -p artifact/ebpf-verify
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD":/src -w /src/nhp \
+            -v "$GOMODCACHE_HOST":/gomodcache \
+            -v "$GOCACHE_HOST":/gocache \
+            -e HOME=/tmp \
+            -e GOMODCACHE=/gomodcache \
+            -e GOCACHE=/gocache \
+            -e CUSTOM_LD_FLAGS \
+            opennhp-al2023-builder:ci \
+            sh -c 'go build -trimpath -ldflags "$CUSTOM_LD_FLAGS" -o /src/artifact/ebpf-verify/nhp-ebpf-verify ./utils/ebpf/cmd/ebpfverify'
+          chmod +x artifact/ebpf-verify/nhp-ebpf-verify
+
           # Compile the two eBPF objects the AC loads at startup in FilterMode=1.
           # These are BPF bytecode, not host code: no libc is linked into them,
           # so they are built on the runner with the clang installed above and
@@ -349,6 +372,7 @@ jobs:
             artifact/relay/nhp-relayd \
             artifact/demoapp/demoapp \
             artifact/xdplog-report/xdplog-report \
+            artifact/ebpf-verify/nhp-ebpf-verify \
             $plugin_sos
 
           # The other half of the trade-off. Dropping cgo is the obvious way
@@ -414,6 +438,7 @@ jobs:
       relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
       relay_private_ip: ${{ steps.tf_outputs.outputs.relay_private_ip }}
       nhp_listen_port: ${{ steps.nhp_port.outputs.NHP_LISTEN_PORT }}
+      xdp_min_frame_bytes: ${{ steps.xdp_env.outputs.min_frame_bytes }}
 
     steps:
       - name: Checkout code
@@ -591,6 +616,7 @@ jobs:
           path: ./artifact
 
       - name: Resolve the relay addresses for the nhp-server XDP whitelist
+        id: xdp_env
         # RELAY_IPS becomes the nhp-server's XDP whitelist: the only source
         # addresses allowed to reach tcp/22 on that host. There is no
         # break-glass SSH path by design, so rendering an empty or wrong list
@@ -740,7 +766,12 @@ jobs:
           # nhp/ebpf/xdp/nhp_server_xdp.c. Unlike the port, this value is
           # applied from the TOML — the loader writes it into the object's
           # .rodata at startup — so it is a real knob, not documentation.
-          echo "XDP_NHP_MIN_FRAME_BYTES=240" >> $GITHUB_ENV
+          xdp_min_frame_bytes=240
+          echo "XDP_NHP_MIN_FRAME_BYTES=$xdp_min_frame_bytes" >> $GITHUB_ENV
+          # The same value as an output: the deploy asks the kernel whether it
+          # accepts the server's eBPF object with the constants the daemon
+          # will write into it, and the datagram floor is one of them.
+          echo "min_frame_bytes=$xdp_min_frame_bytes" >> $GITHUB_OUTPUT
           # [NHP-SCAN] summary window and Top-N; defaults match
           # endpoints/server/config.go. Startup-only knobs.
           echo "XDP_SCAN_REPORT_SECONDS=300" >> $GITHUB_ENV
@@ -958,6 +989,11 @@ jobs:
       # rendered server/ac/relay configs already carry — the drop-in (XDP
       # engine) and the bind assertion below both key off this.
       NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
+      # The datagram floor the server's XDP filter enforces, as the configure
+      # job rendered it into xdp.toml. The kernel check below loads the
+      # object with the constants the daemon will write into it, and this is
+      # one of them.
+      XDP_NHP_MIN_FRAME_BYTES: ${{ needs.configure.outputs.xdp_min_frame_bytes }}
 
     steps:
       - name: Configure AWS credentials
@@ -1222,21 +1258,43 @@ jobs:
           # before the filter existed -- under a deploy that reported success.
           #
           # So the object is loaded on the host, on the AL2023 kernel the demo
-          # actually runs, before the running daemon is stopped. bpftool is
-          # the kernel's own loader and prints the verifier log. The program
-          # is never attached, it is loaded under a pin path of its own, and
-          # the pins are removed again right after, so the running filter is
-          # untouched.
+          # actually runs, before the running daemon is stopped.
+          #
+          # The load goes through the loader the daemon itself uses
+          # (nhp-ebpf-verify), with the constants the daemon writes into the
+          # object -- the knock port and the datagram floor -- so the verdict
+          # is about the program that will be attached and not about the
+          # object's own defaults. Nothing is attached; the load pins into a
+          # directory of its own and removes it again, so the running
+          # filter's maps are neither reused nor touched.
+          #
+          # It is not bpftool: bpftool's libbpf refuses these objects
+          # outright ("program 'xdp_white_prog' is static and not supported"),
+          # and it pins a LIBBPF_PIN_BY_NAME map into /sys/fs/bpf/<name> --
+          # the very entries the running daemon owns.
           echo "Checking that the kernel accepts the new server eBPF object..."
-          if ! ssh nhp-server "sudo sh -c 'command -v bpftool' >/dev/null 2>&1 || sudo dnf install -y bpftool6.12 </dev/null || sudo dnf install -y bpftool </dev/null"; then
-            echo "ERROR: bpftool is not available on the server host, so the"
-            echo "       kernel's verdict cannot be asked for. Nothing was"
-            echo "       stopped; install bpftool and re-run the deploy."
+          scp ./artifact/ebpf-verify/nhp-ebpf-verify nhp-server:/tmp/nhp-ebpf-verify
+          scp ./artifact/server/etc/nhp_server_xdp.o nhp-server:/tmp/nhp-verify-xdp.o
+          ssh nhp-server "chmod +x /tmp/nhp-ebpf-verify"
+          # A pin directory left behind by a run that was killed would be found
+          # and reused by the next one, so the stale ones go first.
+          ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify-*"
+          # The constants come from the xdp.toml that is about to be deployed,
+          # so the load is checked with the values the daemon will enforce.
+          XDP_TOML=./configs/server/xdp.toml
+          MIN_FRAME=$(grep -E '^[[:space:]]*NhpMinFrameBytes[[:space:]]*=' "$XDP_TOML" | grep -oE '[0-9]+' | head -1)
+          if [ -z "$MIN_FRAME" ]; then
+            echo "ERROR: could not read NhpMinFrameBytes from $XDP_TOML." >&2
+            echo "       Nothing was stopped; re-run the deploy." >&2
             exit 1
           fi
-          scp ./artifact/server/etc/nhp_server_xdp.o nhp-server:/tmp/nhp-verify-xdp.o
-          if ! ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify && sudo mkdir -p /sys/fs/bpf/nhp-verify && sudo bpftool prog loadall /tmp/nhp-verify-xdp.o /sys/fs/bpf/nhp-verify/server-xdp"; then
-            ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o" || true
+          VERIFY_ARGS="--port $NHP_LISTEN_PORT --min-frame-bytes $MIN_FRAME"
+          DHCP_SRC=$(grep -E '^[[:space:]]*DhcpServerIP[[:space:]]*=' "$XDP_TOML" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+          NTP_SRC=$(grep -E '^[[:space:]]*NtpServerIP[[:space:]]*=' "$XDP_TOML" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+          if [ -n "$DHCP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --dhcp-source $DHCP_SRC"; fi
+          if [ -n "$NTP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --ntp-source $NTP_SRC"; fi
+          if ! ssh nhp-server "sudo /tmp/nhp-ebpf-verify --variant server --obj /tmp/nhp-verify-xdp.o $VERIFY_ARGS"; then
+            ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o" || true
             echo "ERROR: the kernel refused the new server eBPF object."
             echo "       Nothing was stopped: the running nhp-serverd and its"
             echo "       filter are untouched, and the deploy is aborted here."
@@ -1246,7 +1304,7 @@ jobs:
             echo "       mismatch between the object and the loader."
             exit 1
           fi
-          ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o"
+          ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o"
 
           echo "Stopping nhp-serverd..."
           ssh nhp-server "sudo systemctl stop nhp-serverd || true"
@@ -2603,22 +2661,38 @@ jobs:
           # cannot start, the fail-closed backstop keeps tcp/443 shut, and the
           # demo is dark. So both objects are loaded on the host, on the
           # AL2023 kernel the demo actually runs, before the running daemon
-          # is stopped. bpftool is the kernel's own loader and prints the
-          # verifier log. The programs are never attached, they are loaded
-          # under a pin path of their own, and the pins are removed again
-          # right after, so the running filter is untouched.
+          # is stopped.
+          #
+          # The load goes through the loader the daemon itself uses
+          # (nhp-ebpf-verify), with the constants the daemon writes into the
+          # objects -- the IPv6 knob and the two source narrowings -- so the
+          # verdict is about the program that will be attached and not about
+          # the objects' own defaults. Nothing is attached; the load pins
+          # into a directory of its own and removes it again, so the running
+          # filter's maps are neither reused nor touched.
           if [ "$FILTER_MODE" = "1" ]; then
             echo "Checking that the kernel accepts the new eBPF objects..."
-            if ! ssh nhp-ac "sudo sh -c 'command -v bpftool' >/dev/null 2>&1 || sudo dnf install -y bpftool6.12 </dev/null || sudo dnf install -y bpftool </dev/null"; then
-              echo "ERROR: bpftool is not available on the AC host, so the"
-              echo "       kernel's verdict cannot be asked for. Nothing was"
-              echo "       stopped; install bpftool and re-run the deploy."
-              exit 1
-            fi
+            scp ./artifact/ebpf-verify/nhp-ebpf-verify nhp-ac:/tmp/nhp-ebpf-verify
             scp ./artifact/ac/etc/nhp_ebpf_xdp.o nhp-ac:/tmp/nhp-verify-xdp.o
             scp ./artifact/ac/etc/tc_egress.o nhp-ac:/tmp/nhp-verify-tc.o
-            if ! ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify && sudo mkdir -p /sys/fs/bpf/nhp-verify && sudo bpftool prog loadall /tmp/nhp-verify-xdp.o /sys/fs/bpf/nhp-verify/ac-xdp && sudo bpftool prog loadall /tmp/nhp-verify-tc.o /sys/fs/bpf/nhp-verify/ac-tc"; then
-              ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o" || true
+            ssh nhp-ac "chmod +x /tmp/nhp-ebpf-verify"
+            # A pin directory left behind by a run that was killed would be
+            # found and reused by the next one, so the stale ones go first.
+            ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify-*"
+            # The constants come from the config.toml that is about to be
+            # deployed, so the load is checked with the values the daemon will
+            # enforce.
+            AC_CFG=./configs/ac/config.toml
+            VERIFY_ARGS=""
+            if [ "$(sed -n 's/^[[:space:]]*DisableIPv6Filter[[:space:]]*=[[:space:]]*\([a-z]*\).*/\1/p' "$AC_CFG" | tail -1)" = "true" ]; then
+              VERIFY_ARGS="$VERIFY_ARGS --disable-ipv6-filter"
+            fi
+            DHCP_SRC=$(grep -E '^[[:space:]]*DhcpServerIP[[:space:]]*=' "$AC_CFG" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+            NTP_SRC=$(grep -E '^[[:space:]]*NtpServerIP[[:space:]]*=' "$AC_CFG" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ -n "$DHCP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --dhcp-source $DHCP_SRC"; fi
+            if [ -n "$NTP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --ntp-source $NTP_SRC"; fi
+            if ! ssh nhp-ac "sudo /tmp/nhp-ebpf-verify --variant ac --obj /tmp/nhp-verify-xdp.o --tc-obj /tmp/nhp-verify-tc.o $VERIFY_ARGS"; then
+              ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o" || true
               echo "ERROR: the kernel refused one of the new eBPF objects."
               echo "       Nothing was stopped: the running nhp-acd and its"
               echo "       filter are untouched, and the deploy is aborted here."
@@ -2628,7 +2702,7 @@ jobs:
               echo "       mismatch between the object and the loader."
               exit 1
             fi
-            ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o"
+            ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o"
           fi
 
           echo "Stopping nhp-acd..."

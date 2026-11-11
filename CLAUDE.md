@@ -412,21 +412,41 @@ the server it is a silent loss of protection, because `nhp-serverd` falls
 open. Two gates answer the question before anything acts on it:
 
 - **Every PR**: the `ebpf-verifier` job in `.github/workflows/ubuntu-build.yml`
-  builds the three objects and loads them into the runner's kernel — with
-  `bpftool`, which prints the verifier log, and through the Go load tests,
-  which run the programs against packets. It runs as root: a load without
-  CAP_BPF is refused with EPERM, and the load tests used to *skip* in that
-  case, which is exactly how a verifier rejection could reach a deploy
-  unnoticed. They now fail instead of skipping when the process holds the
-  privilege (`requireCaps` in `nhp/utils/ebpf/privileged_linux_test.go`).
+  builds the three objects and loads them into the runner's kernel — through
+  `nhp-ebpf-verify`, which asks the kernel the way the daemon asks it and
+  prints the verifier log, and through the Go load tests, which run the
+  programs against packets. It runs as root: a load without CAP_BPF is
+  refused with EPERM, and the load tests used to *skip* in that case, which
+  is exactly how a verifier rejection could reach a deploy unnoticed. They now
+  fail instead of skipping when the process holds the privilege (`requireCaps`
+  in `nhp/utils/ebpf/privileged_linux_test.go`).
 - **Every deploy**: `deploy-demo-v2` loads the new objects on the host with
-  `bpftool`, on the AL2023 kernel the demo runs, *before* it stops the running
-  daemon. The programs are never attached and are loaded under a pin path of
-  their own, so the running filter is untouched; a refusal aborts the deploy
-  with the service still up.
+  the same tool, on the AL2023 kernel the demo runs, *before* it stops the
+  running daemon. The programs are never attached, the load pins into a
+  directory of its own and removes it again, so the running filter's maps are
+  neither reused nor touched; a refusal aborts the deploy with the service
+  still up.
 
-AL2023 carries `bpftool` in its core repository (`bpftool6.12` matches the
-kernel the AC runs). The manual equivalent is in
+The load goes through the loader the daemons use (`nhp/utils/ebpf`), not
+through `bpftool`, and that is not a preference:
+
+- `bpftool`'s libbpf refuses these objects outright — *"program
+  `xdp_white_prog` is static and not supported"* — because the programs are
+  declared `static` in the C sources. A gate built on it never asked the
+  kernel anything: it reported its own plumbing. (cilium/ebpf, which the
+  daemons use, does support them.)
+- `bpftool` sets no libbpf pin root, so a `LIBBPF_PIN_BY_NAME` map lands in
+  `/sys/fs/bpf/<name>` — the very entries the running daemon pins into. The
+  load would open the live `conn_track`, `spp` and `nhp_relay_ips` and bind
+  the throwaway program to them, and a new map would be pinned in the live
+  directory and left there.
+
+`nhp-ebpf-verify` (`nhp/utils/ebpf/cmd/ebpfverify`, `make ebpf-verify`) does
+what the daemon does — `LoadCollectionSpec`, the `.rodata` constants, the
+load — and stops before the attach. The constants are the ones the daemon
+writes (the server's knock port and datagram floor, the AC's IPv6 knob and
+the two source narrowings), so the verdict is about the program that will be
+attached. The manual equivalent is in
 [terraform/demo/RUNBOOK.md](terraform/demo/RUNBOOK.md) under *The kernel's
 verdict on a new eBPF object*.
 

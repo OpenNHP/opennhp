@@ -191,11 +191,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y clang libbpf-dev
-        # bpftool is the kernel's own loader and prints the verifier log. It
-        # is not in every Ubuntu release's archive, so it is optional here:
-        # the load tests below exercise the same objects either way.
-        sudo apt-get install -y bpftool || \
-          echo "::notice::bpftool is not available on this runner; the load tests below are the gate"
 
     - name: Build the eBPF objects
       run: make ebpf-objs
@@ -205,40 +200,77 @@ jobs:
     - name: Mount bpffs
       run: sudo mountpoint -q /sys/fs/bpf || sudo mount -t bpf bpf /sys/fs/bpf
 
-    - name: Load every object with bpftool
+    # The verdict is asked through the loader the daemons use, not through
+    # bpftool: bpftool's libbpf refuses these objects outright ("program
+    # 'xdp_white_prog' is static and not supported"), because the programs
+    # are declared static in the C sources. A gate built on it never asked
+    # the kernel anything -- it reported its own plumbing.
+    #
+    # This is the same tool deploy-demo-v2 runs on the demo hosts: it loads
+    # the object through the real loader, with the constants the real load
+    # writes, into a pin directory of its own, and never attaches it. The
+    # runner's kernel is not the demo's kernel, which is why the deploy asks
+    # the question again there -- but a rejection that is a property of the
+    # program rather than of the kernel is caught here, on every PR.
+    - name: Ask the kernel whether it accepts the objects
       run: |
         set -euo pipefail
-        if ! command -v bpftool >/dev/null 2>&1 && [ ! -x /usr/sbin/bpftool ]; then
-          echo "::notice::bpftool is not installed; skipping the bpftool load"
-          exit 0
+        make ebpf-verify
+        verify=release/nhp-ebpf-verify/nhp-ebpf-verify
+        # A leftover from an earlier run that was killed would make the check
+        # at the end fail for the wrong reason, so it is cleared first.
+        sudo rm -rf /sys/fs/bpf/nhp-verify-*
+        # Root holds CAP_BPF; a load without it is refused with EPERM, which
+        # says nothing about the program.
+        sudo "$verify" --variant ac \
+          --obj release/nhp-ac/etc/nhp_ebpf_xdp.o \
+          --tc-obj release/nhp-ac/etc/tc_egress.o
+        sudo "$verify" --variant server \
+          --obj release/nhp-server/etc/nhp_server_xdp.o \
+          --port 62206 --min-frame-bytes 240
+        # The load pins into a directory of its own and removes it again;
+        # nothing of a running daemon's is touched. This asserts it, so a
+        # change that starts leaving pins behind fails here rather than on a
+        # demo host.
+        if sudo ls -A /sys/fs/bpf | grep -q '^nhp-verify'; then
+          echo "::error::the verify load left pins behind in /sys/fs/bpf"
+          sudo ls -A /sys/fs/bpf
+          exit 1
         fi
-        load() {
-          local obj="$1" name="$2"
-          echo "::group::$obj"
-          # A pin directory of its own, so this load cannot touch the pins a
-          # running daemon owns. `prog loadall` takes a directory: the
-          # programs and the maps are pinned inside it.
-          sudo rm -rf "/sys/fs/bpf/nhp-verify/$name"
-          sudo mkdir -p "/sys/fs/bpf/nhp-verify/$name"
-          sudo bpftool prog loadall "$obj" "/sys/fs/bpf/nhp-verify/$name"
-          sudo rm -rf "/sys/fs/bpf/nhp-verify/$name"
-          echo "::endgroup::"
-        }
-        load release/nhp-ac/etc/nhp_ebpf_xdp.o ac-xdp
-        load release/nhp-ac/etc/tc_egress.o ac-tc
-        load release/nhp-server/etc/nhp_server_xdp.o server-xdp
+        # And nothing in the live directory either: that is where a running
+        # daemon pins its maps (/sys/fs/bpf/conn_track and the rest). A load
+        # that shared them would be checking the live filter's state instead
+        # of its own, and a map that did not exist before would be left there
+        # for the next start to trip over.
+        leaked=""
+        for name in conn_track spp icmpwhitelist sdwhitelist src_port \
+          port_list protocol_port events knock_peers icmp_echo nhp_config \
+          nhp_events nhp_action_stats nhp_port_hits nhp_src_hits nhp_relay_ips
+        do
+          if sudo test -e "/sys/fs/bpf/$name"; then
+            leaked="$leaked $name"
+          fi
+        done
+        if [ -n "$leaked" ]; then
+          echo "::error::the verify load left pins in the live directory:$leaked"
+          sudo ls -A /sys/fs/bpf
+          exit 1
+        fi
 
     - name: Run the eBPF tests with CAP_BPF
       working-directory: nhp
       run: |
         set -euo pipefail
-        go mod download
+        # Root gets its own build and module caches: the runner's belong to
+        # the runner user, and a root-owned file left in them would break the
+        # cache save at the end of the job (and the next run's cache restore).
+        root_env=(env "PATH=$PATH" "HOME=/root" \
+          "GOCACHE=/tmp/ebpf-gocache" "GOMODCACHE=/tmp/ebpf-gomodcache")
+        sudo "${root_env[@]}" go mod download
         # Root holds CAP_BPF and CAP_NET_ADMIN, so the load tests do not skip:
         # a kernel that refuses one of the objects fails the job here, with
         # the verifier log in the output.
-        sudo env "PATH=$PATH" "HOME=/root" \
-          "GOCACHE=$(go env GOCACHE)" "GOMODCACHE=$(go env GOMODCACHE)" \
-          go test ./utils/ebpf/... -v -count=1 2>&1 | tee /tmp/ebpf-tests.log
+        sudo "${root_env[@]}" go test ./utils/ebpf/... -v -count=1 2>&1 | tee /tmp/ebpf-tests.log
         # A load test that skipped proved nothing: this job exists to have the
         # kernel accept the objects, so the tests that load them have to have
         # run and passed. (Other tests may skip for an unrelated reason --

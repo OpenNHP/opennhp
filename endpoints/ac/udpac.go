@@ -139,10 +139,10 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		// says it is closed -- and it is not applied blindly, because a
 		// narrowing that is wrong in the other direction costs the host its
 		// DHCP lease, and with it its address.
-		dhcpSource, ntpSource, err := acSourceNets(a.config)
-		if err != nil {
-			log.Error("%v", err)
-			return err
+		dhcpSource, ntpSource, sourceErr := acSourceNets(a.config)
+		if sourceErr != nil {
+			log.Error("%v", sourceErr)
+			return sourceErr
 		}
 
 		err = ebpflocal.EbpfEngineLoad(dirPath, logLevel, a.config.ACId, ebpflocal.LoadOptions{

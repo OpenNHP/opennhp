@@ -77,3 +77,46 @@ ScanReportTopN = ${XDP_SCAN_TOP_N}
 # only that log. [NHP-STAT] / [NHP-SCAN] summaries and the filter itself are
 # unaffected. Read once at startup; changing it takes a restart.
 EventLogEnabled = ${XDP_EVENT_LOG_ENABLED}
+
+# DhcpServerIP and NtpServerIP narrow the two UDP port pairs the filter
+# admits -- the DHCP answer (67 -> 68) and the NTP answer (123 -> 123) -- to
+# the addresses this host's own servers answer from. Each is an IPv4 address
+# or a CIDR prefix; empty means the pair is not narrowed, which is the
+# behaviour of the filter before these settings existed.
+#
+# The port pair says what the answer looks like, not who sent it, so without a
+# range the filter admits any packet wearing the right ports. Nothing
+# downstream trusts those packets (a DHCP reply is matched against the lease
+# it answers, and chrony checks the server it asked), so this is defence in
+# depth rather than a fix for a hole -- but on a host whose group is open to
+# the whole internet it is the last exposure the pair rules leave.
+#
+# On Amazon Linux the two peers are the VPC's DHCP server (169.254.169.253)
+# and the Amazon Time Sync Service (169.254.169.123), both of them inside
+# 169.254.169.0/24:
+#
+#   DhcpServerIP = "169.254.169.0/24"
+#   NtpServerIP  = "169.254.169.0/24"
+#
+# They are left unset here on purpose. The peer addresses are a property of
+# the VPC and of the host's own configuration, not of this repository, and
+# getting the DHCP one wrong costs the host its lease -- and with it its
+# address, and with that its reachability, on a demo that has no break-glass
+# path.
+#
+# A value that cannot be parsed is logged at Critical and the pair is left
+# unnarrowed; the filter still attaches. These two settings are defence in
+# depth, and with the security group open to every port the filter is the
+# only inbound control on all of them -- so a typo here must not cost the
+# host its filter. That is the other way round from the AC, where an
+# unusable value stops the daemon: the AC's failure direction is closed, so
+# its price is a host that stays dark rather than a host that stays open.
+#
+# To find the real peer address before setting it, read it out of the
+# daemon's own log -- the DHCP answer is reported per packet:
+#
+#   grep DHCP /home/ec2-user/nhp-server/logs/nhp_server_xdp-*.log | tail
+#
+# See "All-ports exposure mode" in terraform/demo/RUNBOOK.md.
+DhcpServerIP = ""
+NtpServerIP = ""

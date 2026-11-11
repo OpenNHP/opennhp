@@ -221,6 +221,83 @@ resource "aws_security_group" "ac" {
     security_groups = [aws_security_group.relay.id]
   }
 
+  # Everything else, from anywhere -- deliberately, EXCEPT tcp/22. The AC's
+  # XDP filter (nhp/ebpf/xdp/nhp_ebpf_xdp.c, attached by nhp-acd at startup in
+  # FilterMode = 1) is the ONLY inbound control on the rest of this host in
+  # this mode; the point is to let scans reach the NIC so the filter can count
+  # them ([NHP-STAT] per verdict class, [NHP-SCAN] per port and per source).
+  #
+  # Why the AC needs this at all: a packet the security group drops never
+  # reaches the NIC, so the filter never sees it and it is never counted. In
+  # the narrow posture only tcp/443 and the knock port were reachable, so the
+  # AC's statistics covered a fraction of what was actually hitting the host.
+  # The server's own all-ports mode exists for the same reason.
+  #
+  # The filter is fail-open and its link is not pinned, so it is detached on
+  # every deploy, crash, restart, reboot and failed load. sshd is the
+  # highest-value surface on the host, so its reachability must never depend on
+  # the filter: tcp/22 stays restricted to the relay SG at this layer and is
+  # deliberately carved out of the open range below. Consequence: scans of
+  # tcp/22 do not reach the NIC and are not counted.
+  #
+  # An SG rule cannot say "all except 22", so the range is spelled out per
+  # protocol: tcp 0-21 and 23-65535, all udp, all icmp. Other IP protocols
+  # (GRE, ESP, ...) are not reachable, which is narrower than before.
+  # Whatever else is listening (chronyd, SSM/cloud-init agents) is still
+  # exposed while the filter is detached; see terraform/demo/RUNBOOK.md
+  # "All-ports exposure mode".
+  #
+  # Flipping the variable to false returns exactly to the narrow posture: the
+  # tcp/443 rule above is a subset of the open range, the ssh rule is
+  # independent of it, and the knock-port rule above widens from "from the
+  # server SG" to "from anywhere" in this mode -- the AC has no fixed UDP
+  # listener, so that rule was always a no-op (see the comment on it).
+  # Order: deploy-demo-v2 (confirm the AC's XDP filter is attached) BEFORE
+  # infra-demo apply -- the reverse of the knock-port rule.
+  dynamic "ingress" {
+    for_each = var.ac_open_all_ports ? [1] : []
+    content {
+      description = "ALL tcp except 22 (0-21)"
+      from_port   = 0
+      to_port     = 21
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.ac_open_all_ports ? [1] : []
+    content {
+      description = "ALL tcp except 22 (23-65535)"
+      from_port   = 23
+      to_port     = 65535
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.ac_open_all_ports ? [1] : []
+    content {
+      description = "ALL udp (XDP is the only control; see CLAUDE.md)"
+      from_port   = 0
+      to_port     = 65535
+      protocol    = "udp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.ac_open_all_ports ? [1] : []
+    content {
+      description = "ALL icmp (XDP is the only control; see CLAUDE.md)"
+      from_port   = -1
+      to_port     = -1
+      protocol    = "icmp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

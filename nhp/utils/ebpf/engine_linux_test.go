@@ -57,7 +57,7 @@ func newRelayMapSized(t *testing.T, maxEntries uint32) *ebpf.Map {
 		Flags:      unix.BPF_F_NO_PREALLOC,
 	})
 	if err != nil {
-		t.Skipf("cannot create BPF map (needs CAP_BPF): %v", err)
+		requireCaps(t, err, "creating a BPF map", capBPF)
 	}
 	t.Cleanup(func() { m.Close() })
 	return m
@@ -336,7 +336,7 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 		RelayIPs: []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -410,7 +410,7 @@ func TestServerFilterPassesClientRepliesAndDropsUnsolicited(t *testing.T) {
 		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -505,7 +505,7 @@ func TestServerFilterFiltersIPv6(t *testing.T) {
 		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -735,10 +735,16 @@ func TestServerFilterKnocksOnTheConfiguredPort(t *testing.T) {
 		LogLevel:         1,
 		NhpPort:          knockPort,
 		NhpMinFrameBytes: floor,
-		RelayIPs:         []string{"127.0.0.1"},
+		// A relay the packets below do not come from. The relay exemption
+		// sits above the length floor -- the relay forwards the short
+		// control packets of the handshake -- so a whitelist covering this
+		// test's own source address would exempt the short datagram as
+		// well, and the floor would not be under test at all. The
+		// exemption has its own test below.
+		RelayIPs: []string{"203.0.113.7"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
 
@@ -797,6 +803,71 @@ func TestServerFilterKnocksOnTheConfiguredPort(t *testing.T) {
 	}
 }
 
+// The relay is exempt from the length floor.
+//
+// The relay forwards the agent's knocks, and the handshake's short control
+// packets are shorter than the floor the filter enforces on everything else.
+// So a datagram from the relay's address is passed even when it is below the
+// floor. This is the one exemption to the rule, and the knock test above
+// cannot see it: its packets come from an address the whitelist does not
+// cover, because a whitelist that did cover it would exempt the short
+// datagram there too and leave the floor untested.
+//
+// It is also the reason the floor cannot be tightened into the relay's path:
+// the packets it forwards are the ones the exemption is for.
+func TestServerFilterLetsTheRelaySendShortKnocks(t *testing.T) {
+	objPath := serverObjPath(t)
+
+	const (
+		knockPort = 40206
+		floor     = 240
+	)
+
+	_, err := EngineLoad(EngineLoadParams{
+		Variant:          VariantServer,
+		IfaceName:        "lo",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          knockPort,
+		NhpMinFrameBytes: floor,
+		// The relay is the loopback address here, so the packets this test
+		// sends come from the whitelist.
+		RelayIPs: []string{"127.0.0.1"},
+	})
+	if err != nil {
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
+	}
+	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
+
+	lo := net.IPv4(127, 0, 0, 1)
+
+	rx, err := net.ListenUDP("udp4", &net.UDPAddr{IP: lo, Port: knockPort})
+	if err != nil {
+		t.Skipf("cannot bind udp/%d: %v", knockPort, err)
+	}
+	defer rx.Close()
+
+	tx, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: lo, Port: knockPort})
+	if err != nil {
+		t.Skipf("cannot dial udp/%d: %v", knockPort, err)
+	}
+	defer tx.Close()
+
+	const payload = 8
+	if _, err := tx.Write(make([]byte, payload)); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	buf := make([]byte, 1024)
+	_ = rx.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, readErr := rx.Read(buf); readErr != nil {
+		t.Errorf("a %d-byte datagram to udp/%d from the relay was dropped (%v); the relay is exempt from the length floor",
+			payload, knockPort, readErr)
+	}
+}
+
 // A failed load must leave nothing behind.
 //
 // The caller treats an error as "fail-open, no ingress filter" and logs it that
@@ -823,7 +894,7 @@ func TestServerEngineLoadLeavesNothingBehindOnFailure(t *testing.T) {
 		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	_ = h
 	CleanupBPFFiles(VariantServer)
@@ -880,7 +951,7 @@ func TestServerEngineLoadRefusesAnUnusableWhitelist(t *testing.T) {
 		NhpMinFrameBytes: 240,
 		RelayIPs:         []string{"127.0.0.1"},
 	}); err != nil {
-		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
 	}
 	CleanupBPFFiles(VariantServer)
 
@@ -1006,6 +1077,79 @@ func TestServerActionNamesCoverTheProgramsActionCodes(t *testing.T) {
 		wantDrop := strings.HasPrefix(m[1], "ACT_DROP_")
 		if got := verdict == "DROP"; got != wantDrop {
 			t.Errorf("%s (%d) logs verdict %q", m[1], code, verdict)
+		}
+	}
+}
+
+// The nhp-ac's action codes and their names, the counterpart of
+// TestServerActionNamesCoverTheProgramsActionCodes. The AC's program has its
+// own code space, and the reason table that decodes it lives in user space:
+// a code the table does not know shows up in the published log as
+// "REASON=UNKNOWN-7", which the site's classifier cannot place.
+func TestAcActionNamesCoverTheProgramsActionCodes(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_ebpf_xdp.c: %v", err)
+	}
+
+	re := regexp.MustCompile(`(?m)^#define\s+(ACT_AC_\w+)\s+(\d+)`)
+	matches := re.FindAllStringSubmatch(string(src), -1)
+	if len(matches) == 0 {
+		t.Fatal("no ACT_AC_* constants found; has the program been renamed?")
+	}
+
+	seen := make(map[uint8]string, len(matches))
+	for _, m := range matches {
+		code, err := strconv.ParseUint(m[2], 10, 8)
+		if err != nil {
+			t.Fatalf("%s = %q: %v", m[1], m[2], err)
+		}
+		if other, dup := seen[uint8(code)]; dup {
+			t.Errorf("%s and %s share action code %d", other, m[1], code)
+		}
+		seen[uint8(code)] = m[1]
+
+		verdict, reason := acActionName(uint8(code))
+		if strings.HasPrefix(reason, "UNKNOWN-") {
+			t.Errorf("%s (%d) has no name in acActionName", m[1], code)
+		}
+		// A DROP_* constant that logs as PASS (or the reverse) would make the
+		// event log say the opposite of what the kernel did.
+		wantDrop := strings.HasPrefix(m[1], "ACT_AC_DROP_")
+		if got := verdict == "DROP"; got != wantDrop {
+			t.Errorf("%s (%d) logs verdict %q", m[1], code, verdict)
+		}
+	}
+}
+
+// The AC's DROP reasons have to be the ones the published site already knows,
+// because the site's classifier is a closed list and an unknown reason falls
+// into "Unknown reason" instead of a category.
+//
+// The site lives in another Go module, so this test cannot reach its
+// dropCategories map; it asserts the same list the site has, and the site's
+// own TestClassifierMatchesEngine checks the other direction -- that every
+// reason this file names is in the site's table.
+func TestAcDropReasonsAreInTheSiteClassifier(t *testing.T) {
+	want := []struct {
+		action uint8
+		reason string
+	}{
+		{ActAcDropKnockExpired, "KNOCK_EXPIRED"},
+		{ActAcDropTcpSyn, "TCP_SYN_SCAN"},
+		{ActAcDropTcpStealth, "TCP_STEALTH_SCAN"},
+		{ActAcDropTcpOther, "TCP_OTHER"},
+		{ActAcDropUdpOther, "UDP_OTHER"},
+		{ActAcDropNonTcpUdp, "NON_TCP_UDP"},
+	}
+
+	for _, w := range want {
+		verdict, reason := acActionName(w.action)
+		if verdict != "DROP" {
+			t.Errorf("action %d logs verdict %q, want DROP", w.action, verdict)
+		}
+		if reason != w.reason {
+			t.Errorf("action %d logs reason %q, want %q", w.action, reason, w.reason)
 		}
 	}
 }
@@ -1175,19 +1319,32 @@ func TestClientProtocolsWithoutAConnectedSocketArePassed(t *testing.T) {
 // NHP_EVENT_ACTIONS sizes the per-action arrays on the C side and the summary
 // loop on this one. If the C grew a slot and this did not, the extra classes
 // would simply never be summarized.
+//
+// The constant lives in nhp_xdp_stats.h, the telemetry mechanism the
+// nhp-server's and the nhp-ac's ingress filters share, so both files are
+// read: the constant may sit in either, and a second definition of it would
+// be a drift the test should not accept.
 func TestServerEventActionsMatchesTheProgram(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
-	if err != nil {
-		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	var srcs []string
+	for _, name := range []string{"nhp_server_xdp.c", "nhp_xdp_stats.h"} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		srcs = append(srcs, string(b))
 	}
+	src := strings.Join(srcs, "\n")
 
-	m := regexp.MustCompile(`(?m)^#define\s+NHP_EVENT_ACTIONS\s+(\d+)`).FindStringSubmatch(string(src))
-	if m == nil {
-		t.Fatal("NHP_EVENT_ACTIONS not found in nhp_server_xdp.c")
+	m := regexp.MustCompile(`(?m)^#define\s+NHP_EVENT_ACTIONS\s+(\d+)`).FindAllStringSubmatch(src, -1)
+	if len(m) == 0 {
+		t.Fatal("NHP_EVENT_ACTIONS not found in nhp_server_xdp.c or nhp_xdp_stats.h")
 	}
-	want, err := strconv.Atoi(m[1])
+	if len(m) > 1 {
+		t.Errorf("NHP_EVENT_ACTIONS is defined %d times; it must be defined once", len(m))
+	}
+	want, err := strconv.Atoi(m[0][1])
 	if err != nil {
-		t.Fatalf("NHP_EVENT_ACTIONS = %q: %v", m[1], err)
+		t.Fatalf("NHP_EVENT_ACTIONS = %q: %v", m[0][1], err)
 	}
 	if serverEventActions != want {
 		t.Errorf("serverEventActions = %d, NHP_EVENT_ACTIONS = %d", serverEventActions, want)
@@ -1209,7 +1366,7 @@ func TestSweepServerEventLogsKeepsTodayAndForeignFiles(t *testing.T) {
 	// delete.
 	foreign := writeLogFile(t, dir, "server-2026-09-01.log", now.AddDate(0, 0, -28), 10)
 
-	sweepServerEventLogs(dir, now, 14, 1<<30)
+	sweepEventLogs(dir, now, 14, 1<<30, []string{serverEventLogName})
 
 	// Today's file is open and being appended to, so it is exempt; `recent`
 	// is inside the age bound; `foreign` is another logger's.
@@ -1234,7 +1391,7 @@ func TestSweepServerEventLogsEnforcesTheByteBudget(t *testing.T) {
 	middle := writeLogFile(t, dir, "nhp_server_xdp-2026-09-27.log", now.AddDate(0, 0, -2), 100)
 	newest := writeLogFile(t, dir, "nhp_server_xdp-2026-09-28.log", now.AddDate(0, 0, -1), 100)
 
-	sweepServerEventLogs(dir, now, 14, 250)
+	sweepEventLogs(dir, now, 14, 250, []string{serverEventLogName})
 
 	if _, err := os.Stat(oldest); !os.IsNotExist(err) {
 		t.Errorf("the oldest file should go first (err=%v)", err)
@@ -1260,7 +1417,7 @@ func TestSweepServerEventLogsExemptsEverySiblingsCurrentFile(t *testing.T) {
 	todayAudit := writeLogFile(t, dir, "nhp_server_xdp-audit-2026-09-29.log", now, 10)
 	staleEval := writeLogFile(t, dir, "nhp_server_xdp-evaluate-2026-09-01.log", now.AddDate(0, 0, -28), 10)
 
-	sweepServerEventLogs(dir, now, 14, 1<<30)
+	sweepEventLogs(dir, now, 14, 1<<30, []string{serverEventLogName})
 
 	for _, path := range []string{todayMain, todayEval, todayAudit} {
 		if _, err := os.Stat(path); err != nil {
@@ -1284,7 +1441,7 @@ func TestSweepServerEventLogsCountsTodayAgainstTheBudget(t *testing.T) {
 
 	// 340 bytes on disk against a 250-byte budget, all of the overage in a
 	// file that cannot be removed. Everything that *can* go, goes.
-	sweepServerEventLogs(dir, now, 14, 250)
+	sweepEventLogs(dir, now, 14, 250, []string{serverEventLogName})
 
 	if _, err := os.Stat(yesterday); !os.IsNotExist(err) {
 		t.Errorf("history should be pruned while the directory is over budget (err=%v)", err)
@@ -1298,10 +1455,13 @@ func TestSweepServerEventLogsCountsTodayAgainstTheBudget(t *testing.T) {
 // one day can write, which is the part the sweep cannot reach because the file
 // it would have to delete is the one being appended to.
 func TestEventLogBudgetStopsAtTheDailyLimitAndResetsOnTheNextDay(t *testing.T) {
-	logger := log.NewLoggerDefine("", 0, t.TempDir(), "budget_test")
+	dir := t.TempDir()
+	// log.LogLevelInfo, not 0: level 0 is silent, and the point of this
+	// test is the line the budget writes to the file.
+	logger := log.NewLoggerDefine("", log.LogLevelInfo, dir, "budget_test")
 	t.Cleanup(logger.Close)
 
-	b := &eventLogBudget{limit: 100}
+	b := &eventLogBudget{limit: 100, componentId: "srv1"}
 	day1 := time.Date(2026, 9, 29, 23, 0, 0, 0, time.UTC)
 
 	if !b.spend(day1, 60, logger) {
@@ -1317,11 +1477,59 @@ func TestEventLogBudgetStopsAtTheDailyLimitAndResetsOnTheNextDay(t *testing.T) {
 		t.Fatal("suppression lasts for the rest of the day, not for one call")
 	}
 
+	// The budget line has to carry the component id, in the same place every
+	// other line carries it: the site's parser recognizes the marker by
+	// position ("HH:MM:SS <id> [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED"), so a
+	// line without the id puts the marker where the tag belongs, the line is
+	// read as a malformed STAT line, and the day's budget flag never lights
+	// up.
+	logger.Close() // flush the async writer before reading the file
+	matches, err := filepath.Glob(filepath.Join(dir, "budget_test-*.log"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("the budget line was not written (matches=%v, err=%v)", matches, err)
+	}
+	content, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("reading the budget log: %v", err)
+	}
+	want := "23:00:00 srv1 [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED"
+	if !strings.Contains(string(content), want) {
+		t.Errorf("the budget line does not carry the component id in the expected place\nwant a line containing %q\ngot:\n%s", want, content)
+	}
+
 	// The logger opens a new file at the date rollover, so the allowance
 	// starts again with it.
 	day2 := day1.Add(2 * time.Hour)
 	if !b.spend(day2, 60, logger) {
 		t.Fatalf("a new day (%s) gets a new budget", day2.Format("2006-01-02"))
+	}
+}
+
+// A budget of zero means no budget at all: the AC's audit trail is written for
+// as long as the host lives, which is the behavior a deployment that reads
+// nhp_deny-*.log as an audit trail has to be able to ask for.
+func TestEventLogBudgetWithNoLimitNeverExhausts(t *testing.T) {
+	dir := t.TempDir()
+	logger := log.NewLoggerDefine("", log.LogLevelInfo, dir, "budget_unlimited_test")
+	t.Cleanup(logger.Close)
+
+	b := &eventLogBudget{limit: 0, componentId: "ac1"}
+	day := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 1000; i++ {
+		if !b.spend(day, 4096, logger) {
+			t.Fatalf("line %d was suppressed; a budget of zero means unbounded", i)
+		}
+	}
+	if b.exhausted {
+		t.Error("the budget reports itself exhausted with no limit set")
+	}
+
+	// A negative limit is the same answer, not an accidental exhaustion: it
+	// is what a configuration that subtracts one from zero would produce.
+	b2 := &eventLogBudget{limit: -1, componentId: "ac1"}
+	if !b2.spend(day, 4096, logger) {
+		t.Error("a negative limit was read as a spent budget")
 	}
 }
 
@@ -1390,5 +1598,338 @@ func TestTopN(t *testing.T) {
 	}
 	if got := topN(m, 0, lessU); len(got) != 0 {
 		t.Errorf("n=0: got %v", got)
+	}
+}
+
+// The AC's [NHP-SCAN] summary has to run.
+//
+// The reporter was started only when both parameters were positive, and
+// endpoints/ac/ebpf sets neither: the AC's loader got both as zero and
+// started nothing. The published site parses the AC's log with the server's
+// parser, so an AC with no [NHP-SCAN] line is an AC the site cannot say
+// anything about -- and the AC's per-port and per-source tables filled up on
+// every dropped packet, churned their LRU, and were read by nobody.
+//
+// The nhp-server is not affected: its own resolver (endpoints/server/config.go)
+// turns an unset value into the default before the load runs, and an
+// out-of-range one into zero, which means "off" there.
+func TestAcLoadSchedulesTheScanReporter(t *testing.T) {
+	interval, topN, enabled := acScanReportSettings(EngineLoadParams{Variant: VariantAC})
+	if !enabled {
+		t.Fatal("an AC load with default parameters does not schedule the [NHP-SCAN] summary")
+	}
+	if want := DefaultScanReportIntervalSeconds * time.Second; interval != want {
+		t.Errorf("scan window = %s, want %s", interval, want)
+	}
+	if topN != DefaultScanReportTopN {
+		t.Errorf("scan depth = %d, want %d", topN, DefaultScanReportTopN)
+	}
+
+	// The loader must read the resolved values. A raw parameter is zero on
+	// every AC load, and reading it is what used to switch the summary off.
+	src, err := os.ReadFile("engine_linux.go")
+	if err != nil {
+		t.Fatalf("read engine_linux.go: %v", err)
+	}
+	body := goFuncBody(t, string(src), "func loadAcEngine(")
+	if strings.Contains(body, "params.ScanReportInterval") || strings.Contains(body, "params.ScanReportTopN") {
+		t.Error("the AC's load reads the raw scan-report parameters; it must use acScanReportSettings")
+	}
+	if !strings.Contains(body, "acScanReportSettings(params)") {
+		t.Error("the AC's load does not call acScanReportSettings")
+	}
+}
+
+// goFuncBody returns the text of the function whose definition starts with
+// the given prefix, up to the next top-level "func ".
+func goFuncBody(t *testing.T, src, prefix string) string {
+	t.Helper()
+	start := strings.Index(src, prefix)
+	if start < 0 {
+		t.Fatalf("%s not found", prefix)
+	}
+	rest := src[start:]
+	if end := strings.Index(rest[1:], "\nfunc "); end >= 0 {
+		return rest[:end+1]
+	}
+	return rest
+}
+
+// TestLegacyRateSlotsStayInsideTheRateMap pins the slot layout of the rate
+// map, which now carries two banks: the telemetry's and the legacy audit
+// ring's.
+//
+// The failure this prevents is silent. spend_token() treats a slot the map
+// cannot hand back as "has budget", so a legacy slot that drifted past the
+// map's size would remove the audit ring's limit without an error — which is
+// exactly the unbounded per-packet log the limit exists to stop.
+func TestLegacyRateSlotsStayInsideTheRateMap(t *testing.T) {
+	path := filepath.Join("..", "..", "ebpf", "xdp", "nhp_xdp_stats.h")
+	defs := cDefines(t, path)
+
+	for _, name := range []string{"NHP_EVENT_ACTIONS", "NHP_LEGACY_RATE_BASE", "NHP_LEGACY_GLOBAL_SLOT", "NHP_LEGACY_ACCEPT_GLOBAL_SLOT", "NHP_EVENT_RATE_SLOTS"} {
+		if _, ok := defs[name]; !ok {
+			t.Fatalf("%s is not defined in %s", name, path)
+		}
+	}
+
+	actions := evalCIntExpr(t, defs, defs["NHP_EVENT_ACTIONS"])
+	legacyBase := evalCIntExpr(t, defs, defs["NHP_LEGACY_RATE_BASE"])
+	legacyGlobal := evalCIntExpr(t, defs, defs["NHP_LEGACY_GLOBAL_SLOT"])
+	legacyAccept := evalCIntExpr(t, defs, defs["NHP_LEGACY_ACCEPT_GLOBAL_SLOT"])
+	slots := evalCIntExpr(t, defs, defs["NHP_EVENT_RATE_SLOTS"])
+
+	// The telemetry bank: the per-class slots 0..actions-1, and the global
+	// slot at `actions`.
+	telemetryGlobal := actions
+
+	// The legacy bank must start past the telemetry's global slot, or the
+	// two channels spend each other's budget.
+	if legacyBase <= telemetryGlobal {
+		t.Errorf("the legacy bank starts at %d but the telemetry's global slot is %d; the two banks overlap",
+			legacyBase, telemetryGlobal)
+	}
+
+	// Its per-class slots must not run into its own global slot.
+	if legacyGlobal < legacyBase+actions {
+		t.Errorf("the legacy global slot (%d) is inside the legacy per-class bank (%d..%d)",
+			legacyGlobal, legacyBase, legacyBase+actions-1)
+	}
+
+	// The accept channel's global slot must be a slot of its own: the two
+	// channels are capped separately, so that a flood of drops cannot spend
+	// the allowance of the log that records what was admitted.
+	if legacyAccept == legacyGlobal {
+		t.Errorf("the accept channel shares the deny channel's global slot (%d); a drop flood would silence the accepts",
+			legacyAccept)
+	}
+	if legacyAccept != legacyGlobal+1 {
+		t.Errorf("the accept channel's global slot is %d, want %d (the slot right after the deny channel's)",
+			legacyAccept, legacyGlobal+1)
+	}
+
+	// And the map must be exactly big enough for every slot: the last
+	// usable index is slots-1.
+	if slots != legacyAccept+1 {
+		t.Errorf("the rate map has %d slots but the last one used is %d", slots, legacyAccept)
+	}
+
+	// The map is declared with that size, which is what makes the check
+	// above mean anything.
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if !regexp.MustCompile(`__uint\(max_entries,\s*NHP_EVENT_RATE_SLOTS\)`).Match(src) {
+		t.Error("the rate map is not declared with NHP_EVENT_RATE_SLOTS entries")
+	}
+}
+
+// TestAcSweepCoversEveryLogTheAcWrites pins that the retention sweep covers
+// every log family the AC writes, and that the legacy audit logs are swept
+// with a cap of their own.
+//
+// The audit logs used to be none of the sweep's business, which is how a
+// per-packet log with no size bound ended up living next to one with every
+// bound. And the two must not share a cap: the collector pulls
+// nhp_ac_xdp-*.log and the published site reads it, so a flood of deny lines
+// must not be able to evict the log the site depends on.
+//
+// The audit family's bounds are the caller's, and the caller's default is
+// unbounded -- a deployment whose audit trail matters keeps its history unless
+// it asks for the bounds. The telemetry log's bounds are the daemon's own and
+// do not move.
+func TestAcSweepCoversEveryLogTheAcWrites(t *testing.T) {
+	groups := acEventLogGroups(EngineLoadParams{
+		AcAuditLogRetentionBytes:  acAuditLogRetentionBytes,
+		AcAuditLogRetentionDays:   serverLogRetentionDays,
+		AcAuditLogDailyEventBytes: acAuditLogDailyEventBytes,
+	})
+
+	covered := make(map[string]int64)
+	for _, g := range groups {
+		for _, p := range g.prefixes {
+			if _, dup := covered[p]; dup {
+				t.Errorf("the prefix %q is swept by two groups", p)
+			}
+			covered[p] = g.maxBytes
+		}
+	}
+
+	for _, p := range acEventLogPrefixes {
+		if _, ok := covered[p]; !ok {
+			t.Errorf("the AC writes %s-*.log but no sweep covers it", p)
+		}
+	}
+	if len(covered) != len(acEventLogPrefixes) {
+		t.Errorf("the sweep covers %d prefixes, the AC writes %d", len(covered), len(acEventLogPrefixes))
+	}
+
+	if covered[acDenyLogName] != acAuditLogRetentionBytes {
+		t.Errorf("the deny log is capped at %d bytes, want %d", covered[acDenyLogName], acAuditLogRetentionBytes)
+	}
+	if covered[acAcceptLogName] != acAuditLogRetentionBytes {
+		t.Errorf("the accept log is capped at %d bytes, want %d", covered[acAcceptLogName], acAuditLogRetentionBytes)
+	}
+	if covered[acEventLogName] != serverLogRetentionBytes {
+		t.Errorf("the telemetry log is capped at %d bytes, want %d", covered[acEventLogName], serverLogRetentionBytes)
+	}
+	if acAuditLogRetentionBytes >= serverLogRetentionBytes {
+		t.Errorf("the audit family's cap (%d) is not smaller than the telemetry log's (%d); a deny flood could evict the log the site reads",
+			acAuditLogRetentionBytes, serverLogRetentionBytes)
+	}
+}
+
+// TestAcAuditLogBoundsAreTheCallers pins that the AC's audit logs are swept
+// with the bounds the caller asked for, and that the caller's default asks
+// for none.
+//
+// The audit logs used to be kept for as long as the host lived. They were
+// then given a 14-day / 64 MiB sweep, which is a fine answer for a host on the
+// internet and the wrong one for a deployment that reads nhp_deny-*.log as a
+// compliance trail: the history went away at an upgrade nobody asked for.
+// The bounds are the caller's now, and a caller that says nothing keeps what
+// it had.
+func TestAcAuditLogBoundsAreTheCallers(t *testing.T) {
+	defaults := acEventLogGroups(EngineLoadParams{})
+	for _, g := range defaults {
+		for _, p := range g.prefixes {
+			if p == acEventLogName {
+				continue
+			}
+			if g.maxBytes != 0 || g.retainDays != 0 {
+				t.Errorf("the audit log %q is bounded by default (maxBytes=%d, retainDays=%d); a deployment that says nothing must keep its history",
+					p, g.maxBytes, g.retainDays)
+			}
+		}
+	}
+
+	asked := acEventLogGroups(EngineLoadParams{
+		AcAuditLogRetentionBytes:  64 << 20,
+		AcAuditLogRetentionDays:   30,
+		AcAuditLogDailyEventBytes: 16 << 20,
+	})
+	for _, g := range asked {
+		if g.prefixes[0] == acEventLogName {
+			// The telemetry log's bounds are the daemon's own and do not
+			// follow the caller's.
+			if g.maxBytes != serverLogRetentionBytes || g.retainDays != serverLogRetentionDays {
+				t.Errorf("the telemetry log's bounds moved with the audit log's: maxBytes=%d retainDays=%d",
+					g.maxBytes, g.retainDays)
+			}
+			continue
+		}
+		if g.maxBytes != 64<<20 || g.retainDays != 30 {
+			t.Errorf("the audit family's bounds are maxBytes=%d retainDays=%d, want 64 MiB and 30 days",
+				g.maxBytes, g.retainDays)
+		}
+	}
+}
+
+// TestSweepWithUnboundedBoundsKeepsEverything pins that a family with no
+// bounds is not swept at all.
+//
+// This is the audit trail's answer: with no age and no size, nothing is
+// removed, whatever the directory holds. A sweep that treated a zero bound as
+// "delete everything" would be the worst of both -- the history would be gone
+// and the log would say it was keeping it.
+func TestSweepWithUnboundedBoundsKeepsEverything(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	old := writeLogFile(t, dir, "nhp_deny-2020-01-01.log", now.AddDate(0, 0, -2000), 10)
+	huge := writeLogFile(t, dir, "nhp_accept-2020-01-01.log", now.AddDate(0, 0, -2000), 10)
+
+	sweepEventLogs(dir, now, 0, 0, []string{acDenyLogName, acAcceptLogName})
+
+	for _, path := range []string{old, huge} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s should have survived an unbounded sweep: %v", filepath.Base(path), err)
+		}
+	}
+}
+
+// The loader writes the AC's IPv6 knob into the object's .rodata, and refuses
+// an object it cannot write: an operator who asked for the IPv6 tree to be
+// off, and an object that cannot say so, would leave the tree on while the
+// configuration said it was off.
+func TestSetAcConstantsRefusesAnObjectWithoutTheKnob(t *testing.T) {
+	spec := &ebpf.CollectionSpec{}
+
+	err := setAcConstants(spec, EngineLoadParams{DisableIPv6Filter: true})
+	if err == nil {
+		t.Fatal("setAcConstants on an object with no constants returned nil, want an error")
+	}
+	if !strings.Contains(err.Error(), varNhpAcFilterIPv6) {
+		t.Errorf("error %q does not name the missing constant %q", err, varNhpAcFilterIPv6)
+	}
+
+	// Nothing asked for, nothing to rewrite: the object's own default (the
+	// tree on) stands.
+	if err := setAcConstants(spec, EngineLoadParams{}); err != nil {
+		t.Errorf("setAcConstants with no overrides: %v", err)
+	}
+}
+
+// TestSweepAcAuditLogsKeepsTodayAndForeignFiles pins that the audit family's
+// sweep touches the deny logs and nothing else.
+func TestSweepAcAuditLogsKeepsTodayAndForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	today := writeLogFile(t, dir, "nhp_deny-2026-09-29.log", now, 10)
+	recent := writeLogFile(t, dir, "nhp_deny-2026-09-27.log", now.AddDate(0, 0, -2), 10)
+	stale := writeLogFile(t, dir, "nhp_deny-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+	// The daemon's own log and the telemetry log belong to other groups:
+	// neither is this group's to delete.
+	foreign := writeLogFile(t, dir, "ac-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+	telemetry := writeLogFile(t, dir, "nhp_ac_xdp-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+
+	sweepEventLogs(dir, now, 14, 1<<30, []string{acDenyLogName, acAcceptLogName})
+
+	for _, path := range []string{today, recent, foreign, telemetry} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s should have survived: %v", filepath.Base(path), err)
+		}
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("%s should have been pruned (err=%v)", filepath.Base(stale), err)
+	}
+}
+
+// TestAcAuditBudgetStopsAtTheDailyLimit pins that the legacy audit log has a
+// daily byte budget of its own, and that the marker line says which log ran
+// out of it.
+//
+// The tag is the difference between the two files: nhp_deny-*.log and
+// nhp_accept-*.log are separate budgets, so a reader has to be able to tell
+// which one stopped growing.
+func TestAcAuditBudgetStopsAtTheDailyLimit(t *testing.T) {
+	dir := t.TempDir()
+	logger := log.NewLoggerDefine("", log.LogLevelInfo, dir, "ac_deny_test")
+	t.Cleanup(logger.Close)
+
+	b := &eventLogBudget{limit: 100, componentId: "ac1", tag: "NHP-DENY"}
+	day1 := time.Date(2026, 9, 29, 23, 0, 0, 0, time.UTC)
+
+	if !b.spend(day1, 60, logger) {
+		t.Fatal("the first line is inside the budget")
+	}
+	if b.spend(day1, 60, logger) {
+		t.Fatal("the budget is spent; further lines must be suppressed")
+	}
+
+	logger.Close() // flush the async writer before reading the file
+	matches, err := filepath.Glob(filepath.Join(dir, "ac_deny_test-*.log"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("the budget line was not written (matches=%v, err=%v)", matches, err)
+	}
+	content, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("reading the budget log: %v", err)
+	}
+	want := "23:00:00 ac1 [NHP-DENY] EVENT_LOG_BUDGET_EXHAUSTED"
+	if !strings.Contains(string(content), want) {
+		t.Errorf("the budget line does not carry the component id and the log's tag in the expected place\nwant a line containing %q\ngot:\n%s", want, content)
 	}
 }

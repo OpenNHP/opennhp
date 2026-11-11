@@ -49,3 +49,70 @@ ResourceIds = ["demo"]
 # verify that, for TCP, for UDP, and for the AC's own channel to the server,
 # plus "Known limitation: fixed low UDP source ports".
 FilterMode = 1
+
+# The AC's legacy audit logs (nhp_deny-*.log and nhp_accept-*.log) are bounded
+# here, and the bounds are opt-in: zero means unbounded, which is what the AC
+# used to do and what a deployment that reads those files as an audit trail
+# needs. This host asks for the bounds because its group is open to the whole
+# internet and its disk is small -- a scan would otherwise fill the volume the
+# daemon runs on.
+#
+#   AuditLogRetentionDays   (days)   how long the files are kept; 0 = forever
+#   AuditLogRetentionBytes  (bytes)  how much the two files may occupy together; 0 = no cap
+#   AuditLogDailyEventBytes (bytes)  how much each file may append in one day; 0 = no cap
+#
+# The kernel-side rate limit is not one of these: the audit ring is fed behind
+# a budget whatever the files are allowed to grow to, so the log is a
+# rate-bounded sample either way. What these bound is how much of that sample
+# is kept, and how much of it is written.
+AuditLogRetentionDays = 14
+AuditLogRetentionBytes = 67108864
+AuditLogDailyEventBytes = 16777216
+
+# DisableIPv6Filter turns the XDP filter's IPv6 tree off: every IPv6 packet
+# is passed to the host, the way it was before the tree existed. It is left
+# off here (the tree runs) because this host has no IPv6 address at all, and
+# because the tree is what keeps a v6 listener the AC was never meant to gate
+# out of reach.
+#
+# TCP/22 is passed on both address families either way: the security group is
+# what restricts SSH, not the filter.
+DisableIPv6Filter = false
+
+# DhcpServerIP and NtpServerIP narrow the two UDP port pairs the XDP filter
+# admits -- the DHCP answer (67 -> 68) and the NTP answer (123 -> 123) -- to
+# the addresses this host's own servers answer from. Each is an IPv4 address
+# or a CIDR prefix; empty means the pair is not narrowed, which is the
+# behaviour of the filter before these settings existed.
+#
+# The port pair says what the answer looks like, not who sent it, so without a
+# range the filter admits any packet wearing the right ports -- on a host
+# whose group is open to the whole internet, that is the last exposure the
+# pair rules leave. Nothing downstream trusts those packets (a DHCP reply is
+# matched against the lease it answers, and chrony checks the server it
+# asked), so this is defence in depth rather than a fix for a hole.
+#
+# On Amazon Linux the two peers are the VPC's DHCP server (169.254.169.253)
+# and the Amazon Time Sync Service (169.254.169.123), both of them inside
+# 169.254.169.0/24:
+#
+#   DhcpServerIP = "169.254.169.0/24"
+#   NtpServerIP  = "169.254.169.0/24"
+#
+# They are left unset here on purpose. The peer addresses are a property of
+# the VPC and of the host's own configuration, not of this repository, and
+# getting the DHCP one wrong costs the host its lease -- and with it its
+# address, and with that its reachability, on a demo that has no break-glass
+# path. An address that cannot be parsed stops the AC from starting rather
+# than being ignored, so a typo is loud; a well-formed but wrong address is
+# not, which is why this is the operator's call and not the pipeline's.
+#
+# To find the real peer address before setting it, read it out of the AC's
+# own accept log -- the DHCP and NTP answers are recorded there with their
+# source:
+#
+#   grep DHCP /home/ec2-user/nhp-ac/logs/nhp_accept-*.log | tail
+#
+# See "the two client-protocol pairs" in terraform/demo/RUNBOOK.md.
+DhcpServerIP = ""
+NtpServerIP = ""

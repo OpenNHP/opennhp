@@ -202,8 +202,8 @@ frame
  │
  ├─ UDP
  │    ├─ dport != nhp_listen_port
- │    │    ├─ 67 → 68 (DHCP)        → PASS   (DHCP_CLIENT; reported)
- │    │    ├─ 123 → 123 (NTP)       → PASS   (NTP_CLIENT; counted)
+ │    │    ├─ 67 → 68 (DHCP)        → PASS   (DHCP_CLIENT; reported — optionally narrowed to a source range)
+ │    │    ├─ 123 → 123 (NTP)       → PASS   (NTP_CLIENT; counted — also narrowable)
  │    │    ├─ has_local_flow()?      → PASS   (UDP_ESTABLISHED; counted)
  │    │    └─ otherwise              → DROP   (UDP_OTHER)
  │    └─ dport == nhp_listen_port
@@ -248,6 +248,19 @@ AC 用一个 TC 出站程序加一张 `conn_track` map 来解决这个问题，�
 
 这两个都不是"凡是发给已绑定端口的一律放行"这种通用例外，因为那会把"没有主动报文能进来"这个性质整个丢掉。
 
+这两个端口对都可以收窄到应答真正来自的那个源：server 的 `etc/xdp.toml` 里的 `DhcpServerIP` 和 `NtpServerIP`，各写一个 IPv4 地址或 CIDR 前缀，加载器会在过滤器挂载之前把它们写进对象的 `.rodata`：
+
+```toml
+DhcpServerIP = "169.254.169.253"   # 主机自己的 DHCP 服务器
+NtpServerIP  = "169.254.169.0/24"  # 主机自己的时间服务器
+```
+
+端口对说明的是应答长什么样，而不是谁发出来的；所以没有范围时，过滤器会放行任何顶着正确端口的报文。下游并不会信任这些报文——DHCP 的应答是按它应答的那份租约匹配的，chrony 也会核对它问过的那个服务器——所以这属于纵深防御，而不是补一个洞。默认值是**不收窄**。
+
+解析不了的值会**记一条 Critical 日志，然后过滤器照常挂载**：那个端口对保持对象自带的默认值（任意源），文件里的其它内容照旧生效。server 拒绝挂载的理由只限于保护 SSH 可达性的那几条——安全组对每个端口都开放时，过滤器是这些端口上唯一的入站控制；为了一个纵深防御用的收窄而不挂载，等于用"端口对敞开"换"整机敞开"。想收窄的运维者会看到一条响亮的日志，而过滤器仍然在保护这台主机。
+
+AC 上有同样的两个设置，在它的 `etc/config.toml` 里，而那里的方向相反：解析不了的值会让 AC **起不来**。AC 的失败方向是封闭的（它停机，而 fail-closed 的 netfilter 兜底会把被保护的资源一直关着），所以那边一个笔误的代价是一台保持黑暗的主机，而不是一台保持敞开的主机。
+
 ### IPv6，以及为什么 SSH 必须走 IPv4
 
 `handle_ipv6()` 跑的是同一棵判定树，只是去掉了白名单。白名单是一棵 **IPv4 前缀**的 trie，所以程序在 v6 上认不出 relay——任何东西都到不了 tcp/22 或敲门端口。
@@ -272,7 +285,7 @@ IPv6 分片头中偏移非零的也一样处理（`IPV6_FRAGMENT`）。
 |-----|------|------|-----------|
 | `nhp_relay_ips` | `LPM_TRIE` | 4096，`BPF_F_NO_PREALLOC`，已 pin | SSH 白名单。对 IPv4 前缀做最长前缀匹配。 |
 | `nhp_events` | `PERF_EVENT_ARRAY` | 1024 | 用户态抽取的 perf ring。 |
-| `nhp_event_rate` | `PERCPU_ARRAY` | 33 | 令牌桶：32 个 action 分类 + 1 个全局。 |
+| `nhp_event_rate` | `PERCPU_ARRAY` | 67 | 令牌桶：32 个 action 分类 + 1 个全局（遥测 ring），然后是审计 ring 自己的那一份——32 个每分类桶，外加 deny 通道一个全局、accept 通道一个全局。 |
 | `nhp_action_stats` | `PERCPU_ARRAY` | 32 | 每个 action 分类的 `packets` 与 `logged` 计数。 |
 | `nhp_port_hits` | `LRU_PERCPU_HASH` | 65536 | 按目的端口统计的被丢弃报文数。 |
 | `nhp_src_hits` | `LRU_PERCPU_HASH` | 65536 | 按 IPv4 源地址统计的被丢弃报文数。 |
@@ -322,17 +335,23 @@ AC 的职责不同：它才是那个在敲门被授权时真正*打开*受保护
 frame
  │
  ├─ ethertype
- │    ├─ ARP / IPv6              → PASS   (the AC does not filter IPv6 at all)
+ │    ├─ ARP                     → PASS   (the AC does not answer ARP itself)
+ │    ├─ IPv6                   → handle_ipv6()   [see below]
  │    ├─ IPv4                   → continue
  │    └─ otherwise              → DROP
  │
  ├─ iph->ihl < 5                → DROP   (not recorded)
  │
+ ├─ non-first IPv4 fragment     → PASS   (inert: it carries no L4 header to judge)
+ │
  ├─ TCP to dport 22             → PASS   (SSH to the AC is never knock-gated)
- ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair, before any whitelist or conn_track lookup — the only UDP exception)
+ ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair — optionally narrowed to a source range, before any whitelist or conn_track lookup)
+ ├─ UDP 123 → 123 (NTP)         → PASS   (the chrony answer, by port pair, also narrowable — the same two exceptions the nhp-server's filter makes)
  │
  ├─ ICMP
- │    ├─ echo reply (type 0 code 0)   → PASS
+ │    ├─ echo reply (type 0 code 0)
+ │    │    ├─ the AC pinged that peer and this is the answer → PASS   (the `icmp_echo` record tc_egress.c wrote)
+ │    │    └─ otherwise         → the icmpwhitelist entry below decides it
  │    ├─ echo request (type 8 code 0)
  │    │    ├─ no icmpwhitelist entry → DROP
  │    │    ├─ entry expired           → DROP   (the entry is deleted)
@@ -352,18 +371,54 @@ frame
  │    ├─ src_port     (src + port)
  │    ├─ port_list    (src + a wildcard port range)
  │    └─ protocol_port(port + protocol)
- │         └─ yes, and not expired → PASS   (and the flow is recorded)
+ │         ├─ yes, and not expired → PASS   (and the flow is recorded)
+ │         └─ yes, and expired     → DROP   (the expired-knock class; see below)
+ │
+ ├─ UDP flow the kernel's socket table says belongs to a socket of the host's
+ │    └─ yes                  → PASS   (the backstop for a socket bound to a fixed port)
  │
  └─ otherwise                   → DROP
 ```
 
-DHCP 是这里唯一的 UDP 例外，并且是按 **端口对**（67 → 68）匹配的。源端口由发送方自己决定，证明不了任何事；这个分支以前还会放行任意来源的 `dport == 67 || dport == 68`，以及——更糟的——任何 `sport == 53` 的报文，而且都发生在 conn_track 和全部白名单**之前**。后者意味着任何从 udp/53 发出的报文都能打到 AC 保护的任意 UDP 端口（DNS、QUIC/HTTP3、WireGuard、游戏服务等），完全不需要敲门。
+DHCP 和 NTP 是这里仅有的两个 UDP 例外，并且都是按 **端口对**（67 → 68 和 123 → 123）匹配的。源端口由发送方自己决定，证明不了任何事；这个分支以前还会放行任意来源的 `dport == 67 || dport == 68`，以及——更糟的——任何 `sport == 53` 的报文，而且都发生在 conn_track 和全部白名单**之前**。后者意味着任何从 udp/53 发出的报文都能打到 AC 保护的任意 UDP 端口（DNS、QUIC/HTTP3、WireGuard、游戏服务等），完全不需要敲门。
 
-DNS 不需要专门的例外：AC 的查询从 `tc_egress.c` 所挂的同一个网卡发出，应答由下面的反向分支凭它留下的 EGRESS 条目放行，和 NTP 一样。这对**源端口**被 gate 3 接受的查询成立——也就是 ephemeral 端口，stub 解析器（glibc、systemd-resolved）用的就是它。**跑在 AC 上**、并且把出站端口随机化到 1024–65535 的递归解析器（BIND 的 `use-v4-udp-ports` 默认值）则落在和 AC 上其它固定低端口 UDP 客户端同一条限制里：见 `terraform/demo/RUNBOOK.md` 的 *Known limitation: fixed low UDP source ports*。
+这两个端口对和 nhp-server 自己的过滤器所放行的是同两个，理由在两台主机上也一样：应答落在内核无法与监听 socket 区分开的那个 socket 上。chronyd 是从它自己*绑定*在 udp/123 的 socket 发出轮询的，所以应答（123 → 123）看上去和一次主动查询一模一样；丢掉它损失的是时钟而不是地址，但敲门报文的时间戳正是拿时钟来比对的。DHCP 的应答更糟：它落在一个仅仅*绑定*在 udp/68 的 socket 上，主机丢了租约就等于丢了上面的每一个端口。
 
-每个白名单条目都带一个过期时间，而过期的条目会在某个报文发现它时**被删除**——于是一个已经跑完的条目立刻不再放行流量。
+**这两个端口对都可以收窄到应答真正来自的那个源。** 端口对说明的是应答长什么样，而不是谁发出来的；所以在安全组对整个互联网开放的主机上，过滤器会放行任何顶着正确端口的报文。下游并不会信任这些报文——DHCP 的应答是按它应答的那份租约匹配的，chrony 也会核对它问过的那个服务器——但这个端口对是本过滤器里唯一一处"身后没有任何白名单"的放行，而只有运维者知道自己那台主机的 dhclient 和 chronyd 是从哪些地址得到应答的。AC 的 `config.toml` 里的 `DhcpServerIP` 和 `NtpServerIP` 就是用来指定这些范围的，各写一个 IPv4 地址或 CIDR 前缀，加载器会在过滤器挂载之前把它们写进对象的 `.rodata`：
 
-这五次查找按固定顺序进行，并在第一次命中时停下，这带来一个看得见的后果：前面某张表里的一个**过期**条目会把自己删掉，就地把这个包丢掉，后面的表根本不会被查。因此对同一个包来说，一条过期的 `spp` 条目会盖过一条仍然有效的 `protocol_port` 条目。
+```toml
+DhcpServerIP = "169.254.169.253"   # 主机自己的 DHCP 服务器
+NtpServerIP  = "169.254.169.0/24"  # 主机自己的时间服务器
+```
+
+默认值是**不收窄**：这两个端口对的行为和以前完全一样，什么都没说的主机保持原样。解析不了的地址会让 AC 直接起不来，而不是被忽略——被悄悄忽略的收窄会让配置说"已收窄"而实际端口对仍然敞开；而收窄收错了方向，代价是主机丢掉 DHCP 租约，连带丢掉自己的地址和上面的每一个端口。
+
+nhp-server 的过滤器有同样这两个端口对、同样这两个设置，而它那半边的方向是反过来的：那边解析不了的值会记一条 Critical 日志，端口对保持自己的默认值，而**过滤器照常挂载**——server 拒绝挂载的理由只限于保护 SSH 可达性的那几条，因为安全组对每个端口都开放时，过滤器是这些端口上唯一的入站控制。
+
+这个收窄只覆盖 IPv4 的两个端口对。v6 那棵树自己的端口对（DHCPv6 547 → 546 和 NTPv6 123 → 123）没有被收窄：那需要一个 128 位的范围，而演示用的 AC 根本没有 IPv6 地址。
+
+DNS 不需要专门的例外：AC 的查询从 `tc_egress.c` 所挂的同一个网卡发出，应答由下面的反向分支凭它留下的 EGRESS 条目放行。这对**源端口**被 gate 3 接受的查询成立——也就是 ephemeral 端口，stub 解析器（glibc、systemd-resolved）用的就是它。**跑在 AC 上**、并且把出站端口随机化到 1024–65535 的递归解析器（BIND 的 `use-v4-udp-ports` 默认值）则落在和 AC 上其它固定低端口 UDP 客户端同一条限制里：见 `terraform/demo/RUNBOOK.md` 的 *Known limitation: fixed low UDP source ports*。
+
+IPv6 是用自己的一棵树（`handle_ipv6()`）过滤的，而不是直接放行。演示主机今天没有 v6 地址，而这恰恰是那个放行危险的地方：一旦 VPC 里加进一个 v6 CIDR，每一个 v6 监听端口——尤其是 sshd 的 `[::]:22`——都会在部署的"过滤器已挂载"检查依然是绿的情况下被无过滤地触达。v6 那棵树放行 ICMPv6 的 "packet too big" 和 ND/MLD 那一段、这两个端口对的 v6 写法（DHCPv6 547 → 546 和 NTPv6 123 → 123）、主机自己发起的流的应答（`has_local_flow6()`），以及 **tcp/22**；其余一律丢弃。v6 这棵树需要自己的端口对，是因为没有 v6 的 conn_track 可以凭它放行租约和 NTP 应答——`tc_egress.c` 只处理 IPv4——白名单也都是 IPv4 的表，所以不会有任何 v6 报文被白名单放行。
+
+**tcp/22 在两个地址族上都是放行的**，这是有意为之。IPv4 那棵树放行 SSH，是因为限制它的是安全组：tcp/22 被从全端口区间里挖出来，只对 relay 所在的安全组开放。如果 v6 那棵树丢掉 SSH、而 v4 那棵树放行，那么每一个用 IPv6 管理 AC 的人都会被锁在门外——同一个过滤器、同一个安全组，却无路可进。安全组才是限制 SSH 的那一层，两个地址族都一样；部署放开了自己安全组的 v6 规则，就是在手工关上那个端口，和它对 IPv4 所做的一样。
+
+有两个后果值得明说：
+
+- **对任何在 v6 上监听别的东西来说，这是一个破坏性变更。** 在这个过滤器存在之前，所有 v6 报文都是放行的。现在，AC 本来无意去管的一个 v6 监听端口——数据库、指标端点、运维自己的某个服务——会被丢弃，因为 AC 的白名单都是 IPv4 的表，而"敲过门的那个对端可以访问这个端口"这条策略，程序在 v6 上表达不出来。
+- **有办法出去，但那是决定而不是默认。** AC 的 `config.toml` 里的 `DisableIPv6Filter` 可以把整棵树关掉，重新放行所有 v6 报文。这个开关是一个 `.rodata` 常量（`nhp_ac_filter_ipv6`），加载器在验证器折叠它之前写进去，并且会在写的时候打一条 `Warning`——"过滤器已挂载"这句话在这里什么也说明不了，因为过滤器**确实挂着**，只是有意不去过滤 v6。关掉它意味着主机上每一个 v6 监听端口都只能靠安全组兜底。
+
+ICMP 的应答只按两个理由之一放行：那个对端为 ICMP 访问敲过门（下面那个白名单条目，现在两个方向都由它决定），或者 AC 自己 ping 过那个对端、而这就是那条应答——`tc_egress.c` 在请求发出去时写下的 `icmp_echo` 条目，键是对端地址和报文上的标识符，过期时间是 `NHP_ICMP_ECHO_TTL_NS`。这个应答以前是无条件放行的、来自任何地方，在安全组对全网开放时那是一条通往主机的常设旁路。AC 上的 `ping` 现在仍然可用，而这也是检查 AC 自身可达性的办法。
+
+每个白名单条目都带一个过期时间，而过期的条目立刻就不再放行流量——不管它的 `allowed` 标志是什么，跑完的条目什么都不放行。
+
+当条目同时限定了**对端**和**端口**时（`spp`、`src_port`、`port_list`），过期的条目还会被**保留一段宽限期**——60 秒，`NHP_KNOCK_EXPIRED_GRACE_SEC`。这段时间里的报文仍然被归类为"过期的敲门"（`KNOCK_EXPIRED`），而不是扫描：对端并不会和 AC 同时察觉到窗口已经关闭——会话的最后一段会被重传，FIN 会迟到，keepalive 会在 AC 已经不再监听之后才发出来。以前只有**第一个**这样的报文被豁免，因为条目当场就被删掉了；后面的都落进了扫描类，于是被授权的对端的地址——以及它所在的国家——就进了对外发布的攻击者统计。宽限期过了以后条目被删除，这个对端重新变成"通往一个已关闭端口的未知来源"，而这个报文也和一个从未被放行过的报文完全一样地被判定。
+
+**宽限期是一种归类，而不是一个判决。** 在宽限期里命中了一个过期条目的报文不会被就地丢掉：它会继续往下查后面几张表，其中任何一张里仍然有效的条目都能放行它。因此，一个自己的端口级敲门刚刚过期的对端，不会因为一条 `protocol_port` 对所有人开放的端口、也不会因为 `sdwhitelist` 仍然覆盖着的资源，在整个宽限期里被挡在门外。宽限期决定的是这样的报文**叫什么**——如果别的什么都放行不了，它就是过期的敲门——而绝不是它能不能进来。
+
+那两个不限定对端的条目**没有**宽限期，理由在各自的键形状里。`sdwhitelist` 的键是对端和 AC，里面没有端口，所以它覆盖这个对端发给 AC 的**全部**流量——而这个对端可能就是 nhp-server 本身：敲门的 agent 和 server 同址时（NAT，或者 agent 就跑在 server 主机上），AC 自己通往 server 的通道只由这个条目放行，把它留住就等于让 AC 在整个宽限期里下不来。`protocol_port` 的键是端口和协议，里面没有对端，所以它说的是"任何人都可以用这个端口"；把它留住会把攻击者打向那个端口的报文也归类成过期的敲门，从而把它们挡在对外发布的攻击者统计之外。
+
+这五次查找按固定顺序进行，并在第一次放行的命中处停下。有一点值得说明：两张不带宽限期的表——`sdwhitelist` 和 `protocol_port`——里的一个**过期**条目会就地把这个包丢掉，后面的表根本不会被查。三个端口级的表（`spp`、`src_port`、`port_list`）不会：在它们的宽限期里这个包会继续往下查后面的表，而宽限期过了以后条目被删除，这个包也和一个从未被放行过的报文完全一样地被判定。
 
 反向分支是最微妙的一处，所以上面的判定树只是它的概括，而不是规则本身。有三个条件限定了它：
 
@@ -467,6 +522,21 @@ AC 的 perf 事件带一个二值 action——0 = `DENY`，1 = `ACCEPT`——并
 `tc_egress.c` 里每一个 `return` 都是 `TC_ACT_OK`。出站程序**从不丢包**——它只做记录。AC 的入站程序才是决定访问权的那一个；出站程序存在的意义，是让 AC 自己发出的流能把应答收回来，并且记录它发过什么。
 
 这也是闸门 2 到闸门 4 讲的是**认领**一个流、而不是拒绝一个流的原因：认领错了只是丢掉一次认领，拒绝错了要赔上整个协议。
+
+### AC 自己的配置
+
+AC 的 `etc/config.toml` 里有四个键会改变过滤器和它的日志的行为。它们都是**仅启动时**的：过滤器和日志写入端都是在守护进程启动时一次性建好的。
+
+| 键 | 默认值 | 作用 |
+|----|--------|------|
+| `DisableIPv6Filter` | `false` | 关掉 IPv6 那棵树；所有 v6 报文都放给主机。 |
+| `AuditLogRetentionDays` | `0` | `nhp_deny-*.log` 和 `nhp_accept-*.log` 保留多久。`0` = 永久。 |
+| `AuditLogRetentionBytes` | `0` | 这两个审计文件合计可以占多少字节。`0` = 不封顶。 |
+| `AuditLogDailyEventBytes` | `0` | 每个审计文件每个日历日可以追加多少字节。`0` = 不封顶。 |
+
+这三个审计界限是**有意做成需要主动开启的**。那两个文件以前是主机活多久就留多久；后来它们被加上了 14 天 / 64 MiB 的清理和每天 16 MiB 的上限——对一台在公网上的主机这是个好答案，对一个把它们当合规或审计留痕来读的部署却是错的：历史在一次没人要求的升级里就没了。什么都不说的部署保留原来那份；演示环境主动要了这些界限，因为它的安全组对全网开放，而它的磁盘很小。
+
+内核侧速率限制不在这些键里，也不依赖它们。无论文件被允许长到多大，审计 ring 都是在一个预算后面被喂的——每分类一个桶，外加 deny 通道一个全局上限、accept 通道另一个，所以一次丢弃洪水花不掉"记录了谁被放进来"那个日志的额度。因此这个日志无论如何都是一份受速率限制的采样；这三个界限管的是这份采样留多少、以及写多少。
 
 ## 6. 加载器：从 `.o` 到一个真正在跑的过滤器
 
@@ -779,6 +849,8 @@ server 还做了一件值得知道的事，因为它是"一次失误"和"一次�
 - **内核里的每分类令牌桶。** 每个 action 分类每 CPU 每秒 16 个突发额度，另有一个跨所有分类的全局桶，每 CPU 每秒 8 个。每分类的桶防止某一类洪水把另一类的记录饿死；全局的那个则给总量封上界，无论它是由什么分类混合而成的。没有它，一个 IPv4 发送方能触及的那十来个可上报分类，每个十六个突发额度，再乘以 CPU 数，就是每秒几百行——也就是每天几个 GB。
 - **写入侧每天的字节预算。** 每个日历日 64 MiB 的逐包文本。花完之后写入端不再增加行并说明原因——但 `[NHP-STAT]` 摘要仍然继续报出精确总数。
 - **保留期清理。** 14 天或 256 MiB，哪个先到算哪个；先删最老的文件，当天正在写的文件永不删除。
+
+AC 自己的审计族——`nhp_deny-*.log` 和 `nhp_accept-*.log`，每个被放行或被丢弃的报文一行——用的是同样的做法，但它的界限是 AC 自己的配置，而不是守护进程的常量：`AuditLogRetentionDays`、`AuditLogRetentionBytes` 和 `AuditLogDailyEventBytes`，三者默认都是 `0`（= 不封顶）。见第 5 章的 *AC 自己的配置*。
 
 那些批量分类干脆完全不记录（`TCP_ESTABLISHED`、`UDP_ESTABLISHED`、`V6_ESTABLISHED`、`ICMPV6_CONTROL`，以及 SYN 之后的每一个 `SSH_RELAY` 报文）。它们随传输字节数增长，而不是随事件数增长。
 

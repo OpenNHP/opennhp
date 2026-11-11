@@ -161,3 +161,135 @@ jobs:
         verbose: true
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # The kernel is the only thing that can accept or reject an eBPF object, and
+  # on the AC a rejected object is an outage: nhp-acd cannot start, the
+  # fail-closed backstop keeps tcp/443 shut, and the demo is dark. The build
+  # job above only proves the objects *compile*; this one proves the kernel
+  # *accepts* them, by loading all three the way the daemons load them and
+  # running them against packets.
+  #
+  # It runs as root, because a load without CAP_BPF is refused with EPERM and
+  # the load tests used to skip in that case -- which is exactly how a
+  # verifier rejection could reach a deploy unnoticed. The tests now fail
+  # instead of skipping when the process holds the privilege (see
+  # requireCaps in nhp/utils/ebpf/privileged_linux_test.go), so a rejected
+  # object fails this job with the verifier log in the output.
+  ebpf-verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.26'
+        cache-dependency-path: nhp/go.sum
+
+    - name: Install the eBPF toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang libbpf-dev
+
+    - name: Build the eBPF objects
+      run: make ebpf-objs
+
+    # The programs are loaded, not attached, but a load still needs a bpffs to
+    # pin the maps into.
+    - name: Mount bpffs
+      run: sudo mountpoint -q /sys/fs/bpf || sudo mount -t bpf bpf /sys/fs/bpf
+
+    # The verdict is asked through the loader the daemons use, not through
+    # bpftool: bpftool's libbpf refuses these objects outright ("program
+    # 'xdp_white_prog' is static and not supported"), because the programs
+    # are declared static in the C sources. A gate built on it never asked
+    # the kernel anything -- it reported its own plumbing.
+    #
+    # This is the same tool deploy-demo-v2 runs on the demo hosts: it loads
+    # the object through the real loader, with the constants the real load
+    # writes, into a pin directory of its own, and never attaches it. The
+    # runner's kernel is not the demo's kernel, which is why the deploy asks
+    # the question again there -- but a rejection that is a property of the
+    # program rather than of the kernel is caught here, on every PR.
+    - name: Ask the kernel whether it accepts the objects
+      run: |
+        set -euo pipefail
+        make ebpf-verify
+        verify=release/nhp-ebpf-verify/nhp-ebpf-verify
+        # A leftover from an earlier run that was killed would make the check
+        # at the end fail for the wrong reason, so it is cleared first.
+        sudo rm -rf /sys/fs/bpf/nhp-verify-*
+        # Root holds CAP_BPF; a load without it is refused with EPERM, which
+        # says nothing about the program.
+        sudo "$verify" --variant ac \
+          --obj release/nhp-ac/etc/nhp_ebpf_xdp.o \
+          --tc-obj release/nhp-ac/etc/tc_egress.o
+        sudo "$verify" --variant server \
+          --obj release/nhp-server/etc/nhp_server_xdp.o \
+          --port 62206 --min-frame-bytes 240
+        # The load pins into a directory of its own and removes it again;
+        # nothing of a running daemon's is touched. This asserts it, so a
+        # change that starts leaving pins behind fails here rather than on a
+        # demo host.
+        if sudo ls -A /sys/fs/bpf | grep -q '^nhp-verify'; then
+          echo "::error::the verify load left pins behind in /sys/fs/bpf"
+          sudo ls -A /sys/fs/bpf
+          exit 1
+        fi
+        # And nothing in the live directory either: that is where a running
+        # daemon pins its maps (/sys/fs/bpf/conn_track and the rest). A load
+        # that shared them would be checking the live filter's state instead
+        # of its own, and a map that did not exist before would be left there
+        # for the next start to trip over.
+        leaked=""
+        for name in conn_track spp icmpwhitelist sdwhitelist src_port \
+          port_list protocol_port events knock_peers icmp_echo nhp_config \
+          nhp_events nhp_action_stats nhp_port_hits nhp_src_hits nhp_relay_ips
+        do
+          if sudo test -e "/sys/fs/bpf/$name"; then
+            leaked="$leaked $name"
+          fi
+        done
+        if [ -n "$leaked" ]; then
+          echo "::error::the verify load left pins in the live directory:$leaked"
+          sudo ls -A /sys/fs/bpf
+          exit 1
+        fi
+
+    - name: Run the eBPF tests with CAP_BPF
+      working-directory: nhp
+      run: |
+        set -euo pipefail
+        # Root gets its own build and module caches: the runner's belong to
+        # the runner user, and a root-owned file left in them would break the
+        # cache save at the end of the job (and the next run's cache restore).
+        root_env=(env "PATH=$PATH" "HOME=/root" \
+          "GOCACHE=/tmp/ebpf-gocache" "GOMODCACHE=/tmp/ebpf-gomodcache")
+        sudo "${root_env[@]}" go mod download
+        # Root holds CAP_BPF and CAP_NET_ADMIN, so the load tests do not skip:
+        # a kernel that refuses one of the objects fails the job here, with
+        # the verifier log in the output.
+        sudo "${root_env[@]}" go test ./utils/ebpf/... -v -count=1 2>&1 | tee /tmp/ebpf-tests.log
+        # A load test that skipped proved nothing: this job exists to have the
+        # kernel accept the objects, so the tests that load them have to have
+        # run and passed. (Other tests may skip for an unrelated reason --
+        # a socket the runner will not let us bind -- so only these are
+        # required.)
+        for t in \
+          TestAcFilterAnswersTheHostsOwnPings \
+          TestAcEgressProgramRecordsTheHostsOwnFlow \
+          TestAcFilterKeepsTheKnockedEchoReply \
+          TestAcFilterAdmitsDespiteALapsedPortScopedKnock \
+          TestServerEngineLoadAttachesToLoopback \
+          TestServerFilterKnocksOnTheConfiguredPort \
+          TestServerFilterLetsTheRelaySendShortKnocks
+        do
+          if ! grep -q -- "--- PASS: $t" /tmp/ebpf-tests.log; then
+            echo "::error::$t did not run and pass; the objects were not exercised"
+            exit 1
+          fi
+        done
+        # Anything else that skipped is worth seeing, but it is not this
+        # job's business.
+        grep -- '--- SKIP' /tmp/ebpf-tests.log || true

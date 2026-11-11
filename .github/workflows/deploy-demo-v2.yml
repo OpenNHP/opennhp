@@ -233,6 +233,29 @@ jobs:
             sh -c 'go build -o /src/artifact/xdplog-report/xdplog-report ./xdplog-report'
           chmod +x artifact/xdplog-report/xdplog-report
 
+          # The tool that asks the kernel whether it accepts an eBPF object. It
+          # runs on the demo hosts, on the kernel they actually run on, before
+          # the running daemon is stopped -- so an object the verifier refuses
+          # is caught while the service is still up, instead of after the
+          # daemon has been stopped and replaced with one that cannot start.
+          #
+          # It is built inside the same AL2023 container as the daemons it
+          # checks, for the same glibc reason, and from the same commit as the
+          # objects it is given.
+          mkdir -p artifact/ebpf-verify
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD":/src -w /src/nhp \
+            -v "$GOMODCACHE_HOST":/gomodcache \
+            -v "$GOCACHE_HOST":/gocache \
+            -e HOME=/tmp \
+            -e GOMODCACHE=/gomodcache \
+            -e GOCACHE=/gocache \
+            -e CUSTOM_LD_FLAGS \
+            opennhp-al2023-builder:ci \
+            sh -c 'go build -trimpath -ldflags "$CUSTOM_LD_FLAGS" -o /src/artifact/ebpf-verify/nhp-ebpf-verify ./utils/ebpf/cmd/ebpfverify'
+          chmod +x artifact/ebpf-verify/nhp-ebpf-verify
+
           # Compile the two eBPF objects the AC loads at startup in FilterMode=1.
           # These are BPF bytecode, not host code: no libc is linked into them,
           # so they are built on the runner with the clang installed above and
@@ -349,6 +372,7 @@ jobs:
             artifact/relay/nhp-relayd \
             artifact/demoapp/demoapp \
             artifact/xdplog-report/xdplog-report \
+            artifact/ebpf-verify/nhp-ebpf-verify \
             $plugin_sos
 
           # The other half of the trade-off. Dropping cgo is the obvious way
@@ -414,6 +438,7 @@ jobs:
       relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
       relay_private_ip: ${{ steps.tf_outputs.outputs.relay_private_ip }}
       nhp_listen_port: ${{ steps.nhp_port.outputs.NHP_LISTEN_PORT }}
+      xdp_min_frame_bytes: ${{ steps.xdp_env.outputs.min_frame_bytes }}
 
     steps:
       - name: Checkout code
@@ -591,6 +616,7 @@ jobs:
           path: ./artifact
 
       - name: Resolve the relay addresses for the nhp-server XDP whitelist
+        id: xdp_env
         # RELAY_IPS becomes the nhp-server's XDP whitelist: the only source
         # addresses allowed to reach tcp/22 on that host. There is no
         # break-glass SSH path by design, so rendering an empty or wrong list
@@ -740,7 +766,12 @@ jobs:
           # nhp/ebpf/xdp/nhp_server_xdp.c. Unlike the port, this value is
           # applied from the TOML — the loader writes it into the object's
           # .rodata at startup — so it is a real knob, not documentation.
-          echo "XDP_NHP_MIN_FRAME_BYTES=240" >> $GITHUB_ENV
+          xdp_min_frame_bytes=240
+          echo "XDP_NHP_MIN_FRAME_BYTES=$xdp_min_frame_bytes" >> $GITHUB_ENV
+          # The same value as an output: the deploy asks the kernel whether it
+          # accepts the server's eBPF object with the constants the daemon
+          # will write into it, and the datagram floor is one of them.
+          echo "min_frame_bytes=$xdp_min_frame_bytes" >> $GITHUB_OUTPUT
           # [NHP-SCAN] summary window and Top-N; defaults match
           # endpoints/server/config.go. Startup-only knobs.
           echo "XDP_SCAN_REPORT_SECONDS=300" >> $GITHUB_ENV
@@ -958,6 +989,11 @@ jobs:
       # rendered server/ac/relay configs already carry — the drop-in (XDP
       # engine) and the bind assertion below both key off this.
       NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
+      # The datagram floor the server's XDP filter enforces, as the configure
+      # job rendered it into xdp.toml. The kernel check below loads the
+      # object with the constants the daemon will write into it, and this is
+      # one of them.
+      XDP_NHP_MIN_FRAME_BYTES: ${{ needs.configure.outputs.xdp_min_frame_bytes }}
 
     steps:
       - name: Configure AWS credentials
@@ -1214,6 +1250,61 @@ jobs:
           # can populate it on first start.
           ssh nhp-server "sudo mkdir -p /opt/confidential-containers/kbs/repository/default/cosign-key && \
             sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} /opt/confidential-containers"
+
+          # The kernel's verifier is the only thing that can reject the new
+          # object, and the server's failure direction is open: nhp-serverd
+          # falls back to no filter at all rather than refusing to start, so a
+          # rejected object would leave the host with the exposure it had
+          # before the filter existed -- under a deploy that reported success.
+          #
+          # So the object is loaded on the host, on the AL2023 kernel the demo
+          # actually runs, before the running daemon is stopped.
+          #
+          # The load goes through the loader the daemon itself uses
+          # (nhp-ebpf-verify), with the constants the daemon writes into the
+          # object -- the knock port and the datagram floor -- so the verdict
+          # is about the program that will be attached and not about the
+          # object's own defaults. Nothing is attached; the load pins into a
+          # directory of its own and removes it again, so the running
+          # filter's maps are neither reused nor touched.
+          #
+          # It is not bpftool: bpftool's libbpf refuses these objects
+          # outright ("program 'xdp_white_prog' is static and not supported"),
+          # and it pins a LIBBPF_PIN_BY_NAME map into /sys/fs/bpf/<name> --
+          # the very entries the running daemon owns.
+          echo "Checking that the kernel accepts the new server eBPF object..."
+          scp ./artifact/ebpf-verify/nhp-ebpf-verify nhp-server:/tmp/nhp-ebpf-verify
+          scp ./artifact/server/etc/nhp_server_xdp.o nhp-server:/tmp/nhp-verify-xdp.o
+          ssh nhp-server "chmod +x /tmp/nhp-ebpf-verify"
+          # A pin directory left behind by a run that was killed would be found
+          # and reused by the next one, so the stale ones go first.
+          ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify-*"
+          # The constants come from the xdp.toml that is about to be deployed,
+          # so the load is checked with the values the daemon will enforce.
+          XDP_TOML=./configs/server/xdp.toml
+          MIN_FRAME=$(grep -E '^[[:space:]]*NhpMinFrameBytes[[:space:]]*=' "$XDP_TOML" | grep -oE '[0-9]+' | head -1)
+          if [ -z "$MIN_FRAME" ]; then
+            echo "ERROR: could not read NhpMinFrameBytes from $XDP_TOML." >&2
+            echo "       Nothing was stopped; re-run the deploy." >&2
+            exit 1
+          fi
+          VERIFY_ARGS="--port $NHP_LISTEN_PORT --min-frame-bytes $MIN_FRAME"
+          DHCP_SRC=$(grep -E '^[[:space:]]*DhcpServerIP[[:space:]]*=' "$XDP_TOML" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+          NTP_SRC=$(grep -E '^[[:space:]]*NtpServerIP[[:space:]]*=' "$XDP_TOML" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+          if [ -n "$DHCP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --dhcp-source $DHCP_SRC"; fi
+          if [ -n "$NTP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --ntp-source $NTP_SRC"; fi
+          if ! ssh nhp-server "sudo /tmp/nhp-ebpf-verify --variant server --obj /tmp/nhp-verify-xdp.o $VERIFY_ARGS"; then
+            ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o" || true
+            echo "ERROR: the kernel refused the new server eBPF object."
+            echo "       Nothing was stopped: the running nhp-serverd and its"
+            echo "       filter are untouched, and the deploy is aborted here."
+            echo "       The verifier log is above. The usual causes are a"
+            echo "       program the kernel does not accept (an instruction or"
+            echo "       complexity limit, a helper XDP does not allow) and a"
+            echo "       mismatch between the object and the loader."
+            exit 1
+          fi
+          ssh nhp-server "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o"
 
           echo "Stopping nhp-serverd..."
           ssh nhp-server "sudo systemctl stop nhp-serverd || true"
@@ -2565,6 +2656,55 @@ jobs:
             fi
           }
 
+          # The kernel's verifier is the only thing that can reject the new
+          # objects, and on the AC a rejected object is an outage: nhp-acd
+          # cannot start, the fail-closed backstop keeps tcp/443 shut, and the
+          # demo is dark. So both objects are loaded on the host, on the
+          # AL2023 kernel the demo actually runs, before the running daemon
+          # is stopped.
+          #
+          # The load goes through the loader the daemon itself uses
+          # (nhp-ebpf-verify), with the constants the daemon writes into the
+          # objects -- the IPv6 knob and the two source narrowings -- so the
+          # verdict is about the program that will be attached and not about
+          # the objects' own defaults. Nothing is attached; the load pins
+          # into a directory of its own and removes it again, so the running
+          # filter's maps are neither reused nor touched.
+          if [ "$FILTER_MODE" = "1" ]; then
+            echo "Checking that the kernel accepts the new eBPF objects..."
+            scp ./artifact/ebpf-verify/nhp-ebpf-verify nhp-ac:/tmp/nhp-ebpf-verify
+            scp ./artifact/ac/etc/nhp_ebpf_xdp.o nhp-ac:/tmp/nhp-verify-xdp.o
+            scp ./artifact/ac/etc/tc_egress.o nhp-ac:/tmp/nhp-verify-tc.o
+            ssh nhp-ac "chmod +x /tmp/nhp-ebpf-verify"
+            # A pin directory left behind by a run that was killed would be
+            # found and reused by the next one, so the stale ones go first.
+            ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify-*"
+            # The constants come from the config.toml that is about to be
+            # deployed, so the load is checked with the values the daemon will
+            # enforce.
+            AC_CFG=./configs/ac/config.toml
+            VERIFY_ARGS=""
+            if [ "$(sed -n 's/^[[:space:]]*DisableIPv6Filter[[:space:]]*=[[:space:]]*\([a-z]*\).*/\1/p' "$AC_CFG" | tail -1)" = "true" ]; then
+              VERIFY_ARGS="$VERIFY_ARGS --disable-ipv6-filter"
+            fi
+            DHCP_SRC=$(grep -E '^[[:space:]]*DhcpServerIP[[:space:]]*=' "$AC_CFG" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+            NTP_SRC=$(grep -E '^[[:space:]]*NtpServerIP[[:space:]]*=' "$AC_CFG" | sed -n 's/.*=[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ -n "$DHCP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --dhcp-source $DHCP_SRC"; fi
+            if [ -n "$NTP_SRC" ]; then VERIFY_ARGS="$VERIFY_ARGS --ntp-source $NTP_SRC"; fi
+            if ! ssh nhp-ac "sudo /tmp/nhp-ebpf-verify --variant ac --obj /tmp/nhp-verify-xdp.o --tc-obj /tmp/nhp-verify-tc.o $VERIFY_ARGS"; then
+              ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o" || true
+              echo "ERROR: the kernel refused one of the new eBPF objects."
+              echo "       Nothing was stopped: the running nhp-acd and its"
+              echo "       filter are untouched, and the deploy is aborted here."
+              echo "       The verifier log is above. The usual causes are a"
+              echo "       program the kernel does not accept (an instruction or"
+              echo "       complexity limit, a helper XDP does not allow) and a"
+              echo "       mismatch between the object and the loader."
+              exit 1
+            fi
+            ssh nhp-ac "sudo rm -rf /sys/fs/bpf/nhp-verify-* /tmp/nhp-ebpf-verify /tmp/nhp-verify-xdp.o /tmp/nhp-verify-tc.o"
+          fi
+
           echo "Stopping nhp-acd..."
           ssh nhp-ac "sudo systemctl stop nhp-acd || true"
 
@@ -2863,6 +3003,163 @@ jobs:
           else
             echo "nhp-acd deployed successfully (iptables mode)"
           fi
+
+      - name: Verify the AC's XDP ingress filter attached
+        # The mirror of the server's "Verify the XDP ingress filter attached",
+        # and the check the infra-demo workflow's all-ports gate for the AC
+        # (`ac_open_all_ports`) depends on: widening the AC's security group
+        # leaves the XDP filter as the only inbound control, so the filter
+        # being attached has to be a fact the pipeline establishes, not an
+        # assumption.
+        #
+        # The pin check inside the deploy step above is not the same thing: the
+        # program is pinned before it is attached, so a pin can outlive a
+        # failed attach. Ask the kernel instead - an attached generic-mode XDP
+        # program shows up on the interface itself.
+        run: |
+          set -euo pipefail
+
+          FILTER_MODE=$(sed -n 's/^[[:space:]]*FilterMode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' ./configs/ac/config.toml | tail -1)
+          if [ "$FILTER_MODE" != "1" ]; then
+            echo "FilterMode = ${FILTER_MODE:-<unknown>} (not eBPF/XDP) - no ingress filter to verify."
+            exit 0
+          fi
+
+          if ! ssh nhp-ac "ip -details link show | grep -q xdpgeneric"; then
+            echo "::error::no XDP program attached on nhp-ac - the host is running fail-open."
+            echo "       Do not widen its security group (ac_open_all_ports) until this is green."
+            exit 1
+          fi
+
+          echo "XDP ingress filter attached on nhp-ac:"
+          ssh nhp-ac "ip -details link show | grep -B2 xdpgeneric" || true
+
+      - name: Check the AC's security group is open to the internet
+        # The AC's telemetry counts what its XDP filter drops, and the filter
+        # only ever sees a packet that reached the NIC. A security group that
+        # drops the packet first means the packet is never counted: the AC's
+        # column on stats.opennhp.org then counts only the handful of ports
+        # the narrow group allows, which reads as "the AC is not being
+        # attacked" rather than "the group ate the packets".
+        #
+        # The group is widened by the infra-demo workflow (the
+        # `open_ac_all_ports` input), not by this one, so this step cannot fix
+        # it. It reports the symptom where it is noticed and names the fix.
+        # A warning, not a failure: the AC's enforcement does not depend on
+        # the group being wide open, and this job must not fail over a
+        # Terraform-side setting.
+        run: |
+          set -euo pipefail
+
+          SG_ID=$(aws ec2 describe-security-groups \
+            --region ${{ env.AWS_REGION }} \
+            --filters "Name=tag:Name,Values=opennhp-demo-ac-sg" \
+            --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
+          if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+            echo "::warning::no security group tagged opennhp-demo-ac-sg found; cannot check the AC's ingress rules."
+            exit 0
+          fi
+
+          # One wide-open udp rule is what makes the filter see the scans;
+          # the tcp ranges and icmp follow the same posture. An AWS error
+          # reads as "not open" here, which costs a warning and never a
+          # false "all good".
+          OPEN_UDP=$(aws ec2 describe-security-groups \
+            --region ${{ env.AWS_REGION }} \
+            --group-ids "$SG_ID" --output json 2>/dev/null \
+            | jq -r '[.SecurityGroups[0].IpPermissions[]?
+                       | select(.IpProtocol == "udp" and .FromPort == 0 and .ToPort == 65535)
+                       | .IpRanges[]? | select(.CidrIp == "0.0.0.0/0")] | length' 2>/dev/null || true)
+          OPEN_UDP=${OPEN_UDP:-0}
+
+          if [ "$OPEN_UDP" = "0" ]; then
+            echo "::warning::the nhp-ac security group ($SG_ID) is NOT open to the internet."
+            echo "          The AC's XDP filter only counts packets that reach the NIC, so"
+            echo "          the scans the group drops are never counted and the AC's column"
+            echo "          on stats.opennhp.org undercounts the attacks."
+            echo "          Fix: run the 'Demo Infrastructure' workflow with action=apply,"
+            echo "          confirm=confirm and open_ac_all_ports ticked."
+          else
+            echo "nhp-ac security group ($SG_ID) is open to the internet; the XDP filter sees the scans."
+          fi
+
+      - name: Install nhp-ac-xdplog-export.sh on nhp-ac
+        # Forced-command SSH handler the relay collector uses to read the
+        # AC's daily nhp_ac_xdp-YYYY-MM-DD.log files. Same contract as the
+        # server's: only `list` and `get <YYYY-MM-DD>`. Not tied to the
+        # daemon's lifecycle, so nhp-acd is not restarted for it.
+        run: |
+          set -euo pipefail
+          REMOTE_DIR="/home/$DEPLOY_USER/nhp-ac"
+          scp repo/deploy/scripts/nhp-ac-xdplog-export.sh nhp-ac:/tmp/nhp-ac-xdplog-export.sh
+          ssh nhp-ac "mkdir -p $REMOTE_DIR/etc && install -m 0755 /tmp/nhp-ac-xdplog-export.sh $REMOTE_DIR/etc/nhp-ac-xdplog-export.sh && rm -f /tmp/nhp-ac-xdplog-export.sh"
+          echo "  installed: $REMOTE_DIR/etc/nhp-ac-xdplog-export.sh"
+
+      - name: Append stats-collector public key to authorized_keys on nhp-ac
+        # Same managed-line scheme as deploy-server (see the comments on that
+        # job's step): the key goes over as a file, the managed line is found
+        # by its trailing comment tag so rotation replaces it, and the
+        # file is replaced atomically so a truncated transfer cannot drop the
+        # deploy key.
+        env:
+          RELAY_PRIV: ${{ needs.configure.outputs.relay_private_ip }}
+        run: |
+          set -euo pipefail
+
+          STATS_PUB=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text | jq -r '.stats_collector_ssh_public_key')
+          if [ -z "$STATS_PUB" ] || [ "$STATS_PUB" = "null" ]; then
+            echo "ERROR: stats_collector_ssh_public_key missing; run scripts/generate-nhp-keys.sh" >&2
+            exit 1
+          fi
+          case "$STATS_PUB" in
+            *"stats.opennhp.org-collector") ;;
+            *)
+              echo "ERROR: stats_collector_ssh_public_key lacks the 'stats.opennhp.org-collector' comment tag" >&2
+              exit 1
+              ;;
+          esac
+          if [ -z "$RELAY_PRIV" ] || [ "$RELAY_PRIV" = "null" ]; then
+            echo "ERROR: relay_private_ip missing from configure outputs; cannot pin authorized_keys source" >&2
+            exit 1
+          fi
+
+          REMOTE_DIR="/home/$DEPLOY_USER/nhp-ac"
+          cat > /tmp/stats_ak_entry <<EOF
+          # stats.opennhp.org collector - managed by deploy-ac; rotates with opennhp/demo
+          from="$RELAY_PRIV",restrict,command="$REMOTE_DIR/etc/nhp-ac-xdplog-export.sh" $STATS_PUB
+          EOF
+          scp /tmp/stats_ak_entry nhp-ac:/tmp/stats_ak_entry
+
+          ssh nhp-ac 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          AK="$HOME/.ssh/authorized_keys"
+          TAG="stats.opennhp.org-collector"
+          ENTRY=/tmp/stats_ak_entry
+
+          TMP=$(mktemp "$HOME/.ssh/ak.XXXXXX")
+          chmod 0600 "$TMP"
+          if [ -f "$AK" ]; then
+            grep -v -e "$TAG" -e '^# stats.opennhp.org collector' "$AK" > "$TMP" || true
+          fi
+          cat "$ENTRY" >> "$TMP"
+
+          OTHERS=$(grep -cv -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$TMP" || true)
+          if [ "$OTHERS" -lt 2 ]; then
+            echo "ERROR: only $OTHERS usable key line(s) would remain in authorized_keys;" >&2
+            echo "       refusing to install (expected the terraform-managed deploy key)" >&2
+            rm -f "$TMP" "$ENTRY"
+            exit 1
+          fi
+
+          cp "$TMP" "$AK.new"
+          chmod 0600 "$AK.new"
+          mv "$AK.new" "$AK"
+          rm -f "$TMP" "$ENTRY"
+          echo "  authorized_keys now has $(wc -l < "$AK") line(s)"
+          REMOTE
 
       - name: Cleanup
         if: always()
@@ -3476,6 +3773,11 @@ jobs:
   #     falls back to the nhp-server's auth (or is denied). It also needs
   #     nhp-xdplog-export.sh installed there; deploy-server handles that
   #     too.
+  #   - deploy-ac is ordered before this job (the AC's half of the
+  #     collector needs the same public key in its authorized_keys) but a
+  #     failed AC deploy does not block the stats site: the collector
+  #     tolerates a source it cannot list and publishes the server's data
+  #     either way. The `if:` below says so explicitly.
   #   - This job needs an infra-demo apply to have happened FIRST: the
   #     stats.opennhp.org A record is cloudflare_record.stats in
   #     terraform/demo/dns.tf, and this workflow never applies Terraform
@@ -3484,8 +3786,24 @@ jobs:
   #     installed on the relay, instead of a red curl at the very end.
   # ─────────────────────────────────────────────────────────────
   deploy-xdpstats:
-    needs: [configure, deploy-relay, deploy-jsagent, deploy-demoapp, deploy-server]
-    if: github.event.inputs.confirm == 'deploy'
+    needs: [configure, deploy-relay, deploy-jsagent, deploy-demoapp, deploy-server, deploy-ac]
+    # The AC's deploy is ordered before this one but is not a hard
+    # dependency of it. The collector already tolerates a source it cannot
+    # list -- it logs the failure per source, carries on with the others,
+    # and the run's exit code is reported here as a warning, not a failure --
+    # so an AC that is down, or an AC deploy that failed, must not keep the
+    # server-only data path from being published. Everything this job does
+    # need is still required, and always() is what lets the job run at all
+    # when one of them failed (a skipped dependency would otherwise skip
+    # this job silently, and the summary would report "skipped" for a
+    # reason nobody can read).
+    if: >-
+      always() && github.event.inputs.confirm == 'deploy' &&
+      needs.configure.result == 'success' &&
+      needs.deploy-relay.result == 'success' &&
+      needs.deploy-jsagent.result == 'success' &&
+      needs.deploy-demoapp.result == 'success' &&
+      needs.deploy-server.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -3795,14 +4113,26 @@ jobs:
           scp $SSH_OPTS repo/deploy/scripts/xdpstats-collect.sh $TARGET:$REMOTE_DIR/xdpstats-collect.sh
           ssh $SSH_OPTS $TARGET "chmod 0750 $REMOTE_DIR/xdpstats-collect.sh"
 
-          # 2. sources.conf, rendered with SERVER_PRIVATE_IP from the configure
+          # 2. sources.conf, rendered with SERVER_PRIVATE_IP and AC_PRIVATE_IP from the configure
           #    output. Same envsubst pattern used for nginx vhosts.
           export SERVER_PRIVATE_IP='${{ needs.configure.outputs.server_private_ip }}'
-          envsubst '$SERVER_PRIVATE_IP' \
+          export AC_PRIVATE_IP='${{ needs.configure.outputs.ac_private_ip }}'
+          envsubst '$SERVER_PRIVATE_IP $AC_PRIVATE_IP' \
             < repo/deploy/config-templates/xdpstats/sources.conf \
             > /tmp/sources.conf
           scp $SSH_OPTS /tmp/sources.conf $TARGET:$REMOTE_DIR/sources.conf
           ssh $SSH_OPTS $TARGET "chmod 0640 $REMOTE_DIR/sources.conf"
+
+          # 2b. The history snapshot: the site's own numbers for the days
+          #     before it started publishing, which the collector's cache
+          #     does not reach back to. It is generated by
+          #     `xdplog-report history` from a saved copy of the homepage
+          #     and checked in, so the deploy ships the same bytes the
+          #     tests pin. It stays in $REMOTE_DIR (0750) and never in the
+          #     web root: nothing here needs to be public, and the site's
+          #     nginx vhost is not changed for it.
+          scp $SSH_OPTS repo/deploy/config-templates/xdpstats/history.json $TARGET:$REMOTE_DIR/history.json
+          ssh $SSH_OPTS $TARGET "chmod 0640 $REMOTE_DIR/history.json"
 
           # 3. Binary on PATH so the systemd unit does not hard-code a
           #    release-specific directory. Stop the timer (not the service)
@@ -3834,9 +4164,187 @@ jobs:
           set -euo pipefail
           SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
           TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/xdpstats"
+          WEB_ROOT="/var/www/stats"
+          # A marker file created before the forced run, so the published
+          # index can be compared against it afterwards.
+          MARKER="/tmp/xdpstats-deploy-marker"
 
           # Manual run; the timer will pick up daily thereafter.
-          ssh $SSH_OPTS $TARGET "sudo systemctl start xdpstats.service || true"
+          #
+          # The rebuild is forced, and that is the point of this step.
+          # `xdplog-report site` only rewrites the index when an input moved
+          # (a day's log changed, a day was unpublished, the history
+          # snapshot's bytes changed), so a deploy that changes what the
+          # site publishes — the figures, the hero, the markup — would
+          # otherwise leave the previous build published until some log
+          # happened to change. XDPSTATS_SITE_FORCE=1 makes the collector
+          # pass -force, and it travels in the systemd manager's
+          # environment so the run still happens inside the unit's sandbox
+          # (ProtectSystem=full, ReadWritePaths) rather than as a bare ssh
+          # command.
+          #
+          # systemctl start on a Type=oneshot unit blocks until the run is
+          # over, so the rebuild has happened when it returns. The manager
+          # environment is cleared afterwards either way, so the daily timer
+          # run is not forced.
+          #
+          # What this step has to prove is not "the collector ran" but "the
+          # published site was rewritten by the binary this deploy
+          # installed". The collector's exit code cannot carry that: it
+          # exits non-zero when a source could not be listed, which can
+          # happen with the site perfectly rebuilt, and it exits zero when
+          # the run lost the collector's lock, which happens with the site
+          # untouched. So the proof is taken from two independent facts
+          # about this run:
+          #
+          #   1. the collect log lines THIS run wrote — not the log's last
+          #      line, which a later run can overwrite — say the run was
+          #      forced and that the site rewrote the index;
+          #   2. the published index.html is newer than a marker created
+          #      before the run, which is what "republished" means for the
+          #      file nginx serves.
+          #
+          # Either fact alone has a hole: the log says what the run
+          # believed, the timestamp says the file was rewritten but not by
+          # whom. Together they are what the deploy needs to know.
+
+          # The marker is created before the run, so the index can be
+          # compared against it afterwards. `find -newer` compares
+          # nanosecond timestamps, so a rewrite inside the same second as
+          # the marker is still seen.
+          ssh $SSH_OPTS $TARGET "rm -f $MARKER && touch $MARKER"
+          log_before=$(ssh $SSH_OPTS $TARGET "{ wc -l < $REMOTE_DIR/collect.log; } 2>/dev/null || echo 0" | tr -d '[:space:]')
+          log_before=${log_before:-0}
+
+          ssh $SSH_OPTS $TARGET "sudo systemctl set-environment XDPSTATS_SITE_FORCE=1"
+          # The timer is stopped for the forced run: a timer tick that lands
+          # on top of it would win the collector's lock, and the forced run
+          # would then exit without rebuilding anything. The timer is
+          # started again by the step after this one, which runs even when
+          # this one fails — a stopped timer would silently stop the daily
+          # collection.
+          ssh $SSH_OPTS $TARGET "sudo systemctl stop xdpstats.timer || true"
+          # A run that was already in flight holds the collector's lock, and
+          # the forced run would lose that race and exit without
+          # rebuilding. Wait for the lock rather than failing the deploy on
+          # a race it did not cause. The collector refuses to run at all
+          # without flock, so a relay without it has no collection to race
+          # with and the wait is skipped.
+          if ssh $SSH_OPTS $TARGET "command -v flock >/dev/null 2>&1"; then
+            if ! ssh $SSH_OPTS $TARGET "flock -w 60 $REMOTE_DIR/raw/.lock true"; then
+              echo "ERROR: another collect run held the collector's lock for more than 60s" >&2
+              exit 1
+            fi
+          fi
+          collect_rc=0
+          ssh $SSH_OPTS $TARGET "sudo systemctl start xdpstats.service" || collect_rc=$?
+          ssh $SSH_OPTS $TARGET "sudo systemctl unset-environment XDPSTATS_SITE_FORCE" || true
+
+          # Only the lines this run wrote. A later run — the timer catches
+          # up when it is started again — appends after them and cannot
+          # make this run look like something it did not do.
+          run_log=$(ssh $SSH_OPTS $TARGET "sed -n '$((log_before + 1)),\$p' $REMOTE_DIR/collect.log" || true)
+
+          # 1. The forced rebuild reached the collector. The "-force" line
+          #    is written after the run wins the collector's lock, so its
+          #    absence means this run rebuilt nothing: it lost the race, or
+          #    the binary was missing.
+          case "$run_log" in
+            *"forcing a full site rebuild (-force)"*)
+              echo "collector: the forced rebuild was requested"
+              ;;
+            *)
+              echo "ERROR: the forced rebuild never reached the collector; the site was not rebuilt" >&2
+              echo "--- the lines this run wrote to the collect log ---" >&2
+              printf '%s\n' "$run_log" | tail -n 40 >&2
+              exit 1
+              ;;
+          esac
+
+          # 2. The published index was rewritten. The site's own line says
+          #    the index was written; the file's timestamp says the file
+          #    nginx serves was rewritten.
+          republished=$(ssh $SSH_OPTS $TARGET "find $WEB_ROOT/index.html -newer $MARKER 2>/dev/null" || true)
+          if [ -z "$republished" ]; then
+            echo "ERROR: the published index.html was not rewritten by this run; the site still serves the previous build" >&2
+            echo "--- the lines this run wrote to the collect log ---" >&2
+            printf '%s\n' "$run_log" | tail -n 40 >&2
+            exit 1
+          fi
+          echo "collector: $republished was rewritten"
+          case "$run_log" in
+            *"wrote day pages + index"*) ;;
+            *)
+              # The site publishes the index before it reports, so a run
+              # that failed after the write leaves a republished index and
+              # no "wrote" line. The state may not have been saved; the
+              # next run rebuilds what it missed.
+              echo "WARNING: the index was republished but the site did not report a clean write (exit code $collect_rc)" >&2
+              ;;
+          esac
+
+          if [ "$collect_rc" -ne 0 ]; then
+            # The index was republished, which is what the deploy is for, so
+            # the deploy did its job. A non-zero exit here is the
+            # collector's source alarm: it could not list a source, so the
+            # published site may be missing the most recent days. That is
+            # worth saying out loud, but it is not a failed site rebuild,
+            # and failing the whole demo deployment over a briefly
+            # unreachable source would bury the deploy that did succeed.
+            # The collector's unit still records the failure, and the daily
+            # timer picks the missing days up when the source is back.
+            echo "WARNING: the collector exited $collect_rc; the site was rebuilt, but a source could not be listed and the published days may be stale" >&2
+            echo "--- the lines this run wrote to the collect log ---" >&2
+            printf '%s\n' "$run_log" | tail -n 40 >&2
+          fi
+
+          # The published figures, and a bound on the country count. There
+          # are only ~250 ISO 3166-1 alpha-2 codes, so a country total well
+          # above that must not be published.
+          #
+          # The total is a union over every published day: the live days and
+          # the days the history snapshot stands in for. That union is exact
+          # while every published day contributes its own sources and
+          # countries. It stops being exact in two ways, and the site says
+          # which on stdout: when a published day's per-day records are gone
+          # the snapshot's own counts stand in for that day, so the total is
+          # an upper bound and an address or a country seen in both periods
+          # can be counted twice; and when the snapshot lists a day below
+          # the publishing floor its counts cannot be applied at all, so the
+          # total is a lower bound. See endpoints/xdplog-report/site.go and
+          # history.go — not render_index.go, which only draws the numbers
+          # the site computed.
+          ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK $WEB_ROOT/totalnumber.js"
+          blocked=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_BLOCKED $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          sources=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_SOURCE_IPS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          countries=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_COUNTRIES $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          if [ -z "$countries" ]; then
+            echo "ERROR: no country figure in the published totalnumber.js" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$countries" | grep -Eq '^[0-9]+$'; then
+            echo "ERROR: the published country figure is not a number: '$countries'" >&2
+            exit 1
+          fi
+          if [ "$countries" -gt 400 ]; then
+            echo "ERROR: implausible country total: $countries (there are ~250 ISO country codes)" >&2
+            exit 1
+          fi
+
+          # The figures the site now publishes, in the job summary: they are
+          # what the deploy changed, and the country total is expected to
+          # drop (it no longer carries the history snapshot's baseline).
+          {
+            echo "### XDP attack stats — published by this deploy"
+            echo
+            echo "| Figure | Published |"
+            echo "| --- | --- |"
+            echo "| Blocked packets | ${blocked:-?} |"
+            echo "| Distinct source IPs | ${sources:-?} |"
+            echo "| Distinct countries | $countries |"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Wait up to 30s for the nginx reload + first site render to land.
           for i in $(seq 1 30); do
@@ -3852,6 +4360,36 @@ jobs:
           echo "--- last 20 lines of xdpstats journald log ---" >&2
           ssh $SSH_OPTS $TARGET "sudo journalctl -u xdpstats -n 20 --no-pager" >&2 || true
           exit 1
+
+      - name: The collector must be left running
+        if: always()
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          # Two things this step guarantees, whatever the step above did:
+          #
+          # 1. The force flag does not outlive the deploy. A leaked
+          #    XDPSTATS_SITE_FORCE would force every daily run to rebuild
+          #    the whole site from scratch, and nobody would notice. The
+          #    step above clears it too; this clears it again in case that
+          #    step failed before reaching its own cleanup.
+          ssh $SSH_OPTS $TARGET "sudo systemctl unset-environment XDPSTATS_SITE_FORCE" || true
+          # 2. The timer is running. It is what collects every day, and the
+          #    step above stops it for the forced run — a stopped timer
+          #    would silently stop the daily collection, so it is started
+          #    here and its state is checked. A timer that will not start is
+          #    a failed deploy, not a warning.
+          ssh $SSH_OPTS $TARGET "sudo systemctl enable --now xdpstats.timer" || true
+          if ! ssh $SSH_OPTS $TARGET "sudo systemctl is-active xdpstats.timer"; then
+            echo "ERROR: the xdpstats timer is not active; the daily collection would stop" >&2
+            exit 1
+          fi
+          ssh $SSH_OPTS $TARGET "systemctl list-timers xdpstats.timer --no-pager" || true
+          ssh $SSH_OPTS $TARGET "rm -f /tmp/xdpstats-deploy-marker" || true
 
       - name: Cleanup
         if: always()

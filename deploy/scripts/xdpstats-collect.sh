@@ -1,21 +1,28 @@
 #!/bin/bash
 # xdpstats-collect.sh
 #
-# Pulls nhp_server_xdp-YYYY-MM-DD.log files from nhp-server via SSH and
+# Pulls nhp_server_xdp-/nhp_ac_xdp-YYYY-MM-DD.log files from nhp-server and nhp-ac via SSH and
 # rebuilds the stats.opennhp.org static site. Driven by a systemd timer on
 # the relay host (deploy/scripts/xdpstats.timer, OnCalendar=*-*-* 00:20:00
 # UTC, Persistent=true). Run by hand with no arguments to trigger a single
 # pass; debug flags `-n` (no download) and `-v` (verbose) are accepted.
+#
+# `-f` / `--force` (or the environment variable XDPSTATS_SITE_FORCE=1) asks
+# for a full rebuild of the site: every cached day is re-analyzed and every
+# page and the index are written again, even when the inputs have not
+# changed. That matters because `xdplog-report site` only rewrites the
+# index when an input moved — so a deploy that changes what the site says
+# (the published figures, the hero, the markup) would otherwise leave the
+# previous build published until some log happens to change. The deploy uses
+# it for exactly that reason; the daily timer run does not need it.
 #
 # Sources are described in /home/ec2-user/xdpstats/sources.conf, one per
 # line, in the form:
 #
 #   <name> <ssh_user> <host> <log_dir>
 #
-# v1 ships with one line, "server". AC is intentionally not here: AC writes
-# per-flow accept/deny files (not nhp_server_xdp-*), and the parsing lives
-# in endpoints/xdplog-report/parse.go which still only knows the server's
-# nhp_server_xdp log layout.
+# Two lines ship: "server" (nhp_server_xdp-*) and "ac" (nhp_ac_xdp-*). The
+# log file prefix is nhp_<name>_xdp, derived from the source name.
 #
 # The collector:
 #   1. Reads sources.conf and resolves each (source) -> remote host + user.
@@ -25,7 +32,10 @@
 #      the remote, OR has today's UTC date, runs `get <date>`, validates
 #      the last line, gzips, and writes the cache atomically.
 #   4. Runs `xdplog-report site` to rebuild the static site from the cache,
-#      passing -geo-mmdb when the GeoLite2 database is present on the relay.
+#      passing -geo-mmdb when the GeoLite2 database is present on the relay
+#      and -history when the history snapshot is present beside the state.
+#      With -f (or XDPSTATS_SITE_FORCE=1) it also passes -force, which
+#      re-analyzes every cached day and rewrites every page.
 #   5. Prunes raw cache files older than 90 days.
 #
 # Concurrency: protected by a non-blocking flock at $RAW_DIR/.lock. A second
@@ -60,6 +70,13 @@ RAW_DIR="$XDPSTATS_DIR/raw"
 WEB_DIR="/var/www/stats"
 STATE_FILE="$XDPSTATS_DIR/state.json"
 SOURCES_CONF="$XDPSTATS_DIR/sources.conf"
+# The history snapshot: the site's own numbers for the days the collector's
+# cache no longer reaches, and the fallback the site publishes those days
+# from. A day the cache still has is analyzed from the log like any other
+# day, so the snapshot only carries what is left. It is installed by
+# deploy-xdpstats from deploy/config-templates/xdpstats/history.json and stays
+# private, beside the state rather than under the web root.
+HISTORY_FILE="$XDPSTATS_DIR/history.json"
 LOG_FILE="$XDPSTATS_DIR/collect.log"
 LOCK_FILE="$RAW_DIR/.lock"
 RETENTION_DAYS=90
@@ -91,17 +108,27 @@ TODAY="$(date -u +%Y-%m-%d)"
 # ---- flags ------------------------------------------------------------------
 DEBUG_LIST_ONLY=0
 VERBOSE=0
+FORCE=0
 for arg in "$@"; do
   case "$arg" in
     -n) DEBUG_LIST_ONLY=1 ;;
     -v) VERBOSE=1 ;;
+    -f|--force) FORCE=1 ;;
     -h|--help)
-      sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "xdpstats-collect: unknown argument: $arg" >&2; exit 64 ;;
   esac
 done
+
+# The environment variable is the systemd manager's way in: a unit started
+# after `systemctl set-environment XDPSTATS_SITE_FORCE=1` inherits it, so the
+# deploy can ask for a full rebuild without changing the unit's ExecStart
+# and without running the collector outside the unit's sandbox.
+if [ "${XDPSTATS_SITE_FORCE:-0}" = "1" ]; then
+  FORCE=1
+fi
 
 log() {
   printf '%s [%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${1:-info}" "${2:-}" >>"$LOG_FILE"
@@ -161,6 +188,16 @@ while read -r name user host log_dir || [ -n "$name" ]; do
     continue
   fi
 
+  case "$name" in
+    server|ac) ;;
+    *)
+      log "error" "unknown source '$name' (want server or ac)"
+      any_failed=1
+      continue
+      ;;
+  esac
+  prefix="nhp_${name}_xdp"
+
   src_raw="$RAW_DIR/$name"
   mkdir -p "$src_raw"
   chmod 0700 "$src_raw"
@@ -191,7 +228,7 @@ while read -r name user host log_dir || [ -n "$name" ]; do
 
   while IFS=$'\t' read -r date size mtime; do
     case "$date" in ''|[!0-9]*) continue ;; esac
-    cache="$src_raw/nhp_server_xdp-${date}.log.gz"
+    cache="$src_raw/${prefix}-${date}.log.gz"
     # Sidecar recording the (size, mtime) the server reported for this day
     # at the moment we pulled it.
     meta="$cache.meta"
@@ -224,7 +261,7 @@ while read -r name user host log_dir || [ -n "$name" ]; do
     fi
 
     vlog "$name/$date: pulling ($reason, ${size} bytes)"
-    tmp=$(mktemp -p "$src_raw" "tmp-nhp_server_xdp-${date}-XXXXXX.log")
+    tmp=$(mktemp -p "$src_raw" "tmp-${prefix}-${date}-XXXXXX.log")
     if ! ssh "${SSH_OPTS[@]}" "$user@$host" "get $date" </dev/null >"$tmp" 2>>"$LOG_FILE"; then
       log "error" "$name/$date: ssh get failed"
       rm -f "$tmp"
@@ -316,7 +353,32 @@ else
   log "info" "no GeoIP database at $GEO_MMDB; region table and country totals stay empty"
 fi
 
+# The history snapshot carries the days the collector's cache no longer
+# reaches, and the baseline the site's counters start from. It is passed only
+# when it is readable: a snapshot that cannot be read is a configuration
+# error the site refuses to run with, and the alternative — running without it
+# — would shrink the published all-time totals to whatever the cache still
+# holds. So a missing snapshot is logged loudly here instead of silently
+# shrinking the numbers.
+if [ -r "$HISTORY_FILE" ]; then
+  SITE_ARGS+=("-history" "$HISTORY_FILE")
+  log "info" "history snapshot in use: $HISTORY_FILE"
+else
+  log "info" "no history snapshot at $HISTORY_FILE; the site counts from its own data only"
+fi
+
 if [ -x "$SITE_BIN" ]; then
+  # A forced rebuild re-analyzes every cached day and rewrites every page and
+  # the index, even when the inputs have not changed. The site skips the
+  # unchanged days on its own, and it only rewrites the index when some input
+  # moved — so a deploy that changes what the site publishes (the figures, the
+  # hero, the markup) would leave the previous build published until a log
+  # happened to change. The deploy asks for the forced rebuild; the daily
+  # timer run does not, because there the incremental path is the point.
+  if [ "$FORCE" -eq 1 ]; then
+    SITE_ARGS+=("-force")
+    log "info" "forcing a full site rebuild (-force)"
+  fi
   log "info" "running xdplog-report site"
   if ! "$SITE_BIN" site -logs "$RAW_DIR" -out "$WEB_DIR" "${SITE_ARGS[@]}" >>"$LOG_FILE" 2>&1; then
     # A failed site run is not always a no-op: it publishes the index and the
@@ -349,6 +411,10 @@ fi
 
 if [ "$any_pulled" -eq 1 ]; then
   log "info" "complete: pulled at least one day, site rewritten"
+elif [ "$FORCE" -eq 1 ]; then
+  # A forced rebuild rewrote the site even though no log changed, so the
+  # "idempotent path" wording would be wrong here: the site was rebuilt.
+  log "info" "complete: no new days; site rebuilt anyway (-force)"
 else
   log "info" "complete: no new days; idempotent path"
 fi

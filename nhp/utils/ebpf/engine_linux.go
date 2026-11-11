@@ -107,16 +107,86 @@ type EngineLoadParams struct {
 	// and unwinds to fail-open like every other pre-attach error.
 	RelayIPs []string
 
-	// ScanReportInterval and ScanReportTopN drive the [NHP-SCAN] summary
-	// (VariantServer only): the window length and how many ports / sources
-	// each window lists. Zero values disable the report.
+	// ScanReportInterval and ScanReportTopN drive the [NHP-SCAN] summary:
+	// the window length and how many ports / sources each window lists. Both
+	// the nhp-server and the nhp-ac use them.
+	//
+	// What a zero value means depends on the variant. For the nhp-server it
+	// disables the report: the server's caller resolves the settings before
+	// the load and the loader does not second-guess it. For the nhp-ac the
+	// loader fills the defaults in (acScanReportSettings), because the AC's
+	// summary is not optional: its port and source tables are drained by the
+	// reporter, and a load that started no reporter would leave them to
+	// fill up and never be read.
 	ScanReportInterval time.Duration
 	ScanReportTopN     int
 
-	// DisableEventLog turns off the per-packet event log (VariantServer only).
-	// The zero value keeps it on. The [NHP-STAT] and [NHP-SCAN] summaries are
-	// unaffected, and so is the filter's verdict.
+	// DisableEventLog turns off the per-packet event log. Both the
+	// nhp-server and the nhp-ac use it. The zero value keeps it on. The
+	// [NHP-STAT] and [NHP-SCAN] summaries are unaffected, and so is the
+	// filter's verdict.
 	DisableEventLog bool
+
+	// DisableIPv6Filter turns the nhp-ac's IPv6 tree off: every IPv6 packet
+	// is passed to the host, the way it was before the tree existed. The
+	// zero value keeps the tree on, which is the safe answer -- the tree is
+	// what keeps a v6 listener the AC was never meant to gate out of reach.
+	//
+	// It is a load parameter rather than something the caller writes
+	// afterwards because the value is a constant in the program's .rodata:
+	// the verifier folds it in when the object is loaded, so there is no
+	// later moment at which it could still be changed.
+	//
+	// Ignored by VariantServer, whose filter pins SSH to its relay
+	// whitelist in the program and has no v6 tree to turn off.
+	DisableIPv6Filter bool
+
+	// AcAuditLogRetentionDays, AcAuditLogRetentionBytes and
+	// AcAuditLogDailyEventBytes bound the nhp-ac's legacy audit logs --
+	// nhp_deny-*.log and nhp_accept-*.log.
+	//
+	// They exist because those two files used to be kept for as long as the
+	// host lived, and a deployment that reads them as an audit trail must
+	// not lose their history to an upgrade. Zero therefore means *unbounded*
+	// for all three: the files are never swept, and the day's lines are
+	// never suppressed. That is the behavior the AC had before the bounds
+	// existed, so a deployment that says nothing keeps what it had.
+	//
+	// A deployment that wants the bounds sets them. The demo does
+	// (deploy/config-templates/ac/config.toml), because its host is on the
+	// internet and the disk it runs on is small.
+	//
+	// The kernel-side rate limit is not one of these knobs and does not
+	// depend on them: the audit ring is fed behind a budget whatever the
+	// files are allowed to grow to, so the log is a rate-bounded sample
+	// rather than a complete record either way. What these three bound is
+	// how much of that sample is kept, and how much of it is written.
+	//
+	// Ignored by VariantServer, which writes no audit logs.
+	AcAuditLogRetentionDays   int
+	AcAuditLogRetentionBytes  int64
+	AcAuditLogDailyEventBytes int64
+
+	// DhcpSource and NtpSource narrow the two client-protocol pairs both
+	// filters admit -- the DHCP answer (67 -> 68) and the NTP answer
+	// (123 -> 123) -- to the addresses the host's own servers answer from.
+	//
+	// The pair says what the answer looks like, not who sent it, so on a host
+	// whose security group is open to the whole internet the filter admits
+	// anything wearing the right ports. A range that is not set means no
+	// narrowing at all, which is the behavior of the filters before these
+	// parameters existed: the default changes nothing.
+	//
+	// They are load parameters rather than something the caller writes
+	// afterwards because the values are constants in the program's .rodata:
+	// the verifier folds them in when the object is loaded, so there is no
+	// later moment at which they could still be changed.
+	//
+	// Each variant writes them into its own object: the AC's are
+	// nhp_ac_dhcp_*/nhp_ac_ntp_* and the server's nhp_server_dhcp_*/
+	// nhp_server_ntp_*.
+	DhcpSource SourceNet
+	NtpSource  SourceNet
 }
 
 // Names of the .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that
@@ -125,6 +195,16 @@ type EngineLoadParams struct {
 const (
 	varNhpListenPort = "nhp_listen_port"
 	varNhpMinUdpLen  = "nhp_min_udp_len"
+)
+
+// The .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that narrow the two
+// client-protocol pairs to the sources the host's own servers answer from.
+// Keep the names in sync with the declarations there.
+const (
+	varNhpServerDhcpAddr = "nhp_server_dhcp_addr"
+	varNhpServerDhcpMask = "nhp_server_dhcp_mask"
+	varNhpServerNtpAddr  = "nhp_server_ntp_addr"
+	varNhpServerNtpMask  = "nhp_server_ntp_mask"
 )
 
 // EngineHandle is what the caller keeps: the maps it drives from user space and
@@ -154,6 +234,16 @@ type EngineHandle struct {
 	DenyLogger   *log.Logger
 	AcLogger     *log.Logger
 	ServerLogger *log.Logger
+
+	// AcStatsLogger is the nhp-ac's XDP telemetry log: nhp_ac_xdp-<date>.log,
+	// the same shape the nhp-server writes, so the public stats site can
+	// count the AC as a second source without a second parser.
+	//
+	// It is a separate file from the accept/deny pair above on purpose.
+	// Those two are a per-flow audit trail with one line per packet and no
+	// bound on its size; this one is the rate-limited, byte-budgeted
+	// accounting the site reads. Nil for VariantServer.
+	AcStatsLogger *log.Logger
 }
 
 type bpfObjects struct {
@@ -172,6 +262,36 @@ type bpfObjects struct {
 	// assigned here only so that a pin left over from an incompatible build
 	// fails the load by name, the same reason Conntrack is assigned below.
 	KnockPeers *ebpf.Map `ebpf:"knock_peers"`
+
+	// Echo requests the AC itself sent, and the record that lets the reply
+	// be told apart from an unsolicited ping. Written by the TC egress
+	// program, read by the XDP one; see `icmp_echo` in nhp_maps.h.
+	//
+	// Assigned here for the same reason KnockPeers is: nothing in user
+	// space drives it, but a pin left over from a build with a different
+	// shape has to fail the load by name rather than be picked up silently.
+	IcmpEcho *ebpf.Map `ebpf:"icmp_echo"`
+
+	// The XDP telemetry maps, the same five the nhp-server's filter uses
+	// (nhp/ebpf/xdp/nhp_xdp_stats.h). The XDP program counts every packet it
+	// drops into them and the reporting half below turns those counters into
+	// the log lines the stats site reads.
+	//
+	// Like the server's copies they are not pinned: only this process reads
+	// them, so there is no pin to leave behind and none to remove. The fifth
+	// one, nhp_event_rate, is kernel-only — the token buckets are written and
+	// read inside the program, never from user space — so it needs no field
+	// here, exactly as on the server side.
+	//
+	// Assigning them here also means an object built before the shared
+	// telemetry header fails the load by name, instead of loading an AC that
+	// silently reports nothing: the enforcement and the reporting ship
+	// together, and a mismatch between them is a deploy error worth failing
+	// on.
+	NhpEvents   *ebpf.Map `ebpf:"nhp_events"`
+	ActionStats *ebpf.Map `ebpf:"nhp_action_stats"`
+	PortHits    *ebpf.Map `ebpf:"nhp_port_hits"`
+	SrcHits     *ebpf.Map `ebpf:"nhp_src_hits"`
 }
 
 type tcBpfObjects struct {
@@ -190,6 +310,13 @@ type tcBpfObjects struct {
 	// `conn_track` error naming the map — see "eBPF map pin mismatch" in
 	// terraform/demo/RUNBOOK.md.
 	Conntrack *ebpf.Map `ebpf:"conn_track"`
+	// The echo requests the AC sent itself, recorded by the TC program and
+	// read by the XDP one: the second ground on which an ICMP echo reply is
+	// admitted. Assigned for the same reason Conntrack is — a pin left over
+	// from a build with a different map shape has to fail here, at startup,
+	// with an `icmp_echo` error naming the map, rather than be picked up
+	// silently by the next load.
+	IcmpEcho *ebpf.Map `ebpf:"icmp_echo"`
 	// Runtime knobs for the TC program, filled in by setEbpfConfig below.
 	Config *ebpf.Map `ebpf:"nhp_config"`
 }
@@ -202,10 +329,10 @@ type serverBpfObjects struct {
 	RelayIPs  *ebpf.Map     `ebpf:"nhp_relay_ips"`
 	NhpEvents *ebpf.Map     `ebpf:"nhp_events"`
 	// Per-action packet counters, the complete accounting the rate-limited
-	// event stream is a sample of. See reportServerStats.
+	// event stream is a sample of. See reportEventStats.
 	ActionStats *ebpf.Map `ebpf:"nhp_action_stats"`
 	// Dropped-packet aggregation by destination port and by IPv4 source. See
-	// reportServerScan.
+	// reportEventScan.
 	PortHits *ebpf.Map `ebpf:"nhp_port_hits"`
 	SrcHits  *ebpf.Map `ebpf:"nhp_src_hits"`
 }
@@ -230,6 +357,7 @@ const defaultEphemeralPortMin uint32 = 32768
 var acPinnedNames = []string{
 	"xdp_white_prog",
 	"conn_track",
+	"icmp_echo",
 	"icmpwhitelist",
 	"port_list",
 	"protocol_port",
@@ -263,6 +391,21 @@ var (
 	// does not — and about a watchdog detach being a real stop rather than a
 	// detach with the telemetry still running.
 	serverStop chan struct{}
+
+	// Closed by cleanupPins(VariantAC) to stop the goroutines the AC load
+	// starts: the telemetry perf reader, the stats reporter, the scan
+	// reporter and the log sweeper. They would otherwise outlive the filter
+	// they report on and keep writing to a log.Logger the caller has closed.
+	//
+	// The AC's own accept/deny reader (readAcEvents) predates this and has
+	// no stop channel; it is a separate ring and a separate log, and it is
+	// left as it was.
+	acStop chan struct{}
+
+	// The AC's telemetry logger, kept here as well as on the handle so that
+	// cleanupPins can close it on the shutdown path. log.Logger.Close is
+	// idempotent, so closing it again from the caller is harmless.
+	acStatsLogger *log.Logger
 
 	// Where each variant last pinned, so the exported CleanupBPFFiles(variant)
 	// — which takes no directory, and is called from daemon shutdown paths and
@@ -314,6 +457,113 @@ func init() {
 	log.Info("​​System boot time: %v", bootTime)
 }
 
+// varNhpAcFilterIPv6 is the .rodata constant in nhp/ebpf/xdp/nhp_ebpf_xdp.c
+// that decides whether the AC's IPv6 tree runs. Keep the name in sync with the
+// declaration there.
+const varNhpAcFilterIPv6 = "nhp_ac_filter_ipv6"
+
+// The .rodata constants in nhp/ebpf/xdp/nhp_ebpf_xdp.c that narrow the two
+// client-protocol pairs to the sources the host's own servers answer from.
+// Keep the names in sync with the declarations there.
+const (
+	varNhpAcDhcpAddr = "nhp_ac_dhcp_addr"
+	varNhpAcDhcpMask = "nhp_ac_dhcp_mask"
+	varNhpAcNtpAddr  = "nhp_ac_ntp_addr"
+	varNhpAcNtpMask  = "nhp_ac_ntp_mask"
+)
+
+// setAcConstants writes the AC's own load-time constants into the object's
+// .rodata, before the collection is loaded and the verifier folds them in.
+//
+// There are two kinds of them. The first is whether the IPv6 tree runs at
+// all: the default (the constant's own value in the object) is that it does,
+// so an ordinary load writes nothing and an object built before the constant
+// existed keeps working. Only a caller that asks for the other answer touches
+// it.
+//
+// The second kind is the source range each client-protocol pair is narrowed
+// to. The default (the constants' own values) is "any source", so an
+// ordinary load writes nothing there either.
+//
+// Refusing rather than warning when a constant is absent is deliberate, and
+// it is the refusal that matters here: the operator asked for the IPv6 tree to
+// be off, or for a pair to be narrowed, and an object that cannot say so
+// would leave the tree on, or the pair open, while the log said otherwise --
+// the opposite of what was asked for, on the knobs whose whole purpose is to
+// change what the filter admits. An object that predates the constants is a
+// stale nhp_ebpf_xdp.o next to a new binary; rebuilding it is the fix.
+func setAcConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
+	if err := setAcSourceNets(spec, params); err != nil {
+		return err
+	}
+
+	if !params.DisableIPv6Filter {
+		return nil
+	}
+
+	v, ok := spec.Variables[varNhpAcFilterIPv6]
+	if !ok {
+		log.Error("AC eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`", varNhpAcFilterIPv6)
+		return fmt.Errorf("AC eBPF object has no %q constant", varNhpAcFilterIPv6)
+	}
+	if err := v.Set(uint8(0)); err != nil {
+		log.Error("failed to set AC eBPF constant '%s': %v", varNhpAcFilterIPv6, err)
+		return err
+	}
+
+	// Said out loud, because the filter being attached says nothing about
+	// this: with the tree off, every IPv6 listener on the host is reachable
+	// from wherever the security group lets IPv6 in, and the deploy's
+	// "the filter is attached" check would still be green.
+	log.Warning("AC XDP filter: IPv6 filtering is DISABLED. Every IPv6 packet is passed to the host; the security group is the only thing restricting its IPv6 listeners.")
+	return nil
+}
+
+// setAcSourceNets writes the two source ranges into the object's .rodata.
+//
+// A range that is not set is left alone: the object's own default is "any
+// source", which is the behavior of the filter before the constants existed.
+// A range that is set writes both its address and its mask, because the
+// filter compares the packet's source against the masked address.
+func setAcSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
+	ranges := []struct {
+		addrName string
+		maskName string
+		what     string
+		net      SourceNet
+	}{
+		{varNhpAcDhcpAddr, varNhpAcDhcpMask, "DHCP answer", params.DhcpSource},
+		{varNhpAcNtpAddr, varNhpAcNtpMask, "NTP answer", params.NtpSource},
+	}
+
+	for _, r := range ranges {
+		if !r.net.IsSet() {
+			continue
+		}
+
+		for _, c := range []struct {
+			name  string
+			value uint32
+		}{
+			{r.addrName, r.net.Addr},
+			{r.maskName, r.net.Mask},
+		} {
+			v, ok := spec.Variables[c.name]
+			if !ok {
+				log.Error("AC eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`", c.name)
+				return fmt.Errorf("AC eBPF object has no %q constant", c.name)
+			}
+			if err := v.Set(c.value); err != nil {
+				log.Error("failed to set AC eBPF constant '%s' to %d: %v", c.name, c.value, err)
+				return err
+			}
+		}
+
+		log.Info("AC XDP filter: the %s pair is narrowed to %s", r.what, r.net)
+	}
+	return nil
+}
+
 // EngineLoad compiles-in nothing itself: it loads the already-compiled object at
 // params.ProgObjPath, pins it, attaches it and starts the perf reader. A
 // returned error leaves nothing attached, which is what lets the server treat a
@@ -341,6 +591,43 @@ func EngineLoad(params EngineLoadParams) (*EngineHandle, error) {
 	}
 }
 
+// acScanReportSettings returns the [NHP-SCAN] window and depth for an AC load,
+// and whether the summary should run at all.
+//
+// The nhp-server resolves its own knobs in endpoints/server/config.go, where an
+// unset value takes the shared default and an out-of-range one turns the
+// summary off (the filter still attaches: the summary is telemetry, and
+// telemetry must never decide whether the host is protected).
+//
+// The AC has no such knob and no config file to carry one: endpoints/ac/ebpf
+// loads the filter without setting either value. So a zero here means what a
+// zero means there -- "not set" -- and takes the shared default.
+//
+// Without this the AC never started the reporter at all: the guard wanted
+// both values to be positive, both were zero, and the summary never ran. The
+// AC's per-port and per-source tables filled up on every dropped packet,
+// churned their LRU, and nobody read them -- while the published site, which
+// parses the AC's log with the server's parser, had no [NHP-SCAN] line to
+// show for the AC at all.
+//
+// The nhp-server does *not* come through here: by the time its load runs,
+// resolveScanReport has already turned "unset" into the default and
+// "out of range" into zero, and zero there means "off".
+func acScanReportSettings(params EngineLoadParams) (time.Duration, int, bool) {
+	interval := params.ScanReportInterval
+	if interval == 0 {
+		interval = DefaultScanReportIntervalSeconds * time.Second
+	}
+	topN := params.ScanReportTopN
+	if topN == 0 {
+		topN = DefaultScanReportTopN
+	}
+	if interval <= 0 || topN <= 0 {
+		return interval, topN, false
+	}
+	return interval, topN, true
+}
+
 func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retErr error) {
 	specPath := params.ProgObjPath
 	tcSpecPath := params.TcProgObjPath
@@ -364,6 +651,13 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 	if err != nil {
 		log.Error("failed to load tc eBPF object")
 		return nil, err
+	}
+
+	// Rewrite the .rodata constants before LoadAndAssign: after the
+	// collection is loaded the verifier has already folded them, so this is
+	// the only moment the IPv6 knob can still be set.
+	if constErr := setAcConstants(spec, params); constErr != nil {
+		return nil, constErr
 	}
 
 	var objs bpfObjects
@@ -457,7 +751,7 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 		"",
 		params.LogLevel,
 		filepath.Join(params.LogDirPath, "logs"),
-		"nhp_deny",
+		acDenyLogName,
 	)
 	h.DenyLogger.SetFlags(stdlog.Lmsgprefix)
 	// Set up the ACCEPT logger
@@ -465,17 +759,114 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 		"",
 		params.LogLevel,
 		filepath.Join(params.LogDirPath, "logs"),
-		"nhp_accept",
+		acAcceptLogName,
 	)
 	h.AcLogger.SetFlags(stdlog.Lmsgprefix)
 
 	// Start a goroutine to monitor Perf Buffer events
-	go readAcEvents(eventsMap, params.ComponentId, h.DenyLogger, h.AcLogger)
+	go readAcEvents(eventsMap, params.ComponentId, h.DenyLogger, h.AcLogger,
+		params.AcAuditLogDailyEventBytes)
+
+	// The XDP telemetry, in the nhp-server's log shape.
+	//
+	// The AC's XDP program counts every packet it drops into the same five
+	// maps the server's filter uses (nhp/ebpf/xdp/nhp_xdp_stats.h), and this
+	// is the reporting half: one logger, one perf reader, and the three
+	// reporters that turn the counters into [NHP-DROP] / [NHP-STAT] /
+	// [NHP-SCAN] lines.
+	//
+	// The lines are byte for byte the ones the server writes, so the stats
+	// site parses the AC's log with the parser it already has and counts the
+	// AC as a second source. That is the whole point: the AC's own
+	// accept/deny log above says nothing about *why* a packet was dropped,
+	// one line per packet, and no bound on its size.
+	//
+	// None of this touches the verdict. The program decides, this reports.
+	logDir := filepath.Join(params.LogDirPath, "logs")
+
+	// A separate file from the accept/deny pair, and a separate prefix from
+	// the server's: both hosts' logs are pulled by the same collector, and a
+	// shared name would put two hosts' lines in one file.
+	h.AcStatsLogger = log.NewLoggerDefine(
+		"",
+		params.LogLevel,
+		logDir,
+		acEventLogName,
+	)
+	h.AcStatsLogger.SetFlags(stdlog.Lmsgprefix)
+	acStatsLogger = h.AcStatsLogger
+
+	acStop = make(chan struct{})
+
+	// The per-packet event stream. When the per-packet log is disabled the
+	// ring is never opened: nobody would read it, and opening it only to
+	// close it again would cost a perf_event_open(2) for nothing. The
+	// summaries below are unaffected either way, and so is the filter's
+	// verdict — this is telemetry, never policy.
+	var perfReader *perf.Reader
+	if !params.DisableEventLog && objs.NhpEvents != nil {
+		reader, perfErr := perf.NewReader(objs.NhpEvents, os.Getpagesize())
+		if perfErr != nil {
+			// Not fatal. The event log is diagnostics, and losing it is no
+			// reason to leave the AC enforcing nothing. The program keeps
+			// counting, the summaries keep reporting, and the host says so.
+			log.Error("failed to create AC perf reader; the XDP filter will run without an event log: %v", perfErr)
+		} else {
+			perfReader = reader
+		}
+	}
+	if perfReader != nil {
+		go readEventStream(perfReader, acStop, params.ComponentId, h.AcStatsLogger, acActionName)
+	}
+	if objs.ActionStats != nil {
+		go reportEventStats(objs.ActionStats, acStop, params.ComponentId, h.AcStatsLogger, acActionName)
+	}
+	scanInterval, scanTopN, scanEnabled := acScanReportSettings(params)
+	if scanEnabled && objs.PortHits != nil && objs.SrcHits != nil {
+		// Said out loud, because an AC that writes no [NHP-SCAN] line looks
+		// exactly like an AC that is not being attacked, and the published
+		// site says so in as many words.
+		log.Info("AC XDP scan summary: every %ds, the %d busiest ports and sources", int(scanInterval.Seconds()), scanTopN)
+		go reportEventScan(objs.PortHits, objs.SrcHits, scanInterval, scanTopN,
+			acStop, params.ComponentId, h.AcStatsLogger)
+	}
+	go pruneEventLogs(logDir, acStop, acEventLogGroups(params))
 
 	return h, nil
 }
 
-func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Logger) {
+// acAuditLogDailyEventBytes is how much per-packet text the AC's legacy audit
+// log may append in one calendar day, per log.
+//
+// This is the writer's side of the bound on the audit ring, and it is the one
+// that actually caps the disk: the kernel-side buckets bound the rate, and a
+// rate is not a size -- a sender who spreads packets across the classes and
+// across the RSS queues sits just under the buckets forever, and a few dozen
+// lines a second is gigabytes a day. The retention sweep cannot answer that
+// either, because the file being appended to is the one file it must never
+// delete.
+//
+// The telemetry log next to it carries the same packets with the drop reason
+// attached and a larger allowance (serverLogDailyEventBytes); this one is the
+// older, thinner channel and is kept as an audit trail, not as the record of
+// record.
+//
+// This is the value the demo runs with, and it is what a deployment gets when
+// it asks for the bound at all: the number is a parameter
+// (EngineLoadParams.AcAuditLogDailyEventBytes), and zero means unbounded --
+// the days' lines are never suppressed and the file grows for as long as the
+// host lives. A deployment whose audit trail matters more than its disk says
+// zero; the demo, whose host is on the internet and whose disk is small,
+// says 16 MiB.
+const acAuditLogDailyEventBytes = 16 << 20 // 16 MiB
+
+// readAcEvents turns the AC's audit ring into the accept/deny log lines.
+//
+// dailyLimit is how much per-packet text each of the two files may append in
+// one calendar day. Zero means unbounded: the lines are written for as long as
+// the host lives, which is what the audit trail is for and what the AC did
+// before the bound existed.
+func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Logger, dailyLimit int64) {
 	perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
 	if err != nil {
 		log.Error("failed to create perf reader: %v", err)
@@ -484,6 +875,24 @@ func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Lo
 	defer perfReader.Close()
 
 	log.Info("Start listening for eBPF events (PERF BUFFER)")
+
+	// Two budgets, one per file, and they are separate on purpose: a flood of
+	// dropped packets must not be able to spend the allowance of the log that
+	// records what was admitted. The marker line each one writes says which
+	// log ran out, so a reader can tell the two apart.
+	auditNote := "the exact per-class totals continue in the AC's telemetry log (" + acEventLogName + "-*.log)"
+	denyBudget := &eventLogBudget{
+		componentId: acId,
+		limit:       dailyLimit,
+		tag:         "NHP-DENY",
+		note:        auditNote,
+	}
+	acceptBudget := &eventLogBudget{
+		componentId: acId,
+		limit:       dailyLimit,
+		tag:         "NHP-ACCEPT",
+		note:        auditNote,
+	}
 
 	for {
 		record, err := perfReader.Read()
@@ -529,9 +938,18 @@ func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Lo
 			dstPort,
 		)
 
+		// Charged against today's allowance by the wall clock, not by the
+		// event's own (boot-relative) timestamp: the budget is about the file
+		// being appended to, and the logger picks that file by time.Now().
 		if action == 0 { // DENY
+			if !denyBudget.spend(time.Now(), len(logMsg), denyLogger) {
+				continue
+			}
 			denyLogger.Info("%s", logMsg)
 		} else { // ACCEPT
+			if !acceptBudget.spend(time.Now(), len(logMsg), acLogger) {
+				continue
+			}
 			acLogger.Info("%s", logMsg)
 		}
 	}
@@ -577,7 +995,82 @@ func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) erro
 		log.Info("server XDP filter configured for udp/%d with a %d-byte datagram floor (0 = the object's own default)",
 			params.NhpPort, params.NhpMinFrameBytes)
 	}
+
+	setServerSourceNets(spec, params)
 	return nil
+}
+
+// setServerSourceNets writes the two source ranges into the server object's
+// .rodata.
+//
+// A range that is not set is left alone: the object's own default is "any
+// source", which is the behavior of the filter before the constants existed.
+// A range that is set writes both its address and its mask, because the
+// filter compares the packet's source against the masked address.
+//
+// Nothing in here fails the load. These two settings are defense in depth:
+// the DHCP and NTP answers are admitted so the host keeps its lease and its
+// clock, and nothing downstream trusts them. A stale object, or a .rodata
+// write that did not take, must therefore not cost the host its ingress
+// filter -- with server_open_all_ports = true the filter is the only inbound
+// control on every port but tcp/22, and refusing to attach over a narrowing
+// that was never more than an extra layer would trade a closed pair for an
+// open host. So the failure is logged at Critical, the pair keeps the
+// object's own default (any source) and the filter attaches.
+//
+// The write order matters for the same reason: the address is written first
+// and the mask second, and the mask is what turns the narrowing on. A
+// failure before the mask is written leaves the mask at zero, which the
+// filter reads as "any source" -- the pair open, which is the direction this
+// function is allowed to fail in.
+//
+// This is the server's half. The AC's half (setAcSourceNets) does refuse,
+// because the AC's failure direction is closed: it stops and the fail-closed
+// netfilter backstop keeps the protected resource shut.
+func setServerSourceNets(spec *ebpf.CollectionSpec, params EngineLoadParams) {
+	ranges := []struct {
+		addrName string
+		maskName string
+		what     string
+		net      SourceNet
+	}{
+		{varNhpServerDhcpAddr, varNhpServerDhcpMask, "DHCP answer", params.DhcpSource},
+		{varNhpServerNtpAddr, varNhpServerNtpMask, "NTP answer", params.NtpSource},
+	}
+
+	for _, r := range ranges {
+		if !r.net.IsSet() {
+			continue
+		}
+
+		narrowed := true
+		for _, c := range []struct {
+			name  string
+			value uint32
+		}{
+			{r.addrName, r.net.Addr},
+			{r.maskName, r.net.Mask},
+		} {
+			v, ok := spec.Variables[c.name]
+			if !ok {
+				log.Critical("server eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`. The %s pair is NOT narrowed and the XDP ingress filter still attaches",
+					c.name, r.what)
+				narrowed = false
+				break
+			}
+			if err := v.Set(c.value); err != nil {
+				log.Critical("failed to set server eBPF constant '%s' to %d: %v — the %s pair is NOT narrowed and the XDP ingress filter still attaches",
+					c.name, c.value, err, r.what)
+				narrowed = false
+				break
+			}
+		}
+		if !narrowed {
+			continue
+		}
+
+		log.Info("server XDP filter: the %s pair is narrowed to %s", r.what, r.net)
+	}
 }
 
 // loadServerEngine is ordered so that everything that can fail happens *before*
@@ -746,16 +1239,18 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 		// and the summaries keep running.
 		perfReader.Close()
 	} else if perfReader != nil {
-		go readServerEvents(perfReader, serverStop, params.ComponentId, h.ServerLogger)
+		go readEventStream(perfReader, serverStop, params.ComponentId, h.ServerLogger, serverActionName)
 	}
 	if objs.ActionStats != nil {
-		go reportServerStats(objs.ActionStats, serverStop, params.ComponentId, h.ServerLogger)
+		go reportEventStats(objs.ActionStats, serverStop, params.ComponentId, h.ServerLogger, serverActionName)
 	}
 	if objs.PortHits != nil && objs.SrcHits != nil && params.ScanReportInterval > 0 && params.ScanReportTopN > 0 {
-		go reportServerScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
+		go reportEventScan(objs.PortHits, objs.SrcHits, params.ScanReportInterval, params.ScanReportTopN,
 			serverStop, params.ComponentId, h.ServerLogger)
 	}
-	go pruneServerEventLogs(logDir, serverStop)
+	go pruneEventLogs(logDir, serverStop, []eventLogGroup{
+		{prefixes: []string{serverEventLogName}, maxBytes: serverLogRetentionBytes},
+	})
 
 	return h, nil
 }
@@ -795,9 +1290,47 @@ func warnOnGlobalIPv6(iface *net.Interface) {
 }
 
 // serverEventLogName is the log.Logger name, i.e. the file is
-// <logdir>/nhp_server_xdp-<date>.log. pruneServerEventLogs deletes by the same
+// <logdir>/nhp_server_xdp-<date>.log. pruneEventLogs deletes by the same
 // prefix, so the two must not drift apart.
 const serverEventLogName = "nhp_server_xdp"
+
+// acEventLogName is the AC's counterpart of serverEventLogName: the
+// log.Logger name, i.e. the file is <logdir>/nhp_ac_xdp-<date>.log.
+// pruneEventLogs deletes by the same prefix, so the two must not drift
+// apart.
+//
+// It is deliberately not the server's prefix. Both hosts write into their
+// own logs directory, but the collector pulls both with the same keypair and
+// caches them per source; a shared name would put two hosts' lines in one
+// file and make the counters unreadable.
+const acEventLogName = "nhp_ac_xdp"
+
+// acDenyLogName and acAcceptLogName are the AC's legacy audit logs: one line
+// per dropped or admitted packet, written by readAcEvents from the program's
+// own `events` ring.
+//
+// They are bounded like everything else now. The ring itself is fed behind a
+// budget of its own in the kernel (legacy_event_budget_available in
+// nhp/ebpf/xdp/nhp_xdp_stats.h), the writer charges every line against a daily
+// byte allowance (acAuditLogDailyEventBytes), and the files are swept with a
+// size cap of their own (acAuditLogRetentionBytes). Before that, the ring was
+// one line per packet with nothing on top of it, which was harmless while the
+// security group let in almost nothing and is a way to fill the disk the
+// daemon runs on once it is open to the whole internet.
+//
+// The log.Logger name is the file name prefix, so the two must not drift from
+// the names pruneEventLogs deletes by.
+const (
+	acDenyLogName   = "nhp_deny"
+	acAcceptLogName = "nhp_accept"
+)
+
+// acEventLogPrefixes are the log file prefixes the AC owns and sweeps: the
+// telemetry log and the two legacy audit logs.
+//
+// The sweep covers all of them and no others -- the daemon's own ac-*.log is
+// none of the filter's business.
+var acEventLogPrefixes = []string{acEventLogName, acDenyLogName, acAcceptLogName}
 
 // Action codes reported by nhp/ebpf/xdp/nhp_server_xdp.c. Keep in sync.
 const (
@@ -890,6 +1423,114 @@ func serverActionName(action uint8) (verdict, reason string) {
 	}
 }
 
+// actionNamer maps a BPF action code to the verdict and the reason the log
+// line carries.
+//
+// The nhp-server and the nhp-ac run different XDP programs with different
+// action code spaces, so the reason table is a parameter rather than a
+// package-level lookup: each variant passes its own, and the reporting code
+// below is written once.
+type actionNamer func(action uint8) (verdict, reason string)
+
+// Action codes reported by nhp/ebpf/xdp/nhp_ebpf_xdp.c, the nhp-ac's own
+// ingress program. Mirror the ACT_AC_* defines there; a test fails if the two
+// drift apart.
+//
+// The code space is the AC's own: the two programs never share a log file,
+// and each log is decoded with its own name table. The values must stay
+// below NHP_EVENT_ACTIONS (32) on the C side, or the class is neither
+// counted nor rate limited.
+const (
+	ActAcDropKnockExpired  uint8 = 0
+	ActAcDropTcpSyn        uint8 = 1
+	ActAcDropTcpStealth    uint8 = 2
+	ActAcDropTcpOther      uint8 = 3
+	ActAcDropUdpOther      uint8 = 4
+	ActAcDropNonTcpUdp     uint8 = 5
+	ActAcPassKnockAdmitted uint8 = 6
+	ActAcPassFlowTracked   uint8 = 7
+	// The classes the AC's filter needs to be the only inbound control on
+	// the host: the answers to the host's own traffic, the two client
+	// protocols admitted by port pair, and the IPv6 tree.
+	ActAcPassHostFlow      uint8 = 8
+	ActAcPassDhcpClient    uint8 = 9
+	ActAcPassNtpClient     uint8 = 10
+	ActAcPassIpv4Fragment  uint8 = 11
+	ActAcPassV6Control     uint8 = 12
+	ActAcPassV6Fragment    uint8 = 13
+	ActAcPassV6Established uint8 = 14
+	ActAcDropV6Other       uint8 = 15
+	// ActAcPassHostEcho is the reply to a ping the AC sent itself, admitted
+	// on the record tc_egress.c kept of the request.
+	ActAcPassHostEcho uint8 = 16
+	// ActAcPassV6DhcpClient and ActAcPassV6NtpClient are the v6 spellings of
+	// the two client protocols the socket table cannot answer for. They get
+	// their own codes rather than reusing ActAcPassDhcpClient and
+	// ActAcPassNtpClient (which is what the server does) because the AC's
+	// IPv6 tree is a separate decision tree with its own classes, and an
+	// operator reading the AC's counters needs to be able to tell a v4 lease
+	// from a v6 one.
+	ActAcPassV6DhcpClient uint8 = 17
+	ActAcPassV6NtpClient  uint8 = 18
+)
+
+// acActionName is the nhp-ac's counterpart of serverActionName.
+//
+// The DROP reasons reuse the server's vocabulary on purpose: the two hosts'
+// data ends up in the same published site, and a category the site does not
+// know about cannot be counted together with the rest. KNOCK_EXPIRED is the
+// AC's own class — a peer whose knock window closed, as opposed to a peer
+// that never knocked at all, which is what the scan classes describe.
+//
+// The reason strings are written out literally because
+// endpoints/xdplog-report/report_test.go cross-checks them against the
+// site's classifier: it scans this file for `return "DROP", "..."` and
+// requires every reason it finds there to be one the site knows.
+func acActionName(action uint8) (verdict, reason string) {
+	switch action {
+	case ActAcDropKnockExpired:
+		return "DROP", "KNOCK_EXPIRED"
+	case ActAcDropTcpSyn:
+		return "DROP", "TCP_SYN_SCAN"
+	case ActAcDropTcpStealth:
+		return "DROP", "TCP_STEALTH_SCAN"
+	case ActAcDropTcpOther:
+		return "DROP", "TCP_OTHER"
+	case ActAcDropUdpOther:
+		return "DROP", "UDP_OTHER"
+	case ActAcDropNonTcpUdp:
+		return "DROP", "NON_TCP_UDP"
+	case ActAcPassKnockAdmitted:
+		return "PASS", "KNOCK_ADMITTED"
+	case ActAcPassFlowTracked:
+		return "PASS", "FLOW_TRACKED"
+	case ActAcPassHostFlow:
+		return "PASS", "HOST_FLOW"
+	case ActAcPassDhcpClient:
+		return "PASS", "DHCP_CLIENT"
+	case ActAcPassNtpClient:
+		return "PASS", "NTP_CLIENT"
+	case ActAcPassIpv4Fragment:
+		return "PASS", "IPV4_FRAGMENT"
+	case ActAcPassV6Control:
+		return "PASS", "V6_CONTROL"
+	case ActAcPassV6Fragment:
+		return "PASS", "V6_FRAGMENT"
+	case ActAcPassV6Established:
+		return "PASS", "V6_ESTABLISHED"
+	case ActAcDropV6Other:
+		return "DROP", "V6_OTHER"
+	case ActAcPassHostEcho:
+		return "PASS", "HOST_ECHO"
+	case ActAcPassV6DhcpClient:
+		return "PASS", "V6_DHCP_CLIENT"
+	case ActAcPassV6NtpClient:
+		return "PASS", "V6_NTP_CLIENT"
+	default:
+		return "DROP", fmt.Sprintf("UNKNOWN-%d", action)
+	}
+}
+
 // serverLogDailyEventBytes is how much per-packet event text the filter may
 // append in one calendar day.
 //
@@ -912,15 +1553,60 @@ const serverLogDailyEventBytes = 64 << 20 // 64 MiB
 // one calendar day, reset when the date changes because that is when the
 // logger starts a new file.
 type eventLogBudget struct {
+	// componentId is the daemon's id, stamped into the budget line so it
+	// has the same shape as every other line in the log. It is not
+	// decoration: the site's parser recognizes the budget marker by
+	// position — "HH:MM:SS <id> [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED" —
+	// and a line without the id shifts the marker into the tag's place,
+	// so the line is read as a malformed STAT line and the day's budget
+	// flag never lights up.
+	componentId string
+	// tag is the tag the marker line carries, without the brackets. The
+	// telemetry channel writes "NHP-STAT" — the site's parser recognizes
+	// that marker by position, so the id and the tag have to keep their
+	// places — and the AC's legacy accept/deny logs write their own
+	// ("NHP-DENY", "NHP-ACCEPT"), so a reader can tell which log ran out
+	// of budget.
+	tag string
+	// note is the tail of the marker line: where the exact per-class totals
+	// live. For the telemetry log they are in the same file, below; for
+	// the legacy logs they are in the AC's telemetry log, which is a
+	// different file with a different name.
+	note      string
 	day       string
 	written   int64
 	limit     int64
 	exhausted bool
 }
 
+// tagName is the marker line's tag, "[NHP-<tag>]".
+func (b *eventLogBudget) tagName() string {
+	if b.tag == "" {
+		return "NHP-STAT"
+	}
+	return b.tag
+}
+
+// noteText is the tail of the marker line.
+func (b *eventLogBudget) noteText() string {
+	if b.note == "" {
+		return "the [NHP-STAT] totals continue below"
+	}
+	return b.note
+}
+
 // spend reports whether a line of n bytes may still be written today, and
 // logs the transition the first time it says no.
+//
+// A limit of zero (or less) means no budget at all: the lines are written for
+// as long as the host lives. That is the AC's audit trail when the deployment
+// asks for it, and the difference between a log that keeps its history and
+// one that silently loses the day.
 func (b *eventLogBudget) spend(now time.Time, n int, logger *log.Logger) bool {
+	if b.limit <= 0 {
+		return true
+	}
+
 	day := now.Format("2006-01-02")
 	if day != b.day {
 		b.day = day
@@ -937,14 +1623,20 @@ func (b *eventLogBudget) spend(now time.Time, n int, logger *log.Logger) bool {
 	}
 
 	b.exhausted = true
-	log.Warning("xdp event log: %d MiB of per-packet lines written today; suppressing further ones until tomorrow. Per-minute [NHP-STAT] totals continue and stay exact.",
-		b.limit>>20)
-	logger.Info("%s [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED BYTES=%d: per-packet lines suppressed for the rest of the day; totals continue below",
-		now.Format("15:04:05"), b.written)
+	log.Warning("%s: %d MiB of per-packet lines written today; suppressing further ones until tomorrow. The per-class totals continue and stay exact.",
+		b.tagName(), b.limit>>20)
+	logger.Info("%s %s [%s] EVENT_LOG_BUDGET_EXHAUSTED BYTES=%d: per-packet lines suppressed for the rest of the day; %s",
+		now.Format("15:04:05"), b.componentId, b.tagName(), b.written, b.noteText())
 	return false
 }
 
-func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId string, logger *log.Logger) {
+// readEventStream turns the perf ring into one log line per event.
+//
+// It is written once for both variants: the only thing that differs between
+// the nhp-server and the nhp-ac is the action code space, and that is what
+// actionName is for. The line format is identical either way, which is what
+// lets the published site read the two hosts' logs with one parser.
+func readEventStream(perfReader *perf.Reader, stop <-chan struct{}, componentId string, logger *log.Logger, actionName actionNamer) {
 	defer perfReader.Close()
 
 	// Unblocks the Read below on shutdown; the loop then sees the closed ring
@@ -961,9 +1653,13 @@ func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId st
 		}
 	}()
 
-	budget := &eventLogBudget{limit: serverLogDailyEventBytes}
+	budget := &eventLogBudget{limit: serverLogDailyEventBytes, componentId: componentId}
 
-	log.Info("Start listening for server eBPF events (PERF BUFFER)")
+	// Deliberately not the nhp-ac's "Start listening for eBPF events" line:
+	// that one is the accept/deny reader, and the deploy gate greps for it.
+	// Two different messages for two different rings, so the gate cannot be
+	// satisfied by the wrong one.
+	log.Info("Start listening for XDP telemetry events (PERF BUFFER)")
 
 	for {
 		record, err := perfReader.Read()
@@ -976,7 +1672,7 @@ func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId st
 				return
 			default:
 			}
-			log.Error("Error reading server eBPF event: %v", err)
+			log.Error("Error reading XDP telemetry event: %v", err)
 			continue
 		}
 		// struct nhp_event_t in nhp_server_xdp.c, __attribute__((packed)).
@@ -1004,12 +1700,12 @@ func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId st
 			dstStr = uint32ToIPv4(binary.BigEndian.Uint32(record.RawSample[13:17]))
 		}
 
-		verdict, reason := serverActionName(action)
+		verdict, reason := actionName(action)
 		eventTime := bootTime.Add(time.Duration(timestamp))
 
 		line := fmt.Sprintf("%s %s [NHP-%s] REASON=%s SRC=%s DST=%s LEN=%d PROTO=%s SPT=%d DPT=%d RELAY=%d",
 			eventTime.Format("15:04:05"),
-			serverId,
+			componentId,
 			verdict,
 			reason,
 			srcStr,
@@ -1043,7 +1739,7 @@ type serverActionStat struct {
 	Logged  uint64
 }
 
-// reportServerStats turns the counters the XDP program keeps for every packet
+// reportEventStats turns the counters the XDP program keeps for every packet
 // into one summary line per action per window.
 //
 // It exists because the event stream is deliberately incomplete. Two things
@@ -1060,7 +1756,9 @@ type serverActionStat struct {
 // event stream (0 for the bulk classes, less than PKTS whenever the bucket
 // ran dry), TOTAL the count since the filter was attached. Actions that saw
 // nothing print nothing: a quiet host writes a quiet log.
-func reportServerStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string, logger *log.Logger) {
+//
+// actionName is the variant's reason table; everything else is shared.
+func reportEventStats(statsMap *ebpf.Map, stop <-chan struct{}, componentId string, logger *log.Logger, actionName actionNamer) {
 	prev := make([]serverActionStat, serverEventActions)
 
 	ticker := time.NewTicker(serverStatsInterval)
@@ -1096,10 +1794,10 @@ func reportServerStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string
 			logged := total.Logged - prev[action].Logged
 			prev[action] = total
 
-			verdict, reason := serverActionName(uint8(action))
+			verdict, reason := actionName(uint8(action))
 			logger.Info("%s %s [NHP-STAT] VERDICT=%s REASON=%s WINDOW=%ds PKTS=%d LOGGED=%d TOTAL=%d",
 				time.Now().Format("15:04:05"),
-				serverId,
+				componentId,
 				verdict,
 				reason,
 				int(serverStatsInterval.Seconds()),
@@ -1126,14 +1824,66 @@ const (
 	serverLogRetentionDays  = 14
 	serverLogRetentionBytes = 256 << 20 // 256 MiB
 	serverLogSweepInterval  = time.Hour
+
+	// acAuditLogRetentionBytes is the size cap of the AC's legacy audit
+	// family (nhp_deny-* and nhp_accept-*).
+	//
+	// It is deliberately smaller than the telemetry log's own cap and it is
+	// swept separately, because the two must not compete for the same bytes:
+	// the collector pulls nhp_ac_xdp-*.log and the published site reads it, so
+	// a flood of deny lines must not be able to evict the telemetry log the
+	// site depends on. The audit logs are the older, thinner channel; the
+	// telemetry log is the one worth keeping in full.
+	acAuditLogRetentionBytes = 64 << 20 // 64 MiB
 )
 
-func pruneServerEventLogs(logDir string, stop <-chan struct{}) {
+// eventLogGroup is one family of log files and the bounds that family is
+// allowed to live under.
+//
+// A sweep covers several families because they have different sizes and
+// different readers: one family's growth must not evict another's history.
+type eventLogGroup struct {
+	// prefixes are the log file name prefixes this group owns.
+	prefixes []string
+	// maxBytes is the size the group's files may occupy together. Zero (or
+	// less) means no size bound: the family is never swept for space.
+	maxBytes int64
+	// retainDays is how long the family's files are kept. Zero (or less)
+	// means no age bound: the family is never swept for age.
+	retainDays int
+}
+
+// acEventLogGroups are the log families the AC's retention sweep owns.
+//
+// The telemetry log and the two legacy audit logs are swept as two groups, for
+// the reason given on acAuditLogRetentionBytes. Between them they cover
+// exactly acEventLogPrefixes; a test pins that, so a new log the AC writes
+// cannot be left unswept.
+//
+// The audit family's bounds are the caller's, not the constants above: an
+// AC that reads nhp_deny-*.log as an audit trail must not lose its history to
+// a retention policy it never asked for, so zero (unbounded) is what a
+// deployment that says nothing gets. The demo asks for the bounds, because
+// its host is on the internet and its disk is small.
+func acEventLogGroups(params EngineLoadParams) []eventLogGroup {
+	return []eventLogGroup{
+		{prefixes: []string{acEventLogName}, maxBytes: serverLogRetentionBytes, retainDays: serverLogRetentionDays},
+		{
+			prefixes:   []string{acDenyLogName, acAcceptLogName},
+			maxBytes:   params.AcAuditLogRetentionBytes,
+			retainDays: params.AcAuditLogRetentionDays,
+		},
+	}
+}
+
+func pruneEventLogs(logDir string, stop <-chan struct{}, groups []eventLogGroup) {
 	ticker := time.NewTicker(serverLogSweepInterval)
 	defer ticker.Stop()
 
 	for {
-		sweepServerEventLogs(logDir, time.Now(), serverLogRetentionDays, serverLogRetentionBytes)
+		for _, g := range groups {
+			sweepEventLogs(logDir, time.Now(), g.retainDays, g.maxBytes, g.prefixes)
+		}
 		select {
 		case <-stop:
 			return
@@ -1142,33 +1892,45 @@ func pruneServerEventLogs(logDir string, stop <-chan struct{}) {
 	}
 }
 
-// serverEventLogWriters are the log.Logger file families the event logger
-// creates. log.NewLoggerDefine starts three AsyncLogWriters per logger — the
-// main one plus "-evaluate" and "-audit" siblings — and all three land in this
+// eventLogWriters are the log.Logger file families one event logger creates.
+// log.NewLoggerDefine starts three AsyncLogWriters per logger — the main one
+// plus "-evaluate" and "-audit" siblings — and all three land in the log
 // directory under this prefix. The glob below matches all of them on purpose
 // (they are this filter's files and nothing else's), so the "never today's
 // file" exclusion has to cover all three: each is open for append, and the
 // sibling writers reopen theirs by name the moment a line is routed to them.
-var serverEventLogWriters = []string{serverEventLogName, serverEventLogName + "-evaluate", serverEventLogName + "-audit"}
+func eventLogWriters(prefix string) []string {
+	return []string{prefix, prefix + "-evaluate", prefix + "-audit"}
+}
 
-// sweepServerEventLogs is the body of one sweep. The bounds are arguments
+// sweepEventLogs is the body of one sweep. The bounds are arguments
 // rather than the constants above so a test can exercise the size path without
 // writing a quarter of a gigabyte.
+//
+// prefixes are the log file name prefixes this group owns — the nhp-server
+// writes nhp_server_xdp-*, the nhp-ac writes nhp_ac_xdp-* and the legacy
+// nhp_deny-* / nhp_accept-*. Only those families are touched: the nhp-ac's
+// logs directory also holds its own ac-* files, and the daemon's own log is
+// none of the sweep's business.
+//
+// The groups are swept separately, so one family's growth cannot evict
+// another's history (see eventLogGroup).
+//
+// A bound of zero (or less) means that bound does not exist: retainDays <= 0
+// never ages a file out, maxBytes <= 0 never evicts one for space. The AC's
+// audit family is swept with the caller's bounds, and the caller's default is
+// unbounded -- a deployment whose nhp_deny-*.log is an audit trail keeps its
+// history unless it asks otherwise.
 //
 // Today's files are never deleted but they *are* counted. Leaving them out of
 // the total let a single day outgrow the whole budget while the sweep reported
 // itself satisfied; counting them means the day's own volume is what pushes the
 // history out, which is the behavior "cap the directory at maxBytes" was
 // always meant to describe. The day's growth itself is bounded by
-// serverLogDailyEventBytes on the writing side — the sweep cannot bound it,
-// because it must not touch the file being appended to.
-func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64) {
-	matches, err := filepath.Glob(filepath.Join(logDir, serverEventLogName+"-*.log"))
-	if err != nil {
-		log.Error("xdp event log retention: cannot list %s: %v", logDir, err)
-		return
-	}
-
+// serverLogDailyEventBytes (and acAuditLogDailyEventBytes) on the writing
+// side — the sweep cannot bound it, because it must not touch the file being
+// appended to.
+func sweepEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64, prefixes []string) {
 	type logFile struct {
 		path string
 		mod  time.Time
@@ -1176,9 +1938,18 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 	}
 
 	today := now.Format("2006-01-02")
-	current := make(map[string]struct{}, len(serverEventLogWriters))
-	for _, name := range serverEventLogWriters {
-		current[filepath.Join(logDir, fmt.Sprintf("%s-%s.log", name, today))] = struct{}{}
+	var matches []string
+	current := make(map[string]struct{})
+	for _, prefix := range prefixes {
+		found, err := filepath.Glob(filepath.Join(logDir, prefix+"-*.log"))
+		if err != nil {
+			log.Error("xdp event log retention: cannot list %s: %v", logDir, err)
+			return
+		}
+		matches = append(matches, found...)
+		for _, name := range eventLogWriters(prefix) {
+			current[filepath.Join(logDir, fmt.Sprintf("%s-%s.log", name, today))] = struct{}{}
+		}
 	}
 
 	files := make([]logFile, 0, len(matches))
@@ -1197,10 +1968,18 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 
 	sort.Slice(files, func(i, j int) bool { return files[i].mod.Before(files[j].mod) })
 
-	cutoff := now.AddDate(0, 0, -retainDays)
+	// A bound of zero (or less) means the family has no such bound: it is
+	// never swept for age, or never swept for space. That is how a
+	// deployment keeps an audit trail the AC would otherwise age out, and
+	// it is why both bounds are checked rather than assumed.
+	var cutoff time.Time
+	byAge := retainDays > 0
+	if byAge {
+		cutoff = now.AddDate(0, 0, -retainDays)
+	}
 	for _, f := range files {
-		overAge := f.mod.Before(cutoff)
-		overSize := totalBytes > maxBytes
+		overAge := byAge && f.mod.Before(cutoff)
+		overSize := maxBytes > 0 && totalBytes > maxBytes
 		if !overAge && !overSize {
 			break // sorted oldest first: nothing later can be over either bound
 		}
@@ -1478,6 +2257,16 @@ func cleanupPins(variant EngineVariant, pinDir string) {
 		return
 	}
 
+	// The telemetry goroutines first, so that nothing is left writing into a
+	// log this function is about to close. Nil-and-close, like the server's
+	// stop channel above: this can run twice (an error path inside
+	// loadAcEngine, then the caller's shutdown) and closing a channel a
+	// second time panics.
+	if acStop != nil {
+		close(acStop)
+		acStop = nil
+	}
+
 	// Cleared as well as closed, the same as the server's link above: this can
 	// run twice (an error path inside loadAcEngine, then the caller's shutdown)
 	// and closing a link a second time is an error on an already-freed handle.
@@ -1490,6 +2279,18 @@ func cleanupPins(variant EngineVariant, pinDir string) {
 		acTcLink.Close()
 		acTcLink = nil
 		log.Info("TCX link detached and closed")
+	}
+
+	// The log last, so that a reporter still winding down after the stop
+	// channel closed has its last line written before the file goes away.
+	//
+	// The server's logger is closed by its caller right after this function
+	// returns; the AC's telemetry logger is closed here, because the AC has no
+	// caller that holds it. log.Logger.Close is idempotent, so a later close
+	// from the caller is harmless.
+	if acStatsLogger != nil {
+		acStatsLogger.Close()
+		acStatsLogger = nil
 	}
 }
 

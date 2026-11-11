@@ -7,11 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### ⚠ BREAKING CHANGES
+
+* **ac:** the nhp-ac's XDP ingress filter now judges IPv6 traffic, so a v6 listener the filter does not know about is unreachable after the upgrade.
+  tcp/22 is the exception and is passed on both address families — the security group is the layer that restricts SSH, not the filter — so an operator who manages the AC over IPv6 is not locked out.
+  `DisableIPv6Filter = true` in the AC's `etc/config.toml` turns the whole IPv6 tree off and restores the pre-upgrade behaviour of passing every v6 packet.
+* **ac:** the nhp-ac's legacy audit logs (`nhp_deny-*.log`, `nhp_accept-*.log`) gained a retention sweep and a daily write cap.
+  Both are **off by default** — `AuditLogRetentionDays`, `AuditLogRetentionBytes` and `AuditLogDailyEventBytes` all default to `0` (= unbounded) — so a deployment that reads those files as a compliance or audit trail keeps what it had.
+  The demo asks for the bounds (14 days / 64 MiB / 16 MiB per day) in its own `config.toml`.
+
 ### Changed
 
+* **ac:** the nhp-ac's XDP ingress filter is narrowed to the nhp-server's rules: UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and by the answers to the host's own queries, a non-first IPv4 fragment is not judged by bytes that are not a header, and an ICMP echo reply needs the same whitelist entry the echo request does.
+* **ac:** the nhp-ac's audit ring now spends two separate global allowances — one for the deny channel, one for the accept channel — so that a flood of drops cannot exhaust the log that records what was *admitted*.
+* **ac:** a peer whose knock window has closed is classified as a legitimate peer for a further 60 seconds (`NHP_KNOCK_EXPIRED_GRACE_SEC`) instead of for one packet.
+  The retransmitted last segment of a session, a late FIN and a keepalive sent after the AC stopped listening are the tail of an authorised session, not a scan; counting them as scans put an authorised peer's address, and the country it is in, into the published attacker totals.
+  The grace applies to the whitelist entries that are scoped to the peer *and* to the port (`spp`, `src_port`, `port_list`); the two that are not — `sdwhitelist`, which has no port in its key, and `protocol_port`, which has no peer in its — keep their previous behaviour.
+* **ac:** the nhp-ac's XDP ingress filter can narrow the two client-protocol port pairs to a source address or prefix: `DhcpServerIP` and `NtpServerIP` in the AC's `etc/config.toml`.
+  Both default to empty, which narrows nothing — the pair is admitted from any source, exactly as before the settings existed — so a deployment that says nothing keeps the behaviour it had.
+  A value that cannot be parsed stops the AC from starting rather than being quietly ignored.
 * **server:** an NHP-DB claiming a legacy data object over `NHP_DRG` must be online and acknowledged with the same key and `dbId`; otherwise the claim is rejected as unauthorized.
 * **server:** NHP-DB `DbId` values with leading or trailing whitespace, or no value, are rejected during online registration and object registration.
   This is an upgrade change: deployments with missing or malformed `DbId` values stop coming online, and existing objects with those values must be repaired manually in `etc/ztdo/data-<doId>.json`.
+* **server:** the nhp-server's XDP ingress filter can narrow the two client-protocol port pairs to a source address or prefix: `DhcpServerIP` and `NtpServerIP` in `etc/xdp.toml`.
+  Both default to empty, which narrows nothing — the pair is admitted from any source, exactly as before the settings existed — so a deployment that says nothing keeps the behaviour it had.
+  A value that cannot be parsed is logged at Critical and that pair keeps its default; the filter still attaches, because the server's reasons to refuse attaching stay limited to the ones that protect SSH reachability and these two settings are defence in depth.
+  The AC has the same two settings in its `etc/config.toml`, where an unusable value stops the AC from starting — its failure direction is closed.
+
+### Fixed
+
+* **ci,deploy:** a new eBPF object is now loaded into a real kernel before anything acts on it.
+  Compiling an object proves nothing about it — the kernel's verifier decides whether a program is loadable, and on the AC a refused object is an outage (`nhp-acd` cannot start and the fail-closed backstop keeps tcp/443 shut), while on the server it is a silent loss of protection (`nhp-serverd` falls open).
+  Two gates answer the question: every PR runs the `ebpf-verifier` job, which loads the three objects into the runner's kernel and runs the programs against packets, and every demo deploy loads the new objects on the AL2023 host before it stops the running daemon — a refusal aborts the deploy with the service still up.
+  Both go through the loader the daemons use (`nhp-ebpf-verify`), with the constants the daemon writes into the object, and pin into a directory of their own: `bpftool` cannot load these objects at all (its libbpf refuses a `static` program) and pins a map by name into `/sys/fs/bpf/<name>`, which is where the running daemon's maps live.
+  The Go load tests no longer skip when a load fails while the process holds CAP_BPF: a verifier rejection is a failure, not a skip.
+* **ac:** the expired-knock grace no longer decides the verdict.
+  A peer whose own port-scoped knock had just lapsed was locked out for the whole 60-second grace (`NHP_KNOCK_EXPIRED_GRACE_SEC`) of a port that a live `protocol_port` entry opens to everyone, and of a resource an `sdwhitelist` entry still covers: the grace ended in a drop of its own, before the other whitelists were consulted.
+  The grace is a classification, not a verdict — the packet now goes on to the other whitelists, and only a packet that nothing admits is dropped as the expired knock it is.
+* **demo:** the stats site's deploy no longer depends on the AC's deploy succeeding.
+  The collector already tolerates a source it cannot list, so a failed AC deploy now leaves the server's own data published instead of blocking the whole site.
 
 ## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
 

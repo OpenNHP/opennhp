@@ -202,8 +202,8 @@ frame
  │
  ├─ UDP
  │    ├─ dport != nhp_listen_port
- │    │    ├─ 67 → 68 (DHCP)        → PASS   (DHCP_CLIENT; reported)
- │    │    ├─ 123 → 123 (NTP)       → PASS   (NTP_CLIENT; counted)
+ │    │    ├─ 67 → 68 (DHCP)        → PASS   (DHCP_CLIENT; reported — optionally narrowed to a source range)
+ │    │    ├─ 123 → 123 (NTP)       → PASS   (NTP_CLIENT; counted — also narrowable)
  │    │    ├─ has_local_flow()?      → PASS   (UDP_ESTABLISHED; counted)
  │    │    └─ otherwise              → DROP   (UDP_OTHER)
  │    └─ dport == nhp_listen_port
@@ -248,6 +248,19 @@ Two client protocols cannot be answered this way and are admitted by port pair i
 
 Neither is a general "admit anything addressed to a bound port" exception, because that would throw away the "no unsolicited packet gets in" property entirely.
 
+Both pairs can be narrowed to the source the answer actually comes from, with `DhcpServerIP` and `NtpServerIP` in the server's `etc/xdp.toml` — an IPv4 address or a CIDR prefix each, written into the object's `.rodata` before the filter is attached:
+
+```toml
+DhcpServerIP = "169.254.169.253"   # the host's own DHCP server
+NtpServerIP  = "169.254.169.0/24"  # the host's own time servers
+```
+
+The port pair says what the answer looks like, not who sent it, so without a range the filter admits any packet wearing the right ports. Nothing downstream trusts those packets — a DHCP reply is matched against the lease it answers, and chrony checks the server it asked — so this is defence in depth rather than a fix for a hole. The default is **no narrowing**.
+
+A value that cannot be parsed is **logged at Critical and the filter attaches anyway**: the pair keeps the object's own default (any source) and the rest of the file is honoured. The server's reasons to refuse attaching are limited to the ones that protect SSH reachability — with the security group open to every port, the filter is the only inbound control on all of them, so refusing to attach over a defence-in-depth narrowing would trade a closed pair for an open host. An operator who meant to narrow gets a loud log line and a filter that is still protecting the host.
+
+The AC has the same two settings in its `etc/config.toml`, and there an unusable value **stops the AC from starting**: the AC's failure direction is closed (it stops, and the fail-closed netfilter backstop keeps the protected resource shut), so there the price of a typo is a host that stays dark rather than a host that stays open.
+
 ### IPv6, and why SSH must arrive over IPv4
 
 `handle_ipv6()` runs the same tree minus the whitelist. The whitelist is a trie of **IPv4 prefixes**, so the program cannot recognise the relay over v6 — nothing reaches tcp/22 or the knock port over v6 at all.
@@ -272,7 +285,7 @@ An IPv6 fragment header with a non-zero offset gets the same answer (`IPV6_FRAGM
 |-----|------|------|---------------|
 | `nhp_relay_ips` | `LPM_TRIE` | 4096, `BPF_F_NO_PREALLOC`, pinned | The SSH whitelist. Longest-prefix match on IPv4 prefixes. |
 | `nhp_events` | `PERF_EVENT_ARRAY` | 1024 | The perf ring user space drains. |
-| `nhp_event_rate` | `PERCPU_ARRAY` | 33 | Token buckets: 32 action classes + 1 global. |
+| `nhp_event_rate` | `PERCPU_ARRAY` | 67 | Token buckets: 32 action classes + 1 global (the telemetry ring), then the audit ring's own bank — 32 per-class buckets + one global for the deny channel + one for the accept channel. |
 | `nhp_action_stats` | `PERCPU_ARRAY` | 32 | `packets` and `logged` counters per action class. |
 | `nhp_port_hits` | `LRU_PERCPU_HASH` | 65536 | Dropped packets per destination port. |
 | `nhp_src_hits` | `LRU_PERCPU_HASH` | 65536 | Dropped packets per IPv4 source address. |
@@ -322,17 +335,23 @@ The AC's job is different: it is the component that actually *opens* a protected
 frame
  │
  ├─ ethertype
- │    ├─ ARP / IPv6              → PASS   (the AC does not filter IPv6 at all)
+ │    ├─ ARP                     → PASS   (the AC does not answer ARP itself)
+ │    ├─ IPv6                   → handle_ipv6()   [see below]
  │    ├─ IPv4                   → continue
  │    └─ otherwise              → DROP
  │
  ├─ iph->ihl < 5                → DROP   (not recorded)
  │
+ ├─ non-first IPv4 fragment     → PASS   (inert: it carries no L4 header to judge)
+ │
  ├─ TCP to dport 22             → PASS   (SSH to the AC is never knock-gated)
- ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair, before any whitelist or conn_track lookup — the only UDP exception)
+ ├─ UDP 67 → 68 (DHCP)          → PASS   (the lease reply, by port pair — optionally narrowed to a source range, before any whitelist or conn_track lookup)
+ ├─ UDP 123 → 123 (NTP)         → PASS   (the chrony answer, by port pair, also narrowable — the same two exceptions the nhp-server's filter makes)
  │
  ├─ ICMP
- │    ├─ echo reply (type 0 code 0)   → PASS
+ │    ├─ echo reply (type 0 code 0)
+ │    │    ├─ the AC pinged that peer and this is the answer → PASS   (the `icmp_echo` record tc_egress.c wrote)
+ │    │    └─ otherwise         → the icmpwhitelist entry below decides it
  │    ├─ echo request (type 8 code 0)
  │    │    ├─ no icmpwhitelist entry → DROP
  │    │    ├─ entry expired           → DROP   (the entry is deleted)
@@ -352,18 +371,54 @@ frame
  │    ├─ src_port     (src + port)
  │    ├─ port_list    (src + a wildcard port range)
  │    └─ protocol_port(port + protocol)
- │         └─ yes, and not expired → PASS   (and the flow is recorded)
+ │         ├─ yes, and not expired → PASS   (and the flow is recorded)
+ │         └─ yes, and expired     → DROP   (the expired-knock class; see below)
+ │
+ ├─ UDP flow the kernel's socket table says belongs to a socket of the host's
+ │    └─ yes                  → PASS   (the backstop for a socket bound to a fixed port)
  │
  └─ otherwise                   → DROP
 ```
 
-DHCP is the only UDP exception, and it is matched as a **pair** (67 → 68). A source port is chosen by whoever sends the packet, so it is not evidence of anything; this block used to also pass `dport == 67 || dport == 68` from any source and — far worse — any datagram with `sport == 53`, both of them *before* conn_track and before every whitelist. That second one let anything sent from udp/53 reach any UDP port the AC protects (DNS, QUIC/HTTP3, WireGuard, game servers) with no knock at all.
+DHCP and NTP are the only UDP exceptions, and both are matched as a **pair** (67 → 68 and 123 → 123). A source port is chosen by whoever sends the packet, so it is not evidence of anything; this block used to also pass `dport == 67 || dport == 68` from any source and — far worse — any datagram with `sport == 53`, both of them *before* conn_track and before every whitelist. That second one let anything sent from udp/53 reach any UDP port the AC protects (DNS, QUIC/HTTP3, WireGuard, game servers) with no knock at all.
 
-DNS needs no exception of its own: the AC's queries leave through the same interface `tc_egress.c` is attached to, and the answer is admitted by the reverse branch below from the EGRESS entry they left, the same way NTP's is. That covers a query whose *source* port gate 3 accepts — an ephemeral one, as a stub resolver (glibc, systemd-resolved) uses. A recursive resolver running **on the AC** that randomises its own outgoing port over 1024–65535 (BIND's default `use-v4-udp-ports`) falls under the same limitation as any other fixed-low-port UDP client on the AC: see *Known limitation: fixed low UDP source ports* in `terraform/demo/RUNBOOK.md`.
+The two pairs are the ones the nhp-server's own filter makes, and they are there for the same reason on both hosts: the answer arrives on a socket the kernel cannot tell apart from a listener. chronyd polls its servers from the socket it has bound to udp/123 rather than from a connected ephemeral one, so the reply (123 → 123) looks exactly like an unsolicited query; dropping it costs the clock rather than the address, but the clock is what the knock timestamps are checked against. The DHCP reply is worse: it comes back on a socket that is merely bound to udp/68, and a host that loses its lease loses every port on it.
 
-Every whitelist entry carries an expiry, and an expired entry is **deleted** when a packet finds it — so an entry that ran out stops admitting traffic immediately.
+**Both pairs can be narrowed to the source the answer actually comes from.** The port pair says what the answer looks like, not who sent it, so on a host whose group is open to the whole internet the filter admits anything wearing the right ports. Nothing downstream trusts those packets — a DHCP reply is matched against the lease it answers, and chrony checks the server it asked — but the pair is the last thing this filter admits with no whitelist behind it, and only the operator knows which addresses their own dhclient and chronyd answer from. `DhcpServerIP` and `NtpServerIP` in the AC's `config.toml` name those ranges, one IPv4 address or CIDR prefix each, and the loader writes them into the object's `.rodata` before the filter is attached:
 
-The five lookups run in a fixed order and stop at the first match, which has one visible consequence: an *expired* entry in an earlier map deletes itself and drops the packet on the spot, without the later maps being consulted. An expired `spp` entry therefore beats a live `protocol_port` entry for the same packet.
+```toml
+DhcpServerIP = "169.254.169.253"   # the host's own DHCP server
+NtpServerIP  = "169.254.169.0/24"  # the host's own time servers
+```
+
+The default is **no narrowing**: the pairs behave exactly as they always have, and a host that says nothing keeps what it had. An address that cannot be parsed stops the AC from starting rather than being ignored — a narrowing that was quietly dropped would leave the pair open while the configuration said it was closed, and a narrowing that was applied wrongly costs the host its DHCP lease, and with it its address and every port on it.
+
+The nhp-server's filter has the same two pairs and the same two settings, and its half of this runs the other way round: there, an unusable value is logged at Critical, the pair keeps its default and **the filter attaches anyway**, because the server's reasons to refuse attaching are limited to the ones that protect SSH reachability — with the security group open to every port, the filter is the only inbound control on all of them.
+
+The narrowing covers the IPv4 pairs. The IPv6 tree's own pairs (DHCPv6 547 → 546 and NTPv6 123 → 123) are not narrowed: they would need a 128-bit range, and the demo's AC has no IPv6 address at all.
+
+DNS needs no exception of its own: the AC's queries leave through the same interface `tc_egress.c` is attached to, and the answer is admitted by the reverse branch below from the EGRESS entry they left. That covers a query whose *source* port gate 3 accepts — an ephemeral one, as a stub resolver (glibc, systemd-resolved) uses. A recursive resolver running **on the AC** that randomises its own outgoing port over 1024–65535 (BIND's default `use-v4-udp-ports`) falls under the same limitation as any other fixed-low-port UDP client on the AC: see *Known limitation: fixed low UDP source ports* in `terraform/demo/RUNBOOK.md`.
+
+IPv6 is filtered with a tree of its own (`handle_ipv6()`) rather than passed. The demo hosts have no v6 address today, which is exactly why the pass was dangerous: the day a v6 CIDR is added, every v6 listener — sshd's `[::]:22` above all — would be reachable unfiltered with the deploy's "filter attached" check still green. The v6 tree admits ICMPv6's "packet too big" and the ND/MLD range, the two port pairs in their v6 spellings (DHCPv6 547 → 546 and NTPv6 123 → 123), the replies to flows the host itself opened (`has_local_flow6()`), and **tcp/22**; everything else is dropped. The v6 tree needs its own pairs because there is no v6 conn_track to admit a lease or an NTP answer from — `tc_egress.c` is IPv4 only — and the whitelists are IPv4 tables too, so no v6 packet is ever admitted by one.
+
+**tcp/22 is passed on both families**, and that is deliberate. The IPv4 tree passes SSH because the security group is what restricts it: tcp/22 is carved out of the all-ports range and left open to the relay's group only. A v6 tree that dropped SSH while the v4 tree passed it would lock out every operator who manages the AC over IPv6 — the same filter, the same group, and no way in. The group is the layer that restricts SSH on both families, so a deployment that opens its group's v6 rules is closing that port by hand, exactly as it does for IPv4.
+
+Two consequences are worth stating plainly:
+
+- **This is a breaking change for anything else that listens over v6.** Before this filter existed, every v6 packet was passed. Now a v6 listener the AC was never meant to gate — a database, a metrics endpoint, a service of the operator's own — is dropped, because the AC's whitelists are IPv4 tables and "the peer that knocked may reach this port" is a policy the program cannot express over v6.
+- **There is a way out, and it is a decision rather than a default.** `DisableIPv6Filter` in the AC's `config.toml` turns the whole tree off and passes every v6 packet again. The knob is a `.rodata` constant (`nhp_ac_filter_ipv6`), so the loader writes it before the verifier folds it in, and the loader logs a `Warning` when it does — the filter being attached says nothing about this, because the filter *is* attached and is deliberately not filtering v6. Turning it off means every v6 listener on the host depends on the security group alone.
+
+An echo reply is admitted on one of two grounds: the peer knocked for ICMP access (the whitelist entry below, which now decides both directions), or the AC pinged that peer itself and this is the answer — the `icmp_echo` entry `tc_egress.c` wrote when the request went out, keyed by the peer's address and the identifier on the wire, expiring in `NHP_ICMP_ECHO_TTL_NS`. The reply used to be passed unconditionally, from anywhere, which with the security group open was a standing bypass into the host. `ping` on the AC still works, which is also how the AC's own reachability is checked.
+
+Every whitelist entry carries an expiry, and an expired entry stops admitting traffic immediately — whatever its `allowed` flag says, an entry that ran out admits nothing.
+
+An expired entry is **kept for a grace** — 60 seconds, `NHP_KNOCK_EXPIRED_GRACE_SEC` — when it is scoped to the peer *and* to the port: `spp`, `src_port` and `port_list`. The packets in that window are classified as the expired knock they are (`KNOCK_EXPIRED`), not as a scan, because a peer does not notice that the window closed at the same moment the AC did: the last segment of a session is retransmitted, a FIN arrives late, a keepalive goes out after the AC stopped listening. Only the *first* of those packets used to be exempt, because the entry was deleted on the spot; the rest of them landed in the scan classes, which put an authorized peer's address — and the country it is in — into the published attacker totals. After the grace the entry is deleted and the peer is an unknown source to a closed port again, and the packet is judged exactly like one that was never admitted.
+
+**The grace is a classification and not a verdict.** A packet that hits a lapsed entry inside the grace window is not dropped on the spot: it goes on to the rest of the lookups, and a live entry in one of them still admits it. A peer whose own port-scoped knock has just lapsed is therefore not locked out of a port that `protocol_port` opens to anyone, nor of a resource an `sdwhitelist` entry still covers. The grace decides what such a packet is *called* — the expired knock it is, if nothing else admits it — and never whether it is let in.
+
+The two entries that are not scoped to the peer are **not** given a grace, and the reason is the shape of each key. `sdwhitelist` is keyed on the peer and the AC with no port in it, so it covers everything that peer sends to the AC — and the peer can be the nhp-server itself, when the agent that knocks shares the server's address (NAT, or an agent on the server host); the AC's own channel to the server is admitted by that entry and by nothing else, so holding it would take the AC off the air for the length of the grace. `protocol_port` is keyed on the port and the protocol with no peer in it, so it says "anyone may use this port"; holding it would classify an attacker's packets to that port as an expired knock and keep them out of the published attacker totals.
+
+The five lookups run in a fixed order and stop at the first match that admits. One consequence is worth stating: an *expired* entry in one of the two maps that carry no grace — `sdwhitelist` and `protocol_port` — drops the packet on the spot, without the later maps being consulted. The three port-scoped maps (`spp`, `src_port`, `port_list`) do not: inside their grace the packet falls through to the maps below, and outside it the entry is deleted and the packet is judged like one that was never admitted.
 
 The reverse branch is the subtle one, so the tree above summarises it rather than stating the rule. Three conditions qualify it:
 
@@ -467,6 +522,21 @@ The AC's perf events carry a two-valued action — 0 = `DENY`, 1 = `ACCEPT` — 
 Every `return` in `tc_egress.c` is `TC_ACT_OK`. The egress program **never drops a packet** — it only records. The AC's ingress program is the one that decides access; the egress program exists so that the AC's own outbound flows get their replies back, and to keep track of what it sent.
 
 That is also why gates 2 to 4 are about *claiming* a flow rather than about denying one: a claim is what tells the ingress program "this flow is mine, serve it from the reverse lookup". Getting a claim wrong costs the claim; getting a denial wrong costs the protocol.
+
+### The AC's own configuration
+
+Four keys in the AC's `etc/config.toml` change what the filter and its logs do. They are all **restart-only**: the filter and the log writers are set up once, when the daemon starts.
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `DisableIPv6Filter` | `false` | Turns the IPv6 tree off; every v6 packet is passed to the host. |
+| `AuditLogRetentionDays` | `0` | How long `nhp_deny-*.log` and `nhp_accept-*.log` are kept. `0` = forever. |
+| `AuditLogRetentionBytes` | `0` | How much the two audit files may occupy together. `0` = no cap. |
+| `AuditLogDailyEventBytes` | `0` | How much each audit file may append in one calendar day. `0` = no cap. |
+
+The three audit bounds are **opt-in on purpose**. Those two files used to be kept for as long as the host lived; they were then given a 14-day / 64 MiB sweep and a 16 MiB/day cap, which is a fine answer for a host on the internet and the wrong one for a deployment that reads them as a compliance or audit trail — the history went away at an upgrade nobody asked for. A deployment that says nothing keeps what it had; the demo asks for the bounds, because its group is open to the whole internet and its disk is small.
+
+The kernel-side rate limit is not one of these knobs and does not depend on them. The audit ring is fed behind a budget whatever the files are allowed to grow to — a per-class bucket plus a global cap for the deny channel and another for the accept channel, so that a flood of drops cannot spend the allowance of the log that records what was *admitted*. The log is therefore a rate-bounded sample either way; what these three bound is how much of that sample is kept, and how much of it is written.
 
 
 ## 6. The loader: from `.o` to a running filter
@@ -780,6 +850,8 @@ Every packet the program sees is chosen by whoever is sending it, and the reader
 - **A per-class token bucket in the kernel.** Each action class gets a burst of 16 per second, per CPU, plus a global bucket of 8 per second per CPU across all classes. The per-class bucket stops a flood of one class from starving the records of another; the global one bounds the total, whatever mix of classes it is made of. Without it, the dozen or so reportable classes an IPv4 sender can reach, at a burst of sixteen each, times the number of CPUs, is hundreds of lines a second — i.e. gigabytes a day.
 - **A daily byte budget in the writer.** 64 MiB of per-packet text per calendar day. When it is spent, the writer stops adding lines and says so — but the `[NHP-STAT]` summaries keep reporting exact totals.
 - **A retention sweep.** 14 days or 256 MiB, whichever bites first; oldest files go first and today's file is never removed.
+
+The AC's own audit family — `nhp_deny-*.log` and `nhp_accept-*.log`, one line per admitted or dropped packet — is bounded the same way, but its bounds are the AC's own configuration rather than the daemon's constants: `AuditLogRetentionDays`, `AuditLogRetentionBytes` and `AuditLogDailyEventBytes`, all of which default to `0` (= unbounded). See *The AC's own configuration* in chapter 5.
 
 The bulk classes are also counted but never reported at all (`TCP_ESTABLISHED`, `UDP_ESTABLISHED`, `V6_ESTABLISHED`, `ICMPV6_CONTROL`, and every `SSH_RELAY` packet after the SYN). They scale with bytes transferred, not with events.
 

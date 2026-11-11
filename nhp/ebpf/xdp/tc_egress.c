@@ -12,8 +12,10 @@
 
 #define ETH_P_IP    0x0800
 #define ETH_P_IPV6  0x86DD
+#define IPPROTO_ICMP 1
 #define IPPROTO_TCP 6
 #define IPPROTO_UDP 17
+#define ICMP_ECHO 8
 
 /*
  * Does the peer we are sending to hold -- or has it ever held -- a knock that
@@ -206,9 +208,39 @@ int tc_egress_prog(struct __sk_buff *ctx)
     __be16 sport = 0, dport = 0;
     bool is_tcp = false, is_syn = false, is_fin = false, is_rst = false;
 
-    /* Only TCP and UDP are tracked. ICMP needs nothing from here: XDP passes
-     * echo replies unconditionally, and it never puts IPPROTO_ICMP in a
-     * conn_track key, so entries written for it could never be matched. */
+    /* An echo request the AC itself sends is recorded, so that the reply can
+     * be told apart from an unsolicited ping when it comes back.
+     *
+     * The AC's filter admits an echo reply on two grounds: the peer knocked
+     * for ICMP access, or the AC pinged that peer itself and the reply
+     * answers it. This is the second -- the request goes out here and the
+     * reply comes back on the ingress side, where xdp_white_prog() looks it
+     * up in `icmp_echo`.
+     *
+     * Nothing is decided here; the packet is allowed either way. What is
+     * recorded is the peer and the identifier, which is what tells our own
+     * reply apart from a ping from anywhere else, and the entry expires in
+     * NHP_ICMP_ECHO_TTL_NS. */
+    if (protocol == IPPROTO_ICMP) {
+        struct icmphdr *icmp = (void *)iph + (iph->ihl * 4);
+        if ((void *)(icmp + 1) > data_end)
+            return TC_ACT_OK;
+        if (icmp->type == ICMP_ECHO && icmp->code == 0) {
+            struct icmp_echo_key key = {
+                .peer_ip = dst_ip,
+                .id = icmp->un.echo.id,
+            };
+            struct icmp_echo_value val = {
+                .expire_time = bpf_ktime_get_ns() + NHP_ICMP_ECHO_TTL_NS,
+            };
+            bpf_map_update_elem(&icmp_echo, &key, &val, BPF_ANY);
+        }
+        return TC_ACT_OK;
+    }
+
+    /* Only TCP and UDP are tracked. ICMP is handled above: it is not a flow
+     * the conn_track can carry -- there is no port to key it on and no
+     * handshake to bind it to -- so it is recorded in `icmp_echo` instead. */
     if (protocol == IPPROTO_TCP) {
         struct tcphdr *tcp = (void *)iph + (iph->ihl * 4);
         if ((void *)(tcp + 1) > data_end)

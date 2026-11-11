@@ -43,7 +43,12 @@ ANDROID_CC='${TOOLCHAIN}/bin/aarch64-linux-android21-clang'
 ANDROID_CXX='${TOOLCHAIN}/bin/aarch64-linux-android21-clang++'
 
 # eBPF compile
-ifneq (,$(findstring ebpf,$(MAKECMDGOALS)))
+#
+# The guard covers the targets that compile the C sources. It used to key on
+# the substring "ebpf" in MAKECMDGOALS, which also caught `ebpf-verify` -- a
+# pure Go tool that needs no clang, and that a host without a compiler can
+# still use to ask the kernel its verdict.
+ifneq (,$(filter ebpf ebpf-objs,$(MAKECMDGOALS)))
     CLANG := $(shell command -v clang 2>/dev/null)
     ifeq ($(CLANG),)
         $(error "clang is not installed. Please install clang to compile eBPF programs.")
@@ -57,6 +62,9 @@ EBPF_SRC_TC_EGRESS = ./nhp/ebpf/xdp/tc_egress.c
 EBPF_SRC_SERVER_XDP = ./nhp/ebpf/xdp/nhp_server_xdp.c
 # Shared map definitions included by both sources; a change here must rebuild both.
 EBPF_HDR_MAPS = ./nhp/ebpf/xdp/nhp_maps.h
+# The XDP telemetry mechanism, shared by the server's and the AC's ingress
+# filter; a change here must rebuild both.
+EBPF_HDR_STATS = ./nhp/ebpf/xdp/nhp_xdp_stats.h
 EBPF_OBJ_XDP = ./release/nhp-ac/etc/nhp_ebpf_xdp.o
 EBPF_OBJ_TC_EGRESS = ./release/nhp-ac/etc/tc_egress.o
 EBPF_OBJ_SERVER_XDP = ./release/nhp-server/etc/nhp_server_xdp.o
@@ -79,11 +87,11 @@ ebpf: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) $(EBPF_OBJ_SERVER_XDP) generate-vers
 # object targets are separate goals the pipeline invokes in sequence. Both
 # daemons treat a missing object as a runtime condition, not a build error
 # (nhp-acd refuses to start in FilterMode=1; nhp-serverd falls open).
-.PHONY: ebpf-objs
+.PHONY: ebpf-objs ebpf-verify
 ebpf-objs: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) $(EBPF_OBJ_SERVER_XDP)
 	@echo "$(COLOUR_GREEN)[eBPF] Object files compiled$(END_COLOUR)"
 
-$(EBPF_OBJ_XDP): $(EBPF_SRC_XDP) $(EBPF_HDR_MAPS)
+$(EBPF_OBJ_XDP): $(EBPF_SRC_XDP) $(EBPF_HDR_MAPS) $(EBPF_HDR_STATS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_XDP) -o $(EBPF_OBJ_XDP)
@@ -91,7 +99,7 @@ $(EBPF_OBJ_TC_EGRESS): $(EBPF_SRC_TC_EGRESS) $(EBPF_HDR_MAPS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_TC_EGRESS) -o $(EBPF_OBJ_TC_EGRESS)
-$(EBPF_OBJ_SERVER_XDP): $(EBPF_SRC_SERVER_XDP)
+$(EBPF_OBJ_SERVER_XDP): $(EBPF_SRC_SERVER_XDP) $(EBPF_HDR_STATS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_SERVER_XDP) -o $(EBPF_OBJ_SERVER_XDP)
@@ -99,6 +107,23 @@ $(EBPF_OBJ_SERVER_XDP): $(EBPF_SRC_SERVER_XDP)
 clean_ebpf:
 	@rm -f $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) $(EBPF_OBJ_SERVER_XDP)
 	@echo "$(COLOUR_GREEN)[Clean] Removed eBPF object file$(END_COLOUR)"
+
+# The tool that asks the kernel whether it accepts an eBPF object. Compiling
+# an object proves nothing about it: the kernel's verifier decides whether a
+# program is loadable at all, and it can refuse one that compiled without a
+# warning. On the AC a refused object is an outage; on the server it is a
+# silent loss of protection, because nhp-serverd falls open.
+#
+# It loads the object through the same loader the daemon uses, with the same
+# constants, into a pin directory of its own, and never attaches it. See
+# nhp/utils/ebpf/verify_linux.go.
+#
+# It lives in the nhp module because the loader it drives is there.
+ebpf-verify:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-ebpf-verify... $(END_COLOUR)"
+	@mkdir -p release/nhp-ebpf-verify
+	cd nhp && \
+	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-ebpf-verify/nhp-ebpf-verify ./utils/ebpf/cmd/ebpfverify
 
 generate-version-and-build:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start building... $(END_COLOUR)"
@@ -341,6 +366,26 @@ test-race:
 	cd endpoints && go test -race -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Race detection tests passed!$(END_COLOUR)"
 
+# Check the Linux build from any host
+#
+# The eBPF loader, the AC's engine and the server's engine are behind build
+# tags, so a machine that is not Linux compiles a different set of files than
+# the one that ships the daemon. A field the Linux files declare and the
+# others do not is a build failure on the server and a silent pass here, which
+# is how a renamed field reached a pull request: the darwin stub of
+# EngineLoadParams had the new names, so every local build was green and only
+# the Linux build was red.
+#
+# GOOS=linux selects the Linux file set, so this target compiles what the
+# daemon is actually built from, on a Mac as well as on a Linux host.
+check-linux:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Checking the Linux build...$(END_COLOUR)"
+	cd nhp && GOOS=linux go build ./...
+	cd nhp && GOOS=linux go vet ./...
+	cd endpoints && GOOS=linux go build ./...
+	cd endpoints && GOOS=linux go vet ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] The Linux build is OK!$(END_COLOUR)"
+
 # Format code
 fmt:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Formatting code...$(END_COLOUR)"
@@ -377,6 +422,7 @@ help:
 	@echo "  make test-race  - Run tests with race detection"
 	@echo "  make fmt        - Format code with gofmt"
 	@echo "  make lint       - Lint code with golangci-lint"
+	@echo "  make check-linux - Compile and vet both modules for Linux"
 	@echo "  make clean      - Remove build artifacts"
 	@echo ""
 	@echo "$(COLOUR_GREEN)Build:$(END_COLOUR)"
@@ -403,6 +449,7 @@ help:
 	@echo ""
 	@echo "$(COLOUR_GREEN)Other:$(END_COLOUR)"
 	@echo "  make ebpf       - Compile eBPF programs (requires clang)"
+	@echo "  make ebpf-verify - Build the tool that asks the kernel if it accepts an eBPF object"
 	@echo "  make ebpf-objs  - Compile only the eBPF object files (requires clang + libbpf-dev)"
 	@echo "  make archive    - Package binaries for distribution"
 	@echo "  make help       - Show this help message"
@@ -444,4 +491,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp init-demoapp test-demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf ebpf-objs clean_ebpf
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp init-demoapp test-demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf ebpf-objs clean_ebpf ebpf-verify

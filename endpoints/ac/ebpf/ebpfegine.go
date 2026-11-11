@@ -22,7 +22,9 @@ var (
 	AcLogger   *log.Logger
 )
 
-func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
+// LoadOptions are the AC's load-time choices; see options.go, which has no
+// build tag so that the shape is the same on every platform.
+func EbpfEngineLoad(dirPath string, logLevel int, acId string, opts LoadOptions) error {
 	// Object paths stay relative to the working directory, which is where
 	// `make acd` puts them and where the systemd unit starts the daemon —
 	// changing them to dirPath-relative would move the lookup on any host
@@ -37,6 +39,18 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		ComponentId:   acId,
 		LogDirPath:    dirPath,
 		LogLevel:      logLevel,
+		// ScanReportInterval and ScanReportTopN are deliberately left at
+		// zero: the loader fills the AC's defaults in (acScanReportSettings),
+		// so the [NHP-SCAN] summary runs whether or not the caller remembers
+		// to ask for it. The AC's port and source tables are drained by that
+		// reporter, and a load that started none would leave them to fill up
+		// and never be read.
+		DisableIPv6Filter:         opts.DisableIPv6Filter,
+		AcAuditLogRetentionDays:   opts.AuditLogRetentionDays,
+		AcAuditLogRetentionBytes:  opts.AuditLogRetentionBytes,
+		AcAuditLogDailyEventBytes: opts.AuditLogDailyEventBytes,
+		DhcpSource:                opts.DhcpSource,
+		NtpSource:                 opts.NtpSource,
 	})
 	if err != nil {
 		return err

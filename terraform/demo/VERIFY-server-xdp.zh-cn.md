@@ -262,7 +262,7 @@ sudo ip netns exec nhpxdp sh -c '
 engine_linux.go:   [Info] server XDP filter configured for udp/${NHP_PORT} with a 240-byte datagram floor (0 = the object's own default)
 engine_linux.go:   [Info] relay whitelist applied: 1 prefix(es) active, 0 removed
 config.go:         [Info] server XDP engine loaded: filtering udp/${NHP_PORT} with a 240-byte floor, SSH from [10.99.0.9]
-engine_linux.go:   [Info] Start listening for server eBPF events (PERF BUFFER)
+engine_linux.go:   [Info] Start listening for XDP telemetry events (PERF BUFFER)
 file.go:           [Info] start watching file /tmp/nhpsrv/etc/xdp.toml
 ```
 

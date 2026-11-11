@@ -40,6 +40,25 @@ type EngineLoadParams struct {
 	ScanReportTopN     int
 
 	DisableEventLog bool
+
+	// DisableIPv6Filter, AcAuditLogRetentionDays, AcAuditLogRetentionBytes
+	// and AcAuditLogDailyEventBytes are inert off Linux — nothing is loaded,
+	// so nothing reads them. They are here because the shape of the
+	// parameters has to be the same on every platform: the tool that asks
+	// the kernel whether it accepts an object (see VerifyLoad) is built on
+	// every platform, and a field that only existed on Linux would make that
+	// tool's meaning depend on the host it was built for.
+	DisableIPv6Filter bool
+
+	AcAuditLogRetentionDays   int
+	AcAuditLogRetentionBytes  int64
+	AcAuditLogDailyEventBytes int64
+
+	// DhcpSource and NtpSource narrow the two client-protocol pairs the
+	// filters admit. Off Linux nothing is loaded, so nothing reads them; they
+	// are here because the server's loader is portable and sets them.
+	DhcpSource SourceNet
+	NtpSource  SourceNet
 }
 
 type EngineHandle struct {

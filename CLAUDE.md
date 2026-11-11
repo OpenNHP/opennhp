@@ -265,6 +265,90 @@ tcp/22 from the relay SG; recovery of an unfiltered host is still
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
 
+**All-ports exposure on the AC (deliberate).** `aws_security_group.ac` is opened
+the same way, under `var.ac_open_all_ports` (the `infra-demo` `open_ac_all_ports`
+input, **opt-in, default `false`** like the server's), and for the same reason —
+only harder: a packet the security group drops never reaches the NIC, so the
+AC's XDP filter never sees it, never counts it, and the AC's column on
+stats.opennhp.org undercounts the attacks (in the narrow posture only tcp/443
+and the knock port are reachable, so most scans are gone before the filter can
+see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by `nhp-acd` in
+`FilterMode = 1`) is then the only inbound control on everything but tcp/22;
+tcp/22 stays restricted to the relay SG.
+
+The filter has to be as narrow as the server's for that to hold, and it now
+is. UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and
+by the answers to the host's own queries (the AC's conn_track, plus the
+kernel's socket table for a socket bound below the ephemeral range). IPv6 is
+filtered rather than passed, a non-first IPv4 fragment is not judged by bytes
+that are not a header, and an ICMP echo reply needs the same whitelist entry
+the echo request does. `nhp/utils/ebpf/xdpfilter_test.go` pins each of those.
+
+**The two client-protocol pairs can be narrowed to a source address.** The
+67→68 and 123→123 pairs are admitted by port pair alone, because their
+answers arrive on a socket the kernel cannot tell from a listener
+(dhclient's raw AF_PACKET socket, chronyd's bound udp/123 socket), so the
+filter has to admit them before it can ask who sent them. `DhcpServerIP` and
+`NtpServerIP` in the AC's `etc/config.toml` narrow each pair to one address
+or CIDR prefix; both default to empty, which narrows nothing — the pair is
+admitted from any source, exactly as before the settings existed — so a
+deployment that says nothing keeps the behaviour it had. The demo leaves
+them unset: the peer addresses are a property of the VPC, not of the
+repository, and a wrong DHCP peer costs the host its lease, its address and
+its reachability, on a host with no break-glass path. Read the real address
+out of the daemon's own log before turning it on. A value that cannot be
+parsed stops the AC from starting rather than being quietly ignored. The v6
+tree's DHCPv6 and NTPv6 pairs are deliberately not narrowed: a 128-bit range
+is a different knob, and the demo's AC has no IPv6 address at all.
+
+**tcp/22 is passed on both address families.** The v6 tree has the same SSH
+exception the v4 tree has, and for the same reason: the security group is the
+layer that restricts SSH (on the AC it carves tcp/22 out of the open range and
+leaves it to the relay's group), so a filter that dropped v4 ssh and passed v6
+ssh would lock out every operator who manages the AC over IPv6. This is the
+same exposure the v4 path has always accepted; the v6 tree is otherwise closed
+(the demo's AC has no IPv6 address at all). `DisableIPv6Filter = true` in the
+AC's `etc/config.toml` turns the whole v6 tree off, back to passing every v6
+packet — a decision with a cost, so it is not the default; the loader logs a
+`Warning` when it is set. A v6 tree that has no knob cannot be turned off by a
+deployment that needs it.
+
+**The AC's audit logs are bounded by the AC's own configuration.** The legacy
+`nhp_deny-*.log` / `nhp_accept-*.log` family used to be kept for as long as the
+host lived. It now has three bounds — `AuditLogRetentionDays`,
+`AuditLogRetentionBytes` and `AuditLogDailyEventBytes` — and **all three
+default to `0` (= unbounded)**, so a deployment that says nothing keeps what it
+had and a deployment that reads those files as a compliance trail does not lose
+history at an upgrade nobody asked for. The demo asks for the bounds
+(14 days / 64 MiB / 16 MiB per day) in
+`deploy/config-templates/ac/config.toml`, because its group is open to the whole
+internet and its disk is small.
+
+The kernel-side rate limit is *not* one of those knobs and does not depend on
+them. The audit ring is fed behind a budget whatever the files are allowed to
+grow to: a per-class bucket per action class, **plus a global cap for the deny
+channel and a separate one for the accept channel** (`NHP_LEGACY_DENY_GLOBAL_SLOT`
+and `NHP_LEGACY_ACCEPT_GLOBAL_SLOT` in `nhp/ebpf/xdp/nhp_xdp_stats.h`). Two
+channels, not one, because a flood of drops must not be able to spend the
+allowance of the log that records what was *admitted* — otherwise the audit
+trail of who got in disappears exactly when the host is under attack. Admits
+are rare and already bounded by the knock rate. The log is therefore a
+rate-bounded sample either way; the three knobs bound how much of that sample
+is kept and how much of it is written.
+
+What the AC has that the server does not is the fail-closed netfilter backstop
+(`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`), which keeps the
+protected resource shut while the XDP link is detached — i.e. it covers the
+fail-open windows the link has whenever `nhp-acd` is restarting. **It covers
+tcp/443 and nothing else**: in every one of those windows every other port on
+the AC is unfiltered, exactly as on the server.
+`deploy-demo-v2` establishes that the filter is attached (`Verify the AC's XDP
+ingress filter attached`) and reports whether the group is actually wide open
+(`Check the AC's security group is open to the internet`); `infra-demo` refuses
+to widen a group whose host has no XDP program attached. Neither group is open
+by default in the pipeline — tick the input to open one, untick it to go back
+to the narrow posture.
+
 **Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
 unprivileged on the demo host and `443 < 1024`, the unit cannot rely on
 `CAP_NET_BIND_SERVICE` — granting it would leave the daemon with a non-empty
@@ -278,7 +362,7 @@ must stay in sync (see the note above about `ignore_changes = [user_data]`).
 Relaxing that floor widens the range any unprivileged process on the host
 may bind to, but the XDP filter is what limits the host's inbound exposure
 now that `aws_security_group.server` is deliberately open to all ports (see
-*All-ports exposure* above; `aws_security_group.ac` is still narrow), together
+*All-ports exposure* above), together
 with the fact that this host runs a single service. The filter is fail-open by
 design, which is why the attach gate in `deploy-server` matters. A rollback that moves the port out of the
 privileged range must therefore remove `/etc/sysctl.d/99-nhp-server.conf`
@@ -317,6 +401,55 @@ so a mismatch fails `build` and no deploy job stops anything. The eBPF objects
 are BPF bytecode with no libc in them and are still compiled on the runner.
 Raise `TARGET_GLIBC` only when the demo AMI itself moves.
 
+#### The kernel's verdict on a new eBPF object
+
+Compiling an eBPF object proves nothing about it: the kernel's verifier
+decides whether a program is loadable at all, and it can refuse a program
+that compiled without a warning (an instruction or complexity limit, a helper
+the program type does not allow). On the AC a refused object is an outage —
+`nhp-acd` cannot start, the fail-closed backstop keeps tcp/443 shut — and on
+the server it is a silent loss of protection, because `nhp-serverd` falls
+open. Two gates answer the question before anything acts on it:
+
+- **Every PR**: the `ebpf-verifier` job in `.github/workflows/ubuntu-build.yml`
+  builds the three objects and loads them into the runner's kernel — through
+  `nhp-ebpf-verify`, which asks the kernel the way the daemon asks it and
+  prints the verifier log, and through the Go load tests, which run the
+  programs against packets. It runs as root: a load without CAP_BPF is
+  refused with EPERM, and the load tests used to *skip* in that case, which
+  is exactly how a verifier rejection could reach a deploy unnoticed. They now
+  fail instead of skipping when the process holds the privilege (`requireCaps`
+  in `nhp/utils/ebpf/privileged_linux_test.go`).
+- **Every deploy**: `deploy-demo-v2` loads the new objects on the host with
+  the same tool, on the AL2023 kernel the demo runs, *before* it stops the
+  running daemon. The programs are never attached, the load pins into a
+  directory of its own and removes it again, so the running filter's maps are
+  neither reused nor touched; a refusal aborts the deploy with the service
+  still up.
+
+The load goes through the loader the daemons use (`nhp/utils/ebpf`), not
+through `bpftool`, and that is not a preference:
+
+- `bpftool`'s libbpf refuses these objects outright — *"program
+  `xdp_white_prog` is static and not supported"* — because the programs are
+  declared `static` in the C sources. A gate built on it never asked the
+  kernel anything: it reported its own plumbing. (cilium/ebpf, which the
+  daemons use, does support them.)
+- `bpftool` sets no libbpf pin root, so a `LIBBPF_PIN_BY_NAME` map lands in
+  `/sys/fs/bpf/<name>` — the very entries the running daemon pins into. The
+  load would open the live `conn_track`, `spp` and `nhp_relay_ips` and bind
+  the throwaway program to them, and a new map would be pinned in the live
+  directory and left there.
+
+`nhp-ebpf-verify` (`nhp/utils/ebpf/cmd/ebpfverify`, `make ebpf-verify`) does
+what the daemon does — `LoadCollectionSpec`, the `.rodata` constants, the
+load — and stops before the attach. The constants are the ones the daemon
+writes (the server's knock port and datagram floor, the AC's IPv6 knob and
+the two source narrowings), so the verdict is about the program that will be
+attached. The manual equivalent is in
+[terraform/demo/RUNBOOK.md](terraform/demo/RUNBOOK.md) under *The kernel's
+verdict on a new eBPF object*.
+
 #### nhp-server eBPF/XDP ingress filter
 
 `nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces
@@ -350,7 +483,13 @@ filter (XDP)*.
   every new reason to refuse attaching is a way to leave all ports open. Telemetry
   settings (`ScanReportIntervalSeconds`, `ScanReportTopN`) never decide this: an
   out-of-range value is logged and disables only the `[NHP-SCAN]` summary
-  (`resolveScanReport`), and the filter attaches anyway.
+  (`resolveScanReport`), and the filter attaches anyway. The DHCP and NTP source
+  narrowings (`DhcpServerIP`, `NtpServerIP`) never decide it either: they are
+  defence in depth, so an unusable value is logged at Critical, that pair keeps
+  the object's own default (any source) and the filter attaches
+  (`xdpSourceNets`, `setServerSourceNets`). A setting that cannot narrow a pair
+  must not become a reason to leave every port open — the AC, whose failure
+  direction is closed, is the one that may refuse.
 - **The whitelist is installed before the program is attached**, as
   `EngineLoadParams.RelayIPs`, never written afterwards. Startup therefore never
   calls `applyXdpConfig`; that path is the config watcher's, and it always has a
@@ -368,6 +507,20 @@ filter (XDP)*.
   clients have no connected socket. Dropping the DHCP answer costs the host its
   address and every port with it, about an hour after a deploy that verified
   clean.
+- **The two client-protocol pairs can be narrowed to a source address.**
+  `DhcpServerIP` and `NtpServerIP` in `etc/xdp.toml` narrow the 67→68 and the
+  123→123 pair to one address or CIDR prefix each; both default to empty,
+  which narrows nothing and keeps the behaviour the filter had before the
+  settings existed. The demo leaves them unset (the peer addresses are a
+  property of the VPC, and a wrong DHCP peer costs the host its lease and
+  its address); read the real one out of `nhp_server_xdp-*.log` before
+  turning it on. A value that cannot be parsed is logged at Critical and
+  that pair keeps its default, and **the filter attaches anyway** — see the
+  refusal-reasons invariant above: these two settings are defence in depth,
+  and with `server_open_all_ports = true` the filter is the only inbound
+  control on every port but tcp/22, so a typo here must not cost the host
+  its filter. The AC's half is the other way round (an unusable value stops
+  the AC), because the AC's failure direction is closed.
 - **The capabilities go back on every path, including the ones that never
   load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) subtracts
   `CAP_BPF`, `CAP_NET_ADMIN` and `CAP_PERFMON` from ambient, permitted,
@@ -470,6 +623,61 @@ as `nhp-server`** (`sourceLabel` in `render_index.go`) while `index.json` keeps
 the raw directory name — `source` is a published field and renaming it breaks
 existing parsers.
 
+**History baseline.** `xdplog-report site -history <path>` reads a
+`history.json` snapshot: the site's own numbers for the days before the
+publishing floor, which the collector's cache does not reach back to.
+`xdplog-report history` generates that file from a saved copy of the homepage
+(`-html`) or from what the site published (`-index` + `-totals`), and refuses
+to write one whose rows do not sum to the page's own all-time total — a
+parsing slip must not freeze a wrong baseline into the site's history. The
+A day the live site can produce is **not** frozen: it is analyzed from the log,
+published with a real detail page, and the snapshot's row for it is dropped, so
+the overlapping days are not counted twice (they would read `7,002,040` instead
+of `3,501,020`). The snapshot's rows are the fallback for the days the
+collector's cache no longer reaches; those carry `"history": true` in
+`index.json` plus a `history` chip on the homepage, and a frozen day has no
+detail page — the snapshot carries the day's summary, not its events — so its
+date renders as plain text. The pages the site published for those days earlier
+are left in place, unlinked (unlinked is not unpublished). `totals.blocked`
+must equal the sum of the snapshot's own days, so the hero total stays the sum
+of every row of `index.json`.
+
+The all-time source and country totals are the **union over every published
+day**, the snapshot's days included: each day's own set of attackers and of
+countries is unioned with the others', so an address seen on ten days — or in
+the snapshot's period and in the live one — is counted once. The snapshot's own
+`source_ips` and `countries` are therefore **not** added on top of that union:
+two unions can only be merged when both sets are present, and adding their
+sizes instead counts an address (or a country) seen in both periods twice,
+because the sum of two set sizes is at least their union, never at most it.
+What *is* added is the part of the snapshot's baseline that covers its own
+days whose per-day records are gone — the days the live site cannot produce at
+all — and only for those: nothing else carries those days' attackers, and the
+published figures are then upper bounds rather than exact counts. The
+publishing floor applies to the snapshot's days as well: a day below it is
+neither in the index nor in the hero total, and the snapshot's `since` cannot
+put the site below the floor either.
+
+**A snapshot that lists days below the floor has no baseline at all.** The
+snapshot's own counts are a union over *all* its days, so the part of them
+that covers the unpublished days cannot be told apart from the part that
+covers the published ones — a snapshot-level total cannot be split by day.
+Subtracting the published days' facts would leave the unpublished days'
+attackers in the remainder, and adding that would count days the site does
+not publish. The baseline is therefore dropped, not trimmed: the published
+figures are the union over the published days and nothing else, and a
+published day whose records are gone then contributes nothing, so the two
+figures are lower bounds. The homepage and `totalnumber.js` say which of the
+two it is.
+A `-history` path that cannot be read
+fails the run — silently counting only the site's own days would shrink the
+published totals by an unquantifiable amount — and the file's fingerprint
+lives in `state.json`, so editing it rewrites the index. The snapshot is
+private: `/home/ec2-user/xdpstats/history.json` beside the state, never in the
+web root; `deploy-xdpstats` installs it from
+`deploy/config-templates/xdpstats/history.json` and `xdpstats-collect.sh`
+passes `-history` only when the file is readable.
+
 **Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
 that produced each day page, so bumping that constant in `site.go` re-renders
 every published day on the next run instead of only the days whose raw log
@@ -556,6 +764,30 @@ by the deploy) and says so in the collect log either way.
   `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
   `relay.*` / `agent.*` / `reg.*` / `demo.*` (SAN expanded by
   `bootstrap-tls.sh`).
+- **A deploy republishes the site.** `deploy-demo-v2`'s `deploy-xdpstats`
+  job runs the collector once with `XDPSTATS_SITE_FORCE=1` — the systemd
+  manager's environment, so the run still happens inside the unit's sandbox
+  (`ProtectSystem=full`, `ReadWritePaths`) rather than as a bare ssh
+  command — which makes the collector pass `-force` to `xdplog-report
+  site`: every cached day is re-analyzed and every page and the index are
+  rewritten. The forced rebuild is what makes a deploy that changes the
+  published figures, the hero or the markup reach the visitors at all:
+  `xdplog-report site` only rewrites the index when an input moved (a day's
+  log changed, a day was unpublished, the history snapshot's bytes
+  changed), so without it the site would keep serving the previous build.
+  The job then checks two things about the run it started, because the
+  collector's exit code cannot answer either question: a run that lost the
+  collector's lock exits zero without touching the site, and a run that
+  could not list a source exits non-zero with the site perfectly rebuilt.
+  The collect log lines *that run* wrote must contain the forced-rebuild
+  line, and the published `index.html` must be newer than a marker created
+  before the run — the flag reached the collector, and the file nginx serves
+  was rewritten. A source that could not be listed is a warning, not a
+  failure. The job also fails if the published country figure is
+  implausible (there are only ~250 ISO 3166-1 alpha-2 codes), and a step
+  after it guarantees the force flag did not outlive the deploy and that
+  the daily timer is running. The daily timer run is not forced — the
+  incremental path is the point there.
 
 **Three directories, three permission stories.** `/home/ec2-user` is mode
 0700 on AL2023 and nginx workers run as `nginx`, so the web root is
@@ -610,12 +842,14 @@ TXT record through the Cloudflare API and never looks up the A record.
   as zero attacks (a missing minute is not the same as "no attack in that
   minute").
 
-**Adding the AC later.** AC writes per-flow accept/deny files in a shape
-`parse.go` does not currently parse. Adding it means (1) a parser extension
-in `endpoints/xdplog-report/parse.go`, (2) a new SSH keypair +
-`authorized_keys` line on the AC host, (3) a second `<name> <user> <host>
-<log_dir>` line in `sources.conf`. The site already routes by `<source>`,
-so no `xdplog-report` change is needed once the parser and keypair exist.
+**The AC as a second source.** `sources.conf` has an `ac` line next to `server`.
+The collector derives the log prefix from the source name (`nhp_<name>_xdp`),
+`deploy-ac` installs `deploy/scripts/nhp-ac-xdplog-export.sh` and the same
+collector public key (forced command, `from=` the relay) on the AC host, and
+`deploy-xdpstats` waits for `deploy-ac` and renders `AC_PRIVATE_IP`. The site
+reads `raw/ac/nhp_ac_xdp-*.log[.gz]` and labels it `nhp-ac`; a file whose prefix
+disagrees with its directory is ignored. This depends on nhp-acd writing
+`nhp_ac_xdp-YYYY-MM-DD.log` in the server's `[NHP-DROP]` line shape.
 
 **Manual backfill.** If `xdpstats.timer` missed a window longer than the
 daemon's 14-day retention, the missing days are unrecoverable; the next

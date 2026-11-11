@@ -735,7 +735,13 @@ func TestServerFilterKnocksOnTheConfiguredPort(t *testing.T) {
 		LogLevel:         1,
 		NhpPort:          knockPort,
 		NhpMinFrameBytes: floor,
-		RelayIPs:         []string{"127.0.0.1"},
+		// A relay the packets below do not come from. The relay exemption
+		// sits above the length floor -- the relay forwards the short
+		// control packets of the handshake -- so a whitelist covering this
+		// test's own source address would exempt the short datagram as
+		// well, and the floor would not be under test at all. The
+		// exemption has its own test below.
+		RelayIPs: []string{"203.0.113.7"},
 	})
 	if err != nil {
 		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
@@ -794,6 +800,71 @@ func TestServerFilterKnocksOnTheConfiguredPort(t *testing.T) {
 					tc.payload, tc.dstPort, n)
 			}
 		})
+	}
+}
+
+// The relay is exempt from the length floor.
+//
+// The relay forwards the agent's knocks, and the handshake's short control
+// packets are shorter than the floor the filter enforces on everything else.
+// So a datagram from the relay's address is passed even when it is below the
+// floor. This is the one exemption to the rule, and the knock test above
+// cannot see it: its packets come from an address the whitelist does not
+// cover, because a whitelist that did cover it would exempt the short
+// datagram there too and leave the floor untested.
+//
+// It is also the reason the floor cannot be tightened into the relay's path:
+// the packets it forwards are the ones the exemption is for.
+func TestServerFilterLetsTheRelaySendShortKnocks(t *testing.T) {
+	objPath := serverObjPath(t)
+
+	const (
+		knockPort = 40206
+		floor     = 240
+	)
+
+	_, err := EngineLoad(EngineLoadParams{
+		Variant:          VariantServer,
+		IfaceName:        "lo",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          knockPort,
+		NhpMinFrameBytes: floor,
+		// The relay is the loopback address here, so the packets this test
+		// sends come from the whitelist.
+		RelayIPs: []string{"127.0.0.1"},
+	})
+	if err != nil {
+		requireCaps(t, err, "loading and attaching the server XDP program", capBPF, capNetAdmin)
+	}
+	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
+
+	lo := net.IPv4(127, 0, 0, 1)
+
+	rx, err := net.ListenUDP("udp4", &net.UDPAddr{IP: lo, Port: knockPort})
+	if err != nil {
+		t.Skipf("cannot bind udp/%d: %v", knockPort, err)
+	}
+	defer rx.Close()
+
+	tx, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: lo, Port: knockPort})
+	if err != nil {
+		t.Skipf("cannot dial udp/%d: %v", knockPort, err)
+	}
+	defer tx.Close()
+
+	const payload = 8
+	if _, err := tx.Write(make([]byte, payload)); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	buf := make([]byte, 1024)
+	_ = rx.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, readErr := rx.Read(buf); readErr != nil {
+		t.Errorf("a %d-byte datagram to udp/%d from the relay was dropped (%v); the relay is exempt from the length floor",
+			payload, knockPort, readErr)
 	}
 }
 

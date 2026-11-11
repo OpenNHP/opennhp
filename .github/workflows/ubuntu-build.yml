@@ -281,7 +281,9 @@ jobs:
           TestAcEgressProgramRecordsTheHostsOwnFlow \
           TestAcFilterKeepsTheKnockedEchoReply \
           TestAcFilterAdmitsDespiteALapsedPortScopedKnock \
-          TestServerEngineLoadAttachesToLoopback
+          TestServerEngineLoadAttachesToLoopback \
+          TestServerFilterKnocksOnTheConfiguredPort \
+          TestServerFilterLetsTheRelaySendShortKnocks
         do
           if ! grep -q -- "--- PASS: $t" /tmp/ebpf-tests.log; then
             echo "::error::$t did not run and pass; the objects were not exercised"

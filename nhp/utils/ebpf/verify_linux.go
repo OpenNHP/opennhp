@@ -235,7 +235,7 @@ func verifyOptions(dir string) ebpf.CollectionOptions {
 // with the maps rather than lingering on a map that is still open.
 func closeAssigned(assigned any) {
 	value := reflect.ValueOf(assigned)
-	if value.Kind() != reflect.Ptr || value.IsNil() {
+	if value.Kind() != reflect.Pointer || value.IsNil() {
 		return
 	}
 	value = value.Elem()
@@ -245,7 +245,7 @@ func closeAssigned(assigned any) {
 
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if !field.IsValid() || field.Kind() != reflect.Ptr || field.IsNil() {
+		if !field.IsValid() || field.Kind() != reflect.Pointer || field.IsNil() {
 			continue
 		}
 		switch obj := field.Interface().(type) {

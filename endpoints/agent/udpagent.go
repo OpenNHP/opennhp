@@ -1462,6 +1462,10 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 			}
 
 			var err error
+			// AccessUrl comes from the server's DAG reply, so the
+			// address it names is not ours to trust. DownloadFileToTemp
+			// bounds the fetch (size, time, redirects, scheme, and which
+			// addresses it may be pointed at) — see nhp/utils/download.go.
 			ztdoPath, err := utils.DownloadFileToTemp(dagMsg.AccessUrl, "ztdo-")
 			if err != nil {
 				log.Error("failed to download ztdo: %v\n", err)

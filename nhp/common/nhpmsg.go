@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -292,10 +293,21 @@ type SmartPolicy struct {
 	Embedded bool   `json:"embedded"`
 }
 
+// GetPolicy returns the WASM module for this policy. Policy is either the
+// module itself, base64-encoded, or a URL to fetch it from.
+//
+// That URL is not configuration: it arrives in a DRG/DSA/DAG message, so
+// the address it names is chosen by whoever sent the message. The fetch is
+// therefore bounded by WasmPolicyDownloadLimits — size, time, redirect
+// count, scheme, and the addresses it may be pointed at (see
+// nhp/utils/download.go). nhp-server calls this from onAttestationVerify
+// and nhp-agent from onAttestationCollect, both of them inside the network
+// the product exists to protect.
 func (spo *SmartPolicy) GetPolicy() ([]byte, error) {
 	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
 	if err != nil {
-		wasmPath, err := utils.DownloadFileToTemp(spo.Policy, "wasm-")
+		wasmPath, err := utils.DownloadFileToTempWithLimits(
+			context.Background(), spo.Policy, "wasm-", utils.WasmPolicyDownloadLimits())
 		if err != nil {
 			return nil, err
 		}

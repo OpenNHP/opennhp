@@ -2186,10 +2186,10 @@ func TestSitePageOnlyDayMigratesThePublishedRecord(t *testing.T) {
 	// Write the day back the way a pre-rename binary published it.
 	legacy := strings.ReplaceAll(string(cur), `"region"`, `"country"`)
 	legacy = strings.Replace(legacy, fmt.Sprintf(`"schema": %d`, reportSchema), `"schema": 1`, 1)
-	if err := os.WriteFile(dayJSON, []byte(legacy), 0o644); err != nil {
+	if err = os.WriteFile(dayJSON, []byte(legacy), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(logs, "server")); err != nil {
+	if err = os.RemoveAll(filepath.Join(logs, "server")); err != nil {
 		t.Fatal(err)
 	}
 	// Another day still has its log: the site refuses to run with none.
@@ -2199,7 +2199,7 @@ func TestSitePageOnlyDayMigratesThePublishedRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	var st SiteState
-	if err := json.Unmarshal(b, &st); err != nil {
+	if err = json.Unmarshal(b, &st); err != nil {
 		t.Fatal(err)
 	}
 	d := st.Days["server"][siteDay1]
@@ -2208,7 +2208,7 @@ func TestSitePageOnlyDayMigratesThePublishedRecord(t *testing.T) {
 	if b, err = json.Marshal(&st); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(statePath, b, 0o644); err != nil {
+	if err = os.WriteFile(statePath, b, 0o644); err != nil {
 		t.Fatal(err)
 	}
 

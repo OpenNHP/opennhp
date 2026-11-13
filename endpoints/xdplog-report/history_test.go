@@ -953,7 +953,7 @@ func TestHistoryGeneratorFromSavedPage(t *testing.T) {
 // TestHistoryPageParsesBothRegionHeroIds pins the backward compatibility the
 // homepage's third hero figure rests on.
 //
-// The figure was labelled "Countries" until it was renamed to "Regions" (the
+// The figure was labeled "Countries" until it was renamed to "Regions" (the
 // codes it counts are ISO 3166-1 alpha-2, which cover a country, a dependency
 // and a special political area alike), and its element id went with it. A copy
 // of the homepage saved before the rename is the only carrier of the days

@@ -99,7 +99,7 @@ be given (or discovered) in chronological order for restart detection to work.
 - **A drop that is not an attack** is counted apart, not in the attack
   figures. `KNOCK_EXPIRED` — the nhp-ac's own class, a peer whose knock window
   closed before it spoke again — is a legitimate peer arriving late, not a
-  scanner, so it is left out of the packet total, the source and country
+  scanner, so it is left out of the packet total, the source and region
   counts, the per-source and per-port rankings and the day's facts, and
   reported on its own as `non_attack_drop_pkts`. The packets are dropped by the
   filter either way; this is about the accounting. A reason the classifier
@@ -162,7 +162,7 @@ Layout under `-out`:
 Beside `state.json` (i.e. under `-state`, never under `-out` on the demo
 deployment) the site keeps one private file per day,
 `facts/<source>/<day>.facts`: the day's distinct source addresses and
-countries, hashed. The all-time source and country totals are unions of
+regions, hashed. The all-time source and region totals are unions of
 those; see `totalnumber.js` below for why they cannot be summed from
 `index.json` or published in it.
 
@@ -175,10 +175,20 @@ already aged out of the collector's cache still counts as long as its
 `d/<source>/<day>.json` is on disk.
 
 Beside the packet total the hero shows two more figures, **Source IPs** and
-**Countries**: the all-time unions `totalnumber.js` exports as
+**Regions**: the all-time unions `totalnumber.js` exports as
 `NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. All three count
 up together. A figure that is zero is hidden; without a geo source there are
-no countries, and "0 Countries" would read as "attacked from nowhere".
+no regions, and "0 Regions" would read as "attacked from nowhere".
+
+A **region** is the two-letter code the international standard ISO 3166-1
+alpha-2 assigns to every country and area it lists; it is what the GeoIP
+database attributes an address to. The figure counts the regions the
+attacking addresses were attributed to — not the attackers, and not the
+addresses. `totalnumber.js` exports it under two names:
+`NHP_TOTAL_ATTACK_COUNTRIES` (the historical name, kept because other sites
+embed the file with `<script src>` and the deploy pipeline greps that
+constant) and `NHP_TOTAL_ATTACK_REGIONS`, the same number under the name that
+matches what it counts.
 
 The `<title>` is a different string — **Zero Trust in Action: Live Attacks on
 OpenNHP Servers** — because a browser tab, a search result and a chat preview
@@ -290,15 +300,15 @@ equal the sum of its own days' `drop_pkts`, and a snapshot where it does not
 is refused. The hero total therefore stays the sum of every row of
 `index.json`, history rows included.
 
-**The source and country totals are one union, not two periods added up.**
+**The source and region totals are one union, not two periods added up.**
 Every published day — analyzed from the logs or published from the snapshot —
-contributes its own set of attackers and of countries, and the site unions
+contributes its own set of attackers and of regions, and the site unions
 those sets. A source seen on ten days is one attacker, and a source seen in
 the snapshot's period and in the live one is one attacker too.
 
 The snapshot's own `source_ips` and `countries` are therefore **not** added on
 top of that union. Two unions can only be merged when both sets are present;
-adding their sizes instead counts a source (or a country) seen in both periods
+adding their sizes instead counts a source (or a region) seen in both periods
 twice, because the sum of two set sizes is at least their union, never at most
 it. The site used to publish that sum and call it a lower bound, which is the
 opposite of what it is.
@@ -311,21 +321,21 @@ days' attackers. The two figures use it differently:
   do not already cover is **added** to the union. Addresses are an open set,
   so that remainder is mostly new attackers, but an address seen in both
   periods is counted twice: the figure is an **upper bound**.
-- **Countries:** the snapshot's `countries` is **never applied at all**. The
+- **Regions:** the snapshot's `countries` is **never applied at all**. The
   published figure is the union over the published days and nothing else.
-  Countries are a closed set (~250 codes) that the two periods share almost
-  entirely, so no arithmetic can merge the snapshot's count with the live
-  union: adding it counts most of them twice (a 130-country snapshot pushed
-  the site to 162) and can push the total past the number of countries there
-  are, while the larger of the two can only ever be a lower bound that misses
-  a country seen in one period alone. The generator therefore records
-  `countries: 0` and the site ignores the field — a snapshot that still
-  carries an old count is read, warned about on stdout, and has no effect on
-  the published figure.
+  Regions are a closed set (~250 ISO 3166-1 alpha-2 codes) that the two
+  periods share almost entirely, so no arithmetic can merge the snapshot's
+  count with the live union: adding it counts most of them twice (a
+  130-region snapshot pushed the site to 162) and can push the total past the
+  number of regions there are, while the larger of the two can only ever be a
+  lower bound that misses a region seen in one period alone. The generator
+  therefore records `countries: 0` and the site ignores the field — a
+  snapshot that still carries an old count is read, warned about on stdout,
+  and has no effect on the published figure.
 
 **The invariant in one line: the snapshot contributes open-set statistics
-(source IPs) and never closed-set ones (countries).** The published country
-total is therefore bounded by the number of distinct country labels the geo
+(source IPs) and never closed-set ones (regions).** The published region
+total is therefore bounded by the number of distinct region labels the geo
 source can produce, and by nothing else — which is why the deploy gate on it
 is 250 and not 400.
 
@@ -404,7 +414,7 @@ and anyone already parsing it depends on the value.
 `siteRenderVersion` covers the *day* pages. The index has no version of its
 own: `renderIndex` runs only when the run is dirty, and dirty means a day's
 raw log moved, a day was unpublished, or the history snapshot's bytes
-changed. The country and source figures are recomputed on every run, but
+changed. The region and source figures are recomputed on every run, but
 their *publication* is gated.
 
 So a change to what the index says — the published figures, the hero, the
@@ -443,7 +453,7 @@ a page elsewhere that wants the headline numbers and nothing else:
 <script>
   console.log(NHP_TOTAL_ATTACK_BLOCKED);    // attack packets, exact
   console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // distinct source addresses
-  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // distinct countries
+  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // distinct regions (ISO 3166-1 alpha-2 codes)
 </script>
 ```
 
@@ -454,23 +464,29 @@ still written, exporting `0` for all three with no counting-start comment, so
 an embedding page never gets a 404 and a dangling reference. As a classic
 script it needs no CORS header — the *importing* page's CSP governs it.
 
+The region figure is published under two names: `NHP_TOTAL_ATTACK_COUNTRIES`,
+the historical name, and `NHP_TOTAL_ATTACK_REGIONS`, the same number under the
+name that matches what it counts. The old name stays because other sites embed
+this file with `<script src>` and the deploy pipeline greps that constant as a
+gate — renaming it would break both.
+
 **The two union counts are not sums, and they are not reproducible from
 `index.json`.** `unique_attack_ips` is a per-day *count*: an address that
 scans the host every day is one attacker, and adding the days up counts it
 once per day. The all-time figure is the union of the days' address sets, so
 each day's set is captured while its raw log still exists and stored in
 `facts/<source>/<day>.facts` next to `state.json` (see below). The same goes
-for countries. Private/reserved sources are excluded from both, matching the
+for regions. Private/reserved sources are excluded from both, matching the
 per-day column, and a source the GeoLite2 database cannot place belongs to no
-country — it raises the source count only.
+region — it raises the source count only.
 
 ### GeoIP: what the `-geo-mmdb` / `-geo-csv` flags change on the site
 
 Pass a geo database and every published day gains a region table, and the
-site's country total starts filling in. Each day's `state.json` entry records
+site's region total starts filling in. Each day's `state.json` entry records
 the geo source it was analysed with, so **installing a database re-analyses
 the days already published** — nothing about their raw logs changes, and
-without that fingerprint the country total would stay at whatever the days
+without that fingerprint the region total would stay at whatever the days
 after the install happened to see. Taking a database away is deliberately
 *not* a trigger in the other direction: a day's raw log may already have aged
 out of the collector's cache, and re-analysing without geo would wipe the
@@ -479,10 +495,10 @@ swapping in a newer GeoLite2 build.
 
 A day whose raw log has already been pruned cannot be re-analysed, so it keeps
 whatever its published record says. If a day's facts file is missing its
-sources and countries contribute nothing, and the run says so on stdout:
+sources and regions contribute nothing, and the run says so on stdout:
 
 ```
-site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the all-time totals are a lower bound
+site: 1 day(s) contribute no source/region data (server/2026-10-17 (…)); the all-time totals are a lower bound
 ```
 
 The run does not fail: the packet total is exact and stays published. The
@@ -490,7 +506,7 @@ line is there because a silently smaller "unique sources" number is exactly
 the kind of thing this site is written against.
 
 `state.json` and the `facts/` directory beside it (the incremental build state
-and the per-day source/country sets) go wherever `-state` says and **not**
+and the per-day source/region sets) go wherever `-state` says and **not**
 into `-out` by default on the demo deployment. `state.json` records the
 absolute path of every input file, and the fact files are derived from
 unmasked source addresses; the deploy passes a private path and the nginx
@@ -666,7 +682,7 @@ go build -o bin/xdplog-report ./xdplog-report
   `dropCategories` 中补上该 reason，然后运行测试。
 - **不是攻击的丢包**单独计数，不计入攻击口径。`KNOCK_EXPIRED` 是 nhp-ac 自己的
   类别：某个 peer 敲过门，但窗口在它再次发包前就关了——这是合法用户来晚了，不是
-  扫描。因此它不计入包数、来源与国家总数、来源/端口排行以及当天的 facts，而是
+  扫描。因此它不计入包数、来源与地区总数、来源/端口排行以及当天的 facts，而是
   单独记为 `non_attack_drop_pkts`。这些包在过滤器那里照样被丢弃，区别只在统计口径。
   分类器不认识的 reason 一律按攻击计，避免新类别被悄悄少报。
 
@@ -721,8 +737,8 @@ go run ./xdplog-report site \
 ```
 
 `state.json` 旁边（即 `-state` 指向的目录下，demo 部署中永远不在 `-out` 里）还会为每天
-保存一个私有文件 `facts/<source>/<day>.facts`：当天去重后的来源地址与国家，存的是哈希。
-全站的来源总数和国家总数就是这些集合的并集，原因见下面的 `totalnumber.js`。
+保存一个私有文件 `facts/<source>/<day>.facts`：当天去重后的来源地址与地区，存的是哈希。
+全站的来源总数和地区总数就是这些集合的并集，原因见下面的 `totalnumber.js`。
 
 首页的 `<h1>` 是 **Invisible Server, Visible Attacks**，标题下方先给出一个 hero 大数字：
 **累计被拦截的攻击数据包数**，等于 `index.json` 所有行的 `drop_pkts` 之和；下方说明文字以
@@ -730,10 +746,16 @@ go run ./xdplog-report site \
 读者对 `drop_pkts` 求和就能复现这个数字。某天的原始日志即使已经过期滚出采集缓存，只要
 `d/<source>/<day>.json` 还在磁盘上就仍然计入。
 
-包数总数旁边还并排显示 **Source IPs** 和 **Countries** 两个数字，即 `totalnumber.js` 导出的
+包数总数旁边还并排显示 **Source IPs** 和 **Regions** 两个数字，即 `totalnumber.js` 导出的
 `NHP_TOTAL_ATTACK_SOURCE_IPS` 与 `NHP_TOTAL_ATTACK_COUNTRIES`（跨天并集）。三个数字一起
-递增动画。值为 0 的数字不显示：没有 geo 数据库时就没有国家，显示"0 Countries"会被理解成
-"没有任何国家的攻击"。
+递增动画。值为 0 的数字不显示：没有 geo 数据库时就没有地区，显示"0 Regions"会被理解成
+"没有来自任何地区的攻击"。
+
+**地区（Region）** 是国际标准 ISO 3166-1 alpha-2 分配给它列出的每一个国家和地区的两位字母码，
+GeoIP 数据库就是把一个地址归属到其中一个。这个数字计的是攻击地址被归属到的地区数 —— 不是
+攻击者数，也不是地址数。`totalnumber.js` 用两个名字导出它：`NHP_TOTAL_ATTACK_COUNTRIES`
+（历史名，因为别的站点用 `<script src>` 嵌这个文件、部署流水线也 grep 这个常量做闸门，改名
+会同时打断两者）与 `NHP_TOTAL_ATTACK_REGIONS` —— 同一个数字，换成与它实际统计的东西相符的名字。
 
 `<title>` 用的则是另一句 —— **Zero Trust in Action: Live Attacks on OpenNHP
 Servers**。浏览器标签页、搜索结果和聊天预览有空间说清这个站"是关于什么的"，而首屏大标题
@@ -816,12 +838,12 @@ go run ./xdplog-report site \
 **包数仍然可复现。** 快照的 `totals.blocked` 必须等于它自己各行 `drop_pkts` 之和，不等就直接
 拒绝加载。于是 hero 包数依旧是 `index.json` 全部行 `drop_pkts` 之和，历史行也在内。
 
-**来源数和国家数是同一个并集，不是两期相加。** 每一个发布出去的日子 —— 无论是从日志分析出来
-的还是从快照发布出来的 —— 都贡献自己那份攻击者集合和国家集合，站点把这些集合取并集。一天里
+**来源数和地区数是同一个并集，不是两期相加。** 每一个发布出去的日子 —— 无论是从日志分析出来
+的还是从快照发布出来的 —— 都贡献自己那份攻击者集合和地区集合，站点把这些集合取并集。一天里
 出现十次的来源算一个攻击者，在快照那一期和实时这一期都活跃的来源也算一个。
 
 因此快照自己的 `source_ips` 与 `countries` **不会**再叠加到这个并集上。两个并集只有在两边的
-集合都在手头时才能合并；退而求其次把两边的**大小**相加，会把两期都出现过的来源（或国家）算
+集合都在手头时才能合并；退而求其次把两边的**大小**相加，会把两期都出现过的来源（或地区）算
 两次 —— 两个集合大小之和恒定不小于它们的并集，绝不会小于。站点过去公布的就是这个和，却把它
 称作下界，恰恰说反了。
 
@@ -829,14 +851,14 @@ go run ./xdplog-report site \
 根本造不出来的那些日子。除此之外没有别的东西携带那些天的攻击者，此时公布的数字是**上界**而
 不是精确值；发生这种情况时首页会写明。
 
-**国家数则完全不采用快照的。** 公布的国家数就是已发布各天国家集合的并集，别无其他来源。国家是
+**地区数则完全不采用快照的。** 公布的地区数就是已发布各天地区集合的并集，别无其他来源。地区是
 一个封闭集（ISO 3166-1 alpha-2，约 250 个码），两期几乎完全重合：把快照的计数加上就会把绝大多数
-国家数两遍（一份 130 国的快照曾把站点顶到 162），已经越过了世界上国家的总数；取两者较大值虽然
-不会重复计数，却只能是个下界，总会漏掉只在一期出现过的国家。所以生成器写 `countries: 0`，站点
+地区数两遍（一份 130 地区的快照曾把站点顶到 162），已经越过了世界上地区代码的总数；取两者较大值
+虽然不会重复计数，却只能是个下界，总会漏掉只在一期出现过的地区。所以生成器写 `countries: 0`，站点
 也完全不读这个字段 —— 快照里还留着旧值的，照读不误，只在 stdout 上提示一句，然后忽略。
 
-一句话概括这条不变式：**快照只贡献开放集统计量（来源 IP），绝不贡献封闭集统计量（国家）。**
-因此公布的国家数上界就是 geo 源能产出的不同国家标签数，部署流水线上的闸门也因此是 250 而不是
+一句话概括这条不变式：**快照只贡献开放集统计量（来源 IP），绝不贡献封闭集统计量（地区）。**
+因此公布的地区数上界就是 geo 源能产出的不同地区标签数，部署流水线上的闸门也因此是 250 而不是
 400。
 
 **读不到的快照会让运行直接失败。** `-history` 指向不存在或非法的文件是错误，绝不会静默退化成
@@ -858,7 +880,7 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 生成器拒绝写出一份对不上的快照：解析出的各行之和必须等于页面自己的累计总数，页面自称的统计
 起点必须等于它最早的那一行。否则一次解析失误就会把错误的基线永久写进站点历史。
 
-页面自己的国家数会被读出来（读不出就说明这不是一张统计页），但**不会**被写进快照：快照里的
+页面自己的地区数会被读出来（读不出就说明这不是一张统计页），但**不会**被写进快照：快照里的
 `countries` 恒为 `0`，站点也完全不采用它。生成器会在 stdout 上把读到的那个数字报出来，供人工
 核对。
 
@@ -866,7 +888,7 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 `testdata/history-page-2026-10-26.html` 生成 —— 那是一份公开首页的存档，也是 `testdata/`
 里唯一一个不是手写合成数据的 fixture。`TestHistorySeedSnapshotIsShipped` 把入库文件钉死在
 生成结果上，两者不会各走各的；`TestHistorySeedSnapshotCarriesNoCountryCount` 另外钉住它的
-`countries` 是 0 —— 手改数据不能把国家数塞回去。
+`countries` 是 0 —— 手改数据不能把地区数塞回去。
 
 ### 模板改动会覆盖已发布的页面
 
@@ -887,7 +909,7 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 
 `siteRenderVersion` 管的是**每日详情页**。首页自己没有版本号：`renderIndex` 只在本次运行
 "脏"的时候才执行，而"脏"指的是某天的原始日志变了、某天被下架、或者 history 快照的字节变了。
-国家和来源数每次运行都会重新计算，但**是否发布**由这个"脏"标志决定。
+地区和来源数每次运行都会重新计算，但**是否发布**由这个"脏"标志决定。
 
 所以，改动首页要说的内容（发布出来的数字、hero 区块、页面标记）本身到不了访客那里。这就是
 部署会重建站点的原因：`deploy-xdpstats` 会带 `XDPSTATS_SITE_FORCE=1` 跑一次采集脚本，
@@ -908,7 +930,7 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 <script>
   console.log(NHP_TOTAL_ATTACK_BLOCKED);    // 被拦截的攻击包数（精确）
   console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // 去重后的来源 IP 总数
-  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // 去重后的来源国家总数
+  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // 去重后的地区总数（ISO 3166-1 alpha-2 码）
 </script>
 ```
 
@@ -917,31 +939,35 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 三个常量都是 `0` 且不带统计起点注释，引用方不会拿到 404 然后留下一个悬空引用。它是普通
 classic script，跨站引用不需要 CORS 头 —— 受引用方自己的 CSP 约束。
 
+地区数用两个名字导出：`NHP_TOTAL_ATTACK_COUNTRIES`（历史名）与 `NHP_TOTAL_ATTACK_REGIONS`
+（同一个数字，换成与它实际统计的东西相符的名字）。旧名保留，是因为别的站点用 `<script src>`
+嵌这个文件、部署流水线也 grep 这个常量做闸门，改名会同时打断两者。
+
 **后两个数字是并集，不是求和，也无法从 `index.json` 复现。**
 `unique_attack_ips` 是"某一天有多少个不同的来源"：一个每天扫一遍主机的 IP 只有一个身份，
 把各天的数字加起来却会把它算成好几天。因此全站数字取的是各天地址集合的并集 —— 每天的集合
 在原始日志还在的时候就抓下来，存进 `state.json` 旁边的 `facts/<source>/<day>.facts`
-（见下）。国家数同理。私有/保留地址两个口径都排除，与索引里每天那一列一致；GeoLite2 数据库
-定位不到的来源不属于任何国家，只抬升来源数。
+（见下）。地区数同理。私有/保留地址两个口径都排除，与索引里每天那一列一致；GeoLite2 数据库
+定位不到的来源不属于任何地区，只抬升来源数。
 
 ### GeoIP：`-geo-mmdb` / `-geo-csv` 对站点的影响
 
-给了 geo 数据库之后，每个已发布的日子都会多出一张地区表，站点的国家总数也开始有值。
+给了 geo 数据库之后，每个已发布的日子都会多出一张地区表，站点的地区总数也开始有值。
 `state.json` 会为每一天记录它是**用哪个** geo 源分析的，所以**装上数据库会自动重算已经发布的
-那些天** —— 它们原始日志没有任何变化，没有这个指纹的话国家总数会一直停在"装库之后那几天"
+那些天** —— 它们原始日志没有任何变化，没有这个指纹的话地区总数会一直停在"装库之后那几天"
 的水平。反方向是刻意不触发的：某天的原始日志可能已经被采集脚本清掉了，再不带 geo 重算一遍
 等于抹掉再也找不回来的归属信息。换了新版 GeoLite2 数据库想重算，用 `-force`。
 
-原始日志已被清掉、又恰好没有 facts 文件的那一天，它的来源和国家不参与统计，运行时会明说：
+原始日志已被清掉、又恰好没有 facts 文件的那一天，它的来源和地区不参与统计，运行时会明说：
 
 ```
-site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the all-time totals are a lower bound
+site: 1 day(s) contribute no source/region data (server/2026-10-17 (…)); the all-time totals are a lower bound
 ```
 
 这次运行不会失败：包数总数是精确的，照常发布。之所以要打这一行，是因为悄悄偏小的"来源数"
 正是这个站点一直在防的那类事。
 
-`state.json` 和它旁边的 `facts/` 目录（增量状态与每天的来源/国家集合）写到 `-state` 指定
+`state.json` 和它旁边的 `facts/` 目录（增量状态与每天的来源/地区集合）写到 `-state` 指定
 的位置。demo 部署把它们放在 `-out` 之外：`state.json` 记录了每个输入文件的绝对路径，
 属于主机布局；facts 文件是由未脱敏的来源地址派生出来的。部署脚本传入私有路径，nginx vhost
 另外再用 `location = /state.json { return 404; }` 和 `location ^~ /facts/ { return 404; }`

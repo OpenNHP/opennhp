@@ -1705,9 +1705,9 @@ marker file created before the run. The first says the flag reached the
 collector; the second says the file nginx serves was rewritten. A source that
 could not be listed is reported as a warning rather than a failure — the
 site was rebuilt, but the published days may be stale, and the collector's
-unit still records the failure. The published country figure is bounded at
+unit still records the failure. The published region figure is bounded at
 250 — there are only ~250 ISO 3166-1 alpha-2 codes, and a total above that
-is the double count the country rule exists to prevent.
+is the double count the region rule exists to prevent.
 
 A step after the first run guarantees two things whatever the run did: the
 force flag does not outlive the deploy (a leaked `XDPSTATS_SITE_FORCE` would
@@ -1750,10 +1750,13 @@ constants, for other sites to embed via
 `<script src="https://stats.opennhp.org/totalnumber.js">`:
 `NHP_TOTAL_ATTACK_BLOCKED` (exact attack packets — the same number the hero
 shows), `NHP_TOTAL_ATTACK_SOURCE_IPS` (distinct source addresses since the
-floor) and `NHP_TOTAL_ATTACK_COUNTRIES` (distinct countries those addresses
-resolved to). It has its own nginx location with a short `Cache-Control`; no
-CORS header, because a classic script does not need one and the importing
-page's own CSP governs it.
+floor) and `NHP_TOTAL_ATTACK_COUNTRIES` (distinct regions (ISO 3166-1 alpha-2
+codes) those addresses were attributed to). The same figure is also exported as
+`NHP_TOTAL_ATTACK_REGIONS`, under the name that matches what it counts; the
+historical name stays because this file is embedded by other sites and the
+deploy pipeline greps that constant as a gate. It has its own nginx location
+with a short `Cache-Control`; no CORS header, because a classic script does
+not need one and the importing page's own CSP governs it.
 
 **GeoIP.** The collector passes
 `-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` to
@@ -1763,7 +1766,7 @@ the database is **not** shipped by `deploy-xdpstats` — unpack it on the relay
 by hand (`/home/ec2-user/GeoLite2-City_<builddate>/GeoLite2-City.mmdb`, and
 keep the path: the collector looks at that exact one, overridable with
 `XDPSTATS_GEO_MMDB`). Every published day then gains a region table and the
-country total starts filling in. Installing it re-analyzes the days already
+region total starts filling in. Installing it re-analyzes the days already
 published — each day records the geo source it was built with, and their raw
 logs have not changed, so nothing else would mark them stale. Expect one full
 day rewrite in the first run after the database appears. A day whose raw log
@@ -1775,10 +1778,10 @@ build, run `sudo -u ec2-user /usr/local/bin/xdplog-report site -logs
 /home/ec2-user/xdpstats/state.json -geo-mmdb <new path> -force` to re-derive
 attribution; without `-force` the new database applies to days as they change.
 
-**Where the all-time source and country counts come from.** Not from
+**Where the all-time source and region counts come from.** Not from
 `index.json`: `unique_attack_ips` is a per-day count, and an address that
 scans the host every day is one attacker, so summing the days over-counts it
-once per day. Each day's set of sources and countries is therefore captured
+once per day. Each day's set of sources and regions is therefore captured
 while its raw log still exists and stored beside `state.json` at
 `/home/ec2-user/xdpstats/facts/server/<day>.facts` (0700 dir, 0600 files —
 hashed addresses, and a 64-bit hash of an IPv4 is reversible, so this must
@@ -1787,7 +1790,7 @@ never be published; the nginx vhost refuses `/facts/` for the case where
 file with its pages, so moving the `-since` floor forward cannot leave a
 removed day's attackers in the total. A day whose facts file is missing
 contributes nothing and is named in `xdpstats/collect.log` as
-`site: N day(s) contribute no source/country data (...)` — the run still
+`site: N day(s) contribute no source/region data (...)` — the run still
 publishes, because the packet total is unaffected.
 
 ### History baseline (`history.json`)
@@ -1831,25 +1834,25 @@ go run ./xdplog-report history \
   `totals.blocked` must equal the sum of its own days' `drop_pkts`, and the
   site refuses to load a snapshot where it does not. So the hero total is
   still the sum of every row of `index.json`.
-- **The source count adds the snapshot's remainder; the country count never
+- **The source count adds the snapshot's remainder; the region count never
   uses it.** Both figures are unions over every published day. For sources,
   the part of `source_ips` the snapshot's days whose per-day records are gone
   alone can have contributed is added to the union: a source active in both
   periods is counted once in each, so that figure is an **upper bound**. For
-  countries, the snapshot's own count is **never applied at all**: the
+  regions, the snapshot's own count is **never applied at all**: the
   published figure is the union over the published days and nothing else.
-  Countries are a closed set the two periods share almost entirely, so adding
-  would count most of them twice and could exceed the number of countries
+  Regions are a closed set the two periods share almost entirely, so adding
+  would count most of them twice and could exceed the number of regions
   there are, and the larger of the two sets could only ever be a **lower
-  bound** that misses a country seen in one period alone. The homepage,
+  bound** that misses a region seen in one period alone. The homepage,
   `totalnumber.js` and the README all say which bound each figure is.
-- **Expect the country figure to drop.** The deployed snapshot used to record
-  130 countries, and the site published that baseline *plus* its live union
-  (162 on 2026-11-12) — more countries than there are. The snapshot now
+- **Expect the region figure to drop.** The deployed snapshot used to record
+  130 regions, and the site published that baseline *plus* its live union
+  (162 on 2026-11-12) — more regions than there are. The snapshot now
   records `countries: 0` and the site ignores the field, so the published
   figure is the live union alone (about 32 on 2026-11-12) and can never
   exceed the ~250 ISO 3166-1 alpha-2 codes. That is the fix, not a
-  regression: the old number counted countries seen in both periods twice.
+  regression: the old number counted regions seen in both periods twice.
   The source count does not drop — it still carries the snapshot's
   remainder.
 - **Rolling it back** is removing the day from `history.json` (or the whole

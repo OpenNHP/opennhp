@@ -642,26 +642,26 @@ are left in place, unlinked (unlinked is not unpublished). `totals.blocked`
 must equal the sum of the snapshot's own days, so the hero total stays the sum
 of every row of `index.json`.
 
-The all-time source and country totals are the **union over every published
+The all-time source and region totals are the **union over every published
 day**, the snapshot's days included: each day's own set of attackers and of
-countries is unioned with the others', so an address seen on ten days — or in
+regions is unioned with the others', so an address seen on ten days — or in
 the snapshot's period and in the live one — is counted once. The snapshot's own
 `source_ips` and `countries` are therefore **not** added on top of that union:
 two unions can only be merged when both sets are present, and adding their
-sizes instead counts an address (or a country) seen in both periods twice,
+sizes instead counts an address (or a region) seen in both periods twice,
 because the sum of two set sizes is at least their union, never at most it.
 The snapshot is used only for its own days whose per-day records are gone —
 the days the live site cannot produce at all — because nothing else carries
 those days' attackers, and the two figures use it differently. The part of its
 `source_ips` those days alone can have contributed is **added** (an upper
 bound: an address seen in both periods counts twice). Its `countries` is
-**never applied at all**: countries are a closed set of ~250 that both periods
-share almost entirely, so adding counts most of them twice (a 130-country
+**never applied at all**: regions are a closed set of ~250 that both periods
+share almost entirely, so adding counts most of them twice (a 130-region
 snapshot once pushed the site to 162) and can push the total past the number
-of countries there are, while the larger of the two can only ever be a lower
-bound that misses a country seen in one period alone. **The published country
+of regions there are, while the larger of the two can only ever be a lower
+bound that misses a region seen in one period alone. **The published region
 total is the union over the published days and nothing else**, so it is bounded
-by the number of distinct country labels the geo source can produce — which is
+by the number of distinct region labels the geo source can produce — which is
 why the deploy gate on it is 250, not 400. The generator records
 `countries: 0` and the site ignores the field entirely (an old snapshot that
 still carries one is read, warned about on stdout, and has no effect). The
@@ -718,10 +718,18 @@ reference. Only the packet total is a sibling of `index.json` in the sense
 that index.json stays authoritative and the total stays reproducible by
 summing `drop_pkts`.
 
+The third constant counts **regions**: the ISO 3166-1 alpha-2 codes the
+international standard assigns to every country and area it lists, which is
+what the GeoIP database attributes an address to. It is published under two
+names — `NHP_TOTAL_ATTACK_COUNTRIES`, the historical name, and
+`NHP_TOTAL_ATTACK_REGIONS`, the same number under the name that matches what
+it counts. The old name stays because other sites embed this file and the
+deploy pipeline greps that constant as a gate; renaming it would break both.
+
 **The other two are unions, not sums, and they are not reproducible from
 `index.json`.** `unique_attack_ips` is a per-day *count*: an address that
 scans the host daily is one attacker, and adding the days counts it once per
-day. So each day's set of sources and countries is captured while its raw log
+day. So each day's set of sources and regions is captured while its raw log
 still exists and written to `facts/<source>/<day>.facts` beside `state.json`
 (`facts.go`) — outside the web root on the relay, refused by `/facts/` in the
 nginx vhost, and never published because a 64-bit hash of an IPv4 address is
@@ -734,7 +742,7 @@ this site is written against.
 **GeoIP is part of the state's fingerprint.** `SiteDayState.Geo` records the
 geo source a day was analyzed with, and a day analyzed without one is stale
 the moment a database appears — so dropping GeoLite2-City on the relay
-re-analyzes the days already published instead of leaving the country total
+re-analyzes the days already published instead of leaving the region total
 at whatever the days after the install saw. The reverse is deliberately not a
 trigger: a day whose raw log has aged out can never get its attribution back,
 so taking a database away must not wipe what a published day already has.
@@ -796,7 +804,7 @@ by the deploy) and says so in the collect log either way.
   line, and the published `index.html` must be newer than a marker created
   before the run — the flag reached the collector, and the file nginx serves
   was rewritten. A source that could not be listed is a warning, not a
-  failure. The job also fails if the published country figure is
+  failure. The job also fails if the published region figure is
   implausible (there are only ~250 ISO 3166-1 alpha-2 codes), and a step
   after it guarantees the force flag did not outlive the deploy and that
   the daily timer is running. The daily timer run is not forced — the

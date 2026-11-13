@@ -56,7 +56,7 @@ var htmlReport = template.Must(template.New("report").Funcs(template.FuncMap{
 		}
 		return template.CSS(fmt.Sprintf("width:%.1f%%", f*100)) //nolint:gosec // G203: the only interpolated value is a float clamped to [0,1] and formatted numerically, so no attacker-controlled text reaches the style attribute
 	},
-	"loc": func(x IPRow) string { return strings.TrimSpace(x.Country + " " + x.City) },
+	"loc": func(x IPRow) string { return strings.TrimSpace(x.Region + " " + x.City) },
 	"ports": func(p []int) string {
 		var s []string
 		for _, x := range p {
@@ -170,7 +170,7 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <table>
 <thead><tr><th class="num">#</th><th>Region</th><th class="num">Events</th><th class="num">Unique IPs</th><th class="num">Share</th></tr></thead>
 <tbody>
-{{range $i, $x := .TopGeo}}<tr><td class="num">{{inc $i}}</td><td>{{$x.Country}}</td><td class="num">{{$x.Events}}</td><td class="num">{{$x.IPs}}</td><td class="num"><span class="bar"><i style="{{bar $x.Share}}"></i></span>{{pct $x.Share}}</td></tr>
+{{range $i, $x := .TopGeo}}<tr><td class="num">{{inc $i}}</td><td>{{$x.Region}}</td><td class="num">{{$x.Events}}</td><td class="num">{{$x.IPs}}</td><td class="num"><span class="bar"><i style="{{bar $x.Share}}"></i></span>{{pct $x.Share}}</td></tr>
 {{end}}</tbody>
 </table>
 <p class="muted">Regions are the ISO 3166-1 alpha-2 codes the international standard assigns to each country and area; the GeoIP database attributes an address to one of them.</p>

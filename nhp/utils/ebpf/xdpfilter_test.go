@@ -370,7 +370,7 @@ func TestExpiredKnocksAreNotScans(t *testing.T) {
 // the AC stopped listening. Only the *first* such packet used to be
 // classified as the expired knock it is -- the entry was deleted on the spot
 // -- and the rest of them landed in the scan classes, which put an
-// authorized user's address, and the country it is in, into the published
+// authorized user's address, and the region it is in, into the published
 // attacker totals.
 //
 // The grace is bounded, and it applies only to the entries that are scoped to

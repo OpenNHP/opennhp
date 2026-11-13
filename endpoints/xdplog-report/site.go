@@ -185,7 +185,7 @@ func runSite(args []string, stdout io.Writer) error {
 	fs.StringVar(&opts.OutDir, "out", "", "web root directory (created if missing)")
 	fs.StringVar(&opts.StatePath, "state", "", "incremental-build state file (default <out>/state.json; keep it out of the web root)")
 	fs.IntVar(&opts.TopN, "top", opts.TopN, "rows in each TOP table")
-	fs.StringVar(&opts.GeoCSV, "geo-csv", "", "optional CIDR->country CSV for the region section")
+	fs.StringVar(&opts.GeoCSV, "geo-csv", "", "optional CIDR->region CSV for the region section")
 	fs.StringVar(&opts.GeoMMDB, "geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	fs.BoolVar(&opts.MaskIP, "mask-ip", opts.MaskIP, "truncate source IPs in the public site (default true)")
 	fs.BoolVar(&opts.Force, "force", false, "rebuild every day even if inputs are unchanged")
@@ -518,9 +518,9 @@ func runSite(args []string, stdout io.Writer) error {
 		// The snapshot's region count is recorded and never applied, so a
 		// snapshot that still carries one says so rather than leaving an
 		// operator to wonder why the published figure ignores it.
-		if hist.Totals.Countries != 0 {
+		if hist.Totals.Regions != 0 {
 			fmt.Fprintf(stdout, "site: the history snapshot's region count (%d) is ignored: the all-time region total is the union over the published days\n",
-				hist.Totals.Countries)
+				hist.Totals.Regions)
 		}
 	}
 
@@ -902,7 +902,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	}
 	sort.Slice(srcs, func(i, j int) bool { return srcs[i] < srcs[j] })
 	factsPath := dayFactsPath(opts.StatePath, in.Source, in.Day)
-	if err := writeDayFacts(factsPath, srcs, an.Countries()); err != nil {
+	if err := writeDayFacts(factsPath, srcs, an.Regions()); err != nil {
 		return SiteDaySummary{}, false, fmt.Errorf("write facts: %w", err)
 	}
 

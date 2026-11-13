@@ -4323,17 +4323,17 @@ jobs:
           ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK $WEB_ROOT/totalnumber.js"
           blocked=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_BLOCKED $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
           sources=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_SOURCE_IPS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
-          countries=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_COUNTRIES $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
-          if [ -z "$countries" ]; then
+          regions=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_REGIONS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          if [ -z "$regions" ]; then
             echo "ERROR: no region figure in the published totalnumber.js" >&2
             exit 1
           fi
-          if ! printf '%s' "$countries" | grep -Eq '^[0-9]+$'; then
-            echo "ERROR: the published region figure is not a number: '$countries'" >&2
+          if ! printf '%s' "$regions" | grep -Eq '^[0-9]+$'; then
+            echo "ERROR: the published region figure is not a number: '$regions'" >&2
             exit 1
           fi
-          if [ "$countries" -gt 250 ]; then
-            echo "ERROR: implausible region total: $countries (there are ~250 ISO 3166-1 alpha-2 codes)" >&2
+          if [ "$regions" -gt 250 ]; then
+            echo "ERROR: implausible region total: $regions (there are ~250 ISO 3166-1 alpha-2 codes)" >&2
             exit 1
           fi
 
@@ -4348,7 +4348,7 @@ jobs:
             echo "| --- | --- |"
             echo "| Blocked packets | ${blocked:-?} |"
             echo "| Distinct source IPs | ${sources:-?} |"
-            echo "| Distinct regions | $countries |"
+            echo "| Distinct regions | $regions |"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
 

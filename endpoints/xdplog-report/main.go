@@ -40,7 +40,7 @@ func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("xdplog-report", flag.ContinueOnError)
 	var in multiFlag
 	fs.Var(&in, "in", "log file, glob or directory (repeatable; .gz supported)")
-	geoPath := fs.String("geo-csv", "", "optional CIDR->country CSV (cidr,country[,city]) for the region section")
+	geoPath := fs.String("geo-csv", "", "optional CIDR->region CSV (cidr,region[,city]) for the region section")
 	geoMMDB := fs.String("geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	top := fs.Int("top", 10, "rows in each TOP table")
 	format := fs.String("format", "md", "md | json | csv | html")

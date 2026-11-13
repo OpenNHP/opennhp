@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/netip"
@@ -58,11 +59,11 @@ type Analyzer struct {
 	unknown     map[string]struct{}
 	v6Events    int
 	totalEvents int
-	// countries is every ISO code a DROP source resolved to, filled by Build.
-	// It is a set, not a count, because the site's all-time country total is
+	// regions is every ISO code a DROP source resolved to, filled by Build.
+	// It is a set, not a count, because the site's all-time region total is
 	// the union across days and no day can be re-analyzed once its raw log
 	// has aged out. See facts.go.
-	countries map[string]struct{}
+	regions map[string]struct{}
 }
 
 func NewAnalyzer(since, until string) *Analyzer {
@@ -79,7 +80,7 @@ func NewAnalyzer(since, until string) *Analyzer {
 		lastTotal:  map[string]uint64{},
 		budgetDays: map[string]string{},
 		unknown:    map[string]struct{}{},
-		countries:  map[string]struct{}{},
+		regions:    map[string]struct{}{},
 	}
 }
 
@@ -232,18 +233,89 @@ type IPRow struct {
 	First      string  `json:"first_seen"`
 	Last       string  `json:"last_seen"`
 	TopPorts   []int   `json:"top_dst_ports"`
-	Country    string  `json:"country,omitempty"`
-	City       string  `json:"city,omitempty"`
+	// Region is the ISO 3166-1 alpha-2 code the address was attributed to.
+	//
+	// The international standard assigns those codes to every country and
+	// area it lists -- dependencies, disputed areas and special political
+	// areas among them -- so the set is regions and not countries.
+	Region string `json:"region,omitempty"`
+	City   string `json:"city,omitempty"`
+}
+
+// UnmarshalJSON reads an attack-source row, accepting the historical
+// "country" key.
+//
+// The key was renamed with the figure it carries: "countries" was the wrong
+// word for the ISO 3166-1 codes the standard assigns to every country and
+// area it lists. The value did not change with the spelling, so a report
+// published before the rename still reads with its region column intact.
+func (r *IPRow) UnmarshalJSON(b []byte) error {
+	type row struct {
+		IP         string  `json:"ip"`
+		Events     int     `json:"events"`
+		Share      float64 `json:"share"`
+		Categories int     `json:"categories"`
+		First      string  `json:"first_seen"`
+		Last       string  `json:"last_seen"`
+		TopPorts   []int   `json:"top_dst_ports"`
+		Region     string  `json:"region"`
+		Country    string  `json:"country"`
+		City       string  `json:"city"`
+	}
+	var v row
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	r.IP, r.Events, r.Share = v.IP, v.Events, v.Share
+	r.Categories, r.First, r.Last = v.Categories, v.First, v.Last
+	r.TopPorts, r.City = v.TopPorts, v.City
+	r.Region = v.Region
+	if r.Region == "" {
+		r.Region = v.Country
+	}
+	return nil
 }
 
 type GeoRow struct {
-	Country string  `json:"country"`
-	Events  int     `json:"events"`
-	IPs     int     `json:"unique_ips"`
-	Share   float64 `json:"share"`
+	// Region is the ISO 3166-1 alpha-2 code; see IPRow.Region for what the
+	// set is and why the json key was renamed.
+	Region string  `json:"region"`
+	Events int     `json:"events"`
+	IPs    int     `json:"unique_ips"`
+	Share  float64 `json:"share"`
 }
 
+// UnmarshalJSON reads a region row, accepting the historical "country" key;
+// see IPRow.UnmarshalJSON.
+func (g *GeoRow) UnmarshalJSON(b []byte) error {
+	type row struct {
+		Region  string  `json:"region"`
+		Country string  `json:"country"`
+		Events  int     `json:"events"`
+		IPs     int     `json:"unique_ips"`
+		Share   float64 `json:"share"`
+	}
+	var v row
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	g.Region, g.Events, g.IPs, g.Share = v.Region, v.Events, v.IPs, v.Share
+	if g.Region == "" {
+		g.Region = v.Country
+	}
+	return nil
+}
+
+// reportSchema is the version the report JSON carries.
+//
+// It is 2 since the region columns were renamed: version 1 wrote "country"
+// where version 2 writes "region". A reader that knows both spellings reads
+// either, so a report published before the rename still reads with its
+// region column intact; see IPRow.UnmarshalJSON.
+const reportSchema = 2
+
 type Report struct {
+	// Schema is the report format version, always reportSchema.
 	Schema  int      `json:"schema"`
 	Servers []string `json:"server_ids"`
 	From    string   `json:"from"`
@@ -263,7 +335,7 @@ type Report struct {
 	// a peer whose knock window closed before it spoke again. They are
 	// counted in TotalPkts, because the filter did see them, and excluded
 	// from every attack figure on this page -- the packet total, the source
-	// and country counts, the per-source and per-port rankings and the day's
+	// and region counts, the per-source and per-port rankings and the day's
 	// facts. They are reported here so the exclusion is stated rather than
 	// silent.
 	NonAttackPkts uint64 `json:"non_attack_drop_pkts"`
@@ -345,7 +417,7 @@ func maskIP(a netip.Addr) string {
 // Build turns the accumulated state into a Report.
 func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 	rep := &Report{
-		Schema: 1, TopN: topN, Servers: sortedKeys(a.servers),
+		Schema: reportSchema, TopN: topN, Servers: sortedKeys(a.servers),
 		From: a.firstTS, To: a.lastTS,
 		BudgetExhausted: a.budgetDays, GeoEnabled: geo != nil,
 		BadLines: a.badLines, ScanLines: a.scanLines, DupStats: a.dupStats,
@@ -432,9 +504,9 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 	geoIPs := map[string]map[netip.Addr]struct{}{}
 	var geoEvents int
 	// Drop the accumulation: Build is the only place that knows the day's
-	// country set, and calling it twice over the same Analyzer (as the tests
+	// region set, and calling it twice over the same Analyzer (as the tests
 	// do) must not double-report.
-	clear(a.countries)
+	clear(a.regions)
 	for addr, agg := range a.ips {
 		if isReserved(addr) {
 			rep.ReservedIPs++
@@ -445,19 +517,19 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 		if geo == nil || isReserved(addr) {
 			continue
 		}
-		country := "Unknown"
-		if g, ok := geo.Lookup(addr); ok && g.Country != "" {
-			country = g.Country
-			a.countries[country] = struct{}{}
+		region := "Unknown"
+		if g, ok := geo.Lookup(addr); ok && g.Region != "" {
+			region = g.Region
+			a.regions[region] = struct{}{}
 		}
-		row := geoAgg[country]
+		row := geoAgg[region]
 		if row == nil {
-			row = &GeoRow{Country: country}
-			geoAgg[country] = row
-			geoIPs[country] = map[netip.Addr]struct{}{}
+			row = &GeoRow{Region: region}
+			geoAgg[region] = row
+			geoIPs[region] = map[netip.Addr]struct{}{}
 		}
 		row.Events += agg.events
-		geoIPs[country][addr] = struct{}{}
+		geoIPs[region][addr] = struct{}{}
 		geoEvents += agg.events
 	}
 	sort.Slice(ranked, func(i, j int) bool {
@@ -476,10 +548,10 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 			Categories: len(e.agg.cats), First: e.agg.first, Last: e.agg.last,
 		}
 		if isReserved(e.addr) {
-			row.Country = "Private/Reserved"
+			row.Region = "Private/Reserved"
 		} else if geo != nil {
 			if g, ok := geo.Lookup(e.addr); ok {
-				row.Country, row.City = g.Country, g.City
+				row.Region, row.City = g.Region, g.City
 			}
 		}
 		if mask {
@@ -499,7 +571,7 @@ func (a *Analyzer) Build(topN int, geo GeoResolver, mask bool) *Report {
 		if x.Events != y.Events {
 			return x.Events > y.Events
 		}
-		return x.Country < y.Country
+		return x.Region < y.Region
 	})
 	if len(rep.TopGeo) > topN {
 		rep.TopGeo = rep.TopGeo[:topN]
@@ -543,12 +615,12 @@ func (a *Analyzer) SourceAddrs() []netip.Addr {
 	return out
 }
 
-// Countries returns the sorted ISO codes the day's sources resolved to.
+// Regions returns the sorted ISO codes the day's sources resolved to.
 // Empty when Build ran without a geo resolver, and "Unknown" is never among
-// them: a source the database cannot place belongs to no country, and counting
-// the placeholder would report a country that does not exist.
-func (a *Analyzer) Countries() []string {
-	return sortedKeys(a.countries)
+// them: a source the database cannot place belongs to no region, and counting
+// the placeholder would report a region that does not exist.
+func (a *Analyzer) Regions() []string {
+	return sortedKeys(a.regions)
 }
 
 func topPorts(m map[int]int, n int) []int {

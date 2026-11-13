@@ -33,6 +33,11 @@ import (
 // different schema is refused rather than half-read: the numbers it carries
 // are a baseline the whole site rests on, and guessing what an unknown field
 // meant is exactly how a wrong total becomes permanent.
+//
+// It stays at 1 across the region total's key rename: the facts the file
+// carries did not change, only the spelling of one field's key, and the
+// reader accepts both spellings -- so a snapshot of either vintage is read
+// in full, never half-read. See HistoryTotals.UnmarshalJSON.
 const historySchema = 1
 
 // SiteHistory is the on-disk shape of history.json.
@@ -75,7 +80,7 @@ type HistoryTotals struct {
 	// this baseline is the part that covers days whose facts are gone, and
 	// only that part is added -- see historyBaseline.
 	SourceIPs int `json:"source_ips"`
-	// Countries is the number of distinct regions the saved period saw.
+	// Regions is the number of distinct regions the saved period saw.
 	//
 	// It is recorded and never applied. The published region total is the
 	// union over the published days and nothing else; see historyBaseline.
@@ -83,11 +88,12 @@ type HistoryTotals struct {
 	// can tell what the saved page said, but the site only checks that it is
 	// not negative.
 	//
-	// The json key "countries" is a historical name and cannot be renamed:
-	// external snapshots carry it and are read by that key. The figure it
-	// holds counts the ISO 3166-1 alpha-2 codes the international standard
-	// assigns to every country and area it lists -- what the GeoIP database
-	// attributes an address to -- and the page calls them regions.
+	// The figure counts the ISO 3166-1 alpha-2 codes the international
+	// standard assigns to every country and area it lists -- what the GeoIP
+	// database attributes an address to -- and the page calls them regions.
+	// "Countries" was the wrong word for that set, so the field was renamed;
+	// snapshots written before the rename carry the old key and are read by
+	// UnmarshalJSON below.
 	//
 	// Regions are a closed set of ~250 codes that the snapshot's period and
 	// the live one share almost entirely, so no arithmetic can merge the
@@ -97,7 +103,38 @@ type HistoryTotals struct {
 	// the two can only ever be a lower bound that misses a region seen in
 	// one period alone. The count is therefore kept out of the arithmetic
 	// entirely.
-	Countries int `json:"countries"`
+	Regions int `json:"regions"`
+}
+
+// UnmarshalJSON reads the totals, accepting the historical "countries" key
+// for the region figure.
+//
+// The key was renamed with the figure: "countries" was the wrong word for the
+// ISO 3166-1 codes the standard assigns to every country and area it lists.
+// The field's meaning did not change with the spelling -- it is recorded and
+// never applied (see HistoryTotals.Regions) -- so a snapshot written before
+// the rename is read by its old key and read completely, and the schema
+// number stays where it is: the shape of the file did not change, only the
+// name of one field.
+func (t *HistoryTotals) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Blocked   uint64 `json:"blocked"`
+		SourceIPs int    `json:"source_ips"`
+		Regions   *int   `json:"regions"`
+		Countries *int   `json:"countries"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	t.Blocked = raw.Blocked
+	t.SourceIPs = raw.SourceIPs
+	switch {
+	case raw.Regions != nil:
+		t.Regions = *raw.Regions
+	case raw.Countries != nil:
+		t.Regions = *raw.Countries
+	}
+	return nil
 }
 
 // loadSiteHistory reads and validates a history snapshot.
@@ -126,8 +163,8 @@ func loadSiteHistory(path string) (*SiteHistory, error) {
 	if h.Totals.SourceIPs < 0 {
 		return nil, fmt.Errorf("history file %s: totals.source_ips must not be negative", path)
 	}
-	if h.Totals.Countries < 0 {
-		return nil, fmt.Errorf("history file %s: totals.countries must not be negative", path)
+	if h.Totals.Regions < 0 {
+		return nil, fmt.Errorf("history file %s: totals.regions must not be negative", path)
 	}
 
 	h.covered = make(map[string]struct{}, len(h.Days))
@@ -219,7 +256,7 @@ func (h *SiteHistory) Rows() []SiteDaySummary {
 // regions there are, while the larger of the two can only ever miss a
 // region seen in one period alone. The published region total is therefore
 // the union over the published days, and the snapshot's own count is recorded
-// and never applied -- see HistoryTotals.Countries.
+// and never applied -- see HistoryTotals.Regions.
 type historyBaseline struct {
 	// Sources is the number of attackers the baseline adds.
 	Sources int

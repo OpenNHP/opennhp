@@ -1633,8 +1633,8 @@ offline report tool on your workstation:
 ```bash
 cd endpoints
 go run ./xdplog-report -in ./xdp-logs/ -top 10 -format md -out report.md
-# optional region section from your own CIDR->country CSV (cidr,country[,city]):
-go run ./xdplog-report -in ./xdp-logs/ -geo-csv ip2country.csv
+# optional region section from your own CIDR->region CSV (cidr,region[,city]):
+go run ./xdplog-report -in ./xdp-logs/ -geo-csv ip2region.csv
 # share externally with source addresses truncated:
 go run ./xdplog-report -in ./xdp-logs/ -mask-ip -format json
 ```
@@ -1750,13 +1750,14 @@ constants, for other sites to embed via
 `<script src="https://stats.opennhp.org/totalnumber.js">`:
 `NHP_TOTAL_ATTACK_BLOCKED` (exact attack packets — the same number the hero
 shows), `NHP_TOTAL_ATTACK_SOURCE_IPS` (distinct source addresses since the
-floor) and `NHP_TOTAL_ATTACK_COUNTRIES` (distinct regions (ISO 3166-1 alpha-2
-codes) those addresses were attributed to). The same figure is also exported as
-`NHP_TOTAL_ATTACK_REGIONS`, under the name that matches what it counts; the
-historical name stays because this file is embedded by other sites and the
-deploy pipeline greps that constant as a gate. It has its own nginx location
-with a short `Cache-Control`; no CORS header, because a classic script does
-not need one and the importing page's own CSP governs it.
+floor) and `NHP_TOTAL_ATTACK_REGIONS` (distinct regions (ISO 3166-1 alpha-2
+codes) those addresses were attributed to). The constant is named for what it
+counts: it used to be called `NHP_TOTAL_ATTACK_COUNTRIES`, and that name is
+gone, because the ISO 3166-1 list covers dependencies, disputed areas and
+special political areas as well as states. A site that embeds this file has to
+switch; the deploy pipeline's gate greps the new name. It has its own nginx
+location with a short `Cache-Control`; no CORS header, because a classic
+script does not need one and the importing page's own CSP governs it.
 
 **GeoIP.** The collector passes
 `-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` to
@@ -1849,7 +1850,7 @@ go run ./xdplog-report history \
 - **Expect the region figure to drop.** The deployed snapshot used to record
   130 regions, and the site published that baseline *plus* its live union
   (162 on 2026-11-12) — more regions than there are. The snapshot now
-  records `countries: 0` and the site ignores the field, so the published
+  records `regions: 0` and the site ignores the field, so the published
   figure is the live union alone (about 32 on 2026-11-12) and can never
   exceed the ~250 ISO 3166-1 alpha-2 codes. That is the fix, not a
   regression: the old number counted regions seen in both periods twice.

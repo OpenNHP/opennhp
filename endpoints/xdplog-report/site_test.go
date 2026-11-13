@@ -67,7 +67,7 @@ func runSiteCmd(t *testing.T, logs, out string, extraArgs ...string) {
 // indexAndPages enumerates the files that the site subcommand owns: the
 // index, the scripts it writes, state, every detail page under
 // d/<source>/<day>.{html,json}, and the private per-day fact files the
-// all-time source and country totals are unioned from.
+// all-time source and region totals are unioned from.
 func indexAndPages(out string) []string {
 	files := []string{
 		filepath.Join(out, "index.html"),
@@ -1239,10 +1239,10 @@ func TestTotalNumberJS(t *testing.T) {
 	}
 	// The two union counts are published as constants too, so an embedding
 	// page never has to special-case a missing binding. The fixture resolves
-	// no countries without a geo source, and day 1's two public sources are
+	// no regions without a geo source, and day 1's two public sources are
 	// day 2's as well.
 	got := readTotalNumbers(t, out)
-	for _, name := range []string{"NHP_TOTAL_ATTACK_SOURCE_IPS", "NHP_TOTAL_ATTACK_COUNTRIES"} {
+	for _, name := range []string{"NHP_TOTAL_ATTACK_SOURCE_IPS", "NHP_TOTAL_ATTACK_REGIONS"} {
 		if _, ok := got[name]; !ok {
 			t.Errorf("totalnumber.js does not export %s:\n%s", name, body)
 		}
@@ -1250,8 +1250,8 @@ func TestTotalNumberJS(t *testing.T) {
 	if n := got["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
 		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 2 (fixture has one reserved source)", n)
 	}
-	if n := got["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
-		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 0 (no geo source configured)", n)
+	if n := got["NHP_TOTAL_ATTACK_REGIONS"]; n != 0 {
+		t.Errorf("NHP_TOTAL_ATTACK_REGIONS = %d, want 0 (no geo source configured)", n)
 	}
 	// It has to stay executable as a plain classic script.
 	for _, scheme := range []string{"http://", "https://"} {
@@ -1281,8 +1281,8 @@ func TestTotalNumberJSEmptySite(t *testing.T) {
 			t.Errorf("empty site %s = %d, want 0:\n%s", name, n, b)
 		}
 	}
-	if got := len(readTotalNumbers(t, out)); got != 4 {
-		t.Errorf("empty site exports %d constants, want all 4:\n%s", got, b)
+	if got := len(readTotalNumbers(t, out)); got != 3 {
+		t.Errorf("empty site exports %d constants, want all 3:\n%s", got, b)
 	}
 	if strings.Contains(string(b), "Counting starts:") {
 		t.Error("empty site must not claim a counting start date")
@@ -1722,9 +1722,9 @@ var rangeConstants = regexp.MustCompile(`const (NHP_[A-Z_]+) = (\d+);`)
 // dropped a record would publish a smaller total with no other symptom.
 func TestDayFactsRoundTrip(t *testing.T) {
 	srcs := []uint64{1, 2, 3, 0xffff_ffff_ffff_ffff}
-	countries := []string{"AU", "CN", "US"}
-	enc := encodeDayFacts(srcs, countries)
-	gotSrcs, gotCountries, err := decodeDayFacts(enc)
+	regions := []string{"AU", "CN", "US"}
+	enc := encodeDayFacts(srcs, regions)
+	gotSrcs, gotRegions, err := decodeDayFacts(enc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1736,8 +1736,8 @@ func TestDayFactsRoundTrip(t *testing.T) {
 			t.Errorf("source[%d] = %d, want %d", i, gotSrcs[i], srcs[i])
 		}
 	}
-	if strings.Join(gotCountries, ",") != "AU,CN,US" {
-		t.Errorf("countries = %v, want AU,CN,US", gotCountries)
+	if strings.Join(gotRegions, ",") != "AU,CN,US" {
+		t.Errorf("regions = %v, want AU,CN,US", gotRegions)
 	}
 	// A future layout must be refused rather than decoded as this one: the
 	// bytes would still be plausible, and the site would publish a wrong
@@ -1748,10 +1748,10 @@ func TestDayFactsRoundTrip(t *testing.T) {
 	// A truncated tail loses that day, not the whole run: the complete
 	// records before the cut still decode, and only the partial one is
 	// dropped.
-	if srcs, countries, err := decodeDayFacts(enc[:len(enc)-3]); err != nil {
+	if srcs, regions, err := decodeDayFacts(enc[:len(enc)-3]); err != nil {
 		t.Errorf("truncated file refused outright: %v", err)
-	} else if len(countries) != 2 || countries[1] != "CN" {
-		t.Errorf("truncated file kept %v, want the two complete records AU,CN", countries)
+	} else if len(regions) != 2 || regions[1] != "CN" {
+		t.Errorf("truncated file kept %v, want the two complete records AU,CN", regions)
 	} else if len(srcs) != len(gotSrcs) {
 		t.Errorf("truncated file lost complete source records: %d", len(srcs))
 	}
@@ -1797,10 +1797,10 @@ func TestSiteTotalsUnionAcrossDays(t *testing.T) {
 			got["NHP_TOTAL_ATTACK_SOURCE_IPS"])
 	}
 	// 203.0.113.0/24 resolves to AU in testdata/geo.csv; the other two
-	// resolve to nothing and must not be counted as a country.
-	if got["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
-		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 1 (AU only)",
-			got["NHP_TOTAL_ATTACK_COUNTRIES"])
+	// resolve to nothing and must not be counted as a region.
+	if got["NHP_TOTAL_ATTACK_REGIONS"] != 1 {
+		t.Errorf("NHP_TOTAL_ATTACK_REGIONS = %d, want 1 (AU only)",
+			got["NHP_TOTAL_ATTACK_REGIONS"])
 	}
 	if got["NHP_TOTAL_ATTACK_BLOCKED"] != 300 {
 		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want 300", got["NHP_TOTAL_ATTACK_BLOCKED"])
@@ -1812,8 +1812,8 @@ func TestSiteTotalsUnionAcrossDays(t *testing.T) {
 // packet total with the same values totalnumber.js exports, and wired to the
 // counter animation through data-total.
 //
-// The exported constant keeps its historical name: NHP_TOTAL_ATTACK_COUNTRIES
-// is what external sites embed by name, so only the page's wording changed.
+// The exported constant is named for the same set the page shows:
+// NHP_TOTAL_ATTACK_REGIONS.
 func TestSiteHeroShowsSourcesAndRegions(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
@@ -1829,14 +1829,14 @@ func TestSiteHeroShowsSourcesAndRegions(t *testing.T) {
 	page := string(readArtifact(t, out, "index.html"))
 	for _, want := range []string{
 		fmt.Sprintf(`id="total-sources" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_SOURCE_IPS"], nums["NHP_TOTAL_ATTACK_SOURCE_IPS"]),
-		fmt.Sprintf(`id="total-regions" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_COUNTRIES"], nums["NHP_TOTAL_ATTACK_COUNTRIES"]),
+		fmt.Sprintf(`id="total-regions" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_REGIONS"], nums["NHP_TOTAL_ATTACK_REGIONS"]),
 		">Source IPs<", ">Regions<",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html missing %q", want)
 		}
 	}
-	if nums["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 || nums["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
+	if nums["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 || nums["NHP_TOTAL_ATTACK_REGIONS"] != 1 {
 		t.Errorf("totals = %v, want 3 sources / 1 region", nums)
 	}
 	if !strings.Contains(string(readArtifact(t, out, "countup.js")), `querySelectorAll("[data-total]")`) {
@@ -1901,14 +1901,43 @@ func TestSiteHomepageNamesTheInternationalStandard(t *testing.T) {
 	}
 }
 
-// TestTotalNumberJSKeepsTheLegacyConstant pins the name the region figure is
-// published under.
+// TestDayReportReadsTheLegacyRegionKey pins that a report published before the
+// region columns were renamed still reads with its region column intact.
 //
-// The file exports NHP_TOTAL_ATTACK_COUNTRIES -- the historical name other
-// sites embed with <script src> and the deploy pipeline greps as a gate -- so
-// it cannot be renamed. NHP_TOTAL_ATTACK_REGIONS is the same number under the
-// name that matches what it counts, and the two must never drift apart.
-func TestTotalNumberJSKeepsTheLegacyConstant(t *testing.T) {
+// The per-day JSON files are published and read back -- a day whose raw log
+// has been pruned is re-rendered from the JSON on disk -- so a rename that
+// silently emptied the region column of those pages would drop published
+// data. The key was renamed with the figure it carries: "countries" was the
+// wrong word for the ISO 3166-1 codes the standard assigns to every country
+// and area it lists.
+func TestDayReportReadsTheLegacyRegionKey(t *testing.T) {
+	legacy := []byte(`{
+  "schema": 1,
+  "top_geo": [ { "country": "AU", "events": 12, "unique_ips": 3, "share": 1 } ],
+  "top_ips": [ { "ip": "203.0.113.5", "events": 5, "country": "AU", "city": "Sydney" } ]
+}`)
+	var rep Report
+	if err := json.Unmarshal(legacy, &rep); err != nil {
+		t.Fatalf("a report published before the rename was refused: %v", err)
+	}
+	if len(rep.TopGeo) != 1 || rep.TopGeo[0].Region != "AU" {
+		t.Errorf("top_geo region = %+v, want AU (the legacy key is read)", rep.TopGeo)
+	}
+	if len(rep.TopIPs) != 1 || rep.TopIPs[0].Region != "AU" {
+		t.Errorf("top_ips region = %+v, want AU (the legacy key is read)", rep.TopIPs)
+	}
+}
+
+// TestTotalNumberJSPublishesTheRegionConstant pins the name the region figure
+// is published under.
+//
+// The file exports NHP_TOTAL_ATTACK_REGIONS -- the name that matches what the
+// figure counts, the ISO 3166-1 alpha-2 codes the international standard
+// assigns to every country and area it lists. The old constant was named
+// NHP_TOTAL_ATTACK_COUNTRIES, and it is gone: a published figure called a
+// country count is a claim about those codes that the standard does not
+// support.
+func TestTotalNumberJSPublishesTheRegionConstant(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
 	out := filepath.Join(root, "web")
@@ -1917,26 +1946,21 @@ func TestTotalNumberJSKeepsTheLegacyConstant(t *testing.T) {
 	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
 
 	body := string(readArtifact(t, out, "totalnumber.js"))
-	for _, want := range []string{
-		"const NHP_TOTAL_ATTACK_COUNTRIES = ",
-		"const NHP_TOTAL_ATTACK_REGIONS = ",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("totalnumber.js missing %q", want)
-		}
+	if !strings.Contains(body, "const NHP_TOTAL_ATTACK_REGIONS = ") {
+		t.Errorf("totalnumber.js missing the region constant:\n%s", body)
+	}
+	// The old name must be gone, not merely unused: a file that still
+	// exports it keeps the claim alive for every site that embeds it.
+	if strings.Contains(body, "NHP_TOTAL_ATTACK_COUNTRIES") {
+		t.Errorf("totalnumber.js still exports the retired country constant:\n%s", body)
 	}
 
 	nums := readTotalNumbers(t, out)
-	legacy, ok := nums["NHP_TOTAL_ATTACK_COUNTRIES"]
-	if !ok {
-		t.Fatalf("totalnumber.js has no NHP_TOTAL_ATTACK_COUNTRIES constant: %v", nums)
-	}
-	alias, ok := nums["NHP_TOTAL_ATTACK_REGIONS"]
-	if !ok {
+	if _, ok := nums["NHP_TOTAL_ATTACK_REGIONS"]; !ok {
 		t.Fatalf("totalnumber.js has no NHP_TOTAL_ATTACK_REGIONS constant: %v", nums)
 	}
-	if alias != legacy {
-		t.Errorf("NHP_TOTAL_ATTACK_REGIONS = %d, want the same value as NHP_TOTAL_ATTACK_COUNTRIES = %d", alias, legacy)
+	if _, ok := nums["NHP_TOTAL_ATTACK_COUNTRIES"]; ok {
+		t.Errorf("totalnumber.js still exports NHP_TOTAL_ATTACK_COUNTRIES: %v", nums)
 	}
 }
 
@@ -1946,8 +1970,8 @@ func TestTotalNumberJSKeepsTheLegacyConstant(t *testing.T) {
 // The gate greps each constant by name and reads the number off the line it
 // gets, so a name that appears anywhere else in the file -- in a comment, say
 // -- hands it two lines and fails the run on a value that is not a number.
-// The comment that explains the legacy constant name therefore spells it
-// without the prefix.
+// The comment that explains the constant's name therefore spells it without
+// the prefix.
 func TestTotalNumberJSGrepsHitOneLinePerConstant(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
@@ -1959,7 +1983,6 @@ func TestTotalNumberJSGrepsHitOneLinePerConstant(t *testing.T) {
 	for _, name := range []string{
 		"NHP_TOTAL_ATTACK_BLOCKED",
 		"NHP_TOTAL_ATTACK_SOURCE_IPS",
-		"NHP_TOTAL_ATTACK_COUNTRIES",
 		"NHP_TOTAL_ATTACK_REGIONS",
 	} {
 		hits := 0
@@ -1978,15 +2001,15 @@ func TestTotalNumberJSGrepsHitOneLinePerConstant(t *testing.T) {
 // TestGeoInstallReachesPublishedDays covers the deploy that drops the
 // GeoLite2 database onto the relay. Nothing about those days' raw logs
 // changes, so without the geo fingerprint in state.json they would never be
-// re-analyzed and the site's country total would stay at whatever the days
+// re-analyzed and the site's region total would stay at whatever the days
 // after the install happened to see.
 func TestGeoInstallReachesPublishedDays(t *testing.T) {
 	logs, out := stageTestdata(t)
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	runSiteCmd(t, logs, out, "-state", statePath)
 
-	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
-		t.Fatalf("countries = %d before any geo source exists, want 0", n)
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_REGIONS"]; n != 0 {
+		t.Fatalf("regions = %d before any geo source exists, want 0", n)
 	}
 	if st := readSiteStateAt(t, statePath); st.Days["server"][siteDay1].Geo != "" {
 		t.Errorf("state records geo %q for a day analyzed without one",
@@ -1995,8 +2018,8 @@ func TestGeoInstallReachesPublishedDays(t *testing.T) {
 
 	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
 
-	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
-		t.Errorf("countries = %d after installing a geo source, want 1", n)
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_REGIONS"]; n != 1 {
+		t.Errorf("regions = %d after installing a geo source, want 1", n)
 	}
 	jb, err := os.ReadFile(filepath.Join(out, "d", "server", siteDay1+".json"))
 	if err != nil {
@@ -2025,8 +2048,8 @@ func TestGeoRemovalKeepsPublishedAttribution(t *testing.T) {
 
 	runSiteCmd(t, logs, out, "-state", statePath) // database gone
 
-	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
-		t.Errorf("countries = %d after the geo source went away, want 1 (kept)", n)
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_REGIONS"]; n != 1 {
+		t.Errorf("regions = %d after the geo source went away, want 1 (kept)", n)
 	}
 }
 

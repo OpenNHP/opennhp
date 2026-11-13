@@ -61,7 +61,7 @@ type indexPageData struct {
 	SinceDay string
 	// TotalSources and TotalRegions are the all-time distinct source IPs
 	// and regions — the same unions totalnumber.js exports as
-	// NHP_TOTAL_ATTACK_SOURCE_IPS and NHP_TOTAL_ATTACK_COUNTRIES. Unlike the
+	// NHP_TOTAL_ATTACK_SOURCE_IPS and NHP_TOTAL_ATTACK_REGIONS. Unlike the
 	// packet total they cannot be reproduced from index.json (the per-day sets
 	// behind them stay private, see facts.go), so the page's note says they
 	// are unions. Zero hides the figure: no geo source means no regions, and
@@ -79,9 +79,10 @@ type indexPageData struct {
 	//
 	// A region is the ISO 3166-1 alpha-2 code the GeoIP database attributes
 	// an address to: the two-letter codes the international standard assigns
-	// to every country and area it lists. The exported constant keeps its
-	// historical name (NHP_TOTAL_ATTACK_COUNTRIES) because external sites
-	// embed it by name; only the wording this page shows changed.
+	// to every country and area it lists. The exported constant is named for
+	// that set too (NHP_TOTAL_ATTACK_REGIONS): the standard's list covers
+	// dependencies and disputed areas as well, and a published figure called
+	// a country count is a claim about them.
 	TotalSources int
 	TotalRegions int
 	// HasHistory is true when the index carries rows published from the
@@ -100,7 +101,7 @@ type indexPageData struct {
 	// nothing to the two figures.
 	SnapshotBelowFloor bool
 	// NothingStandsIn is true when a published day contributed no source or
-	// country data and the snapshot did not stand in for it.
+	// region data and the snapshot did not stand in for it.
 	NothingStandsIn bool
 	// BoundNote says which of the two figures is exact, an upper bound or a
 	// lower bound. Empty when both are exact. totalnumber.js prints the same
@@ -183,7 +184,7 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, bas
 	// produced over the published days, and nothing else can be merged into
 	// it. See historyBaseline.
 	totalSources := union.Sources + baseline.Sources
-	totalCountries := union.Countries
+	totalRegions := union.Regions
 	// The page explains the snapshot's rows only when there are any: a
 	// snapshot whose days the live site produced has nothing of its own to
 	// show, and the site's figures are then simply the union over the
@@ -195,7 +196,7 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, bas
 			break
 		}
 	}
-	if err := writeTotalNumberJS(opts.OutDir, total, totalSources, totalCountries, since, baseline, hist); err != nil {
+	if err := writeTotalNumberJS(opts.OutDir, total, totalSources, totalRegions, since, baseline, hist); err != nil {
 		return err
 	}
 	return writeIndexHTML(opts.OutDir, indexPageData{
@@ -212,7 +213,7 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, bas
 		SinceDay:      since,
 
 		TotalSources:         totalSources,
-		TotalRegions:         totalCountries,
+		TotalRegions:         totalRegions,
 		HasHistory:           hasHistory,
 		BaselineFromSnapshot: baseline.Applied,
 		SnapshotBelowFloor:   baseline.Unavailable,
@@ -299,8 +300,8 @@ func sourceLabel(name string) string {
 // Contents are a pure function of the summaries and the facts, so re-running
 // the site build rewrites a byte-identical file and the daily cron stays a
 // no-op.
-func writeTotalNumberJS(outDir string, total uint64, sources, countries int, since string, baseline historyBaseline, hist *SiteHistory) error {
-	body := totalNumberJS(total, sources, countries, since, baseline, hist)
+func writeTotalNumberJS(outDir string, total uint64, sources, regions int, since string, baseline historyBaseline, hist *SiteHistory) error {
+	body := totalNumberJS(total, sources, regions, since, baseline, hist)
 	return writeFileAtomic(outDir+"/totalnumber.js", []byte(body), 0o644)
 }
 
@@ -308,17 +309,19 @@ func writeTotalNumberJS(outDir string, total uint64, sources, countries int, sin
 // the constants are still emitted (as 0) so a consumer's <script src> never
 // 404s and leave a dangling reference.
 //
-// The region figure is published under two names: NHP_TOTAL_ATTACK_COUNTRIES,
-// the historical one other sites embed and the deploy pipeline greps as a
-// gate, and NHP_TOTAL_ATTACK_REGIONS, which matches what it counts. Both
-// carry the same number; the legacy name is not going away.
+// The third constant is the number of regions -- the ISO 3166-1 alpha-2 codes
+// the international standard assigns to every country and area it lists. It
+// was published under a name that said "countries" until this release: the
+// standard's list is not a list of countries, and a constant that calls it
+// one makes a political claim the data does not support. The name changed
+// with the figure, and a site that embedded the old constant has to switch.
 //
 // hist is the history snapshot, when there is one, and baseline is what it
 // contributes on top of the union the site computed from the per-day facts.
 // They do not change the numbers — the caller has already added them — but
 // they change what the numbers mean, and a consumer reading this file has to
 // be told.
-func totalNumberJS(total uint64, sources, countries int, since string, baseline historyBaseline, hist *SiteHistory) string {
+func totalNumberJS(total uint64, sources, regions int, since string, baseline historyBaseline, hist *SiteHistory) string {
 	var b strings.Builder
 	b.WriteString("// Generated by endpoints/xdplog-report site. Do not edit by hand.\n")
 	b.WriteString("// Attack (DROP) packets silently dropped by the nhp-server XDP ingress\n")
@@ -368,10 +371,16 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 	// attributes an address to one of those codes, and the figure is the
 	// number of distinct ones the published days' addresses landed in.
 	//
-	// NHP_TOTAL_ATTACK_COUNTRIES keeps its historical name on purpose: other
-	// sites embed this file with <script src>, and the deploy pipeline greps
-	// that constant as a gate. It means exactly what NHP_TOTAL_ATTACK_REGIONS
-	// means -- the same number, under the name that matches what it counts.
+	// The constant below is named for that set. It used to be named for
+	// "countries", which the standard's list is not: it covers countries,
+	// dependencies, disputed areas and special political areas alike, and a
+	// published figure called a country count is a claim about them. A site
+	// that embedded the old name has to switch to the new one.
+	//
+	// The name is spelled out here without its prefix on purpose: the deploy
+	// pipeline greps this file by constant name, so a second mention of the
+	// name in a comment would hand the gate two lines and fail the run on a
+	// value that is not a number.
 	b.WriteString("//\n")
 	b.WriteString("// The region figure counts the ISO 3166-1 alpha-2 codes the international\n")
 	b.WriteString("// standard assigns to every country and area it lists: the GeoIP\n")
@@ -379,15 +388,14 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 	b.WriteString("// is the number of distinct ones the published days' addresses landed\n")
 	b.WriteString("// in.\n")
 	b.WriteString("//\n")
-	b.WriteString("// The COUNTRIES constant keeps its historical name on purpose: other\n")
-	b.WriteString("// sites embed this file with <script src>, and the deploy pipeline\n")
-	b.WriteString("// greps that constant as a gate. It means exactly what the REGIONS\n")
-	b.WriteString("// constant means -- the same number, under the name that matches what it\n")
-	b.WriteString("// counts.\n")
+	b.WriteString("// The constant is named for that set rather than for \"countries\": the\n")
+	b.WriteString("// standard's list covers countries, dependencies, disputed areas and\n")
+	b.WriteString("// special political areas alike, and a published figure called a country\n")
+	b.WriteString("// count is a claim about them. A site that embedded the old name has to\n")
+	b.WriteString("// switch.\n")
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_BLOCKED = %d;\n", total)
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_SOURCE_IPS = %d;\n", sources)
-	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_COUNTRIES = %d;\n", countries)
-	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_REGIONS = %d;\n", countries)
+	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_REGIONS = %d;\n", regions)
 	return b.String()
 }
 
@@ -401,7 +409,7 @@ func writeCountUpJS(outDir string) error {
 // countUpJS is the homepage counter animation, served same-origin from the
 // site root and allowed by the nginx vhost's `script-src 'self'`. It animates
 // every element carrying data-total: the packet total, source IPs and
-// countries.
+// regions.
 //
 // Progressive enhancement: the hero span in index.html already contains the
 // real formatted total, so with JavaScript disabled, blocked by an older CSP,

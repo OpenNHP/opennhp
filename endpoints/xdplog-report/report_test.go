@@ -92,18 +92,18 @@ func TestRankingGeoAndReserved(t *testing.T) {
 	if r.TopIPs[0].IP != "203.0.113.5" || r.TopIPs[0].Events != 3 || r.TopIPs[0].Categories != 2 {
 		t.Errorf("top ip = %+v", r.TopIPs[0])
 	}
-	if r.TopIPs[0].Country != "AU" || r.TopIPs[0].City != "Sydney" {
+	if r.TopIPs[0].Region != "AU" || r.TopIPs[0].City != "Sydney" {
 		t.Errorf("geo = %+v", r.TopIPs[0])
 	}
 	if r.ReservedIPs != 1 {
 		t.Errorf("reserved = %d", r.ReservedIPs)
 	}
 	for _, x := range r.TopGeo {
-		if strings.Contains(x.Country, "Private") {
+		if strings.Contains(x.Region, "Private") {
 			t.Error("private source leaked into geo ranking")
 		}
 	}
-	if r.TopGeo[0].Country != "AU" {
+	if r.TopGeo[0].Region != "AU" {
 		t.Errorf("top geo = %+v", r.TopGeo)
 	}
 	if _, ok := g.Lookup(netip.MustParseAddr("2001:db8::1")); !ok {
@@ -132,7 +132,7 @@ func TestCLIFormatsAndMask(t *testing.T) {
 	if !strings.Contains(md, "WARNING") || !strings.Contains(md, "Not enabled") {
 		t.Error("missing budget warning or geo-disabled note")
 	}
-	if js := runReport(t, append(args, "-format", "json")...); !strings.Contains(js, `"schema": 1`) {
+	if js := runReport(t, append(args, "-format", "json")...); !strings.Contains(js, `"schema": 2`) {
 		t.Error("json schema missing")
 	}
 	if csv := runReport(t, append(args, "-format", "csv")...); !strings.HasPrefix(csv, "section,key") {
@@ -192,7 +192,7 @@ func TestClassifierMatchesEngine(t *testing.T) {
 // That peer knocked: it is a legitimate user whose session outlived the
 // window, not a scanner. The class is dropped either way, but counting it
 // would publish an authorized user's address as an attacker -- masked to a
-// /24, and counted, and counted as a country too.
+// /24, and counted, and counted as a region too.
 func TestExpiredKnocksAreNotAttacks(t *testing.T) {
 	const day = "2026-10-03"
 	const expiredSrc = "198.51.100.7"
@@ -254,8 +254,8 @@ func TestExpiredKnocksAreNotAttacks(t *testing.T) {
 			t.Errorf("the expired-knock peer %s is in the day's source set", expiredSrc)
 		}
 	}
-	if len(an.Countries()) != 0 {
-		t.Errorf("countries = %v, want none (no geo source in this test)", an.Countries())
+	if len(an.Regions()) != 0 {
+		t.Errorf("regions = %v, want none (no geo source in this test)", an.Regions())
 	}
 }
 

@@ -422,7 +422,7 @@ The all-time source and region totals are the **union over every published
 day**, the snapshot's days included: each day's own set of attackers and of
 regions is unioned with the others', so an address seen on ten days — or in
 the snapshot's period and in the live one — is counted once. The snapshot's own
-`source_ips` and `countries` are therefore **not** added on top of that union:
+`source_ips` and `regions` are therefore **not** added on top of that union:
 two unions can only be merged when both sets are present, and adding their
 sizes instead counts an address (or a region) seen in both periods twice,
 because the sum of two set sizes is at least their union, never at most it.
@@ -430,7 +430,7 @@ The snapshot is used only for its own days whose per-day records are gone —
 the days the live site cannot produce at all — because nothing else carries
 those days' attackers, and the two figures use it differently. The part of its
 `source_ips` those days alone can have contributed is **added** (an upper
-bound: an address seen in both periods counts twice). Its `countries` is
+bound: an address seen in both periods counts twice). Its `regions` is
 **never applied at all**: regions are a closed set of ~250 that both periods
 share almost entirely, so adding counts most of them twice (a 130-region
 snapshot once pushed the site to 162) and can push the total past the number
@@ -439,7 +439,7 @@ bound that misses a region seen in one period alone. **The published region
 total is the union over the published days and nothing else**, so it is bounded
 by the number of distinct region labels the geo source can produce — which is
 why the deploy gate on it is 250, not 400. The generator records
-`countries: 0` and the site ignores the field entirely (an old snapshot that
+`regions: 0` and the site ignores the field entirely (an old snapshot that
 still carries one is read, warned about on stdout, and has no effect). The
 homepage and `totalnumber.js` label each figure separately from one sentence
 (`historyBaseline.boundNote`). The
@@ -473,7 +473,7 @@ transient EACCES or ENOSPC on the web root would silently shrink
 for another site to embed with
 `<script src="https://stats.opennhp.org/totalnumber.js">`:
 `NHP_TOTAL_ATTACK_BLOCKED` (exact packets, the same number the hero shows),
-`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. It is
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_REGIONS`. It is
 generated into the web root beside `index.html` and served from its own nginx
 location (short `Cache-Control`, no CORS header — a classic script needs
 none, and the *importing* page's CSP governs it). All three are written even
@@ -484,11 +484,13 @@ summing `drop_pkts`.
 
 The third constant counts **regions**: the ISO 3166-1 alpha-2 codes the
 international standard assigns to every country and area it lists, which is
-what the GeoIP database attributes an address to. It is published under two
-names — `NHP_TOTAL_ATTACK_COUNTRIES`, the historical name, and
-`NHP_TOTAL_ATTACK_REGIONS`, the same number under the name that matches what
-it counts. The old name stays because other sites embed this file and the
-deploy pipeline greps that constant as a gate; renaming it would break both.
+what the GeoIP database attributes an address to. The constant is named for
+that set — `NHP_TOTAL_ATTACK_REGIONS`. It used to be called
+`NHP_TOTAL_ATTACK_COUNTRIES`, and that name is gone: the standard's list
+covers dependencies, disputed areas and special political areas as well as
+states, so a published figure called a country count is a claim about those
+codes that the standard does not support. A site that embeds this file has to
+switch; the deploy pipeline's gate greps the new name.
 
 **The other two are unions, not sums, and they are not reproducible from
 `index.json`.** `unique_attack_ips` is a per-day *count*: an address that

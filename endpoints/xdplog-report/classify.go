@@ -55,7 +55,7 @@ func classify(reason string) (Category, bool) {
 // arriving late -- a retransmit, a session that outlived the window, an
 // agent whose clock ran ahead -- and not a scan. Publishing it as one would
 // put an authorized user's address into the site's attacker totals, masked to
-// a /24 but counted, and counted as a country too.
+// a /24 but counted, and counted as a region too.
 //
 // The packets are dropped either way: this is about the accounting, not about
 // what the filter admits.
@@ -64,7 +64,7 @@ var nonAttackCategories = map[Category]struct{}{
 }
 
 // isAttackReason reports whether a DROP reason counts towards the attack
-// totals -- the packet total, the source and country counts, the per-source
+// totals -- the packet total, the source and region counts, the per-source
 // and per-port rankings, and the day's facts.
 //
 // An unknown reason counts as an attack. The classifier is a closed list, so a

@@ -79,19 +79,22 @@ type indexPageData struct {
 	// click a date deserves to know why.
 	HasHistory bool
 	// BaselineFromSnapshot is true when the snapshot's own counts stand in
-	// for days whose per-day records are gone. The two figures are then
-	// upper bounds rather than exact counts: an address seen both in the
-	// live period and in one of those days is counted once in each.
+	// for days whose per-day records are gone: its source count is added
+	// (an upper bound) and its country count is a floor under the union (a
+	// lower bound). See historyBaseline.
 	BaselineFromSnapshot bool
 	// SnapshotBelowFloor is true when the history snapshot lists days the
 	// site does not publish, so its own count could not be applied: a
 	// snapshot-level total cannot be split by day. Those days contribute
 	// nothing to the two figures.
 	SnapshotBelowFloor bool
-	// TotalsLowerBound is true when a published day contributed no source or
-	// country data and nothing stood in for it. The two figures are then
-	// lower bounds rather than exact counts.
-	TotalsLowerBound bool
+	// NothingStandsIn is true when a published day contributed no source or
+	// country data and the snapshot did not stand in for it.
+	NothingStandsIn bool
+	// BoundNote says which of the two figures is exact, an upper bound or a
+	// lower bound. Empty when both are exact. totalnumber.js prints the same
+	// sentence.
+	BoundNote string
 }
 
 // renderIndex writes index.html, index.json, countup.js and totalnumber.js
@@ -195,7 +198,8 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, bas
 		HasHistory:           hasHistory,
 		BaselineFromSnapshot: baseline.Applied,
 		SnapshotBelowFloor:   baseline.Unavailable,
-		TotalsLowerBound:     baseline.LowerBound,
+		NothingStandsIn:      baseline.Missing && !baseline.Applied,
+		BoundNote:            baseline.boundNote(),
 	})
 }
 
@@ -315,8 +319,10 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 	}
 	if baseline.Applied {
 		b.WriteString("// Days whose per-day records are gone are covered by the snapshot's\n")
-		b.WriteString("// own count instead, which can count an address or a country seen in\n")
-		b.WriteString("// both periods twice: these two figures are upper bounds.\n")
+		b.WriteString("// own counts instead. Its source count is added to the union, which\n")
+		b.WriteString("// can count an address seen in both periods twice. Its country count\n")
+		b.WriteString("// is a floor under the union (the larger of the two is published),\n")
+		b.WriteString("// which never counts a country twice but can miss one.\n")
 	}
 	if baseline.Unavailable {
 		b.WriteString("// The history snapshot lists days before the publishing floor, so\n")
@@ -324,10 +330,12 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 		b.WriteString("// be split by day. Those days contribute nothing to the two figures\n")
 		b.WriteString("// above.\n")
 	}
-	if baseline.LowerBound {
+	if baseline.Missing && !baseline.Applied {
 		b.WriteString("// A published day whose per-day records are gone contributes no\n")
-		b.WriteString("// source or country data and nothing stands in for it: these two\n")
-		b.WriteString("// figures are lower bounds.\n")
+		b.WriteString("// source or country data and nothing stands in for it.\n")
+	}
+	if note := baseline.boundNote(); note != "" {
+		b.WriteString("// " + note + "\n")
 	}
 	if since != "" {
 		fmt.Fprintf(&b, "// Counting starts: %s (UTC).\n", since)
@@ -581,8 +589,8 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 Source IPs on the detail pages are <strong>not</strong> masked.
 {{end}}
 tcp/22 scans never reach the host's NIC and are not counted. During deploys or restarts the XDP filter is detached and the gap shows as missing minutes, not as zero attacks.
-{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and country totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own count stands in, which can count an address or a country seen in both periods twice: those two figures are upper bounds. {{end}}{{if .SnapshotBelowFloor}}The snapshot also lists days before the publishing floor, so its own count cannot be applied &mdash; a snapshot-level total cannot be split by day &mdash; and those days contribute nothing to the two figures. {{end}}{{end}}
-{{if .TotalsLowerBound}}A published day whose per-day records are gone contributes no source or country data, so the source IP and country totals are lower bounds. {{end}}
+{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and country totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .SnapshotBelowFloor}}The snapshot also lists days before the publishing floor, so its own count cannot be applied &mdash; a snapshot-level total cannot be split by day &mdash; and those days contribute nothing to the two figures. {{end}}{{end}}
+{{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own counts stand in: its source count is added to the union, which can count an address seen in both periods twice, and its country count is a floor under the union &mdash; the larger of the two is published &mdash; which never counts a country twice but can miss one. {{end}}{{if .NothingStandsIn}}A published day whose per-day records are gone contributes no source or country data and nothing stands in for it. {{end}}{{.BoundNote}}
 </p>
 
 <h2>Daily index</h2>

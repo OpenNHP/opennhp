@@ -393,10 +393,10 @@ func TestHistoryFactsJoinTheUnion(t *testing.T) {
 }
 
 // TestHistoryBaselineStandsInForDaysWithoutFacts pins the one case where the
-// snapshot's own counts are added to the union: a day the live site cannot
-// produce and whose per-day records are gone. Then the snapshot is the only
-// carrier of that day's attackers, and the published figure is an upper
-// bound rather than an exact count.
+// snapshot's own source count is added to the union: a day the live site
+// cannot produce and whose per-day records are gone. Then the snapshot is the
+// only carrier of that day's attackers, and the published source figure is
+// an upper bound rather than an exact count.
 func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
 	logs, out := stageTestdata(t)
 	const frozenDay = "2026-10-18"
@@ -420,10 +420,135 @@ func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
 		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want %d (the union of the published days plus the snapshot's baseline, which stands in for the day whose records are gone)",
 			got, want)
 	}
-	// The homepage says so: the figure is an upper bound.
-	page := string(readArtifact(t, out, "index.html"))
-	if !strings.Contains(page, "upper bounds") {
-		t.Error("the homepage does not say that the totals are upper bounds")
+	// The homepage and totalnumber.js say so, figure by figure: the source
+	// total is an upper bound, and the country total -- which the snapshot
+	// only ever floors, never adds to -- is a lower bound.
+	const note = "The source IP total is an upper bound and the country total is a lower bound."
+	for _, name := range []string{"index.html", "totalnumber.js"} {
+		body := string(readArtifact(t, out, name))
+		if !strings.Contains(body, note) {
+			t.Errorf("%s does not say %q", name, note)
+		}
+		if strings.Contains(body, "upper bounds") {
+			t.Errorf("%s calls both figures upper bounds; the country figure is a lower bound", name)
+		}
+	}
+}
+
+// TestHistoryCountryBaselineIsAFloor pins how the snapshot's country count
+// stands in for its days whose per-day records are gone: as a floor under the
+// union, never as an addend.
+//
+// Countries are a small closed set that the snapshot's period and the live
+// one share almost entirely. Adding the snapshot's count to the live union
+// counted nearly every country twice -- the published site reached 162 from a
+// 130-country snapshot. The larger of the two sets is a sound lower bound:
+// both are subsets of the true set, so it never counts a country twice.
+func TestHistoryCountryBaselineIsAFloor(t *testing.T) {
+	plainLogs, plainOut := stageTestdata(t)
+	runSiteCmd(t, plainLogs, plainOut, "-geo-csv", "testdata/geo.csv")
+	live := readTotalNumbers(t, plainOut)["NHP_TOTAL_ATTACK_COUNTRIES"]
+	if live == 0 {
+		t.Fatal("the fixture's live country union is empty; the test's arithmetic depends on it")
+	}
+
+	for _, tc := range []struct {
+		name     string
+		snapshot int
+		want     int
+	}{
+		// The snapshot saw more countries than the live days: its count is
+		// the floor, and the live ones are not added on top.
+		{"snapshot above the union", 130, 130},
+		// The snapshot saw the same number of countries: the same countries,
+		// as far as anyone can tell, so they are counted once, not twice.
+		{"snapshot equal to the union", live, live},
+		// The snapshot saw none: the union stands as it is.
+		{"snapshot below the union", 0, live},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs, out := stageTestdata(t)
+			hist := validHistory()
+			hist.Days = hist.Days[:1]
+			hist.Days[0].Day = "2026-10-18" // a frozen day with no facts
+			hist.Days[0].DropPkts = 100
+			hist.Totals.Blocked = 100
+			hist.Totals.SourceIPs = 0
+			hist.Totals.Countries = tc.snapshot
+			path := writeHistory(t, t.TempDir(), hist)
+
+			runSiteCmd(t, logs, out, "-geo-csv", "testdata/geo.csv", "-history", path)
+
+			if got := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; got != tc.want {
+				t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want %d (max of the live union %d and the snapshot's %d, never their sum)",
+					got, tc.want, live, tc.snapshot)
+			}
+			// Both figures miss the frozen day's own data, and the snapshot
+			// adds no sources, so both are lower bounds -- never upper.
+			const note = "The source IP and country totals are lower bounds."
+			for _, name := range []string{"index.html", "totalnumber.js"} {
+				body := string(readArtifact(t, out, name))
+				if !strings.Contains(body, note) {
+					t.Errorf("%s does not say %q", name, note)
+				}
+				if strings.Contains(body, "upper bound") {
+					t.Errorf("%s calls a figure an upper bound; the snapshot added no sources and only floors the countries", name)
+				}
+			}
+		})
+	}
+}
+
+// TestHistoryBaselineForFigures pins the arithmetic of baselineFor for both
+// figures: the source remainder over the snapshot's own days with facts is
+// added, and the country count lifts the full union to the snapshot's count
+// and no further.
+func TestHistoryBaselineForFigures(t *testing.T) {
+	h := &SiteHistory{Totals: HistoryTotals{SourceIPs: 100, Countries: 130}}
+
+	if b := h.baselineFor(factsUnion{Sources: 10, Countries: 5}, factsUnion{Sources: 50, Countries: 40}, 0); b != (historyBaseline{}) {
+		t.Errorf("no snapshot day without facts: baseline = %+v, want none", b)
+	}
+
+	b := h.baselineFor(factsUnion{Sources: 10, Countries: 5}, factsUnion{Sources: 50, Countries: 40}, 1)
+	if b.Sources != 90 {
+		t.Errorf("Sources = %d, want 90 (the snapshot's 100 less the 10 its days with facts cover)", b.Sources)
+	}
+	if b.Countries != 90 {
+		t.Errorf("Countries = %d, want 90 (lifts the union of 40 to the snapshot's 130, not 130-5 on top of it)", b.Countries)
+	}
+	if !b.Applied {
+		t.Error("Applied = false, want true")
+	}
+
+	b = h.baselineFor(factsUnion{}, factsUnion{Sources: 50, Countries: 180}, 1)
+	if b.Countries != 0 {
+		t.Errorf("Countries = %d, want 0 (the union of 180 is already above the snapshot's 130)", b.Countries)
+	}
+}
+
+// TestHistoryBoundNote pins the sentence both the homepage and totalnumber.js
+// print about each figure, so the two can never disagree and the country
+// figure is never called an upper bound.
+func TestHistoryBoundNote(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		b    historyBaseline
+		want string
+	}{
+		{"exact", historyBaseline{}, ""},
+		{"nothing stands in", historyBaseline{Missing: true},
+			"The source IP and country totals are lower bounds."},
+		{"snapshot below the floor", historyBaseline{Unavailable: true, Missing: true},
+			"The source IP and country totals are lower bounds."},
+		{"snapshot stands in", historyBaseline{Sources: 5, Countries: 3, Applied: true, Missing: true},
+			"The source IP total is an upper bound and the country total is a lower bound."},
+		{"snapshot floors countries only", historyBaseline{Countries: 3, Applied: true, Missing: true},
+			"The source IP and country totals are lower bounds."},
+	} {
+		if got := tc.b.boundNote(); got != tc.want {
+			t.Errorf("%s: boundNote() = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
 

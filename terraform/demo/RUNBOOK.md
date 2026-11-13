@@ -1831,26 +1831,25 @@ go run ./xdplog-report history \
   `totals.blocked` must equal the sum of its own days' `drop_pkts`, and the
   site refuses to load a snapshot where it does not. So the hero total is
   still the sum of every row of `index.json`.
-- **The source count adds the two periods; the country count does not.**
-  The snapshot's `source_ips` / `countries` are the unions of the saved
-  period; the live days have their own union. The two periods' address sets
-  were never kept side by side, so the site adds the snapshot's `source_ips`
-  to the live union: a source active in both periods is counted once in each,
-  so that figure is a **lower bound** on the true number of distinct
-  attackers. The country total is the live period's union **alone** — the
-  snapshot's `countries` is recorded but never added, because adding it
-  would count every country seen in both periods twice, and there are only
-  so many country codes to resolve: the total would exceed the number of
-  countries there are. The homepage, `totalnumber.js` and the README all
-  say so.
-- **Expect the country figure to drop.** The deployed snapshot alone records
-  130 countries, and the live site was publishing that baseline *plus* its
-  own union — around 131 at the time of the change. The first deploy with
-  the fixed binary republishes the live period's union alone, so the
-  published number falls by roughly that baseline in one step. That is the
-  fix, not a regression: the old number was counting countries that were
-  never in the published days twice. The source count does not drop — it
-  still carries the snapshot's baseline.
+- **The source count adds the snapshot's remainder; the country count only
+  floors it.** Both figures are unions over every published day, and the
+  snapshot's own `source_ips` / `countries` are used only for its days whose
+  per-day records are gone. For sources, the part of `source_ips` those days
+  alone can have contributed is added to the union: a source active in both
+  periods is counted once in each, so that figure is an **upper bound**. For
+  countries, `max(live union, snapshot countries)` is published: countries
+  are a closed set the two periods share almost entirely, so adding would
+  count most of them twice and could exceed the number of countries there
+  are, while the larger of the two sets never counts one twice — a **lower
+  bound**. The homepage, `totalnumber.js` and the README all say which bound
+  each figure is.
+- **Expect the country figure to drop.** The deployed snapshot records 130
+  countries, and the site was publishing that baseline *plus* its live union
+  (162 on 2026-11-12). The first deploy with the fixed binary publishes the
+  larger of the two instead, so the number falls to about 130 in one step.
+  That is the fix, not a regression: the old number counted countries seen in
+  both periods twice. The source count does not drop — it still carries the
+  snapshot's remainder.
 - **Rolling it back** is removing the day from `history.json` (or the whole
   file): the next run rewrites the homepage, the day becomes a live row
   again and the day page is linked once more. The fingerprint of the file

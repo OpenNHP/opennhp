@@ -415,10 +415,12 @@ func runSite(args []string, stdout io.Writer) error {
 	// The snapshot's own all-time counts are NOT added on top of that union.
 	// Two unions can only be merged when both sets are present, and adding
 	// their sizes instead counts an address seen in both periods twice: the
-	// sum of two set sizes is at least their union, never at most it. What is
-	// added is only the part of the baseline that covers the snapshot's days
-	// whose facts are gone — the days the live site cannot produce at all —
-	// because nothing else carries those days' attackers.
+	// sum of two set sizes is at least their union, never at most it. The
+	// snapshot is used only for its days whose facts are gone — the days the
+	// live site cannot produce at all — because nothing else carries those
+	// days' attackers: the part of its source count those days alone can have
+	// contributed is added, and its country count is a floor under the union.
+	// See historyBaseline for why the two figures differ.
 	var snapshotRows []SiteDaySummary
 	var frozenRows []SiteDaySummary
 	if hist != nil {
@@ -469,21 +471,19 @@ func runSite(args []string, stdout io.Writer) error {
 	var baseline historyBaseline
 	if hist != nil && len(snapshotRows) > 0 && !baselineUnavailable {
 		snapUnion := unionDayFacts(opts.StatePath, snapshotRows)
-		baseline = hist.baselineFor(snapUnion, len(snapUnion.Missing))
+		baseline = hist.baselineFor(snapUnion, union, len(snapUnion.Missing))
 	}
 	if baselineUnavailable {
 		baseline = historyBaseline{Unavailable: true}
 	}
-	// The published figures are a lower bound when a published day
-	// contributed nothing and nothing stood in for it: the missing days are
-	// covered by the snapshot's own count when there is one (an upper bound,
-	// which can count an address seen in both periods twice), and are simply
-	// missing when there is not.
-	baseline.LowerBound = len(union.Missing) > 0 && !baseline.Applied
+	// Neither figure is exact when a published day contributed nothing. Which
+	// way each one is off depends on how the snapshot stood in for it, if it
+	// did: see historyBaseline.sourcesBound and countriesBound.
+	baseline.Missing = len(union.Missing) > 0
 	if len(union.Missing) > 0 {
 		switch {
 		case baseline.Applied:
-			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own counts stand in for them, so the all-time source and country totals may count an address or a country seen in both periods twice\n",
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own counts stand in for them: its source count is added, so the all-time source total may count an address seen in both periods twice (upper bound), and its country count is a floor under the union, so the all-time country total may miss a country (lower bound)\n",
 				len(union.Missing), strings.Join(union.Missing, ", "))
 		case baselineUnavailable:
 			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own counts cannot be applied (it lists day(s) below -since %s), so the all-time totals are a lower bound\n",
@@ -511,7 +511,7 @@ func runSite(args []string, stdout io.Writer) error {
 			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s) and lists day(s) below -since %s; its own source count (%d) and country count (%d) are not applied, because a snapshot-level total cannot be split by day\n",
 				len(snapshotRows), opts.Since, hist.Totals.SourceIPs, hist.Totals.Countries)
 		case len(snapshotRows) > 0:
-			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s); its own source count (%d) and country count (%d) are added only for the days whose per-day records are gone\n",
+			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s); its own source count (%d) is added and its country count (%d) is a floor under the union, only for the days whose per-day records are gone\n",
 				len(snapshotRows), hist.Totals.SourceIPs, hist.Totals.Countries)
 		}
 	}

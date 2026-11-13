@@ -4308,9 +4308,12 @@ jobs:
           # while every published day contributes its own sources and
           # countries. It stops being exact in two ways, and the site says
           # which on stdout: when a published day's per-day records are gone
-          # the snapshot's own counts stand in for that day, so the total is
-          # an upper bound and an address or a country seen in both periods
-          # can be counted twice; and when the snapshot lists a day below
+          # the snapshot's own counts stand in for that day -- its source
+          # count is added (an upper bound: an address seen in both periods
+          # can be counted twice) and its country count is a floor under the
+          # union (a lower bound that never counts a country twice, so it
+          # cannot push this figure past the gate below); and when the
+          # snapshot lists a day below
           # the publishing floor its counts cannot be applied at all, so the
           # total is a lower bound. See endpoints/xdplog-report/site.go and
           # history.go — not render_index.go, which only draws the numbers

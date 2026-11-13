@@ -303,11 +303,24 @@ twice, because the sum of two set sizes is at least their union, never at most
 it. The site used to publish that sum and call it a lower bound, which is the
 opposite of what it is.
 
-What *is* added is the part of the snapshot's baseline that covers its own days
-whose per-day records are gone — the days the live site cannot produce at all.
-Nothing else carries those days' attackers, and the published figures are then
-**upper bounds** rather than exact counts; the homepage says so when that
-happens.
+The snapshot is used only for its own days whose per-day records are gone — the
+days the live site cannot produce at all — because nothing else carries those
+days' attackers. The two figures use it differently:
+
+- **Source IPs:** the part of the snapshot's `source_ips` its days with records
+  do not already cover is **added** to the union. Addresses are an open set,
+  so that remainder is mostly new attackers, but an address seen in both
+  periods is counted twice: the figure is an **upper bound**.
+- **Countries:** the snapshot's `countries` is a **floor** under the union —
+  the larger of the two is published. Countries are a small closed set (~250
+  codes) that the two periods share almost entirely, so adding the remainder
+  would count most of them twice (a 130-country snapshot pushed the site to
+  162). Both sets are subsets of the true one, so the larger never counts a
+  country twice; it can miss one seen in only one period: the figure is a
+  **lower bound**.
+
+The homepage and `totalnumber.js` print the same sentence saying which bound
+each figure is (`historyBaseline.boundNote`).
 
 **A snapshot that lists days below the publishing floor has no baseline at
 all.** Its own `source_ips` and `countries` are a union over *all* the days it

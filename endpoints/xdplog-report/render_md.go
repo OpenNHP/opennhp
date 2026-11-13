@@ -71,10 +71,11 @@ func renderMarkdown(w io.Writer, r *Report) error {
 	if !r.GeoEnabled {
 		p("Not enabled (no `-geo-csv` given). No lookups are performed online.\n")
 	} else {
-		p("| # | Country | Events | Unique IPs | Share |\n|---|---|---:|---:|---:|\n")
+		p("| # | Region | Events | Unique IPs | Share |\n|---|---|---:|---:|---:|\n")
 		for i, x := range r.TopGeo {
 			p("| %d | %s | %d | %d | %s |\n", i+1, x.Country, x.Events, x.IPs, pc(x.Share))
 		}
+		p("\nRegions are the ISO 3166-1 alpha-2 codes the international standard assigns to each country and area; the GeoIP database attributes an address to one of them.\n")
 	}
 
 	p("\n## Top destination ports (sampled)\n\n| Port | Events | Share |\n|---|---:|---:|\n")

@@ -168,11 +168,12 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <h2>Top {{.TopN}} regions <span class="muted">(sampled)</span></h2>
 {{if .GeoEnabled}}
 <table>
-<thead><tr><th class="num">#</th><th>Country</th><th class="num">Events</th><th class="num">Unique IPs</th><th class="num">Share</th></tr></thead>
+<thead><tr><th class="num">#</th><th>Region</th><th class="num">Events</th><th class="num">Unique IPs</th><th class="num">Share</th></tr></thead>
 <tbody>
 {{range $i, $x := .TopGeo}}<tr><td class="num">{{inc $i}}</td><td>{{$x.Country}}</td><td class="num">{{$x.Events}}</td><td class="num">{{$x.IPs}}</td><td class="num"><span class="bar"><i style="{{bar $x.Share}}"></i></span>{{pct $x.Share}}</td></tr>
 {{end}}</tbody>
 </table>
+<p class="muted">Regions are the ISO 3166-1 alpha-2 codes the international standard assigns to each country and area; the GeoIP database attributes an address to one of them.</p>
 {{else}}
 <p class="muted">Not enabled (no geo source given). No lookups are performed online.</p>
 {{end}}

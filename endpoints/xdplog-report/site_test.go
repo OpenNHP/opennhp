@@ -1281,8 +1281,10 @@ func TestTotalNumberJSEmptySite(t *testing.T) {
 			t.Errorf("empty site %s = %d, want 0:\n%s", name, n, b)
 		}
 	}
-	if got := len(readTotalNumbers(t, out)); got != 3 {
-		t.Errorf("empty site exports %d constants, want all 3:\n%s", got, b)
+	// Three figures, four constants: the region figure is exported under both
+	// its published COUNTRIES name and REGIONS.
+	if got := len(readTotalNumbers(t, out)); got != 4 {
+		t.Errorf("empty site exports %d constants, want all 4:\n%s", got, b)
 	}
 	if strings.Contains(string(b), "Counting starts:") {
 		t.Error("empty site must not claim a counting start date")
@@ -1901,43 +1903,52 @@ func TestSiteHomepageNamesTheInternationalStandard(t *testing.T) {
 	}
 }
 
-// TestDayReportReadsTheLegacyRegionKey pins that a report published before the
-// region columns were renamed still reads with its region column intact.
+// TestDayReportKeepsThePublishedCountryKey pins the wire format of the
+// per-day JSON's region columns.
 //
-// The per-day JSON files are published and read back -- a day whose raw log
-// has been pruned is re-rendered from the JSON on disk -- so a rename that
-// silently emptied the region column of those pages would drop published
-// data. The key was renamed with the figure it carries: "countries" was the
-// wrong word for the ISO 3166-1 codes the standard assigns to every country
-// and area it lists.
-func TestDayReportReadsTheLegacyRegionKey(t *testing.T) {
-	legacy := []byte(`{
+// d/<source>/<day>.json is published and read by third parties, and a day
+// whose raw log has been pruned keeps the JSON it was first written with. The
+// region columns were renamed in the Go code and on the page only; on the
+// wire they stay "country" under schema 1, so a published report written
+// before the rename and one written after are the same format.
+func TestDayReportKeepsThePublishedCountryKey(t *testing.T) {
+	published := []byte(`{
   "schema": 1,
   "top_geo": [ { "country": "AU", "events": 12, "unique_ips": 3, "share": 1 } ],
   "top_ips": [ { "ip": "203.0.113.5", "events": 5, "country": "AU", "city": "Sydney" } ]
 }`)
 	var rep Report
-	if err := json.Unmarshal(legacy, &rep); err != nil {
-		t.Fatalf("a report published before the rename was refused: %v", err)
+	if err := json.Unmarshal(published, &rep); err != nil {
+		t.Fatalf("a published report was refused: %v", err)
 	}
 	if len(rep.TopGeo) != 1 || rep.TopGeo[0].Region != "AU" {
-		t.Errorf("top_geo region = %+v, want AU (the legacy key is read)", rep.TopGeo)
+		t.Errorf("top_geo region = %+v, want AU", rep.TopGeo)
 	}
 	if len(rep.TopIPs) != 1 || rep.TopIPs[0].Region != "AU" {
-		t.Errorf("top_ips region = %+v, want AU (the legacy key is read)", rep.TopIPs)
+		t.Errorf("top_ips region = %+v, want AU", rep.TopIPs)
+	}
+
+	out, err := json.Marshal(&rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `"country":"AU"`) || strings.Contains(string(out), `"region"`) {
+		t.Errorf("the region columns must be written under the published \"country\" key:\n%s", out)
+	}
+	if reportSchema != 1 {
+		t.Errorf("reportSchema = %d, want 1: the format did not change", reportSchema)
 	}
 }
 
-// TestTotalNumberJSPublishesTheRegionConstant pins the name the region figure
-// is published under.
+// TestTotalNumberJSPublishesBothRegionConstants pins the names the region
+// figure is published under.
 //
-// The file exports NHP_TOTAL_ATTACK_REGIONS -- the name that matches what the
-// figure counts, the ISO 3166-1 alpha-2 codes the international standard
-// assigns to every country and area it lists. The old constant was named
-// NHP_TOTAL_ATTACK_COUNTRIES, and it is gone: a published figure called a
-// country count is a claim about those codes that the standard does not
-// support.
-func TestTotalNumberJSPublishesTheRegionConstant(t *testing.T) {
+// NHP_TOTAL_ATTACK_COUNTRIES is the published contract: other sites embed
+// totalnumber.js with <script src> and read it, and removing it would throw a
+// ReferenceError on their pages. NHP_TOTAL_ATTACK_REGIONS is the same figure
+// under the name that says what it counts -- ISO 3166-1 alpha-2 codes. The
+// two must carry the same number.
+func TestTotalNumberJSPublishesBothRegionConstants(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
 	out := filepath.Join(root, "web")
@@ -1945,22 +1956,17 @@ func TestTotalNumberJSPublishesTheRegionConstant(t *testing.T) {
 	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
 	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
 
-	body := string(readArtifact(t, out, "totalnumber.js"))
-	if !strings.Contains(body, "const NHP_TOTAL_ATTACK_REGIONS = ") {
-		t.Errorf("totalnumber.js missing the region constant:\n%s", body)
-	}
-	// The old name must be gone, not merely unused: a file that still
-	// exports it keeps the claim alive for every site that embeds it.
-	if strings.Contains(body, "NHP_TOTAL_ATTACK_COUNTRIES") {
-		t.Errorf("totalnumber.js still exports the retired country constant:\n%s", body)
-	}
-
 	nums := readTotalNumbers(t, out)
-	if _, ok := nums["NHP_TOTAL_ATTACK_REGIONS"]; !ok {
+	countries, ok := nums["NHP_TOTAL_ATTACK_COUNTRIES"]
+	if !ok {
+		t.Fatalf("totalnumber.js dropped NHP_TOTAL_ATTACK_COUNTRIES, which embedders read: %v", nums)
+	}
+	regions, ok := nums["NHP_TOTAL_ATTACK_REGIONS"]
+	if !ok {
 		t.Fatalf("totalnumber.js has no NHP_TOTAL_ATTACK_REGIONS constant: %v", nums)
 	}
-	if _, ok := nums["NHP_TOTAL_ATTACK_COUNTRIES"]; ok {
-		t.Errorf("totalnumber.js still exports NHP_TOTAL_ATTACK_COUNTRIES: %v", nums)
+	if countries != regions || regions != 1 {
+		t.Errorf("COUNTRIES = %d, REGIONS = %d, want both 1 (one figure under two names)", countries, regions)
 	}
 }
 
@@ -1983,6 +1989,7 @@ func TestTotalNumberJSGrepsHitOneLinePerConstant(t *testing.T) {
 	for _, name := range []string{
 		"NHP_TOTAL_ATTACK_BLOCKED",
 		"NHP_TOTAL_ATTACK_SOURCE_IPS",
+		"NHP_TOTAL_ATTACK_COUNTRIES",
 		"NHP_TOTAL_ATTACK_REGIONS",
 	} {
 		hits := 0

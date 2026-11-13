@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
-* **demo:** the stats site's exported region figure is renamed.
-  `totalnumber.js` no longer exports `NHP_TOTAL_ATTACK_COUNTRIES`; the figure is published as `NHP_TOTAL_ATTACK_REGIONS`, and the per-day JSON reports their region columns under `region` instead of `country` (report `schema: 2`).
-  The ISO 3166-1 alpha-2 codes the figure counts belong to dependencies, disputed areas and special political areas as well as to states, so a published constant called a country count is a claim about those codes that the standard does not support.
-  A site that embeds `totalnumber.js` with `<script src>` has to switch to the new constant; a reader of the published per-day JSON has to switch to the new key. The reader still accepts the old spelling, so a snapshot or an archived report written before the rename loads unchanged.
 * **ac:** the nhp-ac's XDP ingress filter now judges IPv6 traffic, so a v6 listener the filter does not know about is unreachable after the upgrade.
   tcp/22 is the exception and is passed on both address families — the security group is the layer that restricts SSH, not the filter — so an operator who manages the AC over IPv6 is not locked out.
   `DisableIPv6Filter = true` in the AC's `etc/config.toml` turns the whole IPv6 tree off and restores the pre-upgrade behaviour of passing every v6 packet.
@@ -22,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* **demo:** the stats homepage's third hero figure is labelled **Regions** instead of Countries: it counts ISO 3166-1 alpha-2 codes, which cover dependencies, disputed areas and special political areas as well as states.
+  The published contract is unchanged: `totalnumber.js` still exports `NHP_TOTAL_ATTACK_COUNTRIES` and adds `NHP_TOTAL_ATTACK_REGIONS` with the same value, the per-day JSON keeps its `country` keys (`schema: 1`), and `history.json` keeps `totals.countries`.
 * **ac:** the nhp-ac's XDP ingress filter is narrowed to the nhp-server's rules: UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and by the answers to the host's own queries, a non-first IPv4 fragment is not judged by bytes that are not a header, and an ICMP echo reply needs the same whitelist entry the echo request does.
 * **ac:** the nhp-ac's audit ring now spends two separate global allowances — one for the deny channel, one for the accept channel — so that a flood of drops cannot exhaust the log that records what was *admitted*.
 * **ac:** a peer whose knock window has closed is classified as a legitimate peer for a further 60 seconds (`NHP_KNOCK_EXPIRED_GRACE_SEC`) instead of for one packet.

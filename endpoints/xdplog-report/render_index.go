@@ -79,10 +79,8 @@ type indexPageData struct {
 	//
 	// A region is the ISO 3166-1 alpha-2 code the GeoIP database attributes
 	// an address to: the two-letter codes the international standard assigns
-	// to every country and area it lists. The exported constant is named for
-	// that set too (NHP_TOTAL_ATTACK_REGIONS): the standard's list covers
-	// dependencies and disputed areas as well, and a published figure called
-	// a country count is a claim about them.
+	// to every country and area it lists. totalnumber.js exports it under
+	// both NHP_TOTAL_ATTACK_REGIONS and the original NHP_TOTAL_ATTACK_COUNTRIES.
 	TotalSources int
 	TotalRegions int
 	// HasHistory is true when the index carries rows published from the
@@ -309,12 +307,10 @@ func writeTotalNumberJS(outDir string, total uint64, sources, regions int, since
 // the constants are still emitted (as 0) so a consumer's <script src> never
 // 404s and leave a dangling reference.
 //
-// The third constant is the number of regions -- the ISO 3166-1 alpha-2 codes
-// the international standard assigns to every country and area it lists. It
-// was published under a name that said "countries" until this release: the
-// standard's list is not a list of countries, and a constant that calls it
-// one makes a political claim the data does not support. The name changed
-// with the figure, and a site that embedded the old constant has to switch.
+// The region figure is exported twice with the same value: under its
+// original COUNTRIES name, which other sites embed and the deploy gate greps,
+// and under REGIONS, which says what it counts. Dropping the old name would
+// throw a ReferenceError in every page that reads it.
 //
 // hist is the history snapshot, when there is one, and baseline is what it
 // contributes on top of the union the site computed from the per-day facts.
@@ -366,35 +362,17 @@ func totalNumberJS(total uint64, sources, regions int, since string, baseline hi
 	if since != "" {
 		fmt.Fprintf(&b, "// Counting starts: %s (UTC).\n", since)
 	}
-	// The region figure counts the ISO 3166-1 alpha-2 codes the international
-	// standard assigns to every country and area it lists: the GeoIP database
-	// attributes an address to one of those codes, and the figure is the
-	// number of distinct ones the published days' addresses landed in.
-	//
-	// The constant below is named for that set. It used to be named for
-	// "countries", which the standard's list is not: it covers countries,
-	// dependencies, disputed areas and special political areas alike, and a
-	// published figure called a country count is a claim about them. A site
-	// that embedded the old name has to switch to the new one.
-	//
-	// The name is spelled out here without its prefix on purpose: the deploy
-	// pipeline greps this file by constant name, so a second mention of the
-	// name in a comment would hand the gate two lines and fail the run on a
-	// value that is not a number.
-	b.WriteString("//\n")
-	b.WriteString("// The region figure counts the ISO 3166-1 alpha-2 codes the international\n")
-	b.WriteString("// standard assigns to every country and area it lists: the GeoIP\n")
-	b.WriteString("// database attributes an address to one of those codes, and the figure\n")
-	b.WriteString("// is the number of distinct ones the published days' addresses landed\n")
-	b.WriteString("// in.\n")
-	b.WriteString("//\n")
-	b.WriteString("// The constant is named for that set rather than for \"countries\": the\n")
-	b.WriteString("// standard's list covers countries, dependencies, disputed areas and\n")
-	b.WriteString("// special political areas alike, and a published figure called a country\n")
-	b.WriteString("// count is a claim about them. A site that embedded the old name has to\n")
-	b.WriteString("// switch.\n")
+	// The region figure is written under two names with one value: the
+	// _COUNTRIES name embedders already read, and the _REGIONS name that says
+	// what it counts. Both are literal numbers, not an alias, so the deploy
+	// gate's grep-and-sed reads either. The comment never spells a constant
+	// out in full, because a second match would hand that grep two lines.
+	b.WriteString("// The last two constants are one figure under two names: distinct\n")
+	b.WriteString("// ISO 3166-1 alpha-2 codes (regions). The _COUNTRIES name is kept for\n")
+	b.WriteString("// existing embedders.\n")
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_BLOCKED = %d;\n", total)
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_SOURCE_IPS = %d;\n", sources)
+	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_COUNTRIES = %d;\n", regions)
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_REGIONS = %d;\n", regions)
 	return b.String()
 }

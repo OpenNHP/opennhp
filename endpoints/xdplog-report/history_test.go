@@ -1183,15 +1183,12 @@ func TestHistorySeedSnapshotCarriesNoRegionCount(t *testing.T) {
 	}
 }
 
-// TestHistorySnapshotReadsTheLegacyRegionKey pins that a snapshot written
-// before the rename still loads.
+// TestHistorySnapshotKeepsTheCountriesKey pins the snapshot's wire format.
 //
-// The key was renamed with the figure: "countries" was the wrong word for the
-// ISO 3166-1 codes the standard assigns to every country and area it lists.
-// The field's meaning did not change with the spelling -- it is recorded and
-// never applied -- so a snapshot that carries the old key is read in full
-// rather than refused.
-func TestHistorySnapshotReadsTheLegacyRegionKey(t *testing.T) {
+// The region figure was renamed in the Go code and on the page only: on disk
+// the key is still "countries", so every snapshot an operator already holds
+// loads unchanged, and the generator writes the same key.
+func TestHistorySnapshotKeepsTheCountriesKey(t *testing.T) {
 	legacy := []byte(`{
   "schema": 1,
   "since": "2026-10-15",
@@ -1210,10 +1207,17 @@ func TestHistorySnapshotReadsTheLegacyRegionKey(t *testing.T) {
 		t.Fatalf("a snapshot written before the rename was refused: %v", err)
 	}
 	if h.Totals.Regions != 5 {
-		t.Errorf("regions = %d, want 5 (the legacy key is read)", h.Totals.Regions)
+		t.Errorf("regions = %d, want 5 (read from the \"countries\" key)", h.Totals.Regions)
 	}
 	if h.Totals.Blocked != 300 || h.Totals.SourceIPs != 40 {
 		t.Errorf("the other totals were not read: %+v", h.Totals)
+	}
+	out, err := json.Marshal(h.Totals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `"countries":5`) || strings.Contains(string(out), `"regions"`) {
+		t.Errorf("the snapshot must write its region figure under the \"countries\" key: %s", out)
 	}
 }
 

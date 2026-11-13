@@ -91,7 +91,7 @@ type indexPageData struct {
 	HasHistory bool
 	// BaselineFromSnapshot is true when the snapshot's own source count
 	// stands in for days whose per-day records are gone: it is added to the
-	// union (an upper bound). The snapshot's country count is never applied.
+	// union (an upper bound). The snapshot's region count is never applied.
 	// See historyBaseline.
 	BaselineFromSnapshot bool
 	// SnapshotBelowFloor is true when the history snapshot lists days the
@@ -116,7 +116,7 @@ type indexPageData struct {
 // Rows are sorted by day descending (most recent first), then by source name
 // for ties.
 //
-// union carries the all-time source and country counts, computed by the
+// union carries the all-time source and region counts, computed by the
 // caller from the per-day facts. They are passed in rather than recomputed
 // here so the run can report the days that could not contribute.
 //
@@ -170,16 +170,16 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, bas
 			since = hist.Since
 		}
 	}
-	// The source and country totals are the union over every published day's
+	// The source and region totals are the union over every published day's
 	// own sets, plus what the snapshot stands in for the days whose records
 	// are gone. The snapshot's own all-time counts are never added on top of
 	// the union: the sum of two set sizes is at least their union, never at
 	// most it, so that would count an address seen in both periods twice.
 	//
-	// The country total is the union and nothing else. The snapshot's own
-	// country count is never applied -- countries are a closed set of ~250
+	// The region total is the union and nothing else. The snapshot's own
+	// region count is never applied -- regions are a closed set of ~250
 	// codes that both periods share almost entirely, so the site's published
-	// figure has to be the number of distinct country labels the geo source
+	// figure has to be the number of distinct region labels the geo source
 	// produced over the published days, and nothing else can be merged into
 	// it. See historyBaseline.
 	totalSources := union.Sources + baseline.Sources
@@ -285,7 +285,7 @@ func sourceLabel(name string) string {
 }
 
 // writeTotalNumberJS writes totalnumber.js: the all-time DROP packet total
-// plus the all-time distinct source-IP and country counts, as plain
+// plus the all-time distinct source-IP and region counts, as plain
 // JavaScript constants, so another site can show the same numbers with a
 // <script src> tag and no JSON parsing.
 //
@@ -559,7 +559,7 @@ a:hover{text-decoration:underline}
    counts — the daily table calls the same number "DROP packets (exact)" and
    the detail pages "Attack (DROP) packets"; calling it attacks would
    overstate what a dropped packet is. The three figures (packets, source IPs,
-   countries) sit side by side with the label under each. They are green
+   regions) sit side by side with the label under each. They are green
    rather than the red accent so they read as attacks stopped, not as a
    current alert, and deliberately do not use tabular-nums: the digits change
    width while counting and a fixed advance makes them jitter. */
@@ -607,8 +607,9 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 Source IPs on the detail pages are <strong>not</strong> masked.
 {{end}}
 tcp/22 scans never reach the host's NIC and are not counted. During deploys or restarts the XDP filter is detached and the gap shows as missing minutes, not as zero attacks.
-{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and country totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .SnapshotBelowFloor}}The snapshot also lists days before the publishing floor, so its own count cannot be applied &mdash; a snapshot-level total cannot be split by day &mdash; and those days contribute nothing to the two figures. {{end}}{{end}}
-{{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own source count stands in: it is added to the union, which can count an address seen in both periods twice. Its country count is not used &mdash; the country total is the union over the published days. {{end}}{{if .NothingStandsIn}}A published day whose per-day records are gone contributes no source or country data and nothing stands in for it. {{end}}{{.BoundNote}}
+Regions follow the international standard ISO 3166-1: the two-letter codes it assigns to every country and area it lists, which is what the GeoIP database attributes an address to. The figure counts the regions the attacking addresses were attributed to &mdash; not the attackers, and not the addresses.
+{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and region totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .SnapshotBelowFloor}}The snapshot also lists days before the publishing floor, so its own count cannot be applied &mdash; a snapshot-level total cannot be split by day &mdash; and those days contribute nothing to the two figures. {{end}}{{end}}
+{{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own source count stands in: it is added to the union, which can count an address seen in both periods twice. Its region count is not used &mdash; the region total is the union over the published days. {{end}}{{if .NothingStandsIn}}A published day whose per-day records are gone contributes no source or region data and nothing stands in for it. {{end}}{{.BoundNote}}
 </p>
 
 <h2>Daily index</h2>

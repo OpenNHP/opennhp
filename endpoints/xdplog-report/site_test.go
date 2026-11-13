@@ -1862,6 +1862,45 @@ func TestSiteHeroHidesZeroRegions(t *testing.T) {
 	}
 }
 
+// TestSiteHomepageNamesTheInternationalStandard pins the wording of the third
+// hero figure: it counts regions, and the note below the hero says where the
+// codes come from.
+//
+// The figure is the number of distinct ISO 3166-1 alpha-2 codes the GeoIP
+// database attributed the attacking addresses to. "Countries" was the wrong
+// word for it -- the standard assigns those codes to every country and area
+// it lists -- so the page calls them regions and names the standard.
+func TestSiteHomepageNamesTheInternationalStandard(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100,
+		"203.0.113.5", "198.51.100.7", "10.0.0.9")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	page := string(readArtifact(t, out, "index.html"))
+	for _, want := range []string{
+		"ISO 3166-1",
+		"Regions follow the international standard",
+		">Regions<",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html missing %q", want)
+		}
+	}
+	// The figure must not be called a country count anywhere on the page. The
+	// new sentence does contain the word -- the standard assigns its codes to
+	// every country and area it lists -- so it is the statistic's own names
+	// that are checked here, not the word itself.
+	lower := strings.ToLower(page)
+	for _, unwanted := range []string{"country total", "country totals", "country count"} {
+		if strings.Contains(lower, unwanted) {
+			t.Errorf("index.html still calls the figure a %q", unwanted)
+		}
+	}
+}
+
 // TestGeoInstallReachesPublishedDays covers the deploy that drops the
 // GeoLite2 database onto the relay. Nothing about those days' raw logs
 // changes, so without the geo fingerprint in state.json they would never be

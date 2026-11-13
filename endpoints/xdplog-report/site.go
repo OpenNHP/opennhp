@@ -479,7 +479,7 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	// Neither figure is exact when a published day contributed nothing. Which
 	// way each one is off depends on how the snapshot stood in for it, if it
-	// did: see historyBaseline.sourcesBound and countriesBound.
+	// did: see historyBaseline.sourcesBound and regionsBound.
 	baseline.Missing = len(union.Missing) > 0
 	if len(union.Missing) > 0 {
 		switch {

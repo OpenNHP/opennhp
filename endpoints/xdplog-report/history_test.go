@@ -421,16 +421,16 @@ func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
 			got, want)
 	}
 	// The homepage and totalnumber.js say so, figure by figure: the source
-	// total is an upper bound, and the country total -- which the snapshot
+	// total is an upper bound, and the region total -- which the snapshot
 	// only ever floors, never adds to -- is a lower bound.
-	const note = "The source IP total is an upper bound and the country total is a lower bound."
+	const note = "The source IP total is an upper bound and the region total is a lower bound."
 	for _, name := range []string{"index.html", "totalnumber.js"} {
 		body := string(readArtifact(t, out, name))
 		if !strings.Contains(body, note) {
 			t.Errorf("%s does not say %q", name, note)
 		}
 		if strings.Contains(body, "upper bounds") {
-			t.Errorf("%s calls both figures upper bounds; the country figure is a lower bound", name)
+			t.Errorf("%s calls both figures upper bounds; the region figure is a lower bound", name)
 		}
 	}
 }
@@ -439,11 +439,11 @@ func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
 // total rests on: the snapshot's own country count cannot reach the published
 // figure, whatever it says.
 //
-// Countries are a small closed set that the snapshot's period and the live one
+// Regions are a small closed set that the snapshot's period and the live one
 // share almost entirely, so no arithmetic can merge the snapshot's count with
-// the live union. Adding it counted nearly every country twice -- the
-// published site reached 162 from a 130-country snapshot, and grew past the
-// number of countries there are. The published country total is therefore the
+// the live union. Adding it counted nearly every region twice -- the
+// published site reached 162 from a 130-region snapshot, and grew past the
+// number of regions there are. The published region total is therefore the
 // union over the published days, and the snapshot's count is recorded and
 // ignored.
 func TestHistorySnapshotCountryCountIsIgnored(t *testing.T) {
@@ -486,7 +486,7 @@ func TestHistorySnapshotCountryCountIsIgnored(t *testing.T) {
 			}
 			// Both figures miss the frozen day's own data, and the snapshot
 			// adds no sources, so both are lower bounds -- never upper.
-			const note = "The source IP and country totals are lower bounds."
+			const note = "The source IP and region totals are lower bounds."
 			for _, name := range []string{"index.html", "totalnumber.js"} {
 				body := string(readArtifact(t, out, name))
 				if !strings.Contains(body, note) {
@@ -530,7 +530,7 @@ func TestHistoryBaselineForFigures(t *testing.T) {
 }
 
 // TestHistoryBoundNote pins the sentence both the homepage and totalnumber.js
-// print about each figure, so the two can never disagree and the country
+// print about each figure, so the two can never disagree and the region
 // figure is never called an upper bound.
 func TestHistoryBoundNote(t *testing.T) {
 	for _, tc := range []struct {
@@ -540,11 +540,11 @@ func TestHistoryBoundNote(t *testing.T) {
 	}{
 		{"exact", historyBaseline{}, ""},
 		{"nothing stands in", historyBaseline{Missing: true},
-			"The source IP and country totals are lower bounds."},
+			"The source IP and region totals are lower bounds."},
 		{"snapshot below the floor", historyBaseline{Unavailable: true, Missing: true},
-			"The source IP and country totals are lower bounds."},
+			"The source IP and region totals are lower bounds."},
 		{"snapshot stands in", historyBaseline{Sources: 5, Applied: true, Missing: true},
-			"The source IP total is an upper bound and the country total is a lower bound."},
+			"The source IP total is an upper bound and the region total is a lower bound."},
 	} {
 		if got := tc.b.boundNote(); got != tc.want {
 			t.Errorf("%s: boundNote() = %q, want %q", tc.name, got, tc.want)
@@ -892,7 +892,7 @@ func TestHistoryGeneratorFromSavedPage(t *testing.T) {
 		t.Errorf("totals.source_ips = %d, want 25136", h.Totals.SourceIPs)
 	}
 	if h.Totals.Countries != 0 {
-		t.Errorf("totals.countries = %d, want 0 (the snapshot records no country count; the site's country total is the union over the published days)",
+		t.Errorf("totals.countries = %d, want 0 (the snapshot records no country count; the site's region total is the union over the published days)",
 			h.Totals.Countries)
 	}
 	if len(h.Days) != 11 {
@@ -1178,7 +1178,7 @@ func TestHistorySeedSnapshotCarriesNoCountryCount(t *testing.T) {
 		t.Fatalf("the shipped snapshot does not parse: %v", err)
 	}
 	if h.Totals.Countries != 0 {
-		t.Errorf("the shipped snapshot records %d countries, want 0 (the site's country total is the union over the published days)",
+		t.Errorf("the shipped snapshot records %d countries, want 0 (the site's region total is the union over the published days)",
 			h.Totals.Countries)
 	}
 }

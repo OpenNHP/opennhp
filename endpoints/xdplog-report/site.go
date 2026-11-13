@@ -100,7 +100,7 @@ type SiteDayState struct {
 	Render int `json:"render"`
 	// Geo is the geo source whose lookups produced this day, empty for
 	// none. A day analyzed with no database has no region table and no
-	// countries, and nothing about its raw log changing would ever rebuild
+	// regions, and nothing about its raw log changing would ever rebuild
 	// it — so installing the database has to be what marks it stale. See
 	// geoKey.
 	Geo string `json:"geo,omitempty"`
@@ -128,8 +128,8 @@ func geoKey(opts *SiteOptions) string {
 // Only that direction triggers a rebuild. Taking a database away must not wipe
 // the attribution a published day already carries: its raw log may already
 // have aged out of the collector's cache, in which case the region table and
-// the day's countries are unrecoverable, and a site that quietly lost them
-// would report a smaller country total than it really saw.
+// the day's regions are unrecoverable, and a site that quietly lost them
+// would report a smaller region total than it really saw.
 func geoStale(prev string, want string) bool {
 	return want != "" && prev != want
 }
@@ -145,7 +145,7 @@ func geoStale(prev string, want string) bool {
 // pruned cannot be rebuilt from the log, but their HTML is a pure function of
 // the published d/<source>/<day>.json, so they are re-rendered from that — see
 // rerenderPageOnlyDay.
-const siteRenderVersion = 1
+const siteRenderVersion = 2
 
 // SiteState is the on-disk incremental state.
 type SiteState struct {
@@ -185,7 +185,7 @@ func runSite(args []string, stdout io.Writer) error {
 	fs.StringVar(&opts.OutDir, "out", "", "web root directory (created if missing)")
 	fs.StringVar(&opts.StatePath, "state", "", "incremental-build state file (default <out>/state.json; keep it out of the web root)")
 	fs.IntVar(&opts.TopN, "top", opts.TopN, "rows in each TOP table")
-	fs.StringVar(&opts.GeoCSV, "geo-csv", "", "optional CIDR->country CSV for the region section")
+	fs.StringVar(&opts.GeoCSV, "geo-csv", "", "optional CIDR->region CSV for the region section")
 	fs.StringVar(&opts.GeoMMDB, "geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	fs.BoolVar(&opts.MaskIP, "mask-ip", opts.MaskIP, "truncate source IPs in the public site (default true)")
 	fs.BoolVar(&opts.Force, "force", false, "rebuild every day even if inputs are unchanged")
@@ -401,7 +401,7 @@ func runSite(args []string, stdout io.Writer) error {
 		fmt.Fprintf(stdout, "site: %d day(s) before -since %s unpublished (%d detail page file(s) removed)\n", len(preFloor), opts.Since, removedPreSince)
 	}
 
-	// The all-time source and country counts come from each day's private
+	// The all-time source and region counts come from each day's private
 	// facts, unioned here. Computed on every run, not only a dirty one, so a
 	// day whose facts cannot be read is reported today rather than the day
 	// some unrelated input next goes stale.
@@ -419,8 +419,8 @@ func runSite(args []string, stdout io.Writer) error {
 	// snapshot is used only for its days whose facts are gone — the days the
 	// live site cannot produce at all — because nothing else carries those
 	// days' attackers: the part of its source count those days alone can have
-	// contributed is added. Its country count is never applied at all: the
-	// published country total is the union over the published days. See
+	// contributed is added. Its region count is never applied at all: the
+	// published region total is the union over the published days. See
 	// historyBaseline for why the two figures differ.
 	var snapshotRows []SiteDaySummary
 	var frozenRows []SiteDaySummary
@@ -479,18 +479,18 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	// Neither figure is exact when a published day contributed nothing. Which
 	// way each one is off depends on how the snapshot stood in for it, if it
-	// did: see historyBaseline.sourcesBound and countriesBound.
+	// did: see historyBaseline.sourcesBound and regionsBound.
 	baseline.Missing = len(union.Missing) > 0
 	if len(union.Missing) > 0 {
 		switch {
 		case baseline.Applied:
-			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own source count stands in for them: it is added, so the all-time source total may count an address seen in both periods twice (upper bound); the all-time country total is the union over the published days and may miss a country (lower bound)\n",
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/region data (%s); the history snapshot's own source count stands in for them: it is added, so the all-time source total may count an address seen in both periods twice (upper bound); the all-time region total is the union over the published days and may miss a region (lower bound)\n",
 				len(union.Missing), strings.Join(union.Missing, ", "))
 		case baselineUnavailable:
-			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own counts cannot be applied (it lists day(s) below -since %s), so the all-time totals are a lower bound\n",
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/region data (%s); the history snapshot's own counts cannot be applied (it lists day(s) below -since %s), so the all-time totals are a lower bound\n",
 				len(union.Missing), strings.Join(union.Missing, ", "), opts.Since)
 		default:
-			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the all-time totals are a lower bound\n",
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/region data (%s); the all-time totals are a lower bound\n",
 				len(union.Missing), strings.Join(union.Missing, ", "))
 		}
 	}
@@ -515,12 +515,12 @@ func runSite(args []string, stdout io.Writer) error {
 			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s); its own source count (%d) is added, only for the days whose per-day records are gone\n",
 				len(snapshotRows), hist.Totals.SourceIPs)
 		}
-		// The snapshot's country count is recorded and never applied, so a
+		// The snapshot's region count is recorded and never applied, so a
 		// snapshot that still carries one says so rather than leaving an
 		// operator to wonder why the published figure ignores it.
-		if hist.Totals.Countries != 0 {
-			fmt.Fprintf(stdout, "site: the history snapshot's country count (%d) is ignored: the all-time country total is the union over the published days\n",
-				hist.Totals.Countries)
+		if hist.Totals.Regions != 0 {
+			fmt.Fprintf(stdout, "site: the history snapshot's region count (%d) is ignored: the all-time region total is the union over the published days\n",
+				hist.Totals.Regions)
 		}
 	}
 
@@ -857,7 +857,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	// without siteRenderVersion those pages would keep whatever title the
 	// deploy that first wrote them happened to use. The fourth is what makes
 	// installing the GeoLite2 database reach days published before it
-	// existed, instead of leaving the site's country total at whatever the
+	// existed, instead of leaving the site's region total at whatever the
 	// days after the install happened to see.
 	unchanged := !opts.Force &&
 		prev.Built &&
@@ -891,7 +891,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	rep.BackLink = "../../index.html"
 	rep.IsSiteDetail = true
 
-	// The day's source and country sets are captured here, while the raw log
+	// The day's source and region sets are captured here, while the raw log
 	// that produced them still exists. Once the collector prunes it, this is
 	// the last chance: the published JSON carries only counts and a top N,
 	// neither of which can be unioned across days.
@@ -902,7 +902,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	}
 	sort.Slice(srcs, func(i, j int) bool { return srcs[i] < srcs[j] })
 	factsPath := dayFactsPath(opts.StatePath, in.Source, in.Day)
-	if err := writeDayFacts(factsPath, srcs, an.Countries()); err != nil {
+	if err := writeDayFacts(factsPath, srcs, an.Regions()); err != nil {
 		return SiteDaySummary{}, false, fmt.Errorf("write facts: %w", err)
 	}
 
@@ -959,6 +959,16 @@ func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (boo
 	var rep Report
 	if err := json.Unmarshal(b, &rep); err != nil {
 		return false, fmt.Errorf("%s: %w", in.Path, err)
+	}
+	// A record written before the region columns were renamed is rewritten
+	// in the current format, so the published d/ tree never mixes two
+	// spellings of the same column. Only the format changes: the reader has
+	// already mapped the old keys, and no number is recomputed.
+	if rep.Schema < reportSchema {
+		rep.Schema = reportSchema
+		if err := writeJSONAtomic(in.Path, &rep); err != nil {
+			return false, err
+		}
 	}
 	// Same two fields processSiteDay sets before writing the page; the
 	// published JSON carries them, and a page written by an older binary or

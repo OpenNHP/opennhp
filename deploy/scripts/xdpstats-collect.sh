@@ -59,7 +59,7 @@ set -euo pipefail
 #              nginx, so a root under $HOME returns 403 to every request.
 #   STATE    — the incremental-build state, kept beside the per-day fact
 #              files that hang off it (facts/<source>/<day>.facts: the hashed
-#              source and country sets the all-time attacker and country
+#              source and region sets the all-time attacker and region
 #              totals are unioned from). Kept out of WEB_DIR on purpose:
 #              state.json records the absolute path of every raw cache file,
 #              which is host layout an anonymous visitor has no business
@@ -341,16 +341,16 @@ fi
 
 # ---- rebuild site -----------------------------------------------------------
 # GeoLite2-City, if it has been unpacked on the relay, is what turns a source
-# address into a country. It is optional on purpose: the database is licensed
+# address into a region. It is optional on purpose: the database is licensed
 # from MaxMind, so it is uploaded by hand rather than shipped by the deploy,
 # and a host without one still builds a correct site — it just publishes no
-# country counts. XDPSTATS_GEO_MMDB overrides the path for a local run.
+# region counts. XDPSTATS_GEO_MMDB overrides the path for a local run.
 GEO_MMDB="${XDPSTATS_GEO_MMDB:-/home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb}"
 if [ -r "$GEO_MMDB" ]; then
   SITE_ARGS+=("-geo-mmdb" "$GEO_MMDB")
   log "info" "GeoIP enabled from $GEO_MMDB"
 else
-  log "info" "no GeoIP database at $GEO_MMDB; region table and country totals stay empty"
+  log "info" "no GeoIP database at $GEO_MMDB; region table and region totals stay empty"
 fi
 
 # The history snapshot carries the days the collector's cache no longer

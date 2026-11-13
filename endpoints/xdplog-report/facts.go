@@ -12,14 +12,14 @@ import (
 	"sort"
 )
 
-// Per-day fact files: what makes the all-time source and country counts on
+// Per-day fact files: what makes the all-time source and region counts on
 // the site exact instead of a sum of daily ones.
 //
 // The published record for a day is d/<source>/<day>.json, which carries
 // unique_attack_ips as a count and only the top N addresses. A count cannot be
 // added up: an address that scans the host every day is one attacker, and
-// summing the days counts it once per day. The country total has the same
-// shape — the day's countries are a set, and two sets only union once they are
+// summing the days counts it once per day. The region total has the same
+// shape — the day's regions are a set, and two sets only union once they are
 // both present.
 //
 // Those sets cannot go in the published JSON. The site masks source IPs
@@ -41,7 +41,7 @@ const (
 	factsMagic = "XDF1"
 )
 
-// factsHeaderSize is magic (4) + source count (4) + country count (4).
+// factsHeaderSize is magic (4) + source count (4) + region count (4).
 const factsHeaderSize = 12
 
 // dayFactsPath is one day's fact file. It hangs off the -state file rather
@@ -63,17 +63,17 @@ func sourceHash(a netip.Addr) uint64 {
 
 // encodeDayFacts renders one day's sets. Sources go in as sorted uint64s so
 // the bytes are a pure function of the day's attackers and a rebuild that
-// finds the same ones rewrites an identical file; countries are sorted ASCII,
+// finds the same ones rewrites an identical file; regions are sorted ASCII,
 // which makes the file legible to `cat` and `sort` during an incident.
-func encodeDayFacts(srcs []uint64, countries []string) []byte {
-	b := make([]byte, factsHeaderSize, factsHeaderSize+8*len(srcs)+8*len(countries))
+func encodeDayFacts(srcs []uint64, regions []string) []byte {
+	b := make([]byte, factsHeaderSize, factsHeaderSize+8*len(srcs)+8*len(regions))
 	copy(b, factsMagic)
 	binary.LittleEndian.PutUint32(b[4:], uint32(len(srcs)))
-	binary.LittleEndian.PutUint32(b[8:], uint32(len(countries)))
+	binary.LittleEndian.PutUint32(b[8:], uint32(len(regions)))
 	for _, h := range srcs {
 		b = binary.LittleEndian.AppendUint64(b, h)
 	}
-	for _, c := range countries {
+	for _, c := range regions {
 		b = append(b, byte(len(c)))
 		b = append(b, c...)
 	}
@@ -90,7 +90,7 @@ func decodeDayFacts(b []byte) ([]uint64, []string, error) {
 		return nil, nil, fmt.Errorf("not a %s fact file", factsMagic)
 	}
 	nSrc := int(binary.LittleEndian.Uint32(b[4:]))
-	nCountry := int(binary.LittleEndian.Uint32(b[8:]))
+	nRegion := int(binary.LittleEndian.Uint32(b[8:]))
 	rest := b[factsHeaderSize:]
 
 	srcs := make([]uint64, 0, nSrc)
@@ -98,28 +98,28 @@ func decodeDayFacts(b []byte) ([]uint64, []string, error) {
 		srcs = append(srcs, binary.LittleEndian.Uint64(rest[:8]))
 		rest = rest[8:]
 	}
-	countries := make([]string, 0, nCountry)
-	for i := 0; i < nCountry && len(rest) > 0; i++ {
+	regions := make([]string, 0, nRegion)
+	for i := 0; i < nRegion && len(rest) > 0; i++ {
 		n := int(rest[0])
 		rest = rest[1:]
 		if len(rest) < n {
 			break
 		}
-		countries = append(countries, string(rest[:n]))
+		regions = append(regions, string(rest[:n]))
 		rest = rest[n:]
 	}
-	return srcs, countries, nil
+	return srcs, regions, nil
 }
 
 // writeDayFacts writes one day's sets atomically, creating the private
 // directory on the way. 0600 on a 0700 directory: the file is derived from the
 // unmasked source addresses, so it gets the raw cache's treatment rather than
 // the published site's.
-func writeDayFacts(path string, srcs []uint64, countries []string) error {
+func writeDayFacts(path string, srcs []uint64, regions []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return writeFileAtomic(path, encodeDayFacts(srcs, countries), 0o600)
+	return writeFileAtomic(path, encodeDayFacts(srcs, regions), 0o600)
 }
 
 // readDayFacts loads one day's sets. A missing file is not an error: it means
@@ -148,10 +148,10 @@ type factsUnion struct {
 	// Sources is the number of distinct attack addresses seen on at least one
 	// published day — one attacker seen on ten days is one attacker.
 	Sources int
-	// Countries is the number of distinct country codes those sources
-	// resolved to. Sources the database does not resolve belong to no
-	// country and are counted in Sources only.
-	Countries int
+	// Regions is the number of distinct ISO 3166-1 alpha-2 codes those
+	// sources resolved to. Sources the database does not resolve belong to
+	// no region and are counted in Sources only.
+	Regions int
 	// Missing names the days whose facts could not be read, "<source>/<day>
 	// (reason)". A non-empty list means the totals above are a lower bound,
 	// which is why runSite prints it rather than swallowing it.
@@ -164,18 +164,18 @@ func unionDayFacts(statePath string, summaries []SiteDaySummary) factsUnion {
 	if statePath == "" {
 		return u
 	}
-	seenCountry := map[string]struct{}{}
+	seenRegion := map[string]struct{}{}
 	var all []uint64
 	for _, s := range summaries {
 		key := s.Source + "/" + s.Day
-		srcs, countries, err := readDayFacts(dayFactsPath(statePath, s.Source, s.Day))
+		srcs, regions, err := readDayFacts(dayFactsPath(statePath, s.Source, s.Day))
 		if err != nil {
 			u.Missing = append(u.Missing, fmt.Sprintf("%s (%v)", key, err))
 			continue
 		}
 		all = append(all, srcs...)
-		for _, c := range countries {
-			seenCountry[c] = struct{}{}
+		for _, c := range regions {
+			seenRegion[c] = struct{}{}
 		}
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
@@ -184,6 +184,6 @@ func unionDayFacts(statePath string, summaries []SiteDaySummary) factsUnion {
 			u.Sources++
 		}
 	}
-	u.Countries = len(seenCountry)
+	u.Regions = len(seenRegion)
 	return u
 }

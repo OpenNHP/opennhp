@@ -4299,23 +4299,23 @@ jobs:
             printf '%s\n' "$run_log" | tail -n 40 >&2
           fi
 
-          # The published figures, and a bound on the country count. There
-          # are only ~250 ISO 3166-1 alpha-2 codes, so a country total above
+          # The published figures, and a bound on the region count. There
+          # are only ~250 ISO 3166-1 alpha-2 codes, so a region total above
           # that must not be published.
           #
           # The total is a union over every published day: the live days and
           # the days the history snapshot stands in for. That union is exact
           # while every published day contributes its own sources and
-          # countries. It stops being exact in two ways, and the site says
+          # regions. It stops being exact in two ways, and the site says
           # which on stdout: when a published day's per-day records are gone
           # the snapshot's own source count stands in for that day -- it is
           # added (an upper bound: an address seen in both periods can be
-          # counted twice), while the country total stays the union over the
-          # published days and can only miss a country (a lower bound); and
+          # counted twice), while the region total stays the union over the
+          # published days and can only miss a region (a lower bound); and
           # when the snapshot lists a day below
           # the publishing floor its counts cannot be applied at all, so the
-          # total is a lower bound. The snapshot's own country count is never
-          # applied at all: countries are a closed set the two periods share
+          # total is a lower bound. The snapshot's own region count is never
+          # applied at all: regions are a closed set the two periods share
           # almost entirely, so any arithmetic combining the two can only be
           # wrong. See endpoints/xdplog-report/site.go and
           # history.go — not render_index.go, which only draws the numbers
@@ -4323,24 +4323,24 @@ jobs:
           ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK $WEB_ROOT/totalnumber.js"
           blocked=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_BLOCKED $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
           sources=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_SOURCE_IPS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
-          countries=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_COUNTRIES $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
-          if [ -z "$countries" ]; then
-            echo "ERROR: no country figure in the published totalnumber.js" >&2
+          regions=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_REGIONS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          if [ -z "$regions" ]; then
+            echo "ERROR: no region figure in the published totalnumber.js" >&2
             exit 1
           fi
-          if ! printf '%s' "$countries" | grep -Eq '^[0-9]+$'; then
-            echo "ERROR: the published country figure is not a number: '$countries'" >&2
+          if ! printf '%s' "$regions" | grep -Eq '^[0-9]+$'; then
+            echo "ERROR: the published region figure is not a number: '$regions'" >&2
             exit 1
           fi
-          if [ "$countries" -gt 250 ]; then
-            echo "ERROR: implausible country total: $countries (there are ~250 ISO country codes)" >&2
+          if [ "$regions" -gt 250 ]; then
+            echo "ERROR: implausible region total: $regions (there are ~250 ISO 3166-1 alpha-2 codes)" >&2
             exit 1
           fi
 
           # The figures the site now publishes, in the job summary: they are
-          # what the deploy changed. The country total is the union over the
+          # what the deploy changed. The region total is the union over the
           # published days and nothing else, so it is bounded by the number
-          # of countries there are.
+          # of regions there are.
           {
             echo "### XDP attack stats — published by this deploy"
             echo
@@ -4348,7 +4348,7 @@ jobs:
             echo "| --- | --- |"
             echo "| Blocked packets | ${blocked:-?} |"
             echo "| Distinct source IPs | ${sources:-?} |"
-            echo "| Distinct countries | $countries |"
+            echo "| Distinct regions | $regions |"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
 

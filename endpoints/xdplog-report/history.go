@@ -33,6 +33,11 @@ import (
 // different schema is refused rather than half-read: the numbers it carries
 // are a baseline the whole site rests on, and guessing what an unknown field
 // meant is exactly how a wrong total becomes permanent.
+//
+// It stays at 1 across the region total's key rename: the facts the file
+// carries did not change, only the spelling of one field's key, and the
+// reader accepts both spellings -- so a snapshot of either vintage is read
+// in full, never half-read. See HistoryTotals.UnmarshalJSON.
 const historySchema = 1
 
 // SiteHistory is the on-disk shape of history.json.
@@ -75,23 +80,53 @@ type HistoryTotals struct {
 	// this baseline is the part that covers days whose facts are gone, and
 	// only that part is added -- see historyBaseline.
 	SourceIPs int `json:"source_ips"`
-	// Countries is the number of distinct countries the saved period saw.
+	// Regions is the number of distinct regions the saved period saw.
 	//
-	// It is recorded and never applied. The published country total is the
+	// It is recorded and never applied. The published region total is the
 	// union over the published days and nothing else; see historyBaseline.
 	// The field stays in the file for schema compatibility and so a reader
 	// can tell what the saved page said, but the site only checks that it is
 	// not negative.
 	//
-	// Countries are a closed set of ~250 codes that the snapshot's period and
+	// The figure counts the ISO 3166-1 alpha-2 codes the international
+	// standard assigns to every country and area it lists -- what the GeoIP
+	// database attributes an address to -- and the page calls them regions.
+	// "Countries" was the wrong word for that set, so the field was renamed;
+	// snapshots written before the rename carry the old key and are read by
+	// UnmarshalJSON below.
+	//
+	// Regions are a closed set of ~250 codes that the snapshot's period and
 	// the live one share almost entirely, so no arithmetic can merge the
 	// snapshot's count with the live union: adding counts most of them twice
-	// (the site published 162 from a 130-country snapshot) and can push the
-	// total past the number of countries there are, and taking the larger of
-	// the two can only ever be a lower bound that misses a country seen in
+	// (the site published 162 from a 130-region snapshot) and can push the
+	// total past the number of regions there are, and taking the larger of
+	// the two can only ever be a lower bound that misses a region seen in
 	// one period alone. The count is therefore kept out of the arithmetic
 	// entirely.
-	Countries int `json:"countries"`
+	Regions int `json:"regions"`
+}
+
+// UnmarshalJSON reads the totals, accepting the "countries" key snapshots
+// were written with before the region figure was renamed.
+//
+// The field's meaning did not change with the spelling -- it is recorded and
+// never applied (see HistoryTotals.Regions) -- so an operator's existing
+// snapshot is read completely, and the schema number stays where it is. The
+// totals are decoded through an alias, so a field added later is read
+// without touching this method.
+func (t *HistoryTotals) UnmarshalJSON(b []byte) error {
+	type plain HistoryTotals
+	aux := struct {
+		*plain
+		Legacy *int `json:"countries"`
+	}{plain: (*plain)(t)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if t.Regions == 0 && aux.Legacy != nil {
+		t.Regions = *aux.Legacy
+	}
+	return nil
 }
 
 // loadSiteHistory reads and validates a history snapshot.
@@ -120,8 +155,8 @@ func loadSiteHistory(path string) (*SiteHistory, error) {
 	if h.Totals.SourceIPs < 0 {
 		return nil, fmt.Errorf("history file %s: totals.source_ips must not be negative", path)
 	}
-	if h.Totals.Countries < 0 {
-		return nil, fmt.Errorf("history file %s: totals.countries must not be negative", path)
+	if h.Totals.Regions < 0 {
+		return nil, fmt.Errorf("history file %s: totals.regions must not be negative", path)
 	}
 
 	h.covered = make(map[string]struct{}, len(h.Days))
@@ -206,14 +241,14 @@ func (h *SiteHistory) Rows() []SiteDaySummary {
 // set, so the remainder is mostly new attackers, and adding it is the closest
 // figure available.
 //
-// The country total is never touched by the snapshot. Countries are a closed
+// The region total is never touched by the snapshot. Regions are a closed
 // set of ~250 codes that the two periods share almost entirely, so no
 // arithmetic can merge the snapshot's count with the live union: adding
 // counts most of them twice and can push the total past the number of
-// countries there are, while the larger of the two can only ever miss a
-// country seen in one period alone. The published country total is therefore
+// regions there are, while the larger of the two can only ever miss a
+// region seen in one period alone. The published region total is therefore
 // the union over the published days, and the snapshot's own count is recorded
-// and never applied -- see HistoryTotals.Countries.
+// and never applied -- see HistoryTotals.Regions.
 type historyBaseline struct {
 	// Sources is the number of attackers the baseline adds.
 	Sources int
@@ -235,9 +270,9 @@ type historyBaseline struct {
 	// over the published days and nothing else, and a published day whose
 	// per-day records are gone contributes nothing to them.
 	Unavailable bool
-	// Missing is true when a published day contributed no source or country
+	// Missing is true when a published day contributed no source or region
 	// data, whether or not the snapshot stood in for it. Neither figure is
-	// then an exact count; sourcesBound and countriesBound say which way each
+	// then an exact count; sourcesBound and regionsBound say which way each
 	// one is off.
 	Missing bool
 }
@@ -266,12 +301,12 @@ func (b historyBaseline) sourcesBound() figureBound {
 	return boundExact
 }
 
-// countriesBound is the kind of number the published country total is.
+// regionsBound is the kind of number the published region total is.
 //
 // The snapshot never contributes to it, so the figure is the union over the
-// published days and no more. With any day's facts gone, a country seen only
+// published days and no more. With any day's facts gone, a region seen only
 // on that day can be missing: a lower bound.
-func (b historyBaseline) countriesBound() figureBound {
+func (b historyBaseline) regionsBound() figureBound {
 	if b.Missing {
 		return boundLower
 	}
@@ -282,18 +317,18 @@ func (b historyBaseline) countriesBound() figureBound {
 // what kind of number each of the two figures is. Generating it in one place
 // is what keeps the two from disagreeing. It is empty when both are exact.
 func (b historyBaseline) boundNote() string {
-	s, c := b.sourcesBound(), b.countriesBound()
+	s, c := b.sourcesBound(), b.regionsBound()
 	switch {
 	case s == boundExact && c == boundExact:
 		return ""
 	case s == c:
-		return "The source IP and country totals are " + boundPlural(s) + "."
+		return "The source IP and region totals are " + boundPlural(s) + "."
 	case s == boundExact:
-		return "The country total is " + boundSingular(c) + "."
+		return "The region total is " + boundSingular(c) + "."
 	case c == boundExact:
 		return "The source IP total is " + boundSingular(s) + "."
 	}
-	return "The source IP total is " + boundSingular(s) + " and the country total is " + boundSingular(c) + "."
+	return "The source IP total is " + boundSingular(s) + " and the region total is " + boundSingular(c) + "."
 }
 
 func boundSingular(f figureBound) string {
@@ -344,8 +379,8 @@ func (h *SiteHistory) BelowFloor(publishes func(day string) bool) bool {
 // *all* its days, so subtracting the part the facts cover leaves what the
 // remaining days alone can have contributed.
 //
-// Countries: nothing. The snapshot's country count is recorded and never
-// applied; the published country total is the union over the published days.
+// Regions: nothing. The snapshot's region count is recorded and never
+// applied; the published region total is the union over the published days.
 // See historyBaseline.
 //
 // The caller must not use this when the snapshot lists days below the

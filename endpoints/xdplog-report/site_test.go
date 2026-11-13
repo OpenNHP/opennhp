@@ -67,7 +67,7 @@ func runSiteCmd(t *testing.T, logs, out string, extraArgs ...string) {
 // indexAndPages enumerates the files that the site subcommand owns: the
 // index, the scripts it writes, state, every detail page under
 // d/<source>/<day>.{html,json}, and the private per-day fact files the
-// all-time source and country totals are unioned from.
+// all-time source and region totals are unioned from.
 func indexAndPages(out string) []string {
 	files := []string{
 		filepath.Join(out, "index.html"),
@@ -1239,10 +1239,10 @@ func TestTotalNumberJS(t *testing.T) {
 	}
 	// The two union counts are published as constants too, so an embedding
 	// page never has to special-case a missing binding. The fixture resolves
-	// no countries without a geo source, and day 1's two public sources are
+	// no regions without a geo source, and day 1's two public sources are
 	// day 2's as well.
 	got := readTotalNumbers(t, out)
-	for _, name := range []string{"NHP_TOTAL_ATTACK_SOURCE_IPS", "NHP_TOTAL_ATTACK_COUNTRIES"} {
+	for _, name := range []string{"NHP_TOTAL_ATTACK_SOURCE_IPS", "NHP_TOTAL_ATTACK_REGIONS"} {
 		if _, ok := got[name]; !ok {
 			t.Errorf("totalnumber.js does not export %s:\n%s", name, body)
 		}
@@ -1250,8 +1250,8 @@ func TestTotalNumberJS(t *testing.T) {
 	if n := got["NHP_TOTAL_ATTACK_SOURCE_IPS"]; n != 2 {
 		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want 2 (fixture has one reserved source)", n)
 	}
-	if n := got["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
-		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 0 (no geo source configured)", n)
+	if n := got["NHP_TOTAL_ATTACK_REGIONS"]; n != 0 {
+		t.Errorf("NHP_TOTAL_ATTACK_REGIONS = %d, want 0 (no geo source configured)", n)
 	}
 	// It has to stay executable as a plain classic script.
 	for _, scheme := range []string{"http://", "https://"} {
@@ -1699,8 +1699,8 @@ func writeDropLogWithSources(t *testing.T, logs, source, day string, pkts int, s
 }
 
 // readTotalNumbers parses the constants out of totalnumber.js. The file is a
-// comment block followed by three `const NAME = <int>;` lines, so a regexp
-// per name is enough and a hand-rolled JS parser would not be.
+// comment block followed by `const NAME = <int>;` lines, so a regexp per name
+// is enough and a hand-rolled JS parser would not be.
 func readTotalNumbers(t *testing.T, out string) map[string]int {
 	t.Helper()
 	b := readArtifact(t, out, "totalnumber.js")
@@ -1722,9 +1722,9 @@ var rangeConstants = regexp.MustCompile(`const (NHP_[A-Z_]+) = (\d+);`)
 // dropped a record would publish a smaller total with no other symptom.
 func TestDayFactsRoundTrip(t *testing.T) {
 	srcs := []uint64{1, 2, 3, 0xffff_ffff_ffff_ffff}
-	countries := []string{"AU", "CN", "US"}
-	enc := encodeDayFacts(srcs, countries)
-	gotSrcs, gotCountries, err := decodeDayFacts(enc)
+	regions := []string{"AU", "CN", "US"}
+	enc := encodeDayFacts(srcs, regions)
+	gotSrcs, gotRegions, err := decodeDayFacts(enc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1736,8 +1736,8 @@ func TestDayFactsRoundTrip(t *testing.T) {
 			t.Errorf("source[%d] = %d, want %d", i, gotSrcs[i], srcs[i])
 		}
 	}
-	if strings.Join(gotCountries, ",") != "AU,CN,US" {
-		t.Errorf("countries = %v, want AU,CN,US", gotCountries)
+	if strings.Join(gotRegions, ",") != "AU,CN,US" {
+		t.Errorf("regions = %v, want AU,CN,US", gotRegions)
 	}
 	// A future layout must be refused rather than decoded as this one: the
 	// bytes would still be plausible, and the site would publish a wrong
@@ -1748,10 +1748,10 @@ func TestDayFactsRoundTrip(t *testing.T) {
 	// A truncated tail loses that day, not the whole run: the complete
 	// records before the cut still decode, and only the partial one is
 	// dropped.
-	if srcs, countries, err := decodeDayFacts(enc[:len(enc)-3]); err != nil {
+	if srcs, regions, err := decodeDayFacts(enc[:len(enc)-3]); err != nil {
 		t.Errorf("truncated file refused outright: %v", err)
-	} else if len(countries) != 2 || countries[1] != "CN" {
-		t.Errorf("truncated file kept %v, want the two complete records AU,CN", countries)
+	} else if len(regions) != 2 || regions[1] != "CN" {
+		t.Errorf("truncated file kept %v, want the two complete records AU,CN", regions)
 	} else if len(srcs) != len(gotSrcs) {
 		t.Errorf("truncated file lost complete source records: %d", len(srcs))
 	}
@@ -1797,21 +1797,24 @@ func TestSiteTotalsUnionAcrossDays(t *testing.T) {
 			got["NHP_TOTAL_ATTACK_SOURCE_IPS"])
 	}
 	// 203.0.113.0/24 resolves to AU in testdata/geo.csv; the other two
-	// resolve to nothing and must not be counted as a country.
-	if got["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
-		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want 1 (AU only)",
-			got["NHP_TOTAL_ATTACK_COUNTRIES"])
+	// resolve to nothing and must not be counted as a region.
+	if got["NHP_TOTAL_ATTACK_REGIONS"] != 1 {
+		t.Errorf("NHP_TOTAL_ATTACK_REGIONS = %d, want 1 (AU only)",
+			got["NHP_TOTAL_ATTACK_REGIONS"])
 	}
 	if got["NHP_TOTAL_ATTACK_BLOCKED"] != 300 {
 		t.Errorf("NHP_TOTAL_ATTACK_BLOCKED = %d, want 300", got["NHP_TOTAL_ATTACK_BLOCKED"])
 	}
 }
 
-// TestSiteHeroShowsSourcesAndCountries covers the hero's second and third
-// figures: the all-time distinct source IPs and countries, rendered beside the
+// TestSiteHeroShowsSourcesAndRegions covers the hero's second and third
+// figures: the all-time distinct source IPs and regions, rendered beside the
 // packet total with the same values totalnumber.js exports, and wired to the
 // counter animation through data-total.
-func TestSiteHeroShowsSourcesAndCountries(t *testing.T) {
+//
+// The exported constant is named for the same set the page shows:
+// NHP_TOTAL_ATTACK_REGIONS.
+func TestSiteHeroShowsSourcesAndRegions(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
 	out := filepath.Join(root, "web")
@@ -1826,24 +1829,24 @@ func TestSiteHeroShowsSourcesAndCountries(t *testing.T) {
 	page := string(readArtifact(t, out, "index.html"))
 	for _, want := range []string{
 		fmt.Sprintf(`id="total-sources" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_SOURCE_IPS"], nums["NHP_TOTAL_ATTACK_SOURCE_IPS"]),
-		fmt.Sprintf(`id="total-countries" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_COUNTRIES"], nums["NHP_TOTAL_ATTACK_COUNTRIES"]),
-		">Source IPs<", ">Countries<",
+		fmt.Sprintf(`id="total-regions" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_REGIONS"], nums["NHP_TOTAL_ATTACK_REGIONS"]),
+		">Source IPs<", ">Regions<",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html missing %q", want)
 		}
 	}
-	if nums["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 || nums["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
-		t.Errorf("totals = %v, want 3 sources / 1 country", nums)
+	if nums["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 || nums["NHP_TOTAL_ATTACK_REGIONS"] != 1 {
+		t.Errorf("totals = %v, want 3 sources / 1 region", nums)
 	}
 	if !strings.Contains(string(readArtifact(t, out, "countup.js")), `querySelectorAll("[data-total]")`) {
 		t.Error("countup.js does not animate every data-total counter")
 	}
 }
 
-// TestSiteHeroHidesZeroCountries: without a geo source no source resolves to a
-// country, and a "0 Countries" figure would read as "attacked from nowhere".
-func TestSiteHeroHidesZeroCountries(t *testing.T) {
+// TestSiteHeroHidesZeroRegions: without a geo source no source resolves to a
+// region, and a "0 Regions" figure would read as "attacked from nowhere".
+func TestSiteHeroHidesZeroRegions(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
 	out := filepath.Join(root, "web")
@@ -1851,26 +1854,162 @@ func TestSiteHeroHidesZeroCountries(t *testing.T) {
 	runSiteCmd(t, logs, out, "-state", filepath.Join(root, "state", "state.json"))
 
 	page := string(readArtifact(t, out, "index.html"))
-	if strings.Contains(page, `id="total-countries"`) {
-		t.Error("hero shows a countries figure with no geo source")
+	if strings.Contains(page, `id="total-regions"`) {
+		t.Error("hero shows a regions figure with no geo source")
 	}
 	if !strings.Contains(page, `id="total-sources"`) {
 		t.Error("hero dropped the source IP figure")
 	}
 }
 
+// TestSiteHomepageNamesTheInternationalStandard pins the wording of the third
+// hero figure: it counts regions, and the note below the hero says where the
+// codes come from.
+//
+// The figure is the number of distinct ISO 3166-1 alpha-2 codes the GeoIP
+// database attributed the attacking addresses to. "Countries" was the wrong
+// word for it -- the standard assigns those codes to every country and area
+// it lists -- so the page calls them regions and names the standard.
+func TestSiteHomepageNamesTheInternationalStandard(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100,
+		"203.0.113.5", "198.51.100.7", "10.0.0.9")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	page := string(readArtifact(t, out, "index.html"))
+	for _, want := range []string{
+		"ISO 3166-1",
+		"Regions follow the international standard",
+		">Regions<",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html missing %q", want)
+		}
+	}
+	// The figure must not be called a country count anywhere on the page. The
+	// new sentence does contain the word -- the standard assigns its codes to
+	// every country and area it lists -- so it is the statistic's own names
+	// that are checked here, not the word itself.
+	lower := strings.ToLower(page)
+	for _, unwanted := range []string{"country total", "country totals", "country count"} {
+		if strings.Contains(lower, unwanted) {
+			t.Errorf("index.html still calls the figure a %q", unwanted)
+		}
+	}
+}
+
+// TestDayReportReadsTheLegacyRegionKey pins that a report published before the
+// region columns were renamed still reads with its region column intact.
+//
+// The per-day JSON files are published and read back -- a day whose raw log
+// has been pruned is re-rendered from the JSON on disk -- so a rename that
+// silently emptied the region column of those pages would drop published
+// data. The key was renamed with the figure it carries: "countries" was the
+// wrong word for the ISO 3166-1 codes the standard assigns to every country
+// and area it lists.
+func TestDayReportReadsTheLegacyRegionKey(t *testing.T) {
+	legacy := []byte(`{
+  "schema": 1,
+  "top_geo": [ { "country": "AU", "events": 12, "unique_ips": 3, "share": 1 } ],
+  "top_ips": [ { "ip": "203.0.113.5", "events": 5, "country": "AU", "city": "Sydney" } ]
+}`)
+	var rep Report
+	if err := json.Unmarshal(legacy, &rep); err != nil {
+		t.Fatalf("a report published before the rename was refused: %v", err)
+	}
+	if len(rep.TopGeo) != 1 || rep.TopGeo[0].Region != "AU" {
+		t.Errorf("top_geo region = %+v, want AU (the legacy key is read)", rep.TopGeo)
+	}
+	if len(rep.TopIPs) != 1 || rep.TopIPs[0].Region != "AU" {
+		t.Errorf("top_ips region = %+v, want AU (the legacy key is read)", rep.TopIPs)
+	}
+}
+
+// TestTotalNumberJSPublishesTheRegionConstant pins the name the region figure
+// is published under.
+//
+// The file exports NHP_TOTAL_ATTACK_REGIONS -- the name that matches what the
+// figure counts, the ISO 3166-1 alpha-2 codes the international standard
+// assigns to every country and area it lists. The old constant was named
+// NHP_TOTAL_ATTACK_COUNTRIES, and it is gone: a published figure called a
+// country count is a claim about those codes that the standard does not
+// support.
+func TestTotalNumberJSPublishesTheRegionConstant(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	body := string(readArtifact(t, out, "totalnumber.js"))
+	if !strings.Contains(body, "const NHP_TOTAL_ATTACK_REGIONS = ") {
+		t.Errorf("totalnumber.js missing the region constant:\n%s", body)
+	}
+	// The old name must be gone, not merely unused: a file that still
+	// exports it keeps the claim alive for every site that embeds it.
+	if strings.Contains(body, "NHP_TOTAL_ATTACK_COUNTRIES") {
+		t.Errorf("totalnumber.js still exports the retired country constant:\n%s", body)
+	}
+
+	nums := readTotalNumbers(t, out)
+	if _, ok := nums["NHP_TOTAL_ATTACK_REGIONS"]; !ok {
+		t.Fatalf("totalnumber.js has no NHP_TOTAL_ATTACK_REGIONS constant: %v", nums)
+	}
+	if _, ok := nums["NHP_TOTAL_ATTACK_COUNTRIES"]; ok {
+		t.Errorf("totalnumber.js still exports NHP_TOTAL_ATTACK_COUNTRIES: %v", nums)
+	}
+}
+
+// TestTotalNumberJSGrepsHitOneLinePerConstant pins the deploy gate's view of
+// the export.
+//
+// The gate greps each constant by name and reads the number off the line it
+// gets, so a name that appears anywhere else in the file -- in a comment, say
+// -- hands it two lines and fails the run on a value that is not a number.
+// The comment that explains the constant's name therefore spells it without
+// the prefix.
+func TestTotalNumberJSGrepsHitOneLinePerConstant(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", filepath.Join(root, "state", "state.json"), "-geo-csv", "testdata/geo.csv")
+
+	body := string(readArtifact(t, out, "totalnumber.js"))
+	for _, name := range []string{
+		"NHP_TOTAL_ATTACK_BLOCKED",
+		"NHP_TOTAL_ATTACK_SOURCE_IPS",
+		"NHP_TOTAL_ATTACK_REGIONS",
+	} {
+		hits := 0
+		for _, line := range strings.Split(body, "\n") {
+			if strings.Contains(line, name) {
+				hits++
+			}
+		}
+		if hits != 1 {
+			t.Errorf("%s appears on %d line(s) of totalnumber.js, want 1 -- the deploy gate greps it by name:\n%s",
+				name, hits, body)
+		}
+	}
+}
+
 // TestGeoInstallReachesPublishedDays covers the deploy that drops the
 // GeoLite2 database onto the relay. Nothing about those days' raw logs
 // changes, so without the geo fingerprint in state.json they would never be
-// re-analyzed and the site's country total would stay at whatever the days
+// re-analyzed and the site's region total would stay at whatever the days
 // after the install happened to see.
 func TestGeoInstallReachesPublishedDays(t *testing.T) {
 	logs, out := stageTestdata(t)
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	runSiteCmd(t, logs, out, "-state", statePath)
 
-	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 0 {
-		t.Fatalf("countries = %d before any geo source exists, want 0", n)
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_REGIONS"]; n != 0 {
+		t.Fatalf("regions = %d before any geo source exists, want 0", n)
 	}
 	if st := readSiteStateAt(t, statePath); st.Days["server"][siteDay1].Geo != "" {
 		t.Errorf("state records geo %q for a day analyzed without one",
@@ -1879,8 +2018,8 @@ func TestGeoInstallReachesPublishedDays(t *testing.T) {
 
 	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
 
-	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
-		t.Errorf("countries = %d after installing a geo source, want 1", n)
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_REGIONS"]; n != 1 {
+		t.Errorf("regions = %d after installing a geo source, want 1", n)
 	}
 	jb, err := os.ReadFile(filepath.Join(out, "d", "server", siteDay1+".json"))
 	if err != nil {
@@ -1909,8 +2048,8 @@ func TestGeoRemovalKeepsPublishedAttribution(t *testing.T) {
 
 	runSiteCmd(t, logs, out, "-state", statePath) // database gone
 
-	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; n != 1 {
-		t.Errorf("countries = %d after the geo source went away, want 1 (kept)", n)
+	if n := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_REGIONS"]; n != 1 {
+		t.Errorf("regions = %d after the geo source went away, want 1 (kept)", n)
 	}
 }
 
@@ -2024,5 +2163,72 @@ func TestCollectRawInputsAcSource(t *testing.T) {
 		if _, ok := got[k]; !ok {
 			t.Errorf("missing input %s", k)
 		}
+	}
+}
+
+// TestSitePageOnlyDayMigratesThePublishedRecord pins that a day published
+// before the region columns were renamed is rewritten in the current format
+// when it is re-rendered from its JSON, so the public d/ tree never carries
+// two spellings of the same column. Its numbers are kept, not recomputed.
+func TestSitePageOnlyDayMigratesThePublishedRecord(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	dayJSON := filepath.Join(out, "d", "server", siteDay1+".json")
+	cur, err := os.ReadFile(dayJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Write the day back the way a pre-rename binary published it.
+	legacy := strings.ReplaceAll(string(cur), `"region"`, `"country"`)
+	legacy = strings.Replace(legacy, fmt.Sprintf(`"schema": %d`, reportSchema), `"schema": 1`, 1)
+	if err = os.WriteFile(dayJSON, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.RemoveAll(filepath.Join(logs, "server")); err != nil {
+		t.Fatal(err)
+	}
+	// Another day still has its log: the site refuses to run with none.
+	writeDropLogWithSources(t, logs, "server", siteDay2, 50, "198.51.100.7")
+	b, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st SiteState
+	if err = json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	d := st.Days["server"][siteDay1]
+	d.Render = 0
+	st.Days["server"][siteDay1] = d
+	if b, err = json.Marshal(&st); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(statePath, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	got, err := os.ReadFile(dayJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), `"country"`) {
+		t.Errorf("the page-only day still publishes the pre-rename key:\n%s", got)
+	}
+	var rep Report
+	if err := json.Unmarshal(got, &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Schema != reportSchema {
+		t.Errorf("schema = %d, want %d", rep.Schema, reportSchema)
+	}
+	if len(rep.TopGeo) == 0 || rep.TopGeo[0].Region != "AU" {
+		t.Errorf("top_geo = %+v, want the AU row carried over", rep.TopGeo)
 	}
 }

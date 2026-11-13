@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
+* **demo:** the stats site's exported region figure is renamed.
+  `totalnumber.js` no longer exports `NHP_TOTAL_ATTACK_COUNTRIES`; the figure is published as `NHP_TOTAL_ATTACK_REGIONS`, and the per-day JSON reports their region columns under `region` instead of `country` (report `schema: 2`), and `history.json` records the figure under `totals.regions` instead of `totals.countries`.
+  The ISO 3166-1 alpha-2 codes the figure counts belong to dependencies, disputed areas and special political areas as well as to states, so a published constant called a country count is a claim about those codes that the standard does not support.
+  A site that embeds `totalnumber.js` with `<script src>` has to switch to the new constant; a reader of the published per-day JSON has to switch to the new key. The reader still accepts the old spelling, so a snapshot or an archived report written before the rename loads unchanged, and a published day whose raw log is gone has its JSON rewritten in the new format on the next run, so the public `d/` tree never mixes the two.
+  Rollback: a binary from before this release re-renders the days whose raw log is gone from their JSON, does not know the `region` key and shows those days with an empty region column; their numbers are unaffected, and deploying this release again restores the column.
 * **ac:** the nhp-ac's XDP ingress filter now judges IPv6 traffic, so a v6 listener the filter does not know about is unreachable after the upgrade.
   tcp/22 is the exception and is passed on both address families — the security group is the layer that restricts SSH, not the filter — so an operator who manages the AC over IPv6 is not locked out.
   `DisableIPv6Filter = true` in the AC's `etc/config.toml` turns the whole IPv6 tree off and restores the pre-upgrade behaviour of passing every v6 packet.
@@ -21,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **ac:** the nhp-ac's XDP ingress filter is narrowed to the nhp-server's rules: UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and by the answers to the host's own queries, a non-first IPv4 fragment is not judged by bytes that are not a header, and an ICMP echo reply needs the same whitelist entry the echo request does.
 * **ac:** the nhp-ac's audit ring now spends two separate global allowances — one for the deny channel, one for the accept channel — so that a flood of drops cannot exhaust the log that records what was *admitted*.
 * **ac:** a peer whose knock window has closed is classified as a legitimate peer for a further 60 seconds (`NHP_KNOCK_EXPIRED_GRACE_SEC`) instead of for one packet.
-  The retransmitted last segment of a session, a late FIN and a keepalive sent after the AC stopped listening are the tail of an authorised session, not a scan; counting them as scans put an authorised peer's address, and the country it is in, into the published attacker totals.
+  The retransmitted last segment of a session, a late FIN and a keepalive sent after the AC stopped listening are the tail of an authorised session, not a scan; counting them as scans put an authorised peer's address, and the region it is in, into the published attacker totals.
   The grace applies to the whitelist entries that are scoped to the peer *and* to the port (`spp`, `src_port`, `port_list`); the two that are not — `sdwhitelist`, which has no port in its key, and `protocol_port`, which has no peer in its — keep their previous behaviour.
 * **ac:** the nhp-ac's XDP ingress filter can narrow the two client-protocol port pairs to a source address or prefix: `DhcpServerIP` and `NtpServerIP` in the AC's `etc/config.toml`.
   Both default to empty, which narrows nothing — the pair is admitted from any source, exactly as before the settings existed — so a deployment that says nothing keeps the behaviour it had.

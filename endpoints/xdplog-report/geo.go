@@ -13,9 +13,13 @@ import (
 )
 
 // Geo is the location of one address.
+//
+// Region is the ISO 3166-1 alpha-2 code the address was attributed to: the
+// international standard assigns those codes to every country and area it
+// lists, so the set is regions and not countries.
 type Geo struct {
-	Country string
-	City    string
+	Region string
+	City   string
 }
 
 // GeoResolver maps an address to a location. Implementations must be offline.
@@ -23,7 +27,10 @@ type GeoResolver interface {
 	Lookup(netip.Addr) (Geo, bool)
 }
 
-// csvGeo is a longest-prefix-match table loaded from "cidr,country[,city]".
+// csvGeo is a longest-prefix-match table loaded from "cidr,region[,city]".
+//
+// The header row is ignored: the loader reads the columns by position, so a
+// file whose header still says "country" keeps working.
 type csvGeo struct {
 	lens  []int // distinct prefix lengths, descending
 	table map[int]map[netip.Prefix]Geo
@@ -47,7 +54,7 @@ func loadGeoCSV(path string) (GeoResolver, error) {
 		}
 		parts := strings.Split(line, ",")
 		if len(parts) < 2 {
-			return nil, fmt.Errorf("%s:%d: want cidr,country[,city]", path, n)
+			return nil, fmt.Errorf("%s:%d: want cidr,region[,city]", path, n)
 		}
 		p, err := netip.ParsePrefix(strings.TrimSpace(parts[0]))
 		if err != nil {
@@ -57,7 +64,7 @@ func loadGeoCSV(path string) (GeoResolver, error) {
 			return nil, fmt.Errorf("%s:%d: %w", path, n, err)
 		}
 		p = p.Masked()
-		geo := Geo{Country: strings.TrimSpace(parts[1])}
+		geo := Geo{Region: strings.TrimSpace(parts[1])}
 		if len(parts) > 2 {
 			geo.City = strings.TrimSpace(parts[2])
 		}
@@ -109,15 +116,18 @@ func (g *mmdbGeo) Lookup(a netip.Addr) (Geo, bool) {
 	if err != nil {
 		return Geo{}, false
 	}
-	country := rec.Country.IsoCode
-	if country == "" {
-		country = rec.RegisteredCountry.IsoCode
+	// rec.Country and rec.RegisteredCountry are the database's own fields;
+	// the code they carry is an ISO 3166-1 alpha-2 code, which is what this
+	// tool calls a region.
+	region := rec.Country.IsoCode
+	if region == "" {
+		region = rec.RegisteredCountry.IsoCode
 	}
 	city := rec.City.Names["en"]
-	if country == "" && city == "" {
+	if region == "" && city == "" {
 		return Geo{}, false
 	}
-	return Geo{Country: country, City: city}, true
+	return Geo{Region: region, City: city}, true
 }
 
 // isReserved reports addresses that never get a geo lookup.

@@ -950,6 +950,35 @@ func TestHistoryGeneratorFromSavedPage(t *testing.T) {
 	}
 }
 
+// TestHistoryPageParsesBothRegionHeroIds pins the backward compatibility the
+// homepage's third hero figure rests on.
+//
+// The figure was labelled "Countries" until it was renamed to "Regions" (the
+// codes it counts are ISO 3166-1 alpha-2, which cover a country, a dependency
+// and a special political area alike), and its element id went with it. A copy
+// of the homepage saved before the rename is the only carrier of the days
+// below the publishing floor, so the parser has to read the old id as well as
+// the new one.
+func TestHistoryPageParsesBothRegionHeroIds(t *testing.T) {
+	for _, id := range []string{"total-regions", "total-countries"} {
+		t.Run(id, func(t *testing.T) {
+			page := `<html><body><div class="hero-stats">` +
+				`<div class="hero-stat"><div><span class="hero-num" id="total-attacks" data-total="3501020">3,501,020</span></div><div class="hero-label">Attack packets blocked</div></div>` +
+				`<div class="hero-stat"><div><span class="hero-num" id="total-sources" data-total="25136">25,136</span></div><div class="hero-label">Source IPs</div></div>` +
+				`<div class="hero-stat"><div><span class="hero-num" id="` + id + `" data-total="130">130</span></div><div class="hero-label">Regions</div></div>` +
+				`</div></body></html>`
+
+			got, err := historyPageFromHTMLBytes([]byte(page))
+			if err != nil {
+				t.Fatalf("historyPageFromHTMLBytes: %v", err)
+			}
+			if got.Regions != 130 {
+				t.Errorf("regions = %d, want 130", got.Regions)
+			}
+		})
+	}
+}
+
 // TestHistoryGeneratorRefusesInconsistentPage pins the generator's own
 // check: a page whose rows do not add up to its hero total is refused, so a
 // parsing slip cannot become a permanent baseline.
@@ -1058,7 +1087,7 @@ func TestHistoryGeneratorFromIndexJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	totalsPath := filepath.Join(dir, "totalnumber.js")
-	totalsBody := totalNumberJS(hist.Blocked, hist.Sources, hist.Countries, hist.Since, historyBaseline{}, nil)
+	totalsBody := totalNumberJS(hist.Blocked, hist.Sources, hist.Regions, hist.Since, historyBaseline{}, nil)
 	if err = os.WriteFile(totalsPath, []byte(totalsBody), 0o644); err != nil {
 		t.Fatal(err)
 	}

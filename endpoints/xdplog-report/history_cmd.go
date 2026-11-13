@@ -35,12 +35,17 @@ import (
 
 // historyPage is what a saved page (or a published index) yields before it is
 // checked against itself.
+//
+// Regions is the number of distinct ISO 3166-1 alpha-2 codes the page's
+// sources were attributed to. The homepage calls this figure "Regions": a
+// two-letter code covers a country, a dependency and a special political area
+// alike, so "countries" was the wrong word for it.
 type historyPage struct {
-	Blocked   uint64
-	Sources   int
-	Countries int
-	Since     string
-	Rows      []SiteDaySummary
+	Blocked uint64
+	Sources int
+	Regions int
+	Since   string
+	Rows    []SiteDaySummary
 }
 
 var (
@@ -118,7 +123,7 @@ func runHistory(args []string, stdout io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "history: %d day(s) from %s, %d blocked packet(s), %d source IP(s), counting from %s\n",
 		len(hist.Days), *outPath, hist.Totals.Blocked, hist.Totals.SourceIPs, hist.Since)
-	fmt.Fprintf(stdout, "history: the page's country figure (%d) is not recorded: the site's country total is the union over the published days\n", page.Countries)
+	fmt.Fprintf(stdout, "history: the page's region figure (%d) is not recorded: the site's region total is the union over the published days\n", page.Regions)
 	return nil
 }
 
@@ -167,13 +172,18 @@ func historyPageFromHTMLBytes(b []byte) (*historyPage, error) {
 				return
 			}
 			page.Sources = v
-		case "total-countries":
+		case "total-regions", "total-countries":
+			// The homepage's third hero figure was renamed from "Countries"
+			// to "Regions", and its element id with it. Both ids are
+			// accepted: a copy of the homepage saved before the rename is
+			// the only carrier of the days below the publishing floor, and
+			// refusing it would throw that history away.
 			v, err := heroCount(n)
 			if err != nil {
 				heroErr = fmt.Errorf("%s: %w", id, err)
 				return
 			}
-			page.Countries = v
+			page.Regions = v
 		}
 	})
 	if heroErr != nil {
@@ -240,11 +250,13 @@ func historyPageFromIndex(indexPath, totalsPath string) (*historyPage, error) {
 			}
 			page.Sources = v
 		case "COUNTRIES":
+			// totalNumberRe matches the constant's published name, which
+			// stayed "COUNTRIES" for the sake of the sites embedding it.
 			v, err := historyCount(m[2])
 			if err != nil {
 				return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
 			}
-			page.Countries = v
+			page.Regions = v
 		}
 		seen[m[1]] = true
 	}
@@ -313,14 +325,18 @@ func buildSiteHistory(page *historyPage) (*SiteHistory, error) {
 		Totals: HistoryTotals{
 			Blocked:   page.Blocked,
 			SourceIPs: page.Sources,
-			// The page's country figure is deliberately not recorded. The
-			// published country total is the union over the published days
-			// and nothing else, so a snapshot's country count could only
-			// ever be wrong: countries are a closed set of ~250 codes that
-			// both periods share almost entirely, and the site published
-			// 162 from a 130-country snapshot. The generator reads the
-			// figure (a page that cannot say it is not a stats page) and
-			// reports it on stdout, but writes 0.
+			// The page's region figure is deliberately not recorded. The
+			// published region total is the union over the published days
+			// and nothing else, so a snapshot's region count could only
+			// ever be wrong: the ISO 3166-1 alpha-2 codes are a closed set
+			// of ~250 that both periods share almost entirely, and the
+			// site published 162 from a 130-region snapshot. The generator
+			// reads the figure (a page that cannot say it is not a stats
+			// page) and reports it on stdout, but writes 0.
+			//
+			// The field name and its json tag stay "countries": the
+			// snapshot format is published, and the site reads the key
+			// as it is written today.
 			Countries: 0,
 		},
 		Days: rows,
@@ -535,7 +551,7 @@ func heroNumber(n *html.Node) (uint64, error) {
 }
 
 // heroCount reads one of the homepage's hero figures that counts addresses
-// or countries.
+// or regions.
 //
 // The figure is read as an int and never converted into one from a wider
 // type: a figure past the range of an int is a page that does not say what it
@@ -549,7 +565,7 @@ func heroCount(n *html.Node) (int, error) {
 	return historyCount(txt)
 }
 
-// historyCount parses a figure that counts addresses or countries.
+// historyCount parses a figure that counts addresses or regions.
 //
 // It is read as an int and never converted from a wider type: a figure past
 // the range of an int is not a count, and converting it would wrap it into a

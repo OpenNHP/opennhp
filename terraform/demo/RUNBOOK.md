@@ -1705,9 +1705,9 @@ marker file created before the run. The first says the flag reached the
 collector; the second says the file nginx serves was rewritten. A source that
 could not be listed is reported as a warning rather than a failure — the
 site was rebuilt, but the published days may be stale, and the collector's
-unit still records the failure. The published country figure is bounded at a
-generous 400 — there are only ~250 ISO 3166-1 alpha-2 codes, and a total
-above that is the double count the country rule exists to prevent.
+unit still records the failure. The published country figure is bounded at
+250 — there are only ~250 ISO 3166-1 alpha-2 codes, and a total above that
+is the double count the country rule exists to prevent.
 
 A step after the first run guarantees two things whatever the run did: the
 force flag does not outlive the deploy (a leaked `XDPSTATS_SITE_FORCE` would
@@ -1831,25 +1831,27 @@ go run ./xdplog-report history \
   `totals.blocked` must equal the sum of its own days' `drop_pkts`, and the
   site refuses to load a snapshot where it does not. So the hero total is
   still the sum of every row of `index.json`.
-- **The source count adds the snapshot's remainder; the country count only
-  floors it.** Both figures are unions over every published day, and the
-  snapshot's own `source_ips` / `countries` are used only for its days whose
-  per-day records are gone. For sources, the part of `source_ips` those days
+- **The source count adds the snapshot's remainder; the country count never
+  uses it.** Both figures are unions over every published day. For sources,
+  the part of `source_ips` the snapshot's days whose per-day records are gone
   alone can have contributed is added to the union: a source active in both
   periods is counted once in each, so that figure is an **upper bound**. For
-  countries, `max(live union, snapshot countries)` is published: countries
-  are a closed set the two periods share almost entirely, so adding would
-  count most of them twice and could exceed the number of countries there
-  are, while the larger of the two sets never counts one twice — a **lower
-  bound**. The homepage, `totalnumber.js` and the README all say which bound
-  each figure is.
-- **Expect the country figure to drop.** The deployed snapshot records 130
-  countries, and the site was publishing that baseline *plus* its live union
-  (162 on 2026-11-12). The first deploy with the fixed binary publishes the
-  larger of the two instead, so the number falls to about 130 in one step.
-  That is the fix, not a regression: the old number counted countries seen in
-  both periods twice. The source count does not drop — it still carries the
-  snapshot's remainder.
+  countries, the snapshot's own count is **never applied at all**: the
+  published figure is the union over the published days and nothing else.
+  Countries are a closed set the two periods share almost entirely, so adding
+  would count most of them twice and could exceed the number of countries
+  there are, and the larger of the two sets could only ever be a **lower
+  bound** that misses a country seen in one period alone. The homepage,
+  `totalnumber.js` and the README all say which bound each figure is.
+- **Expect the country figure to drop.** The deployed snapshot used to record
+  130 countries, and the site published that baseline *plus* its live union
+  (162 on 2026-11-12) — more countries than there are. The snapshot now
+  records `countries: 0` and the site ignores the field, so the published
+  figure is the live union alone (about 32 on 2026-11-12) and can never
+  exceed the ~250 ISO 3166-1 alpha-2 codes. That is the fix, not a
+  regression: the old number counted countries seen in both periods twice.
+  The source count does not drop — it still carries the snapshot's
+  remainder.
 - **Rolling it back** is removing the day from `history.json` (or the whole
   file): the next run rewrites the homepage, the day becomes a live row
   again and the day page is linked once more. The fingerprint of the file

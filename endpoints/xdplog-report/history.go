@@ -77,10 +77,20 @@ type HistoryTotals struct {
 	SourceIPs int `json:"source_ips"`
 	// Countries is the number of distinct countries the saved period saw.
 	//
-	// Like SourceIPs it is never added on top of the live union, and it is
-	// used only when some of the snapshot's days have no facts. Unlike
-	// SourceIPs it is not added at all: it is a floor under the union, see
-	// historyBaseline.
+	// It is recorded and never applied. The published country total is the
+	// union over the published days and nothing else; see historyBaseline.
+	// The field stays in the file for schema compatibility and so a reader
+	// can tell what the saved page said, but the site only checks that it is
+	// not negative.
+	//
+	// Countries are a closed set of ~250 codes that the snapshot's period and
+	// the live one share almost entirely, so no arithmetic can merge the
+	// snapshot's count with the live union: adding counts most of them twice
+	// (the site published 162 from a 130-country snapshot) and can push the
+	// total past the number of countries there are, and taking the larger of
+	// the two can only ever be a lower bound that misses a country seen in
+	// one period alone. The count is therefore kept out of the arithmetic
+	// entirely.
 	Countries int `json:"countries"`
 }
 
@@ -178,7 +188,7 @@ func (h *SiteHistory) Rows() []SiteDaySummary {
 }
 
 // historyBaseline is what the history snapshot contributes to the all-time
-// source and country counts.
+// source count.
 //
 // The snapshot carries its own all-time figures for the period it froze. The
 // site's per-day facts (facts.go) carry the same information for every day
@@ -191,28 +201,24 @@ func (h *SiteHistory) Rows() []SiteDaySummary {
 //
 // What is left of the baseline is the part that covers the snapshot's days
 // whose facts are gone -- the days the live site cannot produce at all.
-// Nothing else carries those days' attackers, and the two figures stand in
-// for them in different ways:
+// Nothing else carries those days' attackers, so the remainder is added and
+// the published source figure becomes an upper bound. Addresses are an open
+// set, so the remainder is mostly new attackers, and adding it is the closest
+// figure available.
 //
-//   - Sources: the remainder is added, and the published figure becomes an
-//     upper bound. Addresses are an open set, so the remainder is mostly new
-//     attackers, and adding it is the closest figure available.
-//   - Countries: the snapshot's count is a floor under the union -- the larger
-//     of the two is published -- and the figure becomes a lower bound.
-//     Countries are a small closed set (~250 codes) that the two periods
-//     share almost entirely, so adding the remainder would count most of
-//     them twice and could push the total past the number of countries there
-//     are. Both sets are subsets of the true one, so the larger of their
-//     sizes never counts a country twice.
+// The country total is never touched by the snapshot. Countries are a closed
+// set of ~250 codes that the two periods share almost entirely, so no
+// arithmetic can merge the snapshot's count with the live union: adding
+// counts most of them twice and can push the total past the number of
+// countries there are, while the larger of the two can only ever miss a
+// country seen in one period alone. The published country total is therefore
+// the union over the published days, and the snapshot's own count is recorded
+// and never applied -- see HistoryTotals.Countries.
 type historyBaseline struct {
 	// Sources is the number of attackers the baseline adds.
 	Sources int
-	// Countries is the number of countries the baseline adds: whatever lifts
-	// the union up to the snapshot's own count, and zero when the union is
-	// already at least that.
-	Countries int
 	// Applied is true when the baseline contributed anything, i.e. when the
-	// snapshot's own counts stood in for days whose facts are gone.
+	// snapshot's own source count stood in for days whose facts are gone.
 	Applied bool
 	// Unavailable is true when the baseline could not be applied at all: the
 	// snapshot lists days below the publishing floor, and a snapshot-level
@@ -262,10 +268,9 @@ func (b historyBaseline) sourcesBound() figureBound {
 
 // countriesBound is the kind of number the published country total is.
 //
-// It is never an upper bound: the snapshot's count is a floor under the union,
-// not an addend, so no country is counted twice. With any day's facts gone,
-// whether or not the snapshot stood in for it, a country seen only on that
-// day can be missing: a lower bound.
+// The snapshot never contributes to it, so the figure is the union over the
+// published days and no more. With any day's facts gone, a country seen only
+// on that day can be missing: a lower bound.
 func (b historyBaseline) countriesBound() figureBound {
 	if b.Missing {
 		return boundLower
@@ -328,29 +333,26 @@ func (h *SiteHistory) BelowFloor(publishes func(day string) bool) bool {
 }
 
 // baselineFor computes what the snapshot contributes to the all-time source
-// and country counts.
+// count.
 //
 // snapUnion is the union over the snapshot's published days whose per-day
-// facts are still on disk, union is the union over every published day, and
-// missing counts the snapshot's published days whose facts are not. The
-// baseline is used only when there are such days.
+// facts are still on disk, and missing counts the snapshot's published days
+// whose facts are not. The baseline is used only when there are such days.
 //
 // Sources: only the part of the snapshot's count that the days with facts do
 // not already account for is added. The snapshot's count is the union over
 // *all* its days, so subtracting the part the facts cover leaves what the
 // remaining days alone can have contributed.
 //
-// Countries: the snapshot's count lifts the published union up to it and no
-// further, so the published figure is max(union, snapshot). Both are subsets
-// of the true set of countries -- the snapshot's period and every published
-// day are all published -- so the larger of the two is a lower bound that
-// never counts a country twice.
+// Countries: nothing. The snapshot's country count is recorded and never
+// applied; the published country total is the union over the published days.
+// See historyBaseline.
 //
 // The caller must not use this when the snapshot lists days below the
 // publishing floor: the "remaining days" would then include days the site
 // does not publish, and their attackers would be counted in the published
 // totals. See BelowFloor and historyBaseline.Unavailable.
-func (h *SiteHistory) baselineFor(snapUnion, union factsUnion, missing int) historyBaseline {
+func (h *SiteHistory) baselineFor(snapUnion factsUnion, missing int) historyBaseline {
 	var b historyBaseline
 	if h == nil || missing == 0 {
 		return b
@@ -359,11 +361,7 @@ func (h *SiteHistory) baselineFor(snapUnion, union factsUnion, missing int) hist
 	if b.Sources < 0 {
 		b.Sources = 0
 	}
-	b.Countries = h.Totals.Countries - union.Countries
-	if b.Countries < 0 {
-		b.Countries = 0
-	}
-	b.Applied = b.Sources > 0 || b.Countries > 0
+	b.Applied = b.Sources > 0
 	return b
 }
 

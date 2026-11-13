@@ -116,8 +116,9 @@ func runHistory(args []string, stdout io.Writer) error {
 	if err := writeFileAtomic(*outPath, b, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", *outPath, err)
 	}
-	fmt.Fprintf(stdout, "history: %d day(s) from %s, %d blocked packet(s), %d source IP(s), %d country/countries (recorded, not added to the site's country total), counting from %s\n",
-		len(hist.Days), *outPath, hist.Totals.Blocked, hist.Totals.SourceIPs, hist.Totals.Countries, hist.Since)
+	fmt.Fprintf(stdout, "history: %d day(s) from %s, %d blocked packet(s), %d source IP(s), counting from %s\n",
+		len(hist.Days), *outPath, hist.Totals.Blocked, hist.Totals.SourceIPs, hist.Since)
+	fmt.Fprintf(stdout, "history: the page's country figure (%d) is not recorded: the site's country total is the union over the published days\n", page.Countries)
 	return nil
 }
 
@@ -312,7 +313,15 @@ func buildSiteHistory(page *historyPage) (*SiteHistory, error) {
 		Totals: HistoryTotals{
 			Blocked:   page.Blocked,
 			SourceIPs: page.Sources,
-			Countries: page.Countries,
+			// The page's country figure is deliberately not recorded. The
+			// published country total is the union over the published days
+			// and nothing else, so a snapshot's country count could only
+			// ever be wrong: countries are a closed set of ~250 codes that
+			// both periods share almost entirely, and the site published
+			// 162 from a 130-country snapshot. The generator reads the
+			// figure (a page that cannot say it is not a stats page) and
+			// reports it on stdout, but writes 0.
+			Countries: 0,
 		},
 		Days: rows,
 	}, nil

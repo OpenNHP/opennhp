@@ -245,7 +245,7 @@ The snapshot is:
 {
   "schema": 1,
   "since": "2026-10-16",
-  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 130 },
+  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 0 },
   "days": [
     {
       "source": "server",
@@ -311,13 +311,23 @@ days' attackers. The two figures use it differently:
   do not already cover is **added** to the union. Addresses are an open set,
   so that remainder is mostly new attackers, but an address seen in both
   periods is counted twice: the figure is an **upper bound**.
-- **Countries:** the snapshot's `countries` is a **floor** under the union —
-  the larger of the two is published. Countries are a small closed set (~250
-  codes) that the two periods share almost entirely, so adding the remainder
-  would count most of them twice (a 130-country snapshot pushed the site to
-  162). Both sets are subsets of the true one, so the larger never counts a
-  country twice; it can miss one seen in only one period: the figure is a
-  **lower bound**.
+- **Countries:** the snapshot's `countries` is **never applied at all**. The
+  published figure is the union over the published days and nothing else.
+  Countries are a closed set (~250 codes) that the two periods share almost
+  entirely, so no arithmetic can merge the snapshot's count with the live
+  union: adding it counts most of them twice (a 130-country snapshot pushed
+  the site to 162) and can push the total past the number of countries there
+  are, while the larger of the two can only ever be a lower bound that misses
+  a country seen in one period alone. The generator therefore records
+  `countries: 0` and the site ignores the field — a snapshot that still
+  carries an old count is read, warned about on stdout, and has no effect on
+  the published figure.
+
+**The invariant in one line: the snapshot contributes open-set statistics
+(source IPs) and never closed-set ones (countries).** The published country
+total is therefore bounded by the number of distinct country labels the geo
+source can produce, and by nothing else — which is why the deploy gate on it
+is 250 and not 400.
 
 The homepage and `totalnumber.js` print the same sentence saying which bound
 each figure is (`historyBaseline.boundNote`).
@@ -770,7 +780,7 @@ go run ./xdplog-report site \
 {
   "schema": 1,
   "since": "2026-10-16",
-  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 130 },
+  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 0 },
   "days": [
     {
       "source": "server",
@@ -819,6 +829,16 @@ go run ./xdplog-report site \
 根本造不出来的那些日子。除此之外没有别的东西携带那些天的攻击者，此时公布的数字是**上界**而
 不是精确值；发生这种情况时首页会写明。
 
+**国家数则完全不采用快照的。** 公布的国家数就是已发布各天国家集合的并集，别无其他来源。国家是
+一个封闭集（ISO 3166-1 alpha-2，约 250 个码），两期几乎完全重合：把快照的计数加上就会把绝大多数
+国家数两遍（一份 130 国的快照曾把站点顶到 162），已经越过了世界上国家的总数；取两者较大值虽然
+不会重复计数，却只能是个下界，总会漏掉只在一期出现过的国家。所以生成器写 `countries: 0`，站点
+也完全不读这个字段 —— 快照里还留着旧值的，照读不误，只在 stdout 上提示一句，然后忽略。
+
+一句话概括这条不变式：**快照只贡献开放集统计量（来源 IP），绝不贡献封闭集统计量（国家）。**
+因此公布的国家数上界就是 geo 源能产出的不同国家标签数，部署流水线上的闸门也因此是 250 而不是
+400。
+
 **读不到的快照会让运行直接失败。** `-history` 指向不存在或非法的文件是错误，绝不会静默退化成
 "只统计自己的数据" —— 那会让公布的累计值凭空少掉一块且没人能复核。文件内容的指纹写进
 `state.json`，所以即使日志一个没变，改了快照也会重写首页。
@@ -838,10 +858,15 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 生成器拒绝写出一份对不上的快照：解析出的各行之和必须等于页面自己的累计总数，页面自称的统计
 起点必须等于它最早的那一行。否则一次解析失误就会把错误的基线永久写进站点历史。
 
+页面自己的国家数会被读出来（读不出就说明这不是一张统计页），但**不会**被写进快照：快照里的
+`countries` 恒为 `0`，站点也完全不采用它。生成器会在 stdout 上把读到的那个数字报出来，供人工
+核对。
+
 入库的种子文件是 `deploy/config-templates/xdpstats/history.json`，由
 `testdata/history-page-2026-10-26.html` 生成 —— 那是一份公开首页的存档，也是 `testdata/`
 里唯一一个不是手写合成数据的 fixture。`TestHistorySeedSnapshotIsShipped` 把入库文件钉死在
-生成结果上，两者不会各走各的。
+生成结果上，两者不会各走各的；`TestHistorySeedSnapshotCarriesNoCountryCount` 另外钉住它的
+`countries` 是 0 —— 手改数据不能把国家数塞回去。
 
 ### 模板改动会覆盖已发布的页面
 

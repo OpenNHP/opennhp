@@ -419,8 +419,9 @@ func runSite(args []string, stdout io.Writer) error {
 	// snapshot is used only for its days whose facts are gone — the days the
 	// live site cannot produce at all — because nothing else carries those
 	// days' attackers: the part of its source count those days alone can have
-	// contributed is added, and its country count is a floor under the union.
-	// See historyBaseline for why the two figures differ.
+	// contributed is added. Its country count is never applied at all: the
+	// published country total is the union over the published days. See
+	// historyBaseline for why the two figures differ.
 	var snapshotRows []SiteDaySummary
 	var frozenRows []SiteDaySummary
 	if hist != nil {
@@ -471,7 +472,7 @@ func runSite(args []string, stdout io.Writer) error {
 	var baseline historyBaseline
 	if hist != nil && len(snapshotRows) > 0 && !baselineUnavailable {
 		snapUnion := unionDayFacts(opts.StatePath, snapshotRows)
-		baseline = hist.baselineFor(snapUnion, union, len(snapUnion.Missing))
+		baseline = hist.baselineFor(snapUnion, len(snapUnion.Missing))
 	}
 	if baselineUnavailable {
 		baseline = historyBaseline{Unavailable: true}
@@ -483,7 +484,7 @@ func runSite(args []string, stdout io.Writer) error {
 	if len(union.Missing) > 0 {
 		switch {
 		case baseline.Applied:
-			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own counts stand in for them: its source count is added, so the all-time source total may count an address seen in both periods twice (upper bound), and its country count is a floor under the union, so the all-time country total may miss a country (lower bound)\n",
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own source count stands in for them: it is added, so the all-time source total may count an address seen in both periods twice (upper bound); the all-time country total is the union over the published days and may miss a country (lower bound)\n",
 				len(union.Missing), strings.Join(union.Missing, ", "))
 		case baselineUnavailable:
 			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the history snapshot's own counts cannot be applied (it lists day(s) below -since %s), so the all-time totals are a lower bound\n",
@@ -508,11 +509,18 @@ func runSite(args []string, stdout io.Writer) error {
 	if hist != nil {
 		switch {
 		case baselineUnavailable:
-			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s) and lists day(s) below -since %s; its own source count (%d) and country count (%d) are not applied, because a snapshot-level total cannot be split by day\n",
-				len(snapshotRows), opts.Since, hist.Totals.SourceIPs, hist.Totals.Countries)
+			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s) and lists day(s) below -since %s; its own source count (%d) is not applied, because a snapshot-level total cannot be split by day\n",
+				len(snapshotRows), opts.Since, hist.Totals.SourceIPs)
 		case len(snapshotRows) > 0:
-			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s); its own source count (%d) is added and its country count (%d) is a floor under the union, only for the days whose per-day records are gone\n",
-				len(snapshotRows), hist.Totals.SourceIPs, hist.Totals.Countries)
+			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s); its own source count (%d) is added, only for the days whose per-day records are gone\n",
+				len(snapshotRows), hist.Totals.SourceIPs)
+		}
+		// The snapshot's country count is recorded and never applied, so a
+		// snapshot that still carries one says so rather than leaving an
+		// operator to wonder why the published figure ignores it.
+		if hist.Totals.Countries != 0 {
+			fmt.Fprintf(stdout, "site: the history snapshot's country count (%d) is ignored: the all-time country total is the union over the published days\n",
+				hist.Totals.Countries)
 		}
 	}
 

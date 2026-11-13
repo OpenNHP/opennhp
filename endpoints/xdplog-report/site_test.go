@@ -1281,8 +1281,8 @@ func TestTotalNumberJSEmptySite(t *testing.T) {
 			t.Errorf("empty site %s = %d, want 0:\n%s", name, n, b)
 		}
 	}
-	if got := len(readTotalNumbers(t, out)); got != 3 {
-		t.Errorf("empty site exports %d constants, want all 3:\n%s", got, b)
+	if got := len(readTotalNumbers(t, out)); got != 4 {
+		t.Errorf("empty site exports %d constants, want all 4:\n%s", got, b)
 	}
 	if strings.Contains(string(b), "Counting starts:") {
 		t.Error("empty site must not claim a counting start date")
@@ -1699,8 +1699,8 @@ func writeDropLogWithSources(t *testing.T, logs, source, day string, pkts int, s
 }
 
 // readTotalNumbers parses the constants out of totalnumber.js. The file is a
-// comment block followed by three `const NAME = <int>;` lines, so a regexp
-// per name is enough and a hand-rolled JS parser would not be.
+// comment block followed by `const NAME = <int>;` lines, so a regexp per name
+// is enough and a hand-rolled JS parser would not be.
 func readTotalNumbers(t *testing.T, out string) map[string]int {
 	t.Helper()
 	b := readArtifact(t, out, "totalnumber.js")
@@ -1897,6 +1897,80 @@ func TestSiteHomepageNamesTheInternationalStandard(t *testing.T) {
 	for _, unwanted := range []string{"country total", "country totals", "country count"} {
 		if strings.Contains(lower, unwanted) {
 			t.Errorf("index.html still calls the figure a %q", unwanted)
+		}
+	}
+}
+
+// TestTotalNumberJSKeepsTheLegacyConstant pins the name the region figure is
+// published under.
+//
+// The file exports NHP_TOTAL_ATTACK_COUNTRIES -- the historical name other
+// sites embed with <script src> and the deploy pipeline greps as a gate -- so
+// it cannot be renamed. NHP_TOTAL_ATTACK_REGIONS is the same number under the
+// name that matches what it counts, and the two must never drift apart.
+func TestTotalNumberJSKeepsTheLegacyConstant(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", "testdata/geo.csv")
+
+	body := string(readArtifact(t, out, "totalnumber.js"))
+	for _, want := range []string{
+		"const NHP_TOTAL_ATTACK_COUNTRIES = ",
+		"const NHP_TOTAL_ATTACK_REGIONS = ",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("totalnumber.js missing %q", want)
+		}
+	}
+
+	nums := readTotalNumbers(t, out)
+	legacy, ok := nums["NHP_TOTAL_ATTACK_COUNTRIES"]
+	if !ok {
+		t.Fatalf("totalnumber.js has no NHP_TOTAL_ATTACK_COUNTRIES constant: %v", nums)
+	}
+	alias, ok := nums["NHP_TOTAL_ATTACK_REGIONS"]
+	if !ok {
+		t.Fatalf("totalnumber.js has no NHP_TOTAL_ATTACK_REGIONS constant: %v", nums)
+	}
+	if alias != legacy {
+		t.Errorf("NHP_TOTAL_ATTACK_REGIONS = %d, want the same value as NHP_TOTAL_ATTACK_COUNTRIES = %d", alias, legacy)
+	}
+}
+
+// TestTotalNumberJSGrepsHitOneLinePerConstant pins the deploy gate's view of
+// the export.
+//
+// The gate greps each constant by name and reads the number off the line it
+// gets, so a name that appears anywhere else in the file -- in a comment, say
+// -- hands it two lines and fails the run on a value that is not a number.
+// The comment that explains the legacy constant name therefore spells it
+// without the prefix.
+func TestTotalNumberJSGrepsHitOneLinePerConstant(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100, "203.0.113.5")
+	runSiteCmd(t, logs, out, "-state", filepath.Join(root, "state", "state.json"), "-geo-csv", "testdata/geo.csv")
+
+	body := string(readArtifact(t, out, "totalnumber.js"))
+	for _, name := range []string{
+		"NHP_TOTAL_ATTACK_BLOCKED",
+		"NHP_TOTAL_ATTACK_SOURCE_IPS",
+		"NHP_TOTAL_ATTACK_COUNTRIES",
+		"NHP_TOTAL_ATTACK_REGIONS",
+	} {
+		hits := 0
+		for _, line := range strings.Split(body, "\n") {
+			if strings.Contains(line, name) {
+				hits++
+			}
+		}
+		if hits != 1 {
+			t.Errorf("%s appears on %d line(s) of totalnumber.js, want 1 -- the deploy gate greps it by name:\n%s",
+				name, hits, body)
 		}
 	}
 }

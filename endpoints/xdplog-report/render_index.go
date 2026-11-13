@@ -308,6 +308,11 @@ func writeTotalNumberJS(outDir string, total uint64, sources, countries int, sin
 // the constants are still emitted (as 0) so a consumer's <script src> never
 // 404s and leave a dangling reference.
 //
+// The region figure is published under two names: NHP_TOTAL_ATTACK_COUNTRIES,
+// the historical one other sites embed and the deploy pipeline greps as a
+// gate, and NHP_TOTAL_ATTACK_REGIONS, which matches what it counts. Both
+// carry the same number; the legacy name is not going away.
+//
 // hist is the history snapshot, when there is one, and baseline is what it
 // contributes on top of the union the site computed from the per-day facts.
 // They do not change the numbers — the caller has already added them — but
@@ -326,10 +331,10 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 		b.WriteString("// add theirs on top.\n")
 		b.WriteString("//\n")
 	}
-	b.WriteString("// The next two are unions, not sums: an address or country seen on\n")
+	b.WriteString("// The next two are unions, not sums: an address or region seen on\n")
 	b.WriteString("// ten days is counted once. Private/reserved sources are excluded,\n")
 	b.WriteString("// and a source the GeoLite2 database cannot place belongs to no\n")
-	b.WriteString("// country, so it raises the source count only.\n")
+	b.WriteString("// region, so it raises the source count only.\n")
 	if hist != nil {
 		b.WriteString("// The union covers every published day, the snapshot's days included:\n")
 		b.WriteString("// an address seen in the snapshot's period and in the live one is\n")
@@ -338,8 +343,8 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 	if baseline.Applied {
 		b.WriteString("// Days whose per-day records are gone are covered by the snapshot's\n")
 		b.WriteString("// own source count instead. It is added to the union, which can\n")
-		b.WriteString("// count an address seen in both periods twice. The snapshot's country\n")
-		b.WriteString("// count is not used: the country total is the union over the\n")
+		b.WriteString("// count an address seen in both periods twice. The snapshot's region\n")
+		b.WriteString("// count is not used: the region total is the union over the\n")
 		b.WriteString("// published days and nothing else.\n")
 	}
 	if baseline.Unavailable {
@@ -350,7 +355,7 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 	}
 	if baseline.Missing && !baseline.Applied {
 		b.WriteString("// A published day whose per-day records are gone contributes no\n")
-		b.WriteString("// source or country data and nothing stands in for it.\n")
+		b.WriteString("// source or region data and nothing stands in for it.\n")
 	}
 	if note := baseline.boundNote(); note != "" {
 		b.WriteString("// " + note + "\n")
@@ -358,9 +363,31 @@ func totalNumberJS(total uint64, sources, countries int, since string, baseline 
 	if since != "" {
 		fmt.Fprintf(&b, "// Counting starts: %s (UTC).\n", since)
 	}
+	// The region figure counts the ISO 3166-1 alpha-2 codes the international
+	// standard assigns to every country and area it lists: the GeoIP database
+	// attributes an address to one of those codes, and the figure is the
+	// number of distinct ones the published days' addresses landed in.
+	//
+	// NHP_TOTAL_ATTACK_COUNTRIES keeps its historical name on purpose: other
+	// sites embed this file with <script src>, and the deploy pipeline greps
+	// that constant as a gate. It means exactly what NHP_TOTAL_ATTACK_REGIONS
+	// means -- the same number, under the name that matches what it counts.
+	b.WriteString("//\n")
+	b.WriteString("// The region figure counts the ISO 3166-1 alpha-2 codes the international\n")
+	b.WriteString("// standard assigns to every country and area it lists: the GeoIP\n")
+	b.WriteString("// database attributes an address to one of those codes, and the figure\n")
+	b.WriteString("// is the number of distinct ones the published days' addresses landed\n")
+	b.WriteString("// in.\n")
+	b.WriteString("//\n")
+	b.WriteString("// The COUNTRIES constant keeps its historical name on purpose: other\n")
+	b.WriteString("// sites embed this file with <script src>, and the deploy pipeline\n")
+	b.WriteString("// greps that constant as a gate. It means exactly what the REGIONS\n")
+	b.WriteString("// constant means -- the same number, under the name that matches what it\n")
+	b.WriteString("// counts.\n")
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_BLOCKED = %d;\n", total)
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_SOURCE_IPS = %d;\n", sources)
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_COUNTRIES = %d;\n", countries)
+	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_REGIONS = %d;\n", countries)
 	return b.String()
 }
 

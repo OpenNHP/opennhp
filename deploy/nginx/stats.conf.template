@@ -10,7 +10,7 @@
 #
 #   1. Nothing sensitive is reachable. The raw log cache (unmasked source
 #      IPs), the incremental-build state.json (absolute paths of that cache)
-#      and the per-day fact files (hashed source and country sets) live
+#      and the per-day fact files (hashed source and region sets) live
 #      OUTSIDE the root below, and /state.json plus /facts/ are refused a
 #      second time here in case a future -out change puts them back inside.
 #   2. nginx can actually read the root. /home/ec2-user is mode 0700 on
@@ -68,7 +68,7 @@ server {
 
     # Defense in depth: state.json holds absolute paths of the raw cache, and
     # facts/<source>/<day>.facts holds the per-day sets of hashed source
-    # addresses the all-time attacker and country totals are unioned from.
+    # addresses the all-time attacker and region totals are unioned from.
     # The deploy keeps both outside the root (-state), so neither should ever
     # match, but a stale file from an older layout must not become public.
     location = /state.json {

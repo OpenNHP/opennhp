@@ -1807,11 +1807,14 @@ func TestSiteTotalsUnionAcrossDays(t *testing.T) {
 	}
 }
 
-// TestSiteHeroShowsSourcesAndCountries covers the hero's second and third
-// figures: the all-time distinct source IPs and countries, rendered beside the
+// TestSiteHeroShowsSourcesAndRegions covers the hero's second and third
+// figures: the all-time distinct source IPs and regions, rendered beside the
 // packet total with the same values totalnumber.js exports, and wired to the
 // counter animation through data-total.
-func TestSiteHeroShowsSourcesAndCountries(t *testing.T) {
+//
+// The exported constant keeps its historical name: NHP_TOTAL_ATTACK_COUNTRIES
+// is what external sites embed by name, so only the page's wording changed.
+func TestSiteHeroShowsSourcesAndRegions(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
 	out := filepath.Join(root, "web")
@@ -1826,24 +1829,24 @@ func TestSiteHeroShowsSourcesAndCountries(t *testing.T) {
 	page := string(readArtifact(t, out, "index.html"))
 	for _, want := range []string{
 		fmt.Sprintf(`id="total-sources" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_SOURCE_IPS"], nums["NHP_TOTAL_ATTACK_SOURCE_IPS"]),
-		fmt.Sprintf(`id="total-countries" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_COUNTRIES"], nums["NHP_TOTAL_ATTACK_COUNTRIES"]),
-		">Source IPs<", ">Countries<",
+		fmt.Sprintf(`id="total-regions" data-total="%d">%d</span>`, nums["NHP_TOTAL_ATTACK_COUNTRIES"], nums["NHP_TOTAL_ATTACK_COUNTRIES"]),
+		">Source IPs<", ">Regions<",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html missing %q", want)
 		}
 	}
 	if nums["NHP_TOTAL_ATTACK_SOURCE_IPS"] != 3 || nums["NHP_TOTAL_ATTACK_COUNTRIES"] != 1 {
-		t.Errorf("totals = %v, want 3 sources / 1 country", nums)
+		t.Errorf("totals = %v, want 3 sources / 1 region", nums)
 	}
 	if !strings.Contains(string(readArtifact(t, out, "countup.js")), `querySelectorAll("[data-total]")`) {
 		t.Error("countup.js does not animate every data-total counter")
 	}
 }
 
-// TestSiteHeroHidesZeroCountries: without a geo source no source resolves to a
-// country, and a "0 Countries" figure would read as "attacked from nowhere".
-func TestSiteHeroHidesZeroCountries(t *testing.T) {
+// TestSiteHeroHidesZeroRegions: without a geo source no source resolves to a
+// region, and a "0 Regions" figure would read as "attacked from nowhere".
+func TestSiteHeroHidesZeroRegions(t *testing.T) {
 	root := t.TempDir()
 	logs := filepath.Join(root, "raw")
 	out := filepath.Join(root, "web")
@@ -1851,8 +1854,8 @@ func TestSiteHeroHidesZeroCountries(t *testing.T) {
 	runSiteCmd(t, logs, out, "-state", filepath.Join(root, "state", "state.json"))
 
 	page := string(readArtifact(t, out, "index.html"))
-	if strings.Contains(page, `id="total-countries"`) {
-		t.Error("hero shows a countries figure with no geo source")
+	if strings.Contains(page, `id="total-regions"`) {
+		t.Error("hero shows a regions figure with no geo source")
 	}
 	if !strings.Contains(page, `id="total-sources"`) {
 		t.Error("hero dropped the source IP figure")

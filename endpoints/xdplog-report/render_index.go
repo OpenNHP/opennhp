@@ -59,25 +59,31 @@ type indexPageData struct {
 	// SinceDay is the earliest published day, already in YYYY-MM-DD. Empty
 	// when there is nothing to publish, which suppresses the hero block.
 	SinceDay string
-	// TotalSources and TotalCountries are the all-time distinct source IPs
-	// and countries — the same unions totalnumber.js exports as
+	// TotalSources and TotalRegions are the all-time distinct source IPs
+	// and regions — the same unions totalnumber.js exports as
 	// NHP_TOTAL_ATTACK_SOURCE_IPS and NHP_TOTAL_ATTACK_COUNTRIES. Unlike the
 	// packet total they cannot be reproduced from index.json (the per-day sets
 	// behind them stay private, see facts.go), so the page's note says they
-	// are unions. Zero hides the figure: no geo source means no countries, and
-	// showing "0 countries" would read as "no attacks from anywhere".
+	// are unions. Zero hides the figure: no geo source means no regions, and
+	// showing "0 regions" would read as "no attacks from anywhere".
 	//
 	// They are the union over every published day's own sets, plus whatever
 	// the history snapshot stands in for (baseline): an address seen on ten
 	// days is one attacker, and one seen in the snapshot's period and in the
 	// live one is one attacker too.
 	//
-	// The country total is the union and nothing else. The snapshot's own
-	// country count is never applied: countries are a closed set of ~250
+	// The region total is the union and nothing else. The snapshot's own
+	// region count is never applied: regions are a closed set of ~250
 	// codes both periods share almost entirely, so any arithmetic that
 	// combines the two can only be wrong. See historyBaseline.
-	TotalSources   int
-	TotalCountries int
+	//
+	// A region is the ISO 3166-1 alpha-2 code the GeoIP database attributes
+	// an address to: the two-letter codes the international standard assigns
+	// to every country and area it lists. The exported constant keeps its
+	// historical name (NHP_TOTAL_ATTACK_COUNTRIES) because external sites
+	// embed it by name; only the wording this page shows changed.
+	TotalSources int
+	TotalRegions int
 	// HasHistory is true when the index carries rows published from the
 	// history snapshot: the days the live site cannot produce. Those rows
 	// have no detail page, and the page says so, because a reader who cannot
@@ -206,7 +212,7 @@ func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, bas
 		SinceDay:      since,
 
 		TotalSources:         totalSources,
-		TotalCountries:       totalCountries,
+		TotalRegions:         totalCountries,
 		HasHistory:           hasHistory,
 		BaselineFromSnapshot: baseline.Applied,
 		SnapshotBelowFloor:   baseline.Unavailable,
@@ -587,9 +593,9 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <div><span class="hero-num" id="total-sources" data-total="{{.TotalSources}}">{{group .TotalSources}}</span></div>
 <div class="hero-label">Source IPs</div>
 </div>{{end}}
-{{if .TotalCountries}}<div class="hero-stat">
-<div><span class="hero-num" id="total-countries" data-total="{{.TotalCountries}}">{{group .TotalCountries}}</span></div>
-<div class="hero-label">Countries</div>
+{{if .TotalRegions}}<div class="hero-stat">
+<div><span class="hero-num" id="total-regions" data-total="{{.TotalRegions}}">{{group .TotalRegions}}</span></div>
+<div class="hero-label">Regions</div>
 </div>{{end}}
 </div>
 </section>

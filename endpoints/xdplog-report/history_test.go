@@ -393,10 +393,10 @@ func TestHistoryFactsJoinTheUnion(t *testing.T) {
 }
 
 // TestHistoryBaselineStandsInForDaysWithoutFacts pins the one case where the
-// snapshot's own counts are added to the union: a day the live site cannot
-// produce and whose per-day records are gone. Then the snapshot is the only
-// carrier of that day's attackers, and the published figure is an upper
-// bound rather than an exact count.
+// snapshot's own source count is added to the union: a day the live site
+// cannot produce and whose per-day records are gone. Then the snapshot is the
+// only carrier of that day's attackers, and the published source figure is
+// an upper bound rather than an exact count.
 func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
 	logs, out := stageTestdata(t)
 	const frozenDay = "2026-10-18"
@@ -420,10 +420,135 @@ func TestHistoryBaselineStandsInForDaysWithoutFacts(t *testing.T) {
 		t.Errorf("NHP_TOTAL_ATTACK_SOURCE_IPS = %d, want %d (the union of the published days plus the snapshot's baseline, which stands in for the day whose records are gone)",
 			got, want)
 	}
-	// The homepage says so: the figure is an upper bound.
-	page := string(readArtifact(t, out, "index.html"))
-	if !strings.Contains(page, "upper bounds") {
-		t.Error("the homepage does not say that the totals are upper bounds")
+	// The homepage and totalnumber.js say so, figure by figure: the source
+	// total is an upper bound, and the country total -- which the snapshot
+	// only ever floors, never adds to -- is a lower bound.
+	const note = "The source IP total is an upper bound and the country total is a lower bound."
+	for _, name := range []string{"index.html", "totalnumber.js"} {
+		body := string(readArtifact(t, out, name))
+		if !strings.Contains(body, note) {
+			t.Errorf("%s does not say %q", name, note)
+		}
+		if strings.Contains(body, "upper bounds") {
+			t.Errorf("%s calls both figures upper bounds; the country figure is a lower bound", name)
+		}
+	}
+}
+
+// TestHistorySnapshotCountryCountIsIgnored pins the invariant the country
+// total rests on: the snapshot's own country count cannot reach the published
+// figure, whatever it says.
+//
+// Countries are a small closed set that the snapshot's period and the live one
+// share almost entirely, so no arithmetic can merge the snapshot's count with
+// the live union. Adding it counted nearly every country twice -- the
+// published site reached 162 from a 130-country snapshot, and grew past the
+// number of countries there are. The published country total is therefore the
+// union over the published days, and the snapshot's count is recorded and
+// ignored.
+func TestHistorySnapshotCountryCountIsIgnored(t *testing.T) {
+	plainLogs, plainOut := stageTestdata(t)
+	runSiteCmd(t, plainLogs, plainOut, "-geo-csv", "testdata/geo.csv")
+	live := readTotalNumbers(t, plainOut)["NHP_TOTAL_ATTACK_COUNTRIES"]
+	if live == 0 {
+		t.Fatal("the fixture's live country union is empty; the test's arithmetic depends on it")
+	}
+
+	for _, tc := range []struct {
+		name     string
+		snapshot int
+	}{
+		// The snapshot saw more countries than the live days.
+		{"snapshot above the union", 130},
+		// The snapshot saw the same number of countries.
+		{"snapshot equal to the union", live},
+		// The snapshot saw none.
+		{"snapshot below the union", 0},
+		// A number no geo source could have produced.
+		{"snapshot beyond the number of countries", 999},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs, out := stageTestdata(t)
+			hist := validHistory()
+			hist.Days = hist.Days[:1]
+			hist.Days[0].Day = "2026-10-18" // a frozen day with no facts
+			hist.Days[0].DropPkts = 100
+			hist.Totals.Blocked = 100
+			hist.Totals.SourceIPs = 0
+			hist.Totals.Countries = tc.snapshot
+			path := writeHistory(t, t.TempDir(), hist)
+
+			runSiteCmd(t, logs, out, "-geo-csv", "testdata/geo.csv", "-history", path)
+
+			if got := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; got != live {
+				t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want %d (the union over the published days; the snapshot's %d is ignored)",
+					got, live, tc.snapshot)
+			}
+			// Both figures miss the frozen day's own data, and the snapshot
+			// adds no sources, so both are lower bounds -- never upper.
+			const note = "The source IP and country totals are lower bounds."
+			for _, name := range []string{"index.html", "totalnumber.js"} {
+				body := string(readArtifact(t, out, name))
+				if !strings.Contains(body, note) {
+					t.Errorf("%s does not say %q", name, note)
+				}
+				if strings.Contains(body, "upper bound") {
+					t.Errorf("%s calls a figure an upper bound; the snapshot added no sources", name)
+				}
+			}
+		})
+	}
+}
+
+// TestHistoryBaselineForFigures pins the arithmetic of baselineFor: the
+// source remainder over the snapshot's own days with facts is added. The
+// snapshot's country count is never part of it.
+func TestHistoryBaselineForFigures(t *testing.T) {
+	h := &SiteHistory{Totals: HistoryTotals{SourceIPs: 100, Countries: 130}}
+
+	if b := h.baselineFor(factsUnion{Sources: 10, Countries: 5}, 0); b != (historyBaseline{}) {
+		t.Errorf("no snapshot day without facts: baseline = %+v, want none", b)
+	}
+
+	b := h.baselineFor(factsUnion{Sources: 10, Countries: 5}, 1)
+	if b.Sources != 90 {
+		t.Errorf("Sources = %d, want 90 (the snapshot's 100 less the 10 its days with facts cover)", b.Sources)
+	}
+	if !b.Applied {
+		t.Error("Applied = false, want true")
+	}
+
+	// A snapshot whose own count is already covered by the days with facts
+	// adds nothing.
+	b = h.baselineFor(factsUnion{Sources: 100, Countries: 5}, 1)
+	if b.Sources != 0 {
+		t.Errorf("Sources = %d, want 0 (the snapshot's 100 is already covered by the days with facts)", b.Sources)
+	}
+	if b.Applied {
+		t.Error("Applied = true, want false (the baseline adds nothing)")
+	}
+}
+
+// TestHistoryBoundNote pins the sentence both the homepage and totalnumber.js
+// print about each figure, so the two can never disagree and the country
+// figure is never called an upper bound.
+func TestHistoryBoundNote(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		b    historyBaseline
+		want string
+	}{
+		{"exact", historyBaseline{}, ""},
+		{"nothing stands in", historyBaseline{Missing: true},
+			"The source IP and country totals are lower bounds."},
+		{"snapshot below the floor", historyBaseline{Unavailable: true, Missing: true},
+			"The source IP and country totals are lower bounds."},
+		{"snapshot stands in", historyBaseline{Sources: 5, Applied: true, Missing: true},
+			"The source IP total is an upper bound and the country total is a lower bound."},
+	} {
+		if got := tc.b.boundNote(); got != tc.want {
+			t.Errorf("%s: boundNote() = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
 
@@ -766,8 +891,9 @@ func TestHistoryGeneratorFromSavedPage(t *testing.T) {
 	if h.Totals.SourceIPs != 25136 {
 		t.Errorf("totals.source_ips = %d, want 25136", h.Totals.SourceIPs)
 	}
-	if h.Totals.Countries != 130 {
-		t.Errorf("totals.countries = %d, want 130", h.Totals.Countries)
+	if h.Totals.Countries != 0 {
+		t.Errorf("totals.countries = %d, want 0 (the snapshot records no country count; the site's country total is the union over the published days)",
+			h.Totals.Countries)
 	}
 	if len(h.Days) != 11 {
 		t.Fatalf("the snapshot lists %d days, want 11", len(h.Days))
@@ -1003,6 +1129,77 @@ func TestHistorySeedSnapshotIsShipped(t *testing.T) {
 	}
 	if string(a) != string(b) {
 		t.Errorf("the shipped snapshot differs from the generated one:\n--- shipped ---\n%s\n--- generated ---\n%s", a, b)
+	}
+}
+
+// TestHistorySeedSnapshotCarriesNoCountryCount pins the shipped seed: it
+// records no country count at all.
+//
+// The site never applies the snapshot's country count, but a snapshot that
+// carries one invites the next reader to use it -- and a hand-edited file is
+// exactly how a country count got back into this one before.
+func TestHistorySeedSnapshotCarriesNoCountryCount(t *testing.T) {
+	seed := filepath.Join("..", "..", "deploy", "config-templates", "xdpstats", "history.json")
+	b, err := os.ReadFile(seed)
+	if err != nil {
+		t.Fatalf("the shipped snapshot is missing: %v", err)
+	}
+	var h SiteHistory
+	if err := json.Unmarshal(b, &h); err != nil {
+		t.Fatalf("the shipped snapshot does not parse: %v", err)
+	}
+	if h.Totals.Countries != 0 {
+		t.Errorf("the shipped snapshot records %d countries, want 0 (the site's country total is the union over the published days)",
+			h.Totals.Countries)
+	}
+}
+
+// TestHistoryCountryTotalIsBoundedByTheGeoSource pins where the published
+// country total comes from: the distinct country labels the geo source
+// produced over the published days, and nothing else.
+//
+// The site's figure therefore cannot exceed the number of countries there
+// are, whatever the snapshot says -- the property the whole country rule
+// exists to protect.
+func TestHistoryCountryTotalIsBoundedByTheGeoSource(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "raw")
+	out := filepath.Join(root, "web")
+	statePath := filepath.Join(root, "state", "state.json")
+
+	// Three country labels, one per source range.
+	geoPath := filepath.Join(root, "geo.csv")
+	geo := "cidr,country,city\n" +
+		"198.51.100.0/24,US,New York\n" +
+		"203.0.113.0/24,AU,Sydney\n" +
+		"192.0.2.0/24,DE,Berlin\n"
+	if err := os.WriteFile(geoPath, []byte(geo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writeDropLogWithSources(t, logs, "server", siteDay1, 100,
+		"198.51.100.7", "203.0.113.5", "192.0.2.9")
+	writeDropLogWithSources(t, logs, "server", siteDay2, 200,
+		"198.51.100.7")
+
+	// A snapshot that claims a country count of its own, frozen on a day the
+	// live site cannot produce -- so the site's baseline path runs, and the
+	// published country total still has to be the union.
+	hist := validHistory()
+	hist.Days = hist.Days[:1]
+	hist.Days[0].Day = "2026-10-18"
+	hist.Days[0].DropPkts = 100
+	hist.Totals.Blocked = 100
+	hist.Totals.SourceIPs = 40
+	hist.Totals.Countries = 130
+	path := writeHistory(t, t.TempDir(), hist)
+
+	runSiteCmd(t, logs, out, "-state", statePath, "-geo-csv", geoPath, "-history", path)
+
+	const want = 3
+	if got := readTotalNumbers(t, out)["NHP_TOTAL_ATTACK_COUNTRIES"]; got != want {
+		t.Errorf("NHP_TOTAL_ATTACK_COUNTRIES = %d, want %d (the union over the published days; the snapshot's 130 is ignored)",
+			got, want)
 	}
 }
 

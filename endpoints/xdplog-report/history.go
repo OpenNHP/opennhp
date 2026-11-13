@@ -77,10 +77,20 @@ type HistoryTotals struct {
 	SourceIPs int `json:"source_ips"`
 	// Countries is the number of distinct countries the saved period saw.
 	//
-	// It is handled the same way as SourceIPs: the live site's per-day
-	// facts carry the countries of every day it can analyze, so the union
-	// already includes them, and this baseline stands in only for the days
-	// whose facts are gone.
+	// It is recorded and never applied. The published country total is the
+	// union over the published days and nothing else; see historyBaseline.
+	// The field stays in the file for schema compatibility and so a reader
+	// can tell what the saved page said, but the site only checks that it is
+	// not negative.
+	//
+	// Countries are a closed set of ~250 codes that the snapshot's period and
+	// the live one share almost entirely, so no arithmetic can merge the
+	// snapshot's count with the live union: adding counts most of them twice
+	// (the site published 162 from a 130-country snapshot) and can push the
+	// total past the number of countries there are, and taking the larger of
+	// the two can only ever be a lower bound that misses a country seen in
+	// one period alone. The count is therefore kept out of the arithmetic
+	// entirely.
 	Countries int `json:"countries"`
 }
 
@@ -178,7 +188,7 @@ func (h *SiteHistory) Rows() []SiteDaySummary {
 }
 
 // historyBaseline is what the history snapshot contributes to the all-time
-// source and country counts.
+// source count.
 //
 // The snapshot carries its own all-time figures for the period it froze. The
 // site's per-day facts (facts.go) carry the same information for every day
@@ -191,15 +201,24 @@ func (h *SiteHistory) Rows() []SiteDaySummary {
 //
 // What is left of the baseline is the part that covers the snapshot's days
 // whose facts are gone -- the days the live site cannot produce at all.
-// Nothing else carries those days' attackers, so that part is added, and the
-// published figure becomes an upper bound rather than an exact count.
+// Nothing else carries those days' attackers, so the remainder is added and
+// the published source figure becomes an upper bound. Addresses are an open
+// set, so the remainder is mostly new attackers, and adding it is the closest
+// figure available.
+//
+// The country total is never touched by the snapshot. Countries are a closed
+// set of ~250 codes that the two periods share almost entirely, so no
+// arithmetic can merge the snapshot's count with the live union: adding
+// counts most of them twice and can push the total past the number of
+// countries there are, while the larger of the two can only ever miss a
+// country seen in one period alone. The published country total is therefore
+// the union over the published days, and the snapshot's own count is recorded
+// and never applied -- see HistoryTotals.Countries.
 type historyBaseline struct {
 	// Sources is the number of attackers the baseline adds.
 	Sources int
-	// Countries is the number of countries the baseline adds.
-	Countries int
 	// Applied is true when the baseline contributed anything, i.e. when the
-	// published figures are an upper bound instead of an exact count.
+	// snapshot's own source count stood in for days whose facts are gone.
 	Applied bool
 	// Unavailable is true when the baseline could not be applied at all: the
 	// snapshot lists days below the publishing floor, and a snapshot-level
@@ -216,15 +235,79 @@ type historyBaseline struct {
 	// over the published days and nothing else, and a published day whose
 	// per-day records are gone contributes nothing to them.
 	Unavailable bool
-	// LowerBound is true when a published day contributed no source or
-	// country data and nothing stood in for it. The published figures are
-	// then lower bounds rather than exact counts.
-	//
-	// It is the counterpart of Applied: with the baseline applied the missing
-	// days are covered by the snapshot's own count (an upper bound, which can
-	// count an address twice), and without it they are simply missing (a
-	// lower bound).
-	LowerBound bool
+	// Missing is true when a published day contributed no source or country
+	// data, whether or not the snapshot stood in for it. Neither figure is
+	// then an exact count; sourcesBound and countriesBound say which way each
+	// one is off.
+	Missing bool
+}
+
+// figureBound says what kind of number a published all-time figure is.
+type figureBound int
+
+const (
+	boundExact figureBound = iota
+	boundUpper
+	boundLower
+)
+
+// sourcesBound is the kind of number the published source IP total is.
+//
+// The snapshot's remainder is added when it stood in, which can count an
+// address seen in both periods twice: an upper bound. A day with no facts
+// and nothing added for it is simply missing: a lower bound.
+func (b historyBaseline) sourcesBound() figureBound {
+	switch {
+	case b.Sources > 0:
+		return boundUpper
+	case b.Missing:
+		return boundLower
+	}
+	return boundExact
+}
+
+// countriesBound is the kind of number the published country total is.
+//
+// The snapshot never contributes to it, so the figure is the union over the
+// published days and no more. With any day's facts gone, a country seen only
+// on that day can be missing: a lower bound.
+func (b historyBaseline) countriesBound() figureBound {
+	if b.Missing {
+		return boundLower
+	}
+	return boundExact
+}
+
+// boundNote is the sentence the homepage and totalnumber.js both print about
+// what kind of number each of the two figures is. Generating it in one place
+// is what keeps the two from disagreeing. It is empty when both are exact.
+func (b historyBaseline) boundNote() string {
+	s, c := b.sourcesBound(), b.countriesBound()
+	switch {
+	case s == boundExact && c == boundExact:
+		return ""
+	case s == c:
+		return "The source IP and country totals are " + boundPlural(s) + "."
+	case s == boundExact:
+		return "The country total is " + boundSingular(c) + "."
+	case c == boundExact:
+		return "The source IP total is " + boundSingular(s) + "."
+	}
+	return "The source IP total is " + boundSingular(s) + " and the country total is " + boundSingular(c) + "."
+}
+
+func boundSingular(f figureBound) string {
+	if f == boundUpper {
+		return "an upper bound"
+	}
+	return "a lower bound"
+}
+
+func boundPlural(f figureBound) string {
+	if f == boundUpper {
+		return "upper bounds"
+	}
+	return "lower bounds"
 }
 
 // BelowFloor reports whether the snapshot lists any day the site does not
@@ -250,15 +333,20 @@ func (h *SiteHistory) BelowFloor(publishes func(day string) bool) bool {
 }
 
 // baselineFor computes what the snapshot contributes to the all-time source
-// and country counts.
+// count.
 //
 // snapUnion is the union over the snapshot's published days whose per-day
 // facts are still on disk, and missing counts the snapshot's published days
-// whose facts are not. The baseline is added only when there are such days,
-// and then only for the part of it the days that do have facts do not
-// already account for: the snapshot's baseline is the union over *all* its
-// days, so subtracting the part the facts cover leaves what the remaining
-// days alone can have contributed.
+// whose facts are not. The baseline is used only when there are such days.
+//
+// Sources: only the part of the snapshot's count that the days with facts do
+// not already account for is added. The snapshot's count is the union over
+// *all* its days, so subtracting the part the facts cover leaves what the
+// remaining days alone can have contributed.
+//
+// Countries: nothing. The snapshot's country count is recorded and never
+// applied; the published country total is the union over the published days.
+// See historyBaseline.
 //
 // The caller must not use this when the snapshot lists days below the
 // publishing floor: the "remaining days" would then include days the site
@@ -273,11 +361,7 @@ func (h *SiteHistory) baselineFor(snapUnion factsUnion, missing int) historyBase
 	if b.Sources < 0 {
 		b.Sources = 0
 	}
-	b.Countries = h.Totals.Countries - snapUnion.Countries
-	if b.Countries < 0 {
-		b.Countries = 0
-	}
-	b.Applied = b.Sources > 0 || b.Countries > 0
+	b.Applied = b.Sources > 0
 	return b
 }
 

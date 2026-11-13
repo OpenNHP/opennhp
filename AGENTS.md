@@ -426,10 +426,23 @@ the snapshot's period and in the live one — is counted once. The snapshot's ow
 two unions can only be merged when both sets are present, and adding their
 sizes instead counts an address (or a country) seen in both periods twice,
 because the sum of two set sizes is at least their union, never at most it.
-What *is* added is the part of the snapshot's baseline that covers its own
-days whose per-day records are gone — the days the live site cannot produce at
-all — and only for those: nothing else carries those days' attackers, and the
-published figures are then upper bounds rather than exact counts. The
+The snapshot is used only for its own days whose per-day records are gone —
+the days the live site cannot produce at all — because nothing else carries
+those days' attackers, and the two figures use it differently. The part of its
+`source_ips` those days alone can have contributed is **added** (an upper
+bound: an address seen in both periods counts twice). Its `countries` is
+**never applied at all**: countries are a closed set of ~250 that both periods
+share almost entirely, so adding counts most of them twice (a 130-country
+snapshot once pushed the site to 162) and can push the total past the number
+of countries there are, while the larger of the two can only ever be a lower
+bound that misses a country seen in one period alone. **The published country
+total is the union over the published days and nothing else**, so it is bounded
+by the number of distinct country labels the geo source can produce — which is
+why the deploy gate on it is 250, not 400. The generator records
+`countries: 0` and the site ignores the field entirely (an old snapshot that
+still carries one is read, warned about on stdout, and has no effect). The
+homepage and `totalnumber.js` label each figure separately from one sentence
+(`historyBaseline.boundNote`). The
 publishing floor applies to the snapshot's days as well: a day below it is
 neither in the index nor in the hero total, and the snapshot's `since` cannot
 put the site below the floor either.

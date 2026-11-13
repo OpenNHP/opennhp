@@ -33,6 +33,11 @@ import (
 // different schema is refused rather than half-read: the numbers it carries
 // are a baseline the whole site rests on, and guessing what an unknown field
 // meant is exactly how a wrong total becomes permanent.
+//
+// It stays at 1 across the region total's key rename: the facts the file
+// carries did not change, only the spelling of one field's key, and the
+// reader accepts both spellings -- so a snapshot of either vintage is read
+// in full, never half-read. See HistoryTotals.UnmarshalJSON.
 const historySchema = 1
 
 // SiteHistory is the on-disk shape of history.json.
@@ -86,8 +91,9 @@ type HistoryTotals struct {
 	// The figure counts the ISO 3166-1 alpha-2 codes the international
 	// standard assigns to every country and area it lists -- what the GeoIP
 	// database attributes an address to -- and the page calls them regions.
-	// The json key stays "countries": the snapshot format is read by every
-	// deployment that holds one, and only the Go name and the labels changed.
+	// "Countries" was the wrong word for that set, so the field was renamed;
+	// snapshots written before the rename carry the old key and are read by
+	// UnmarshalJSON below.
 	//
 	// Regions are a closed set of ~250 codes that the snapshot's period and
 	// the live one share almost entirely, so no arithmetic can merge the
@@ -97,7 +103,30 @@ type HistoryTotals struct {
 	// the two can only ever be a lower bound that misses a region seen in
 	// one period alone. The count is therefore kept out of the arithmetic
 	// entirely.
-	Regions int `json:"countries"`
+	Regions int `json:"regions"`
+}
+
+// UnmarshalJSON reads the totals, accepting the "countries" key snapshots
+// were written with before the region figure was renamed.
+//
+// The field's meaning did not change with the spelling -- it is recorded and
+// never applied (see HistoryTotals.Regions) -- so an operator's existing
+// snapshot is read completely, and the schema number stays where it is. The
+// totals are decoded through an alias, so a field added later is read
+// without touching this method.
+func (t *HistoryTotals) UnmarshalJSON(b []byte) error {
+	type plain HistoryTotals
+	aux := struct {
+		*plain
+		Legacy *int `json:"countries"`
+	}{plain: (*plain)(t)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if t.Regions == 0 && aux.Legacy != nil {
+		t.Regions = *aux.Legacy
+	}
+	return nil
 }
 
 // loadSiteHistory reads and validates a history snapshot.
@@ -127,7 +156,7 @@ func loadSiteHistory(path string) (*SiteHistory, error) {
 		return nil, fmt.Errorf("history file %s: totals.source_ips must not be negative", path)
 	}
 	if h.Totals.Regions < 0 {
-		return nil, fmt.Errorf("history file %s: totals.countries must not be negative", path)
+		return nil, fmt.Errorf("history file %s: totals.regions must not be negative", path)
 	}
 
 	h.covered = make(map[string]struct{}, len(h.Days))

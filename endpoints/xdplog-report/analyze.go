@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/netip"
@@ -237,26 +238,65 @@ type IPRow struct {
 	// The international standard assigns those codes to every country and
 	// area it lists -- dependencies, disputed areas and special political
 	// areas among them -- so the set is regions and not countries.
-	//
-	// The json key stays "country": d/<source>/<day>.json is published, and
-	// renaming a published key breaks every reader of it. Only the Go name
-	// and the labels changed.
-	Region string `json:"country,omitempty"`
+	Region string `json:"region,omitempty"`
 	City   string `json:"city,omitempty"`
+}
+
+// UnmarshalJSON reads an attack-source row, accepting the "country" key
+// reports were written with before the region columns were renamed.
+//
+// A day whose raw log has aged out is re-rendered from its published JSON,
+// so a reader that dropped the old key would empty that day's region column.
+// The row is decoded through an alias of IPRow, so a field added to IPRow
+// later is read without touching this method.
+func (r *IPRow) UnmarshalJSON(b []byte) error {
+	type plain IPRow
+	aux := struct {
+		*plain
+		Legacy string `json:"country"`
+	}{plain: (*plain)(r)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if r.Region == "" {
+		r.Region = aux.Legacy
+	}
+	return nil
 }
 
 type GeoRow struct {
 	// Region is the ISO 3166-1 alpha-2 code; see IPRow.Region for what the
-	// set is and why the json key is still "country".
-	Region string  `json:"country"`
+	// set is and why the json key was renamed.
+	Region string  `json:"region"`
 	Events int     `json:"events"`
 	IPs    int     `json:"unique_ips"`
 	Share  float64 `json:"share"`
 }
 
-// reportSchema is the version the report JSON carries. Calling the region
-// columns regions did not change the format: their key is still "country".
-const reportSchema = 1
+// UnmarshalJSON reads a region row, accepting the pre-rename "country" key;
+// see IPRow.UnmarshalJSON.
+func (g *GeoRow) UnmarshalJSON(b []byte) error {
+	type plain GeoRow
+	aux := struct {
+		*plain
+		Legacy string `json:"country"`
+	}{plain: (*plain)(g)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if g.Region == "" {
+		g.Region = aux.Legacy
+	}
+	return nil
+}
+
+// reportSchema is the version the report JSON carries.
+//
+// It is 2 since the region columns were renamed: version 1 wrote "country"
+// where version 2 writes "region". A reader that knows both spellings reads
+// either, so a report published before the rename still reads with its
+// region column intact; see IPRow.UnmarshalJSON.
+const reportSchema = 2
 
 type Report struct {
 	// Schema is the report format version, always reportSchema.

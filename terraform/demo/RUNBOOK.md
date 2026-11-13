@@ -1750,13 +1750,22 @@ constants, for other sites to embed via
 `<script src="https://stats.opennhp.org/totalnumber.js">`:
 `NHP_TOTAL_ATTACK_BLOCKED` (exact attack packets — the same number the hero
 shows), `NHP_TOTAL_ATTACK_SOURCE_IPS` (distinct source addresses since the
-floor) and `NHP_TOTAL_ATTACK_COUNTRIES` (distinct regions — ISO 3166-1 alpha-2
-codes — those addresses were attributed to). The last figure is also written
-as `NHP_TOTAL_ATTACK_REGIONS` with the same value, the name that says what it
-counts; `NHP_TOTAL_ATTACK_COUNTRIES` stays because embedders read it. The
-deploy gate greps `COUNTRIES` and fails unless `REGIONS` equals it. It has its own nginx
+floor) and `NHP_TOTAL_ATTACK_REGIONS` (distinct regions (ISO 3166-1 alpha-2
+codes) those addresses were attributed to). The constant is named for what it
+counts: it used to be called `NHP_TOTAL_ATTACK_COUNTRIES`, and that name is
+gone, because the ISO 3166-1 list covers dependencies, disputed areas and
+special political areas as well as states. A site that embeds this file has to
+switch; the deploy pipeline's gate greps the new name. It has its own nginx
 location with a short `Cache-Control`; no CORS header, because a classic
 script does not need one and the importing page's own CSP governs it.
+
+**Rolling back across the region rename.** The per-day JSON writes `region`
+(`schema: 2`) and `history.json` writes `totals.regions`. This release still
+reads the old `country` / `countries` keys, and rewrites a published day whose
+raw log is gone in the new format. A binary from before the rename does not
+know the new keys: it re-renders those page-only days with an empty region
+column (their numbers are unaffected). Redeploying the current release
+restores the column; nothing has to be deleted by hand.
 
 **GeoIP.** The collector passes
 `-geo-mmdb /home/ec2-user/GeoLite2-City_20251226/GeoLite2-City.mmdb` to
@@ -1849,7 +1858,7 @@ go run ./xdplog-report history \
 - **Expect the region figure to drop.** The deployed snapshot used to record
   130 regions, and the site published that baseline *plus* its live union
   (162 on 2026-11-12) — more regions than there are. The snapshot now
-  records `countries: 0` and the site ignores the field, so the published
+  records `regions: 0` and the site ignores the field, so the published
   figure is the live union alone (about 32 on 2026-11-12) and can never
   exceed the ~250 ISO 3166-1 alpha-2 codes. That is the fix, not a
   regression: the old number counted regions seen in both periods twice.

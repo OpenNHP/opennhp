@@ -663,8 +663,7 @@ bound that misses a region seen in one period alone. **The published region
 total is the union over the published days and nothing else**, so it is bounded
 by the number of distinct region labels the geo source can produce — which is
 why the deploy gate on it is 250, not 400. The generator records
-`countries: 0` (the on-disk key keeps its name; only the label says regions)
-and the site ignores the field entirely (an old snapshot that
+`regions: 0` and the site ignores the field entirely (an old snapshot that
 still carries one is read, warned about on stdout, and has no effect). The
 homepage and `totalnumber.js` label each figure separately from one sentence
 (`historyBaseline.boundNote`). The
@@ -710,8 +709,7 @@ transient EACCES or ENOSPC on the web root would silently shrink
 for another site to embed with
 `<script src="https://stats.opennhp.org/totalnumber.js">`:
 `NHP_TOTAL_ATTACK_BLOCKED` (exact packets, the same number the hero shows),
-`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES` (also written
-as `NHP_TOTAL_ATTACK_REGIONS`, same value). It is
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_REGIONS`. It is
 generated into the web root beside `index.html` and served from its own nginx
 location (short `Cache-Control`, no CORS header — a classic script needs
 none, and the *importing* page's CSP governs it). All three are written even
@@ -722,14 +720,13 @@ summing `drop_pkts`.
 
 The third constant counts **regions**: the ISO 3166-1 alpha-2 codes the
 international standard assigns to every country and area it lists, which is
-what the GeoIP database attributes an address to. It is written under two
-names with one value: `NHP_TOTAL_ATTACK_COUNTRIES`, the published name other
-sites embed — removing it would throw a `ReferenceError` on their pages — and
-`NHP_TOTAL_ATTACK_REGIONS`, which says what it counts. The deploy gate greps
-`COUNTRIES` and fails unless `REGIONS` equals it, so a cleanup cannot silently
-drop the published name. Likewise the per-day JSON keeps its `country` keys
-(`schema: 1`) and `history.json` keeps `totals.countries`: only the labels
-changed.
+what the GeoIP database attributes an address to. The constant is named for
+that set — `NHP_TOTAL_ATTACK_REGIONS`. It used to be called
+`NHP_TOTAL_ATTACK_COUNTRIES`, and that name is gone: the standard's list
+covers dependencies, disputed areas and special political areas as well as
+states, so a published figure called a country count is a claim about those
+codes that the standard does not support. A site that embeds this file has to
+switch; the deploy pipeline's gate greps the new name.
 
 **The other two are unions, not sums, and they are not reproducible from
 `index.json`.** `unique_attack_ips` is a per-day *count*: an address that

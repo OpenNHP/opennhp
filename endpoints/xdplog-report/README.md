@@ -109,7 +109,7 @@ be given (or discovered) in chronological order for restart detection to work.
 ### Output formats
 
 - `md`: Markdown report, suitable for a ticket or terminal.
-- `json`: Machine-readable report, `schema: 1`. Includes `bad_lines`,
+- `json`: Machine-readable report, `schema: 2`. Includes `bad_lines`,
   `scan_summary_lines`, `restarts_detected`, and `unknown_reasons`.
 - `csv`: One flat `section,key,pkts_exact,sampled_events,share,extra` table.
 - `html`: Standalone page with inline CSS, no scripts and no external assets.
@@ -176,8 +176,7 @@ already aged out of the collector's cache still counts as long as its
 
 Beside the packet total the hero shows two more figures, **Source IPs** and
 **Regions**: the all-time unions `totalnumber.js` exports as
-`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES` (also written
-as `NHP_TOTAL_ATTACK_REGIONS`). All three count
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_REGIONS`. All three count
 up together. A figure that is zero is hidden; without a geo source there are
 no regions, and "0 Regions" would read as "attacked from nowhere".
 
@@ -185,10 +184,13 @@ A **region** is the two-letter code the international standard ISO 3166-1
 alpha-2 assigns to every country and area it lists; it is what the GeoIP
 database attributes an address to. The figure counts the regions the
 attacking addresses were attributed to — not the attackers, and not the
-addresses. Only the label changed: the published names did not.
-`totalnumber.js` still exports `NHP_TOTAL_ATTACK_COUNTRIES`, and
-`NHP_TOTAL_ATTACK_REGIONS` carries the same value beside it; the per-day JSON
-keeps its `country` keys, and `history.json` keeps `totals.countries`.
+addresses. The constant is named for that set:
+`NHP_TOTAL_ATTACK_REGIONS`. It used to be called
+`NHP_TOTAL_ATTACK_COUNTRIES`, and that name is gone — the standard's list
+covers dependencies, disputed areas and special political areas as well as
+states, so a published figure called a country count is a claim about those
+codes that the standard does not support. A site that embedded the old name
+has to switch; the deploy pipeline's gate greps the new one.
 
 The `<title>` is a different string — **Zero Trust in Action: Live Attacks on
 OpenNHP Servers** — because a browser tab, a search result and a chat preview
@@ -255,7 +257,7 @@ The snapshot is:
 {
   "schema": 1,
   "since": "2026-10-16",
-  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 0 },
+  "totals": { "blocked": 3501020, "source_ips": 25136, "regions": 0 },
   "days": [
     {
       "source": "server",
@@ -329,7 +331,7 @@ days' attackers. The two figures use it differently:
   130-region snapshot pushed the site to 162) and can push the total past the
   number of regions there are, while the larger of the two can only ever be a
   lower bound that misses a region seen in one period alone. The generator
-  therefore records `countries: 0` and the site ignores the field — a
+  therefore records `regions: 0` and the site ignores the field — a
   snapshot that still carries an old count is read, warned about on stdout,
   and has no effect on the published figure.
 
@@ -453,8 +455,7 @@ a page elsewhere that wants the headline numbers and nothing else:
 <script>
   console.log(NHP_TOTAL_ATTACK_BLOCKED);    // attack packets, exact
   console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // distinct source addresses
-  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // distinct regions (ISO 3166-1 alpha-2 codes)
-  console.log(NHP_TOTAL_ATTACK_REGIONS);    // the same figure, under the name that says what it counts
+  console.log(NHP_TOTAL_ATTACK_REGIONS);  // distinct regions (ISO 3166-1 alpha-2 codes)
 </script>
 ```
 
@@ -465,13 +466,12 @@ still written, exporting `0` for all three with no counting-start comment, so
 an embedding page never gets a 404 and a dangling reference. As a classic
 script it needs no CORS header — the *importing* page's CSP governs it.
 
-The region figure is published under two names with one value.
-`NHP_TOTAL_ATTACK_COUNTRIES` is the original name that embedders read, and it
-stays: removing it would throw a `ReferenceError` on every page that uses it.
-`NHP_TOTAL_ATTACK_REGIONS` is the name that matches what it counts — the
-ISO 3166-1 codes belong to dependencies, disputed areas and special political
-areas as well as to states. The deploy gate fails unless both are present
-and equal.
+The region figure is published under one name: `NHP_TOTAL_ATTACK_REGIONS`,
+the name that matches what it counts. The constant used to be called
+`NHP_TOTAL_ATTACK_COUNTRIES`; that name is gone, because the ISO 3166-1 codes
+it counts belong to dependencies, disputed areas and special political areas
+as well as to states. A site that embeds this file with `<script src>` has to
+switch to the new constant.
 
 **The two union counts are not sums, and they are not reproducible from
 `index.json`.** `unique_attack_ips` is a per-day *count*: an address that
@@ -538,7 +538,7 @@ Delete the state to force a full rebuild (or pass `-force`); deleting only the
 ]
 ```
 
-The per-day JSON files reuse the single-file `Report` (`schema: 1`), so the
+The per-day JSON files reuse the single-file `Report` (`schema: 2`), so the
 existing `xdplog-report -in <one day>.json -format html` path can regenerate a
 page from any archived day. Each page is titled **Daily Attack Report:**
 followed by the day (or the day range, for a multi-day CLI report), and opens
@@ -692,7 +692,7 @@ go build -o bin/xdplog-report ./xdplog-report
 ### 输出格式
 
 - `md`：Markdown 报告，适合贴到工单或在终端查看。
-- `json`：机器可读，`schema: 1`，包含 `bad_lines`、`scan_summary_lines`、
+- `json`：机器可读，`schema: 2`，包含 `bad_lines`、`scan_summary_lines`、
   `restarts_detected`、`unknown_reasons`。
 - `csv`：扁平表，列为 `section,key,pkts_exact,sampled_events,share,extra`。
 - `html`：独立页面，内联 CSS，无脚本、无外部资源，可离线打开或作为附件分享。
@@ -750,16 +750,17 @@ go run ./xdplog-report site \
 `d/<source>/<day>.json` 还在磁盘上就仍然计入。
 
 包数总数旁边还并排显示 **Source IPs** 和 **Regions** 两个数字，即 `totalnumber.js` 导出的
-`NHP_TOTAL_ATTACK_SOURCE_IPS` 与 `NHP_TOTAL_ATTACK_COUNTRIES`（同值另以
-`NHP_TOTAL_ATTACK_REGIONS` 导出；跨天并集）。三个数字一起
+`NHP_TOTAL_ATTACK_SOURCE_IPS` 与 `NHP_TOTAL_ATTACK_REGIONS`（跨天并集）。三个数字一起
 递增动画。值为 0 的数字不显示：没有 geo 数据库时就没有地区，显示"0 Regions"会被理解成
 "没有来自任何地区的攻击"。
 
 **地区（Region）** 是国际标准 ISO 3166-1 alpha-2 分配给它列出的每一个国家和地区的两位字母码，
 GeoIP 数据库就是把一个地址归属到其中一个。这个数字计的是攻击地址被归属到的地区数 —— 不是
-攻击者数，也不是地址数。改的只是显示名称，公开的名字一个没改：`totalnumber.js` 仍然导出
-`NHP_TOTAL_ATTACK_COUNTRIES`，并在旁边以同一个值导出 `NHP_TOTAL_ATTACK_REGIONS`；每天的
-JSON 仍用 `country` 键，`history.json` 仍用 `totals.countries`。
+攻击者数，也不是地址数。`totalnumber.js` 用一个名字导出它：`NHP_TOTAL_ATTACK_REGIONS` ——
+与它实际统计的东西相符的名字。它过去叫 `NHP_TOTAL_ATTACK_COUNTRIES`，那个名字已经没有了：
+ISO 3166-1 列的不只是国家，还有属地、争议地区与特别政治区，所以一个叫"国家数"的公开数字
+是对这些代码站不住脚的主张。用 `<script src>` 嵌这个文件的站点需要跟着改名；部署流水线的闸门
+现在 grep 的是新名字。
 
 `<title>` 用的则是另一句 —— **Zero Trust in Action: Live Attacks on OpenNHP
 Servers**。浏览器标签页、搜索结果和聊天预览有空间说清这个站"是关于什么的"，而首屏大标题
@@ -806,7 +807,7 @@ go run ./xdplog-report site \
 {
   "schema": 1,
   "since": "2026-10-16",
-  "totals": { "blocked": 3501020, "source_ips": 25136, "countries": 0 },
+  "totals": { "blocked": 3501020, "source_ips": 25136, "regions": 0 },
   "days": [
     {
       "source": "server",
@@ -858,7 +859,7 @@ go run ./xdplog-report site \
 **地区数则完全不采用快照的。** 公布的地区数就是已发布各天地区集合的并集，别无其他来源。地区是
 一个封闭集（ISO 3166-1 alpha-2，约 250 个码），两期几乎完全重合：把快照的计数加上就会把绝大多数
 地区数两遍（一份 130 地区的快照曾把站点顶到 162），已经越过了世界上地区代码的总数；取两者较大值
-虽然不会重复计数，却只能是个下界，总会漏掉只在一期出现过的地区。所以生成器写 `countries: 0`，站点
+虽然不会重复计数，却只能是个下界，总会漏掉只在一期出现过的地区。所以生成器写 `regions: 0`，站点
 也完全不读这个字段 —— 快照里还留着旧值的，照读不误，只在 stdout 上提示一句，然后忽略。
 
 一句话概括这条不变式：**快照只贡献开放集统计量（来源 IP），绝不贡献封闭集统计量（地区）。**
@@ -934,8 +935,7 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 <script>
   console.log(NHP_TOTAL_ATTACK_BLOCKED);    // 被拦截的攻击包数（精确）
   console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // 去重后的来源 IP 总数
-  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // 去重后的地区总数（ISO 3166-1 alpha-2 码）
-  console.log(NHP_TOTAL_ATTACK_REGIONS);    // 同一个数字，名字与它统计的东西相符
+  console.log(NHP_TOTAL_ATTACK_REGIONS);  // 去重后的地区总数（ISO 3166-1 alpha-2 码）
 </script>
 ```
 
@@ -944,10 +944,10 @@ xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> 
 三个常量都是 `0` 且不带统计起点注释，引用方不会拿到 404 然后留下一个悬空引用。它是普通
 classic script，跨站引用不需要 CORS 头 —— 受引用方自己的 CSP 约束。
 
-地区数用两个名字、同一个值导出。`NHP_TOTAL_ATTACK_COUNTRIES` 是引用方已经在读的原名，
-保留不动：删掉它会让每个引用它的页面抛出 `ReferenceError`。`NHP_TOTAL_ATTACK_REGIONS` 是与它
-实际统计的东西相符的名字 —— ISO 3166-1 列的不只是国家，还有属地、争议地区与特别政治区。
-部署闸门要求两者都存在且相等。
+地区数只用一个名字导出：`NHP_TOTAL_ATTACK_REGIONS` —— 与它实际统计的东西相符的名字。
+旧名 `NHP_TOTAL_ATTACK_COUNTRIES` 已经没有了：ISO 3166-1 列的不只是国家，还有属地、争议地区
+与特别政治区，所以一个叫"国家数"的公开数字是对这些代码站不住脚的主张。用 `<script src>` 嵌这个
+文件的站点需要跟着改名。
 
 **后两个数字是并集，不是求和，也无法从 `index.json` 复现。**
 `unique_attack_ips` 是"某一天有多少个不同的来源"：一个每天扫一遍主机的 IP 只有一个身份，
@@ -1000,7 +1000,7 @@ site: 1 day(s) contribute no source/region data (server/2026-10-17 (…)); the a
 ]
 ```
 
-每天的 JSON 文件复用了单文件 `Report`（`schema: 1`），因此已有的
+每天的 JSON 文件复用了单文件 `Report`（`schema: 2`），因此已有的
 `xdplog-report -in <某天>.json -format html` 路径可以从任何归档的日期重新生成页面。
 
 日期是 UTC（server 日志轮转默认用 `time.Now()` UTC）。当天还在写的日志在首页标记为

@@ -4323,22 +4323,13 @@ jobs:
           ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK $WEB_ROOT/totalnumber.js"
           blocked=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_BLOCKED $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
           sources=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_SOURCE_IPS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
-          # The region figure is published under two names with one value:
-          # NHP_TOTAL_ATTACK_COUNTRIES, the published contract other sites
-          # embed, and NHP_TOTAL_ATTACK_REGIONS. Both must be there and agree,
-          # so a later cleanup cannot silently drop the name embedders read.
-          regions=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_COUNTRIES $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
-          regions_alias=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_REGIONS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
+          regions=$(ssh $SSH_OPTS $TARGET "grep NHP_TOTAL_ATTACK_REGIONS $WEB_ROOT/totalnumber.js | sed 's/.*= *//; s/;//'" | tr -d '[:space:]')
           if [ -z "$regions" ]; then
-            echo "ERROR: no NHP_TOTAL_ATTACK_COUNTRIES in the published totalnumber.js" >&2
+            echo "ERROR: no region figure in the published totalnumber.js" >&2
             exit 1
           fi
           if ! printf '%s' "$regions" | grep -Eq '^[0-9]+$'; then
             echo "ERROR: the published region figure is not a number: '$regions'" >&2
-            exit 1
-          fi
-          if [ "$regions_alias" != "$regions" ]; then
-            echo "ERROR: NHP_TOTAL_ATTACK_REGIONS ('$regions_alias') does not equal NHP_TOTAL_ATTACK_COUNTRIES ('$regions')" >&2
             exit 1
           fi
           if [ "$regions" -gt 250 ]; then

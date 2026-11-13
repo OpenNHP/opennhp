@@ -1183,12 +1183,15 @@ func TestHistorySeedSnapshotCarriesNoRegionCount(t *testing.T) {
 	}
 }
 
-// TestHistorySnapshotKeepsTheCountriesKey pins the snapshot's wire format.
+// TestHistorySnapshotReadsTheLegacyRegionKey pins that a snapshot written
+// before the rename still loads.
 //
-// The region figure was renamed in the Go code and on the page only: on disk
-// the key is still "countries", so every snapshot an operator already holds
-// loads unchanged, and the generator writes the same key.
-func TestHistorySnapshotKeepsTheCountriesKey(t *testing.T) {
+// The key was renamed with the figure: "countries" was the wrong word for the
+// ISO 3166-1 codes the standard assigns to every country and area it lists.
+// The field's meaning did not change with the spelling -- it is recorded and
+// never applied -- so a snapshot that carries the old key is read in full
+// rather than refused.
+func TestHistorySnapshotReadsTheLegacyRegionKey(t *testing.T) {
 	legacy := []byte(`{
   "schema": 1,
   "since": "2026-10-15",
@@ -1207,17 +1210,10 @@ func TestHistorySnapshotKeepsTheCountriesKey(t *testing.T) {
 		t.Fatalf("a snapshot written before the rename was refused: %v", err)
 	}
 	if h.Totals.Regions != 5 {
-		t.Errorf("regions = %d, want 5 (read from the \"countries\" key)", h.Totals.Regions)
+		t.Errorf("regions = %d, want 5 (the legacy key is read)", h.Totals.Regions)
 	}
 	if h.Totals.Blocked != 300 || h.Totals.SourceIPs != 40 {
 		t.Errorf("the other totals were not read: %+v", h.Totals)
-	}
-	out, err := json.Marshal(h.Totals)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(out), `"countries":5`) || strings.Contains(string(out), `"regions"`) {
-		t.Errorf("the snapshot must write its region figure under the \"countries\" key: %s", out)
 	}
 }
 
@@ -1273,3 +1269,29 @@ func TestHistoryRegionTotalIsBoundedByTheGeoSource(t *testing.T) {
 // TestHistoryRowsAreNotPublishedTwice pins the failure the whole feature
 // exists to prevent: the snapshot's days and the collector's days overlap
 // exactly, and counting both would double the site's headline total.
+
+// TestHistoryReadsTotalsPublishedBeforeTheRename pins that a copy of
+// totalnumber.js saved before the region constant was renamed still yields a
+// snapshot: an operator's saved copy of the old site is the only carrier of
+// its history.
+func TestHistoryReadsTotalsPublishedBeforeTheRename(t *testing.T) {
+	dir := t.TempDir()
+	index := filepath.Join(dir, "index.json")
+	totals := filepath.Join(dir, "totalnumber.js")
+	if err := os.WriteFile(index, []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := "const NHP_TOTAL_ATTACK_BLOCKED = 300;\n" +
+		"const NHP_TOTAL_ATTACK_SOURCE_IPS = 40;\n" +
+		"const NHP_TOTAL_ATTACK_COUNTRIES = 5;\n"
+	if err := os.WriteFile(totals, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	page, err := historyPageFromIndex(index, totals)
+	if err != nil {
+		t.Fatalf("a totalnumber.js published before the rename was refused: %v", err)
+	}
+	if page.Regions != 5 || page.Sources != 40 || page.Blocked != 300 {
+		t.Errorf("page = %+v, want blocked 300, sources 40, regions 5", page)
+	}
+}

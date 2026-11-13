@@ -960,6 +960,16 @@ func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (boo
 	if err := json.Unmarshal(b, &rep); err != nil {
 		return false, fmt.Errorf("%s: %w", in.Path, err)
 	}
+	// A record written before the region columns were renamed is rewritten
+	// in the current format, so the published d/ tree never mixes two
+	// spellings of the same column. Only the format changes: the reader has
+	// already mapped the old keys, and no number is recomputed.
+	if rep.Schema < reportSchema {
+		rep.Schema = reportSchema
+		if err := writeJSONAtomic(in.Path, &rep); err != nil {
+			return false, err
+		}
+	}
 	// Same two fields processSiteDay sets before writing the page; the
 	// published JSON carries them, and a page written by an older binary or
 	// hand-assembled may not.

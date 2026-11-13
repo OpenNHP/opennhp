@@ -132,7 +132,7 @@ func TestCLIFormatsAndMask(t *testing.T) {
 	if !strings.Contains(md, "WARNING") || !strings.Contains(md, "Not enabled") {
 		t.Error("missing budget warning or geo-disabled note")
 	}
-	if js := runReport(t, append(args, "-format", "json")...); !strings.Contains(js, `"schema": 1`) {
+	if js := runReport(t, append(args, "-format", "json")...); !strings.Contains(js, `"schema": 2`) {
 		t.Error("json schema missing")
 	}
 	if csv := runReport(t, append(args, "-format", "csv")...); !strings.HasPrefix(csv, "section,key") {

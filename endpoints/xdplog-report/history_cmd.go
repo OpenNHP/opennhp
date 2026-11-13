@@ -39,7 +39,8 @@ import (
 // Regions is the number of distinct ISO 3166-1 alpha-2 codes the page's
 // sources were attributed to. The homepage calls this figure "Regions": a
 // two-letter code covers a country, a dependency and a special political area
-// alike, so "countries" was the wrong word for it.
+// alike, so "countries" was the wrong word for it, and so was the constant
+// the published totals file exported it under.
 type historyPage struct {
 	Blocked uint64
 	Sources int
@@ -52,8 +53,12 @@ var (
 	// sinceRe pulls the counting start out of the page's note paragraph.
 	sinceRe = regexp.MustCompile(`Since\s+(\d{4}-\d{2}-\d{2})`)
 	// totalNumberRe pulls the three all-time figures out of totalnumber.js.
-	// The region figure is published under two names with one value:
-	// COUNTRIES, which embedders already read, and REGIONS.
+	//
+	// The third constant is published under one name, and it was renamed
+	// with the figure it carries: the ISO 3166-1 codes the standard
+	// assigns to every country and area it lists are regions, not
+	// countries. The old name is still matched so a copy of the site
+	// published before the rename still yields a snapshot.
 	totalNumberRe = regexp.MustCompile(`const NHP_TOTAL_ATTACK_(BLOCKED|SOURCE_IPS|REGIONS|COUNTRIES) = (\d+);`)
 	// countingStartRe pulls the counting start out of totalnumber.js.
 	countingStartRe = regexp.MustCompile(`// Counting starts: (\d{4}-\d{2}-\d{2}) \(UTC\)\.`)
@@ -236,7 +241,6 @@ func historyPageFromIndex(indexPath, totalsPath string) (*historyPage, error) {
 	}
 	page := &historyPage{Rows: rows}
 	seen := map[string]bool{}
-	var regions int
 	for _, m := range totalNumberRe.FindAllStringSubmatch(string(tb), -1) {
 		switch m[1] {
 		case "BLOCKED":
@@ -252,32 +256,25 @@ func historyPageFromIndex(indexPath, totalsPath string) (*historyPage, error) {
 				return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
 			}
 			page.Sources = v
-		case "COUNTRIES":
+		case "REGIONS", "COUNTRIES":
+			// The constant was renamed with the figure: the old name is
+			// still matched so a copy of the site published before the
+			// rename yields a snapshot.
 			v, err := historyCount(m[2])
 			if err != nil {
 				return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
 			}
 			page.Regions = v
-		case "REGIONS":
-			// The same figure under the name that says what it counts. A
-			// site published before it existed does not carry it, so it is
-			// optional; when it is there it must agree with COUNTRIES.
-			v, err := historyCount(m[2])
-			if err != nil {
-				return nil, fmt.Errorf("%s: %s: %w", totalsPath, m[1], err)
-			}
-			regions = v
 		}
 		seen[m[1]] = true
 	}
-	for _, name := range []string{"BLOCKED", "SOURCE_IPS", "COUNTRIES"} {
+	for _, name := range []string{"BLOCKED", "SOURCE_IPS"} {
 		if !seen[name] {
 			return nil, fmt.Errorf("%s: NHP_TOTAL_ATTACK_%s not found", totalsPath, name)
 		}
 	}
-	if seen["REGIONS"] && regions != page.Regions {
-		return nil, fmt.Errorf("%s: NHP_TOTAL_ATTACK_REGIONS (%d) disagrees with NHP_TOTAL_ATTACK_COUNTRIES (%d)",
-			totalsPath, regions, page.Regions)
+	if !seen["REGIONS"] && !seen["COUNTRIES"] {
+		return nil, fmt.Errorf("%s: NHP_TOTAL_ATTACK_REGIONS not found", totalsPath)
 	}
 	if m := countingStartRe.FindStringSubmatch(string(tb)); m != nil {
 		page.Since = m[1]
@@ -346,8 +343,11 @@ func buildSiteHistory(page *historyPage) (*SiteHistory, error) {
 			// of ~250 that both periods share almost entirely, and the
 			// site published 162 from a 130-region snapshot. The generator
 			// reads the figure (a page that cannot say it is not a stats
-			// page) and reports it on stdout, but writes 0. On disk the
-			// key is still "countries"; see HistoryTotals.Regions.
+			// page) and reports it on stdout, but writes 0.
+			//
+			// The field name and its json tag were renamed with the
+			// figure: the snapshot format is published, so the old
+			// spelling is still read (see HistoryTotals.UnmarshalJSON).
 			Regions: 0,
 		},
 		Days: rows,

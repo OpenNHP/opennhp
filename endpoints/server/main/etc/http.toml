@@ -42,3 +42,11 @@ TLSKeyFile = "cert/cert.key"
 # does not revoke trust from a running listener; the daemon logs a Critical
 # line when the configured list and the running one disagree.
 TrustedProxies = []
+
+# EnableKbs: mount the /kbs/v0 Key Broker Service routes. Default FALSE.
+# These routes release the content key for any file in the KBS repository,
+# and the attestation that is supposed to gate them is not implemented:
+# /attest never reads the tee-evidence it accepts and mints a token whose
+# cosign_authorized is a constant. Leave this off unless you are using KBS
+# and the listener is somewhere only trusted callers reach.
+# EnableKbs = false

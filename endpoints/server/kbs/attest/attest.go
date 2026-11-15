@@ -98,6 +98,40 @@ func Attest(c *gin.Context) {
 	})
 }
 
+// VerifyToken checks that a token was issued by THIS process, by
+// verifying its signature against this process's own signing key, and
+// returns its typed claims.
+//
+// What it replaces mattered: the previous check took the verification key
+// from the token's own "jwk" header, so a token signed with any key the
+// caller generated verified successfully — the signature proved nothing at
+// all. jwtSigningKey never leaves this process, so a token that verifies
+// here is one /attest minted.
+//
+// The claims come back typed. The caller used to type-assert the result of
+// jwt.Parse to *CustomClaims, which always failed (jwt.Parse yields
+// jwt.MapClaims), so the cosign_authorized check it guarded never ran.
+func VerifyToken(tokenString string) (*CustomClaims, error) {
+	if jwtSigningKey == nil {
+		return nil, errors.New("JWT signing key is not initialized")
+	}
+
+	claims := &CustomClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodECDSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return &jwtSigningKey.PublicKey, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodES256.Alg()}))
+	if err != nil {
+		return nil, err
+	}
+	if !token.Valid {
+		return nil, errors.New("token is not valid")
+	}
+	return claims, nil
+}
+
 func parseTeePubkey(pubkey TeePubkey) (*rsa.PublicKey, error) {
 	if pubkey.Kty != "RSA" {
 		return nil, errors.New("unsupported key type, expect RSA")

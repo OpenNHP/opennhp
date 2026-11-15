@@ -477,6 +477,17 @@ type HttpConfig struct {
 	// the HTTP server starts. Uploads and metadata require a request
 	// signed with an nhp-db key listed in db.toml; downloads stay anonymous
 	// (the object URL carries a random UUID and a ZTDO is encrypted).
+	// EnableKbs mounts /kbs/v0/* (the Key Broker Service). Default
+	// FALSE, unlike every other switch here, because those routes release
+	// resource content keys and the attestation that is supposed to gate
+	// them is not implemented: /attest never reads the tee-evidence it
+	// accepts, and the token it mints carries a hard-coded
+	// cosign_authorized. Until that is built, a deployment that does not
+	// use KBS must not expose it — and the shipped http.toml binds
+	// 0.0.0.0:443, so leaving it mounted meant exposing it to the
+	// internet. Deployments that do use KBS opt in here, knowing it is
+	// unauthenticated.
+	EnableKbs                   bool  // default false
 	EnableStorage               *bool // default true
 	StorageMaxUploadMB          int   // largest accepted upload; default 20480
 	StorageMinFreeMB            int   // free space an upload must leave on the upload volume; default 1024

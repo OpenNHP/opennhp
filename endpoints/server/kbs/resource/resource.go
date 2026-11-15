@@ -3,8 +3,6 @@ package resource
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -12,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,7 +17,6 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/sigstore/cosign/v2/pkg/cosign"
 
 	"github.com/OpenNHP/opennhp/endpoints/server/kbs/attest"
@@ -87,22 +83,18 @@ func GetResource(c *gin.Context) {
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 
-	verifiedToken, err := VerifyJWT(tokenStr)
+	claims, err := VerifyJWT(tokenStr)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, kbsError.TokenInvalid())
 		return
 	}
 
-	if !verifiedToken.Valid {
-		c.JSON(http.StatusUnauthorized, kbsError.TokenInvalid())
+	// Unconditional, not "if the claims happen to assert". The previous
+	// shape wrapped this in a type assertion that could not succeed, so a
+	// token without the claim was served anyway.
+	if !claims.CosignAuthorized {
+		c.JSON(http.StatusForbidden, kbsError.PolicyDeny())
 		return
-	}
-
-	if claims, ok := verifiedToken.Claims.(*attest.CustomClaims); ok {
-		if !claims.CosignAuthorized {
-			c.JSON(http.StatusForbidden, kbsError.PolicyDeny())
-			return
-		}
 	}
 
 	teePubKey, err := attest.GetTeePubKeyByToken(tokenStr)
@@ -213,57 +205,12 @@ func encryptWithA256GCM(key, plaintext []byte) (ciphertext, iv, tag []byte, err 
 	return ciphertext, iv, nil, nil
 }
 
-func VerifyJWT(tokenString string) (*jwt.Token, error) {
-	// First parse the token without verification to get the header
-	parser := jwt.NewParser()
-	unverifiedToken, _, err := parser.ParseUnverified(tokenString, jwt.MapClaims{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse token: %w", err)
-	}
-
-	// Extract JWK from header
-	jwkHeader, ok := unverifiedToken.Header["jwk"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid jwk in header")
-	}
-
-	// Convert JWK back to ECDSA public key
-	xStr, ok := jwkHeader["x"].(string)
-	if !ok {
-		return nil, fmt.Errorf("missing x coordinate in jwk")
-	}
-	yStr, ok := jwkHeader["y"].(string)
-	if !ok {
-		return nil, fmt.Errorf("missing y coordinate in jwk")
-	}
-
-	xBytes, err := base64.RawURLEncoding.DecodeString(xStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid x coordinate: %w", err)
-	}
-	yBytes, err := base64.RawURLEncoding.DecodeString(yStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid y coordinate: %w", err)
-	}
-
-	publicKey := &ecdsa.PublicKey{
-		Curve: elliptic.P256(),
-		X:     new(big.Int).SetBytes(xBytes),
-		Y:     new(big.Int).SetBytes(yBytes),
-	}
-
-	// Now verify the token with the extracted public key
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
-		// Check signing method
-		if _, ok := token.Method.(*jwt.SigningMethodECDSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return publicKey, nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return token, nil
+// VerifyJWT verifies a KBS token against the signing key this process
+// generated at startup and returns its typed claims.
+//
+// It used to read the verification key out of the token's own "jwk"
+// header, which made every self-signed token valid. See
+// attest.VerifyToken.
+func VerifyJWT(tokenString string) (*attest.CustomClaims, error) {
+	return attest.VerifyToken(tokenString)
 }

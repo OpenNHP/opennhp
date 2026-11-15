@@ -46,3 +46,11 @@ HttpListenPort = 8443
 # together, see CLAUDE.md -- set this to ["127.0.0.1"] in the same change,
 # because HttpListenIp is loopback and nginx is same-host.
 TrustedProxies = []
+
+# EnableKbs: mount the /kbs/v0 Key Broker Service routes. Default FALSE.
+# These routes release the content key for any file in the KBS repository,
+# and the attestation that is supposed to gate them is not implemented:
+# /attest never reads the tee-evidence it accepts and mints a token whose
+# cosign_authorized is a constant. Leave this off unless you are using KBS
+# and the listener is somewhere only trusted callers reach.
+# EnableKbs = false

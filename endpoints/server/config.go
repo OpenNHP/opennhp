@@ -473,21 +473,21 @@ type HttpConfig struct {
 	// nothing else can reach it. See applyTrustedProxies in httpserver.go.
 	TrustedProxies []string
 
+	// EnableKbs mounts /kbs/v0/* (the Key Broker Service). Default FALSE,
+	// unlike EnableStorage: those routes release resource content keys and
+	// the attestation that is supposed to gate them is not implemented —
+	// /attest never reads the tee-evidence it accepts, and the token it
+	// mints carries a hard-coded cosign_authorized. /storage can default on
+	// because its writes require a request signed by an nhp-db listed in
+	// db.toml; KBS has no equivalent. The shipped http.toml binds
+	// 0.0.0.0:443, so leaving the routes mounted meant exposing them.
+	// Read once, when the listener starts: see kbsPending.
+	EnableKbs bool // default false
+
 	// /storage API (ZTDO upload by nhp-db, download by agents). Read when
 	// the HTTP server starts. Uploads and metadata require a request
 	// signed with an nhp-db key listed in db.toml; downloads stay anonymous
 	// (the object URL carries a random UUID and a ZTDO is encrypted).
-	// EnableKbs mounts /kbs/v0/* (the Key Broker Service). Default
-	// FALSE, unlike every other switch here, because those routes release
-	// resource content keys and the attestation that is supposed to gate
-	// them is not implemented: /attest never reads the tee-evidence it
-	// accepts, and the token it mints carries a hard-coded
-	// cosign_authorized. Until that is built, a deployment that does not
-	// use KBS must not expose it — and the shipped http.toml binds
-	// 0.0.0.0:443, so leaving it mounted meant exposing it to the
-	// internet. Deployments that do use KBS opt in here, knowing it is
-	// unauthenticated.
-	EnableKbs                   bool  // default false
 	EnableStorage               *bool // default true
 	StorageMaxUploadMB          int   // largest accepted upload; default 20480
 	StorageMinFreeMB            int   // free space an upload must leave on the upload volume; default 1024
@@ -1591,6 +1591,15 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 			if err != nil {
 				return err
 			}
+		} else if s.httpServer.kbsPending(httpConf.EnableKbs) {
+			// Same shape as TrustedProxies below, and a sharper edge: this
+			// is the incident response for an exposed Key Broker Service,
+			// and /kbs/v0 releases resource content keys without verifying
+			// any attestation. An operator who set EnableKbs = false must
+			// not be left believing the endpoint is gone.
+			log.Critical("EnableKbs changed in the HTTP config but the running listener still serves the routes it started with. " +
+				"The change takes effect only after the HTTP server restarts: set EnableHttp = false, then back to true. " +
+				"Until then /kbs/v0 keeps the mount it started with.")
 		} else if s.httpServer.trustedProxiesPending(httpConf.TrustedProxies) {
 			// The listener is already up and this call does not restart it, so
 			// the engine keeps the proxy list it started with. Say so: for

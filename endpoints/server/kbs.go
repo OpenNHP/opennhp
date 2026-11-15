@@ -25,12 +25,17 @@ import (
 // the result.
 func (hs *HttpServer) initKbsRouter() {
 	if hs.config == nil || !hs.config.EnableKbs {
+		hs.kbsMounted = false
 		log.Info("KBS API disabled (EnableKbs is not true)")
 		return
 	}
+	hs.kbsMounted = true
 
+	// The remedy names a restart on purpose: the routes are built once, so
+	// editing http.toml alone leaves them serving. See kbsPending.
 	log.Warning("KBS API enabled: /kbs/v0/* releases resource content keys without verifying attestation. " +
-		"Bind the HTTP listener somewhere only trusted callers reach, or set EnableKbs = false.")
+		"Bind the HTTP listener somewhere only trusted callers reach, or set EnableKbs = false and restart the HTTP server " +
+		"(EnableHttp = false, then back to true).")
 
 	g := hs.ginEngine.Group("/kbs/v0")
 

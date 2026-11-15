@@ -43,7 +43,13 @@ type HttpServer struct {
 	// listener goroutine starts, and read-only afterwards.
 	trustedProxies []string
 
-	wg      sync.WaitGroup
+	wg sync.WaitGroup
+	// kbsMounted is whether initRouter actually mounted /kbs/v0, kept so a
+	// reload can tell the running engine from the new config. The routes
+	// are built once, at Start; this field is what makes the gap visible
+	// instead of silent. See kbsPending.
+	kbsMounted bool
+
 	running atomic.Bool
 
 	// signals
@@ -328,6 +334,21 @@ func trustedProxyPrefixes(proxies []string) (map[netip.Prefix]struct{}, bool) {
 // Safe to call from another goroutine: trustedProxies is written by
 // applyTrustedProxies before Start stores the running flag, and that atomic
 // store orders the write ahead of the Load below.
+// kbsPending reports that the running listener's /kbs/v0 mount no longer
+// matches the configured one.
+//
+// The routes are decided once, in initRouter, and a config reload does not
+// restart the listener. For most fields that lag is cosmetic. Not this one:
+// turning EnableKbs off is the incident response for an exposed Key Broker
+// Service, and an operator who just did it has every reason to believe the
+// endpoint is gone.
+func (hs *HttpServer) kbsPending(configured bool) bool {
+	if hs == nil || !hs.running.Load() {
+		return false
+	}
+	return hs.kbsMounted != configured
+}
+
 func (hs *HttpServer) trustedProxiesPending(configured []string) bool {
 	if hs == nil || !hs.running.Load() {
 		return false

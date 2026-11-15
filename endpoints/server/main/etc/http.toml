@@ -49,4 +49,7 @@ TrustedProxies = []
 # /attest never reads the tee-evidence it accepts and mints a token whose
 # cosign_authorized is a constant. Leave this off unless you are using KBS
 # and the listener is somewhere only trusted callers reach.
+# Read once, when the HTTP server starts: changing it on a running
+# server takes effect only after a restart (EnableHttp = false, then
+# back to true). The reload logs a Critical line when that is pending.
 # EnableKbs = false

@@ -173,14 +173,10 @@ func generateJWT() (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 
-	publicKey := jwtSigningKey.PublicKey
-	token.Header["jwk"] = map[string]any{
-		"alg": "ES256",
-		"crv": "P-256",
-		"kty": "EC",
-		"x":   base64.RawURLEncoding.EncodeToString(publicKey.X.Bytes()),
-		"y":   base64.RawURLEncoding.EncodeToString(publicKey.Y.Bytes()),
-	}
+	// No "jwk" header. It used to carry this key, and the verifier used to
+	// read the key it checked against out of that header — which made every
+	// self-signed token valid. VerifyToken uses jwtSigningKey directly now;
+	// emitting the header again would only invite someone to trust it.
 
 	return token.SignedString(jwtSigningKey)
 }

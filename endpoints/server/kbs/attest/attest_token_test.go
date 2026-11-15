@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -34,7 +35,7 @@ func TestVerifyTokenRejectsForeignKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := VerifyToken(signed); err == nil {
+	if _, verr := VerifyToken(signed); verr == nil {
 		t.Fatal("a token signed with a caller-chosen key was accepted")
 	}
 
@@ -45,7 +46,7 @@ func TestVerifyTokenRejectsForeignKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := VerifyToken(signed); err == nil {
+	if _, verr := VerifyToken(signed); verr == nil {
 		t.Fatal("a token signed with a foreign key was accepted")
 	}
 }
@@ -92,7 +93,28 @@ func TestVerifyTokenRejectsOtherAlgorithms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := VerifyToken(signed); err == nil {
+	if _, verr := VerifyToken(signed); verr == nil {
 		t.Fatal(`a token with alg "none" was accepted`)
+	}
+}
+
+// An expired token is refused. ParseWithClaims into *CustomClaims is what
+// brings jwt/v5's RegisteredClaims validation back; the previous path
+// yielded jwt.MapClaims, so nothing downstream looked at exp either.
+func TestVerifyTokenRejectsExpiredTokens(t *testing.T) {
+	past := time.Now().Add(-2 * time.Hour)
+	expired := jwt.NewWithClaims(jwt.SigningMethodES256, CustomClaims{
+		CosignAuthorized: true,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(past),
+			ExpiresAt: jwt.NewNumericDate(past.Add(5 * time.Minute)),
+		},
+	})
+	signed, err := expired.SignedString(jwtSigningKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, verr := VerifyToken(signed); verr == nil {
+		t.Fatal("an expired token was accepted")
 	}
 }

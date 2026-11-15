@@ -424,13 +424,56 @@ func recvStalenessFloor(deviceType int, peerType int, msgType int) int64 {
 	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
 		return AOPRecvStalenessFloorSeconds * int64(time.Second)
 	}
+	if deviceType == NHP_SERVER && isAgentKnockFamily(peerType, msgType) {
+		return KNKRecvStalenessFloorSeconds * int64(time.Second)
+	}
 	return DefaultRecvStalenessFloorSeconds * int64(time.Second)
+}
+
+// isAgentKnockFamily reports whether (peerType, msgType) is one of the
+// agent→server knock messages that the server answers with a firewall
+// grant (or a revocation): NHP_KNK / NHP_RKN / NHP_EXT, plus DHP_KNK.
+//
+// The DHP agent is registered in the same peer table as an NHP agent
+// (see peerRoleAllowed), and DHP_KNK is dispatched to the same
+// HandleKnockRequest handler, so it belongs to the same family for
+// staleness purposes.
+//
+// Why the family matters: the server derives the AC grant from the
+// packet's SOURCE ADDRESS. A knock replayed from a different address
+// therefore gets THAT address admitted, so the accepted age of a knock
+// is the width of the replay window the KNK replay cache
+// (endpoints/server/knk_replay_cache.go) has to cover.
+func isAgentKnockFamily(peerType int, msgType int) bool {
+	switch msgType {
+	case NHP_KNK, NHP_RKN, NHP_EXT:
+		return peerType == NHP_AGENT
+	case DHP_KNK:
+		return peerType == DHP_AGENT
+	}
+	return false
 }
 
 // AOP skips monotonic replay and flood checks; the packet cache rejects
 // duplicates. Stale AOPs are dropped without blocking the server connection.
+//
+// The agent knock family is exempt for the same reason. Its staleness
+// floor is 60 s (KNKRecvStalenessFloorSeconds) — tight enough that an
+// agent whose clock drifts by more than a minute has EVERY knock
+// rejected. Escalating that to a threat count would block the agent's
+// source address (the second consecutive stale knock crosses
+// ThreatCountBeforeBlock), turning a recoverable clock-skew artifact into
+// a hard outage for that agent. The drop and its "stale" metric stage are
+// unaffected; only the block escalation is skipped.
+//
+// This costs no replay protection: a captured knock replayed inside the
+// window is refused by the KNK replay cache (endpoints/server/
+// knk_replay_cache.go) and one replayed outside it is refused here.
 func shouldEscalateStale(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return false
+	}
+	if deviceType == NHP_SERVER && isAgentKnockFamily(peerType, msgType) {
 		return false
 	}
 	return true
@@ -476,6 +519,13 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 // turn bounds the worst-case lockout if that relay's clock
 // subsequently steps back.
 //
+// KNK (server ← agent): TTL-bounded, in the server's KNK replay cache
+// (endpoints/server/knk_replay_cache.go). The staleness floor only
+// bounds how OLD a packet may be, so a forward-stamped knock would
+// otherwise stay acceptable — and stay in the cache — for as long as
+// the sender's clock is ahead. This gate bounds how far ahead it can
+// be.
+//
 // Defensive on peerType even though the cache lookup itself is the
 // authoritative gate for ART — we want the warning to read "X from
 // Y" and a stale envelope claiming a role it cannot legitimately
@@ -488,6 +538,9 @@ func futureSkewCached(deviceType int, peerType int, msgType int) bool {
 		return true
 	}
 	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {
+		return true
+	}
+	if deviceType == NHP_SERVER && isAgentKnockFamily(peerType, msgType) {
 		return true
 	}
 	return false
@@ -767,6 +820,12 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	staleness := recvStalenessFloor(ppd.device.deviceType, peerDeviceType, ppd.HeaderType)
 	if ppd.device.deviceType == NHP_AC && peerDeviceType == NHP_SERVER && ppd.HeaderType == NHP_AOP && option.AOPRecvStalenessSeconds > 0 {
 		staleness = int64(option.AOPRecvStalenessSeconds) * int64(time.Second)
+	}
+	// The KNK family has its own operator-tunable floor (the server exposes
+	// it as KNKRecvStalenessSeconds), symmetric to AOP's. Zero keeps the
+	// protocol default (KNKRecvStalenessFloorSeconds).
+	if ppd.device.deviceType == NHP_SERVER && isAgentKnockFamily(peerDeviceType, ppd.HeaderType) && option.KNKRecvStalenessSeconds > 0 {
+		staleness = int64(option.KNKRecvStalenessSeconds) * int64(time.Second)
 	}
 	if remoteSendTime < ppd.LocalInitTime-staleness {
 		// Registered relay peers share one long-lived UDP conn with the

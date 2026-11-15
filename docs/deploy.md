@@ -498,3 +498,43 @@ the shared AOL timestamp watermark or clear connection threat state. Cache state
 is process-local and clears on restart. Random transaction sequences make ID
 reuse unlikely; the cache is additional duplicate-delivery protection. AOP
 protection must be configured on the AC separately.
+### KNK replay protection
+
+An agent knock (`NHP-KNK`, `NHP-RKN`, `NHP-EXT`, `DHP-KNK`) is the one message
+whose replay has a security consequence: the server derives the AC firewall
+grant from the packet's SOURCE ADDRESS, so a captured knock replayed from
+another address gets that address admitted. The server therefore keeps a cache
+of accepted `(agent public key, transaction id, send time)` triples and refuses
+a byte-identical repeat. A legitimate retry is never caught — the agent takes
+a fresh transaction id and a fresh timestamp for every packet it builds.
+
+Knocks are now accepted for **60 seconds** by default, down from 600. **Keep
+agent and server clocks synchronized before upgrading**: an agent whose clock
+drifts more than 60 seconds has every knock rejected as stale. A stale knock is
+a drop, not a connection block, so a skewed agent retries rather than being
+locked out. Set `KNKRecvStalenessSeconds` in the server configuration to
+1..600 seconds if a deployment needs more tolerance; zero selects 60. Restart
+the server after changes. A larger limit also widens the window in which a
+captured knock can be replayed. The forward bound (how far ahead of the server
+a knock may be stamped) is a protocol constant and is not configurable.
+
+The cache retains accepted triples for the effective window plus 60 seconds.
+Set `KNKReplayCacheEntries` to peak knocks/s times that retention plus burst
+headroom (0 selects 100,000; maximum 1,000,000; restart required). Memory grows
+with usage up to that cap, at several hundred bytes per entry. Alert on
+`nhp_server_knk_replay_cache_evictions_total`; unexpired eviction shortens
+replay coverage. Refused replays appear as
+`nhp_server_packets_dropped_total{stage="knk_replay"}`. Detailed clock-skew and
+replay warnings are limited to once per minute.
+
+Cache state is process-local and clears on restart, so the residual replay
+window after a restart equals the configured staleness window. In a
+multi-replica deployment the cache is per instance: a replay is only refused if
+it lands on the same instance that accepted the original knock, so an agent's
+knocks must be sticky to one instance for the protection to hold.
+
+Two exposures remain and are **not** fixed by this setting. A host behind a
+shared NAT or CGNAT looks like a legitimate agent to the server without
+capturing anything, so the replay cache does not help there — only
+identity-bound authorization would. And the server's source-IP association map
+can widen a grant to other addresses associated with the same source IP.

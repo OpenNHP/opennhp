@@ -23,6 +23,15 @@
 # Hostname (-): server domain name.
 # OverloadMaxAgentConnectionsPerIP (-): per-source tuple cap during overload only; 0 selects 256.
 # ARTReplayCacheEntries (-): 0 selects 100000, maximum 1000000; restart required.
+# KNKRecvStalenessSeconds (-): maximum age, in seconds, of an accepted agent
+#   knock (NHP-KNK / NHP-RKN / NHP-EXT / DHP-KNK). 0 selects the 60-second
+#   default; the maximum is 600. Restart required. Keep agent and server
+#   clocks synchronized: an agent whose clock drifts past the window has
+#   every knock rejected as stale. A larger limit also widens the window in
+#   which a captured knock can be replayed.
+# KNKReplayCacheEntries (-): capacity of the KNK replay cache. 0 selects
+#   100000; the maximum is 1000000. Restart required. Size it for peak
+#   knocks/s times (the effective staleness window + 60 seconds).
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # DisableAgentValidation: whether for the server to skip the agent's public key validation.
 # AllowPrivateRelaySource: accept private (RFC1918 / loopback / CGNAT)

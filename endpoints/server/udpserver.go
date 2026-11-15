@@ -139,6 +139,20 @@ type UdpServer struct {
 	// connection. It is installed as a post-validation core hook in Start.
 	artReplay *artReplayCache
 
+	// knkReplay rejects a byte-identical replay of an authenticated knock
+	// (NHP_KNK / NHP_RKN / NHP_EXT / DHP_KNK).
+	//
+	// It is deliberately NOT installed through the SetRecvReplayDedupe hook
+	// chain (which runs BEFORE body decryption): a knock's peer is any
+	// registered agent and its public key is public, so a forged-but-
+	// header-valid packet could claim a real agent's (pubkey, txid,
+	// sendTime) triple and poison the cache for that agent's next knock.
+	// Instead it is consulted inside HandleKnockRequest, which runs only
+	// after the body AEAD has been verified — an attacker without the
+	// agent's private key cannot produce a body that decrypts, so it
+	// cannot reach the cache at all.
+	knkReplay *knkReplayCache
+
 	// relayReplay rejects a captured-and-replayed NHP_RLY envelope.
 	// NHP_RLY packets are exempted from the per-connection monotonic /
 	// 20ms flood gates (see nhp/core.responder.shouldCheckRecvAttack /
@@ -471,8 +485,38 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		}
 	}
 
+	// KNK replay protection configuration. Validated here, before the
+	// device is created, because the staleness floor has to reach
+	// core.DeviceOptions and the cache TTL is derived from the EFFECTIVE
+	// window.
+	if s.config.KNKRecvStalenessSeconds < 0 || s.config.KNKRecvStalenessSeconds > core.DefaultRecvStalenessFloorSeconds {
+		return fmt.Errorf("KNKRecvStalenessSeconds must be between 0 and %d, got %d", core.DefaultRecvStalenessFloorSeconds, s.config.KNKRecvStalenessSeconds)
+	}
+	if s.config.KNKReplayCacheEntries < 0 || s.config.KNKReplayCacheEntries > knkReplayCacheMaxSize {
+		return fmt.Errorf("KNKReplayCacheEntries must be between 0 and %d, got %d", knkReplayCacheMaxSize, s.config.KNKReplayCacheEntries)
+	}
+	// The effective KNK staleness window: the operator's value when set,
+	// the protocol default otherwise. The cache TTL is derived from it, so
+	// shortening the window also shortens how long a replay entry is
+	// retained.
+	knkWindowSeconds := s.config.KNKRecvStalenessSeconds
+	if knkWindowSeconds <= 0 {
+		knkWindowSeconds = core.KNKRecvStalenessFloorSeconds
+	}
+	knkEntries := s.config.KNKReplayCacheEntries
+	if knkEntries == 0 {
+		knkEntries = knkReplayCacheSize
+	}
+	s.knkReplay = newKNKReplayCacheWithParams(knkEntries, knkReplayTTL(knkWindowSeconds))
+	log.Info("KNK replay protection enabled: window=%d seconds, cache entries=%d, ttl=%d seconds",
+		knkWindowSeconds, knkEntries, int(knkReplayTTL(knkWindowSeconds).Seconds()))
+
 	option := &core.DeviceOptions{
 		DisableAgentPeerValidation: s.config.DisableAgentValidation,
+		// The KNK staleness floor. Zero means the protocol default
+		// (core.KNKRecvStalenessFloorSeconds), so only a configured
+		// value is passed through.
+		KNKRecvStalenessSeconds: s.config.KNKRecvStalenessSeconds,
 		// Count packets dropped before they become a decrypted message —
 		// the most interesting attack signal for a network-hiding product,
 		// and the one seam the rest of the metrics wiring doesn't see

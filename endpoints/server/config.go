@@ -87,6 +87,8 @@ type SrcIpMap struct {
 
 type Config struct {
 	ARTReplayCacheEntries            int    `json:"artReplayCacheEntries"`            // Restart-only; zero selects 100000.
+	KNKReplayCacheEntries            int    `json:"knkReplayCacheEntries"`            // Restart-only; zero selects 100000, maximum 1000000.
+	KNKRecvStalenessSeconds          int    `json:"knkRecvStalenessSeconds"`          // Restart-only; zero selects 60 seconds, maximum 600.
 	RelayReplayCacheEntries          int    `json:"relayReplayCacheEntries"`          // Deprecated. The relay dedupe path now uses a per-relay sliding window with fixed size (see relay_replay_window.go) — there is no global capacity to tune. Setting this field logs a deprecation warning at Start; please remove it from your config.
 	OverloadMaxAgentConnectionsPerIP int    `json:"overloadMaxAgentConnectionsPerIP"` // Restart-only; zero selects 256.
 	PrivateKeyBase64                 string `json:"privateKey"`
@@ -1423,6 +1425,22 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		// false → true → false; only the teardown predicate observes
 		// the new value.
 		s.forceOverload.Store(conf.ForceOverload)
+	}
+
+	// The KNK replay-protection settings are restart-only: the staleness
+	// window is baked into the device's options and the cache TTL into the
+	// cache itself, both at startup. Silently dropping the new value
+	// would leave s.config disagreeing with config.toml, so adopt it for
+	// read-consistency and warn — the same treatment ForceOverload gets.
+	if s.config.KNKRecvStalenessSeconds != conf.KNKRecvStalenessSeconds {
+		log.Warning("KNKRecvStalenessSeconds changed in config (%d -> %d) on reload; the KNK staleness floor is set at startup, restart to apply",
+			s.config.KNKRecvStalenessSeconds, conf.KNKRecvStalenessSeconds)
+		s.config.KNKRecvStalenessSeconds = conf.KNKRecvStalenessSeconds
+	}
+	if s.config.KNKReplayCacheEntries != conf.KNKReplayCacheEntries {
+		log.Warning("KNKReplayCacheEntries changed in config (%d -> %d) on reload; the KNK replay cache is sized at startup, restart to apply",
+			s.config.KNKReplayCacheEntries, conf.KNKReplayCacheEntries)
+		s.config.KNKReplayCacheEntries = conf.KNKReplayCacheEntries
 	}
 
 	if s.config.AttestationScheme != conf.AttestationScheme {

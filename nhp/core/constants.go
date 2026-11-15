@@ -58,6 +58,25 @@ const (
 	// shouldEscalateStale) while shrinking the replay window documented in
 	// endpoints/ac/aop_replay_cache.go 5× versus the 600 s default.
 	AOPRecvStalenessFloorSeconds = 120
+
+	// KNKRecvStalenessFloorSeconds is the tighter floor for the
+	// agent→server knock family (NHP_KNK, NHP_RKN, NHP_EXT). A knock is
+	// the one agent-originated message whose replay has a security
+	// consequence: the server derives an AC firewall grant from the
+	// packet's SOURCE ADDRESS, so a captured knock replayed from another
+	// address gets that address admitted (see the KNK replay cache in
+	// endpoints/server/knk_replay_cache.go). Tightening the window from
+	// the 600 s default to 60 s shrinks the interval in which a byte-
+	// identical replay is accepted by the staleness gate.
+	//
+	// The cost is clock-synchronization sensitivity: an agent whose clock
+	// is more than 60 s behind the server now has every knock rejected as
+	// stale. Deployments that need more tolerance can raise the window
+	// with DeviceOptions.KNKRecvStalenessSeconds (the server exposes it
+	// as KNKRecvStalenessSeconds, 1..600, restart required).
+	//
+	// The 600 s default above is retained for every other message type.
+	KNKRecvStalenessFloorSeconds = 60
 )
 
 // transaction

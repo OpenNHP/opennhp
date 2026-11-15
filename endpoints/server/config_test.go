@@ -688,3 +688,48 @@ func TestUpdateEtcdConfig_HttpTrustedProxiesDoesNotPersistAcrossReloads(t *testi
 		t.Fatalf("TrustedProxies = %v after a refused reload, want the running [10.0.0.0/8]", got)
 	}
 }
+
+// The KNK replay-protection settings must round-trip through config.toml
+// under the names the config templates and docs use. A typo in the TOML
+// key would silently leave the daemon on its defaults, so the names are
+// pinned here.
+func TestKNKReplaySettingsRoundTripThroughTOML(t *testing.T) {
+	var conf Config
+	if err := toml.Unmarshal([]byte(
+		"KNKRecvStalenessSeconds = 120\nKNKReplayCacheEntries = 250000\n"), &conf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if conf.KNKRecvStalenessSeconds != 120 {
+		t.Fatalf("KNKRecvStalenessSeconds = %d, want 120", conf.KNKRecvStalenessSeconds)
+	}
+	if conf.KNKReplayCacheEntries != 250000 {
+		t.Fatalf("KNKReplayCacheEntries = %d, want 250000", conf.KNKReplayCacheEntries)
+	}
+
+	// A config that does not mention them leaves the zero value, which
+	// selects the protocol defaults (60 seconds, 100000 entries).
+	var absent Config
+	if err := toml.Unmarshal([]byte("ListenPort = 62206\n"), &absent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if absent.KNKRecvStalenessSeconds != 0 || absent.KNKReplayCacheEntries != 0 {
+		t.Fatalf("KNK settings = (%d, %d) with the keys absent, want (0, 0)",
+			absent.KNKRecvStalenessSeconds, absent.KNKReplayCacheEntries)
+	}
+}
+
+// The KNK settings are restart-only: a reload adopts the new value for
+// read-consistency but does not change the running window or cache.
+func TestUpdateBaseConfig_KNKSettingsAreRestartOnly(t *testing.T) {
+	s := &UdpServer{config: &Config{KNKRecvStalenessSeconds: 60, KNKReplayCacheEntries: 100000}}
+
+	if err := s.updateBaseConfig(Config{KNKRecvStalenessSeconds: 300, KNKReplayCacheEntries: 500000}); err != nil {
+		t.Fatalf("updateBaseConfig: %v", err)
+	}
+	if s.config.KNKRecvStalenessSeconds != 300 {
+		t.Fatalf("KNKRecvStalenessSeconds = %d after a reload, want 300", s.config.KNKRecvStalenessSeconds)
+	}
+	if s.config.KNKReplayCacheEntries != 500000 {
+		t.Fatalf("KNKReplayCacheEntries = %d after a reload, want 500000", s.config.KNKReplayCacheEntries)
+	}
+}

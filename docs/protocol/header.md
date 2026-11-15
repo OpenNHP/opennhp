@@ -98,7 +98,7 @@ plaintext follows the same size split.
 | 24 | 32 or 64 | **Ephemeral Public Key** | Fresh per-packet ephemeral public key — 32 bytes for Curve25519/X25519 (standard), 64 bytes for SM2 (extended, uncompressed X‖Y coordinates). Drives Noise handshake key derivation and provides forward secrecy even for single-shot message types. |
 | 56 / 88 | 80 | **IBC Identity Ciphertext** | AEAD-encrypted IBC identity block: a fixed 64-byte plaintext slot (`MaximumIdentitySize`) — zero-padded when the identity is shorter, or entirely zero in PKI mode — followed by a 16-byte tag. |
 | 136 / 168 | 48 or 80 | **Static Public Key Ciphertext** | AEAD-encrypted long-term static public key of the sender. Decrypted with keys derived from the ephemeral DH. Size = plaintext key (32 or 64 bytes) + 16-byte tag. |
-| 184 / 248 | 24 | **Timestamp Ciphertext** | AEAD-encrypted 8-byte UNIX-milliseconds timestamp + 16-byte tag. Freshness check: receivers enforce a tolerance window to defeat replay while surviving clock skew. |
+| 184 / 248 | 24 | **Timestamp Ciphertext** | AEAD-encrypted 8-byte UNIX-**nanoseconds** timestamp + 16-byte tag (`UnixNano()`, not milliseconds). Freshness check: receivers enforce a tolerance window to defeat replay while surviving clock skew. |
 | 208 / 272 | 32 | **HMAC** | Keyed hash over every preceding header byte (offsets 0 through the byte immediately before this field) — i.e., the entire header **excluding** the HMAC itself; the payload ciphertext is **not** covered. For `NHP-RKN`, the previously issued cookie is appended to the hash input. Validated **before** AEAD decryption — a mismatched HMAC causes a silent drop, aligning with default-deny. See [`MsgAssemblerData.addHMAC`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/initiator.go). |
 
 Total header length: **240** bytes (standard) or **304** bytes (extended).
@@ -115,6 +115,31 @@ Total header length: **240** bytes (standard) or **304** bytes (extended).
 | 13–15 | — | Reserved. Grouped with bit 12 as the top-nibble selector so additional schemes can be encoded without reflowing the field. |
 
 See [`nhp/common/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/packet.go) for the authoritative constants.
+
+### Replay protection on agent knocks
+
+The counter (offset 16) is both the GCM nonce and the transaction id. A
+receiver that keeps a set of accepted `(sender public key, counter, timestamp)`
+triples refuses a byte-identical repeat of a packet it has already accepted —
+this is what the `NHP-KNK` / `NHP-RKN` / `NHP-EXT` / `DHP-KNK` path does on the
+server (`endpoints/server/knk_replay_cache.go`), alongside the ART, AOP and RLY
+paths.
+
+A legitimate retransmission is never mistaken for a replay: the sender takes a
+fresh counter and a fresh timestamp for every packet it builds, so a retry
+produces a different triple. Only a byte-identical repeat reproduces it.
+
+The timestamp is what bounds the acceptance window, so the sender's and the
+receiver's clocks must be within that window of each other. For agent knocks
+the server accepts a packet up to 60 seconds old by default (configurable, up
+to 600) and up to 300 seconds in the future.
+
+This protection covers the packet, not the authorization. The server still
+derives the firewall grant it hands to the access controller from the packet's
+source address, so a host that shares a NAT or CGNAT egress address with a
+legitimate agent is indistinguishable from that agent without capturing
+anything. Binding the grant to the authenticated identity instead of the
+address is a separate change.
 
 ## Obfuscation scheme
 

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
+* **server:** an agent knock is now accepted for 60 seconds, down from 600.
+  This is an upgrade change: **synchronize the agent and server clocks before deploying**, or an agent whose clock drifts by more than a minute has every knock rejected as stale.
+  A stale knock is a drop, not a connection block, so a skewed agent retries rather than being locked out.
+  Set `KNKRecvStalenessSeconds` in the server's `etc/config.toml` to 1..600 seconds if a deployment needs more tolerance; zero selects 60. Restart the server after changes. A larger limit also widens the window in which a captured knock can be replayed.
 * **demo:** the stats site's exported region figure is renamed.
   `totalnumber.js` no longer exports `NHP_TOTAL_ATTACK_COUNTRIES`; the figure is published as `NHP_TOTAL_ATTACK_REGIONS`, and the per-day JSON reports their region columns under `region` instead of `country` (report `schema: 2`), and `history.json` records the figure under `totals.regions` instead of `totals.countries`.
   The ISO 3166-1 alpha-2 codes the figure counts belong to dependencies, disputed areas and special political areas as well as to states, so a published constant called a country count is a claim about those codes that the standard does not support.
@@ -41,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* **server:** a captured agent knock can no longer be replayed from another address to get that address admitted.
+  The server derives the access controller's firewall grant from the SOURCE ADDRESS of the knock, so a byte-identical replay of a captured knock — from any address — got that address admitted. The per-connection monotonic gate did not stop it: a replay from a new address lands on a fresh connection whose timestamp watermark is zero.
+  The server now keeps a cache of accepted `(agent public key, transaction id, send time)` triples and refuses a byte-identical repeat of a knock it has already accepted, before any authentication attempt and before any firewall grant. A legitimate retry is never caught — the agent takes a fresh transaction id and a fresh timestamp for every packet it builds.
+  The check runs after the knock's body is authenticated, not in the pre-decryption replay hook: a knock's peer is any registered agent and its public key is public, so a forged-but-header-valid packet could otherwise claim a real agent's triple there and make that agent's next genuine knock look like a replay.
+  The cache is process-local and its size and the freshness window are configurable (`KNKReplayCacheEntries`, `KNKRecvStalenessSeconds`); see `docs/deploy.md` ("KNK replay protection").
 * **ci,deploy:** a new eBPF object is now loaded into a real kernel before anything acts on it.
   Compiling an object proves nothing about it — the kernel's verifier decides whether a program is loadable, and on the AC a refused object is an outage (`nhp-acd` cannot start and the fail-closed backstop keeps tcp/443 shut), while on the server it is a silent loss of protection (`nhp-serverd` falls open).
   Two gates answer the question: every PR runs the `ebpf-verifier` job, which loads the three objects into the runner's kernel and runs the programs against packets, and every demo deploy loads the new objects on the AL2023 host before it stops the running daemon — a refusal aborts the deploy with the service still up.

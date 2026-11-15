@@ -78,6 +78,15 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return float64(s.artReplay.capacityEvictions)
 		})
 
+	reg.NewCounterFunc("nhp_server_knk_replay_cache_evictions_total",
+		"Unexpired KNK replay entries removed by capacity pressure; replay coverage is reduced.",
+		func() float64 {
+			if s.knkReplay == nil {
+				return 0
+			}
+			return float64(s.knkReplay.CapacityEvictions())
+		})
+
 	sm := &serverMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",
@@ -92,7 +101,8 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			"Source addresses blocked after exceeding the threat threshold.").With(),
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
 			"Inbound packets discarded before becoming a decrypted message, by stage "+
-				"(replay, too_short, blocked, precheck, rate_limited, per_ip_conn_limit, conn_limit, conn_duplicate, parse, validate, decrypt, queue_full, stale).", "stage"),
+				"(replay, too_short, blocked, precheck, rate_limited, per_ip_conn_limit, conn_limit, conn_duplicate, parse, validate, decrypt, queue_full, stale, knk_replay). "+
+				"The knk_replay stage is counted after decryption, when the knock replay cache rejects a duplicate knock.", "stage"),
 		handlerDropped: reg.NewCounter("nhp_server_handler_dropped_total",
 			"Decrypted messages dropped because the handler goroutine budget "+
 				"(MaxConcurrentHandlers) was exhausted, by message type. Distinct "+
@@ -111,6 +121,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 	for _, stage := range []string{
 		"too_short", "blocked", "precheck", "rate_limited", "per_ip_conn_limit", "conn_limit", "conn_duplicate", // recvPacketRoutine, pre-decryption
 		"replay", "parse", "validate", "decrypt", "queue_full", "stale", // packetToMsgRoutine, via OnPacketDropped
+		"knk_replay", // HandleKnockRequest, after the body AEAD verified the knock
 	} {
 		sm.packetsDropped.With(stage)
 	}
@@ -170,7 +181,8 @@ func (m *serverMetrics) recordBlockedAddr() {
 // recvPacketRoutine pre-decryption drops ("too_short", "blocked",
 // "precheck", "rate_limited", "per_ip_conn_limit", "conn_limit", "conn_duplicate") and the packetToMsgRoutine
 // drops delivered via core.DeviceOptions.OnPacketDropped ("replay", "parse",
-// "validate", "decrypt", "queue_full"). A bounded label, never
+// "validate", "decrypt", "queue_full"), plus the post-decryption knock
+// replay drop ("knk_replay"). A bounded label, never
 // attacker-controlled. Safe on a nil receiver.
 func (m *serverMetrics) recordDroppedPacket(stage string) {
 	if m == nil {

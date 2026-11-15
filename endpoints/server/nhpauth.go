@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/base64"
 	"encoding/json"
+	"sync/atomic"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
@@ -50,6 +52,15 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 
 		// dhp knock
 		if ppd.HeaderType == core.DHP_KNK {
+			// Replay protection applies to the DHP knock as well: it is
+			// dispatched through the same handler and its outcome is the
+			// same evidence appraisal on the same server.
+			if replayErr := s.dedupeRecvKNK(ppd, addrStr); replayErr != nil {
+				err = replayErr
+				dhpAckMsg.ErrCode = replayErr.ErrorCode()
+				dhpAckMsg.ErrMsg = replayErr.Error()
+				return
+			}
 			log.Info("server-agent(%s#%d@%s)[HandleKnockRequest] start to verify evidence for dhp knock", knkMsg.UserId, transactionId, addrStr)
 			if s.AppraiseEvidence(dhpKnkMsg.Evidence) {
 				dhpAckMsg.ErrCode = common.ErrSuccess.ErrorCode()
@@ -70,6 +81,18 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 			err = gateErr
 			ackMsg.ErrCode = gateErr.ErrorCode()
 			ackMsg.ErrMsg = gateErr.Error()
+			return
+		}
+
+		// Replay protection. Placed AFTER the header-type gate so that a
+		// packet rejected for an on-path type flip does not consume the
+		// agent's cache entry, and BEFORE any auth-service lookup, plugin
+		// call or AC operation so a replayed knock triggers neither an
+		// authentication attempt nor a firewall grant.
+		if replayErr := s.dedupeRecvKNK(ppd, addrStr); replayErr != nil {
+			err = replayErr
+			ackMsg.ErrCode = replayErr.ErrorCode()
+			ackMsg.ErrMsg = replayErr.Error()
 			return
 		}
 
@@ -191,6 +214,55 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 	if sendErr := transaction.SendMessage(ackMd); sendErr != nil {
 		log.Error("server-agent(%s#%d@%s)[HandleKnockRequest] transaction closed before forward: %v", knkMsg.UserId, transactionId, addrStr, sendErr)
 		return sendErr
+	}
+	return nil
+}
+
+// lastKNKReplayWarn throttles the replay warning to once per minute, so a
+// controlled replay flood cannot dominate the log. The drop counter below
+// still records every refused packet, so the rate stays observable.
+var lastKNKReplayWarn atomic.Int64
+
+// dedupeRecvKNK rejects a byte-identical replay of an authenticated knock.
+//
+// A knock is the one message whose replay has a security consequence: the
+// server derives the AC firewall grant from the packet's SOURCE ADDRESS, so
+// a captured knock replayed from a different address gets that address
+// admitted. The per-connection monotonic gate in nhp/core/responder.go does
+// not stop that — a replay from a new source address lands on a fresh
+// ConnectionData whose LastRemoteSendTime is 0.
+//
+// Why this is NOT installed through the SetRecvReplayDedupe hook chain:
+// that hook runs after validatePeer but BEFORE decryptBody, and a knock's
+// peer is any registered agent whose public key is public. A forged packet
+// with a valid header but a garbage body would claim a real agent's
+// (pubkey, txid, sendTime) triple there and poison the cache, so that
+// agent's next genuine knock would be rejected as a replay — a
+// pre-authentication cache-poisoning DoS. Here the body AEAD has already
+// been verified, so only a holder of the agent's private key can reach
+// this function.
+//
+// A legitimate retransmission is never caught: the agent takes a fresh
+// transaction id and a fresh timestamp for every packet it builds, so a
+// retry produces a different triple. Only a byte-identical replay
+// reproduces the triple.
+//
+// The error returned is ErrServerDuplicateTransaction, the same one the ART
+// replay path returns.
+func (s *UdpServer) dedupeRecvKNK(ppd *core.PacketParserData, addrStr string) *common.Error {
+	if l := len(ppd.RemotePubKey); l != core.PublicKeySize && l != core.PublicKeySizeEx {
+		log.Critical("server[dedupeRecvKNK] invalid peer pubkey length %d for txid=%d (want %d or %d)", l, ppd.SenderTrxId, core.PublicKeySize, core.PublicKeySizeEx)
+		return common.ErrServerMissingPeerPubkey
+	}
+	if !s.knkReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+		s.metrics.recordDroppedPacket("knk_replay")
+		now := time.Now().UnixNano()
+		last := lastKNKReplayWarn.Load()
+		if now-last >= int64(time.Minute) && lastKNKReplayWarn.CompareAndSwap(last, now) {
+			log.Warning("server[dedupeRecvKNK] dropped replayed knock (txid=%d, pubkey=%s, sendTime=%d, src=%s)",
+				ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime, addrStr)
+		}
+		return common.ErrServerDuplicateTransaction
 	}
 	return nil
 }

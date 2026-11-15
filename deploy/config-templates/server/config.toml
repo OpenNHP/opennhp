@@ -37,6 +37,26 @@ CookieSigningKeyBase64 = "${NHP_SERVER_COOKIE_SIGNING_KEY}"
 # [N, 2N) seconds to redeem a cookie). Default 60s if unset.
 CookieTimeWindowSeconds = 60
 
+# KNK replay protection.
+#
+# KNKRecvStalenessSeconds (-): the maximum age, in seconds, of an
+#   accepted agent knock (NHP_KNK / NHP_RKN / NHP_EXT / DHP_KNK). 0
+#   selects the 60-second default; the maximum is 600. Restart
+#   required. Keep agent and server clocks synchronized — an agent
+#   whose clock drifts more than the window has every knock rejected
+#   as stale. A larger limit also widens the window in which a
+#   captured knock can be replayed.
+#
+# KNKReplayCacheEntries (-): capacity of the KNK replay cache. 0
+#   selects 100000; the maximum is 1000000. Restart required. Size it
+#   for peak knocks/s times (the effective staleness window + 60
+#   seconds).
+#
+# Both default to the protocol values; leaving them out keeps the
+# built-in behavior.
+# KNKRecvStalenessSeconds = 0
+# KNKReplayCacheEntries = 0
+
 # [Audit]: tamper-evident, hash-chained security audit ledger. Off by
 # default; see endpoints/server/main/etc/config.toml for the full field
 # docs (Fsync, Async, MaxSizeBytes, MaxSegments, SigningKeyBase64, FailClosed)

@@ -167,3 +167,66 @@ func TestTLSConfigServerAndClientAuth(t *testing.T) {
 		t.Fatalf("client certificates = %d, want 1", len(conf.Certificates))
 	}
 }
+
+// TLS settings plus an http:// endpoint is refused, not silently ignored.
+//
+// clientv3 picks transport credentials per endpoint from its scheme
+// (internal/endpoint.RequiresCredentials): http:// and unix:// map to
+// CredsDrop, where Client.credentialsForEndpoint returns nil and the dial
+// is plaintext whatever cfg.TLS holds. Writing endpoints with an http://
+// prefix is ordinary, so without this check a CAFile would produce the one
+// outcome the rest of this file exists to prevent: a connection that looks
+// encrypted and is not.
+func TestEndpointSchemeRefusesSilentPlaintext(t *testing.T) {
+	ca, _, _ := writeCA(t)
+
+	for _, ep := range []string{"http://10.0.0.5:2379", "unix:/var/run/etcd.sock", "HTTP://10.0.0.5:2379"} {
+		conn := &EtcdConn{Endpoints: []string{ep}, CAFile: ca}
+		err := conn.checkEndpointSchemes(true)
+		if err == nil {
+			t.Errorf("endpoint %q was accepted with TLS configured; the client would have dropped the TLS settings", ep)
+			continue
+		}
+		if !strings.Contains(err.Error(), "in the clear") {
+			t.Errorf("endpoint %q: error = %v, want it to say the connection would be in the clear", ep, err)
+		}
+	}
+
+	// The schemes clientv3 honors cfg.TLS for are accepted.
+	for _, ep := range []string{"https://10.0.0.5:2379", "10.0.0.5:2379", "unixs:/var/run/etcd.sock"} {
+		conn := &EtcdConn{Endpoints: []string{ep}, CAFile: ca}
+		if err := conn.checkEndpointSchemes(true); err != nil {
+			t.Errorf("endpoint %q was refused: %v", ep, err)
+		}
+	}
+
+	// One bad endpoint in a list is enough.
+	conn := &EtcdConn{Endpoints: []string{"https://a:2379", "http://b:2379"}, CAFile: ca}
+	if err := conn.checkEndpointSchemes(true); err == nil {
+		t.Error("a list containing an http:// endpoint was accepted")
+	}
+
+	// Without TLS configured, http:// is the status quo and must still work.
+	plain := &EtcdConn{Endpoints: []string{"http://10.0.0.5:2379"}}
+	if err := plain.checkEndpointSchemes(false); err != nil {
+		t.Errorf("a plaintext deployment was refused: %v", err)
+	}
+}
+
+func TestEndpointScheme(t *testing.T) {
+	for ep, want := range map[string]string{
+		"http://h:2379":   "http",
+		"https://h:2379":  "https",
+		"HTTPS://h:2379":  "https",
+		"unix:/run/e":     "unix",
+		"unixs:/run/e":    "unixs",
+		"unix:///run/e":   "unix",
+		"10.0.0.5:2379":   "",
+		"  h:2379  ":      "",
+		"etcd.example:80": "",
+	} {
+		if got := endpointScheme(ep); got != want {
+			t.Errorf("endpointScheme(%q) = %q, want %q", ep, got, want)
+		}
+	}
+}

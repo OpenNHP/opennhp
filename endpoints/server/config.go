@@ -1238,6 +1238,21 @@ func (s *UdpServer) loadSourceIps() error {
 	return nil
 }
 
+// resolveRemoteConfigPath makes a relative TLS file path relative to the
+// install directory, the way xdpConfigFileName and the audit ledger do.
+//
+// remote.toml is read from ExeDirPath/etc, so an operator who writes
+// "etc/etcd-ca.pem" there means the file next to it. Passed through
+// unchanged it would resolve against the process's working directory
+// instead, and a daemon started by systemd without WorkingDirectory=, or
+// in a container, would refuse to start on a path that looks right.
+func resolveRemoteConfigPath(p string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(ExeDirPath, p)
+}
+
 func (s *UdpServer) initRemoteConn() error {
 	// remote.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "remote.toml")
@@ -1276,9 +1291,9 @@ func (s *UdpServer) initRemoteConn() error {
 			Username:  conf.Username,
 			Password:  conf.Password,
 			Key:       conf.Key,
-			CAFile:    conf.CAFile,
-			CertFile:  conf.CertFile,
-			KeyFile:   conf.KeyFile,
+			CAFile:    resolveRemoteConfigPath(conf.CAFile),
+			CertFile:  resolveRemoteConfigPath(conf.CertFile),
+			KeyFile:   resolveRemoteConfigPath(conf.KeyFile),
 		}
 
 		err = s.etcdConn.InitClient()

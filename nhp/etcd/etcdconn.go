@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,11 +67,8 @@ func (conn *EtcdConn) InitClient() error {
 	if err != nil {
 		return err
 	}
-	if tlsConf == nil {
-		// Said once, at startup, where an operator reading the log can act
-		// on it. The remote value is the trusted-peer configuration; see
-		// EtcdConfig for what rewriting it buys an attacker on the path.
-		log.Warning("etcd connection to %v is not using TLS: the remote configuration, and the username and password, travel in the clear. Set CAFile in remote.toml to enable TLS.", conn.Endpoints)
+	if err := conn.checkEndpointSchemes(tlsConf != nil); err != nil {
+		return err
 	}
 
 	conn.client, err = clientv3.New(clientv3.Config{
@@ -232,4 +230,64 @@ func (conn *EtcdConn) tlsConfig() (*tls.Config, error) {
 	}
 
 	return conf, nil
+}
+
+// endpointScheme returns the scheme clientv3 will read out of an endpoint,
+// or "" for a bare host:port.
+func endpointScheme(ep string) string {
+	ep = strings.TrimSpace(ep)
+	if i := strings.Index(ep, "://"); i > 0 {
+		return strings.ToLower(ep[:i])
+	}
+	// clientv3 also accepts "unix:/path" and "unixs:/path".
+	if i := strings.Index(ep, ":"); i > 0 {
+		if sch := strings.ToLower(ep[:i]); sch == "unix" || sch == "unixs" {
+			return sch
+		}
+	}
+	return ""
+}
+
+// checkEndpointSchemes refuses a configuration whose TLS settings the etcd
+// client would silently ignore, and decides whether the plaintext warning
+// is warranted.
+//
+// clientv3 chooses transport credentials per endpoint from its scheme
+// (internal/endpoint.RequiresCredentials, used by
+// Client.credentialsForEndpoint):
+//
+//	http://  and unix://   -> CredsDrop:     cfg.TLS is DISCARDED, the dial
+//	                                         is plaintext
+//	host:port (no scheme)  -> CredsOptional: cfg.TLS is used
+//	https:// and unixs://  -> CredsRequire:  TLS, with cfg.TLS if present
+//
+// So "Endpoints = [\"http://10.0.0.5:2379\"]" plus a CAFile produces exactly
+// what tlsConfig refuses elsewhere: a connection that looks encrypted and
+// is not, with no warning, because the TLS settings parsed fine. Writing
+// endpoints with an http:// prefix is ordinary, so this is a trap worth
+// closing rather than documenting.
+func (conn *EtcdConn) checkEndpointSchemes(tlsConfigured bool) error {
+	anyTLSScheme := false
+	for _, ep := range conn.Endpoints {
+		switch endpointScheme(ep) {
+		case "http", "unix":
+			if tlsConfigured {
+				return fmt.Errorf("etcd TLS: endpoint %q uses the %q scheme, for which the etcd client discards TLS settings and connects in the clear; "+
+					"write it as https:// (or as a bare host:port) to use the configured TLS", ep, endpointScheme(ep))
+			}
+		case "https", "unixs":
+			anyTLSScheme = true
+		}
+	}
+
+	// Only say "no TLS" when the connection really will be plaintext. With
+	// https:// endpoints and no CAFile the client still uses TLS, against
+	// the system roots.
+	if !tlsConfigured && !anyTLSScheme {
+		// Said once, at startup, where an operator reading the log can act
+		// on it. The remote value is the trusted-peer configuration; see
+		// EtcdConfig for what rewriting it buys an attacker on the path.
+		log.Warning("etcd connection to %v is not using TLS: the remote configuration, and the username and password, travel in the clear. Set CAFile in remote.toml to enable TLS.", conn.Endpoints)
+	}
+	return nil
 }

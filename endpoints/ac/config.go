@@ -123,6 +123,15 @@ type RemoteConfig struct {
 	Endpoints []string
 	Username  string
 	Password  string
+
+	// Optional TLS for the etcd connection. Unset means plaintext, which
+	// is what every deployment has today. See nhp/etcd.EtcdConfig for why
+	// turning it on matters: the value under Key is the trusted-peer
+	// configuration, so whoever can rewrite it on the wire can install
+	// their own nhp-server public key as trusted.
+	CAFile   string
+	CertFile string
+	KeyFile  string
 }
 
 // acSourceNets parses the two source ranges the XDP filter's client-protocol
@@ -508,6 +517,9 @@ func (a *UdpAC) initRemoteConn() error {
 			Username:  conf.Username,
 			Password:  conf.Password,
 			Key:       conf.Key,
+			CAFile:    conf.CAFile,
+			CertFile:  conf.CertFile,
+			KeyFile:   conf.KeyFile,
 		}
 
 		err = a.etcdConn.InitClient()

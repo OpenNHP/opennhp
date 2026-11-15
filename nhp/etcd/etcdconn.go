@@ -3,12 +3,15 @@ package etcd
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
+
+const requestTimeout = 3 * time.Second
 
 type EtcdConfig struct {
 	Key       string
@@ -18,19 +21,22 @@ type EtcdConfig struct {
 }
 
 type EtcdConn struct {
-	Endpoints []string
-	Username  string
-	Password  string
-	Key       string
-	client    *clientv3.Client
-	ctx       context.Context
-	watcher   clientv3.Watcher
-	signals   struct {
-		stop chan struct{}
-	}
+	Endpoints  []string
+	Username   string
+	Password   string
+	Key        string
+	client     *clientv3.Client
+	ctx        context.Context
+	cancel     context.CancelFunc
+	callbackMu sync.Mutex
 }
 
+// InitClient must be called once per EtcdConn, before concurrent use.
+// After an initialization failure or Close, create a new EtcdConn to retry.
 func (conn *EtcdConn) InitClient() error {
+	if len(conn.Endpoints) == 0 {
+		return errors.New("no etcd endpoints configured")
+	}
 	var err error
 	conn.client, err = clientv3.New(clientv3.Config{
 		Endpoints:   conn.Endpoints,
@@ -43,18 +49,24 @@ func (conn *EtcdConn) InitClient() error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	conn.ctx, conn.cancel = context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(conn.ctx, requestTimeout)
 	defer cancel()
-	conn.ctx = ctx
-	_, err = conn.client.Status(conn.ctx, conn.Endpoints[0])
+	_, err = conn.client.Status(ctx, conn.Endpoints[0])
 	if err != nil {
+		conn.Close()
 		return err
 	}
 	return nil
 }
 
 func (conn *EtcdConn) GetValue() ([]byte, error) {
-	val, err := conn.client.Get(conn.ctx, conn.Key)
+	if conn.client == nil || conn.ctx == nil {
+		return nil, errors.New("etcd client not initialized")
+	}
+	ctx, cancel := context.WithTimeout(conn.ctx, requestTimeout)
+	defer cancel()
+	val, err := conn.client.Get(ctx, conn.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -69,40 +81,70 @@ func (conn *EtcdConn) GetValue() ([]byte, error) {
 }
 
 func (conn *EtcdConn) SetValue(v string) error {
-	_, err := conn.client.Put(conn.ctx, conn.Key, v)
+	if conn.client == nil || conn.ctx == nil {
+		return errors.New("etcd client not initialized")
+	}
+	ctx, cancel := context.WithTimeout(conn.ctx, requestTimeout)
+	defer cancel()
+	_, err := conn.client.Put(ctx, conn.Key, v)
 	return err
 }
 
+// WatchValue delivers callbacks serially. A callback must return before Close
+// can finish, and must not call Close synchronously.
 func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
+	if conn.client == nil || conn.ctx == nil {
+		log.Error("cannot watch etcd configuration: client not initialized")
+		return
+	}
 	// create etcd watcher
-	conn.watcher = clientv3.NewWatcher(conn.client)
-
-	watchChan := conn.watcher.Watch(context.Background(), conn.Key)
+	watcher := clientv3.NewWatcher(conn.client)
+	defer watcher.Close()
+	watchChan := watcher.Watch(conn.ctx, conn.Key)
 
 	for {
 		select {
-		case resp := <-watchChan:
+		case resp, ok := <-watchChan:
+			if !ok || resp.Canceled {
+				if conn.ctx.Err() == nil {
+					err := resp.Err()
+					if !ok {
+						err = errors.New("watch channel closed")
+					}
+					log.Error("etcd watch for %q ended unexpectedly: %v; remote configuration updates have stopped", conn.Key, err)
+				}
+				return
+			}
 			// handle change events
 			for _, ev := range resp.Events {
 				switch ev.Type {
 				case clientv3.EventTypePut:
-					callbackFunc(ev.Kv.Value)
+					func() {
+						conn.callbackMu.Lock()
+						defer conn.callbackMu.Unlock()
+						if conn.ctx.Err() == nil {
+							callbackFunc(ev.Kv.Value)
+						}
+					}()
 				case clientv3.EventTypeDelete:
 					log.Debug("[DELETE] Key: %s\n", string(ev.Kv.Key))
 				}
 			}
-		case <-conn.signals.stop:
-			conn.watcher.Close()
+		case <-conn.ctx.Done():
 			return
 		}
 	}
 
 }
 
+// Close cancels requests and waits for any active configuration callback.
 func (conn *EtcdConn) Close() {
+	if conn.cancel != nil {
+		conn.cancel()
+	}
+	conn.callbackMu.Lock()
+	defer conn.callbackMu.Unlock()
 	if conn.client != nil {
-		// stop the etcd watcher
-		close(conn.signals.stop)
 		conn.client.Close()
 	}
 }

@@ -14,6 +14,33 @@ on:
 
 jobs:
 
+  etcd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      etcd:
+        image: quay.io/coreos/etcd:v3.6.0
+        env:
+          ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+          ETCD_ADVERTISE_CLIENT_URLS: http://127.0.0.1:2379
+        ports:
+          - 2379:2379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache-dependency-path: nhp/go.sum
+      - name: Wait for etcd
+        # The official image has no shell for a Docker --health-cmd.
+        run: |
+          timeout 45s bash -c 'until docker exec "$1" /usr/local/bin/etcdctl endpoint health; do sleep 1; done' _ "${{ job.services.etcd.id }}"
+      - name: Test etcd client against a real service
+        working-directory: nhp
+        env:
+          OPENNHP_TEST_ETCD: http://127.0.0.1:2379
+        run: go test -race ./etcd -count=1 -timeout=90s
+
   build:
     runs-on: ubuntu-latest
     steps:

@@ -355,7 +355,16 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	// load remote config,init etcd client
 	err = s.initRemoteConn()
-	if err == nil && s.etcdConn == nil {
+	if err != nil {
+		return fmt.Errorf("initialize remote configuration: %w", err)
+	}
+	// A failed Start has no normal Stop; release the persistent etcd client.
+	defer func() {
+		if err != nil && s.etcdConn != nil {
+			s.etcdConn.Close()
+		}
+	}()
+	if s.etcdConn == nil {
 		// init config
 		err = s.loadBaseConfig()
 	} else {
@@ -762,15 +771,16 @@ func (s *UdpServer) Stop() {
 	}
 	s.running.Store(false)
 	s.healthy.Store(false)
+	// Drain remote updates before stopping resources they can replace.
+	if s.etcdConn != nil {
+		s.etcdConn.Close()
+	}
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
 	}
 	if s.metricsServer != nil {
 		s.metricsServer.stop()
-	}
-	if s.etcdConn != nil {
-		s.etcdConn.Close()
 	}
 	close(s.signals.stop)
 	s.listenConn.Close()

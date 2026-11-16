@@ -12,7 +12,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/tetratelabs/wazero v1.12.0
 	go.etcd.io/etcd/client/v3 v3.7.3
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	golang.org/x/sys v0.50.0
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
 )
@@ -50,8 +50,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/net v0.61.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/grpc v1.83.2 // indirect

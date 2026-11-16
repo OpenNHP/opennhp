@@ -663,10 +663,10 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.relayForwardBlockMap = make(map[string]time.Time)
 	s.rknLimiter = newRknRateLimiter(
-		RknRatePerSecondPerIP,
-		RknBurstPerIP,
-		RknLimiterMaxEntries,
-		RknLimiterIdleSeconds*int64(time.Second),
+		OverloadRknRatePerSecondPerIP,
+		OverloadRknBurstPerIP,
+		OverloadRknLimiterMaxEntries,
+		OverloadRknLimiterIdleSeconds*int64(time.Second),
 	)
 	s.packetLimiter = newIPRateLimiter(
 		PacketRatePerSecondPerIP,

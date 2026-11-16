@@ -397,6 +397,18 @@ not /64 networks. Static IPs in configured AC, DB and relay peers bypass only
 this per-source admission check so infrastructure can reconnect under pressure.
 Spoofed traffic can claim those addresses too; authentication and the global
 cap still apply. Peers configured only by key or hostname have no IP exemption.
+### Direct access upgrade
+
+Before upgrading a multi-instance server, set the same private
+`CookieSigningKeyBase64` on every replica behind the endpoint. Use a
+base64-encoded 32-byte random key. A generated process-local key works for a
+single replica. Do not use the key from the Docker demo in a public deployment.
+
+Direct UDP access now takes one additional round trip. Verify that deployed
+clients retry the knock after the cookie challenge. The server permits 20
+re-knocks per second from one IP, with a burst of 40. Account for clients
+that share an egress IP before the upgrade.
+
 ### AOP clock tolerance
 
 AOP requests now default to a 120-second maximum age, down from 600 seconds.

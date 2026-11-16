@@ -11,10 +11,11 @@ import (
 
 type ConnectionData struct {
 	// atomic data, keep 64bit(8-bytes) alignment for 32-bit system compatibility
-	InitTime           int64 // local connection setup time. immutable after created
-	LastRemoteSendTime int64
-	LastLocalSendTime  int64
-	LastLocalRecvTime  int64
+	InitTime                 int64 // local connection setup time. immutable after created
+	LastRemoteSendTime       int64
+	LastRemoteCookieSendTime int64
+	LastLocalSendTime        int64
+	LastLocalRecvTime        int64
 
 	sync.Mutex
 	sync.WaitGroup

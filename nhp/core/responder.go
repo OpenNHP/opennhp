@@ -690,9 +690,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
 	directReknock := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_RKN && ppd.requiresKnockCookie()
+	cookieReply := ppd.device.deviceType == NHP_AGENT && ppd.HeaderType == NHP_COK
+	lastSendTime := atomic.LoadInt64(&ppd.ConnData.LastRemoteSendTime)
+	if cookieReply {
+		lastSendTime = max(lastSendTime, atomic.LoadInt64(&ppd.ConnData.LastRemoteCookieSendTime))
+	}
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime ||
-			(directReknock && remoteSendTime == ppd.ConnData.LastRemoteSendTime) {
+		if remoteSendTime < lastSendTime || ((directReknock || cookieReply) && remoteSendTime == lastSendTime) {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -704,9 +708,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	// A cookie-proven direct RKN can arrive within one minimum packet interval.
-	if !directReknock && shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
+	// A fast cookie exchange can finish within one minimum packet interval.
+	if !directReknock && !cookieReply && shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
+		if remoteSendTime < lastSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			// threat plus 1
@@ -836,7 +840,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	directChallenge := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_KNK && ppd.requiresKnockCookie()
 	// ART is deduplicated after this function. It must not rewind the shared
 	// AOL watermark or clear threat state before a replay is rejected.
-	if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
+	if cookieReply {
+		atomic.StoreInt64(&ppd.ConnData.LastRemoteCookieSendTime, remoteSendTime)
+	} else if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
 		atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
 		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 	}

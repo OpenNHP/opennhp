@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"runtime"
@@ -654,13 +653,11 @@ func (d *Device) ResetPeers() {
 	d.peerMap = make(map[string]Peer)
 }
 
-func (d *Device) LookupPeer(pk []byte) Peer {
-	pkStr := base64.StdEncoding.EncodeToString(pk)
-
+func (d *Device) LookupPeer(pkBase64 string) Peer {
 	d.peerMapMutex.Lock()
 	defer d.peerMapMutex.Unlock()
 
-	peer, found := d.peerMap[pkStr]
+	peer, found := d.peerMap[pkBase64]
 	if found {
 		return peer
 	}

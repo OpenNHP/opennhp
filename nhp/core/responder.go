@@ -596,7 +596,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		peerDeviceTypeName := DeviceTypeToString(peerDeviceType)
 		log.Debug("validatePeer: looking up %s peer pubkey=%s in peer pool", peerDeviceTypeName, peerPkBase64)
 
-		peer = ppd.device.LookupPeer(peerPk)
+		peer = ppd.device.LookupPeer(peerPkBase64)
 		if peer == nil {
 			// Fallback: check dynamically-registered peers (e.g., agents
 			// registered via NHP-REG stored in SQLite).
@@ -607,7 +607,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				log.Info("validatePeer: %s peer accepted via fallback, pubkey=%s",
 					peerDeviceTypeName, peerPkBase64)
 				// Skip expiry/address checks for fallback peers.
-				goto peerAccepted
+				goto validPeerFound
 			}
 			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
 				peerDeviceTypeName, peerPkBase64)
@@ -644,9 +644,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
-		peer.UpdateRecv(ppd.LocalInitTime)
-	peerAccepted:
 	}
+validPeerFound:
 
 	ppd.RemotePubKey = peerPk
 	if ppd.ConnPeerPublicKey != nil {
@@ -690,7 +689,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
+		if remoteSendTime < ppd.ConnData.LastRemoteSendTime || remoteSendTime < peer.LastRecvTime() {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -703,7 +702,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		}
 	}
 	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
+		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) ||
+			remoteSendTime < peer.LastRecvTime()+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			// threat plus 1
@@ -718,6 +718,11 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
+	// packet replay and flood checked, record peer last recv timestamp and proceed to the next checkpoint.
+	// CRITICAL: if peer bound last recv timestamp is not checked, an attacker may use replayed packet from
+	// a legitimate peer to create a new connection and still pass the connection bound timestamp check.
+	peer.UpdateRecv(ppd.LocalInitTime)
+
 	// Bound clock skew on the relay→server path. The justification
 	// here is NOT the TTL-cache argument that drove the original
 	// ART check (the relay RLY path uses a per-relay sliding

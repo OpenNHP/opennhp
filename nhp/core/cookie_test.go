@@ -492,13 +492,24 @@ func TestCookieVerify_RejectsWrongCookie(t *testing.T) {
 	}
 }
 
-func TestDirectAccessKnockUsesExistingCookieExchange(t *testing.T) {
+func TestAccessKnockUsesExistingCookieExchange(t *testing.T) {
+	t.Run("direct", func(t *testing.T) {
+		testAccessKnockCookieExchange(t, nil)
+	})
+	t.Run("forwarded", func(t *testing.T) {
+		testAccessKnockCookieExchange(t, &net.UDPAddr{IP: net.ParseIP("203.0.113.14"), Port: 40000})
+	})
+}
+
+func testAccessKnockCookieExchange(t *testing.T, client *net.UDPAddr) {
+	t.Helper()
 	agent := newCurveDevice(t, NHP_AGENT, 11)
 	server := newCurveDevice(t, NHP_SERVER, 22)
 	server.AddPeer(&UdpPeer{PubKeyBase64: agent.PublicKeyBase64(), Type: NHP_AGENT})
 	server.SetStatelessCookieParams(bytes.Repeat([]byte{0x42}, 32), 5)
 	conn := sentinelConnection(server, 12346, 12345)
 	conn.RequireKnockCookie = true
+	conn.RealRemoteAddr = client
 	parse := func(wire []byte) error {
 		ppd, err := server.createPacketParserData(&PacketData{
 			BasePacket: &Packet{Content: wire},
@@ -522,7 +533,7 @@ func TestDirectAccessKnockUsesExistingCookieExchange(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := parse(bytes.Clone(knk.BasePacket.Content)); got != ErrServerRejectWithCookie {
-		t.Fatalf("initial direct knock got %v, want cookie challenge", got)
+		t.Fatalf("initial knock got %v, want cookie challenge", got)
 	}
 
 	if conn.LastRemoteSendTime == 0 {
@@ -549,6 +560,6 @@ func TestDirectAccessKnockUsesExistingCookieExchange(t *testing.T) {
 	copy(cookie[:], value)
 	rkn := buildAgentRKNWithCookie(t, agent, curvePubKey(server), &cookie, conn.RemoteAddr)
 	if parseErr := parse(rkn); parseErr != nil {
-		t.Fatalf("server refused a direct re-knock with its cookie: %v", parseErr)
+		t.Fatalf("server refused a re-knock with its cookie: %v", parseErr)
 	}
 }

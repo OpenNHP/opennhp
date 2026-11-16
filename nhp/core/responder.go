@@ -689,14 +689,14 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
-	directReknock := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_RKN && ppd.requiresKnockCookie()
+	proofReknock := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_RKN && ppd.requiresKnockCookie()
 	cookieReply := ppd.device.deviceType == NHP_AGENT && ppd.HeaderType == NHP_COK
 	lastSendTime := atomic.LoadInt64(&ppd.ConnData.LastRemoteSendTime)
 	if cookieReply {
 		lastSendTime = max(lastSendTime, atomic.LoadInt64(&ppd.ConnData.LastRemoteCookieSendTime))
 	}
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < lastSendTime || ((directReknock || cookieReply) && remoteSendTime == lastSendTime) {
+		if remoteSendTime < lastSendTime || ((proofReknock || cookieReply) && remoteSendTime == lastSendTime) {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -709,7 +709,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		}
 	}
 	// A fast cookie exchange can finish within one minimum packet interval.
-	if !directReknock && !cookieReply && shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
+	if !proofReknock && !cookieReply && shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < lastSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
@@ -837,7 +837,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// responder_test.go drives authenticated packets through validatePeer to
 	// fence this cross-package contract.
 	ppd.RemoteSendTime = remoteSendTime
-	directChallenge := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_KNK && ppd.requiresKnockCookie()
+	proofChallenge := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_KNK && ppd.requiresKnockCookie()
 	// ART is deduplicated after this function. It must not rewind the shared
 	// AOL watermark or clear threat state before a replay is rejected.
 	if cookieReply {
@@ -847,12 +847,12 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 	}
 
-	// Require source proof before processing a direct access knock. DHP
+	// Require source proof before processing an access knock. DHP
 	// provides evidence appraisal and retains its overload-only challenge.
 	// sendCookie derives the cookie statelessly from the device's signing
 	// key, source IP, peer key, and time window, so there is nothing to
 	// pre-generate or store per connection.
-	if directChallenge || (ppd.device.deviceType == NHP_SERVER && ppd.Overload &&
+	if proofChallenge || (ppd.device.deviceType == NHP_SERVER && ppd.Overload &&
 		(ppd.HeaderType == NHP_KNK || ppd.HeaderType == DHP_KNK)) {
 		ppd.sendCookie()
 		err = ErrServerRejectWithCookie
@@ -1038,7 +1038,7 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		// defer. ppd.Destroy still clears hmacHash when the parser
 		// tears down, so leaving it untouched here leaks nothing.
 		//
-		// The server installs signing parameters before accepting direct UDP.
+		// The server installs signing parameters before accepting access traffic.
 		key, win := ppd.device.StatelessCookieParams()
 		if len(key) == 0 || win <= 0 {
 			log.Critical("checkHMAC(sumCookie): device has no stateless cookie params")

@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// rknRateLimiter limits direct RKNs and relay-forwarded RKNs under overload.
+// rknRateLimiter limits direct and relay-forwarded RKNs.
 // It checks the source IP before the server spends work authenticating the
 // cookie and decrypting the agent's public key.
 //

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
-* **server:** direct UDP access uses the existing cookie challenge before it opens access. Clients must support the re-knock exchange, which adds a round trip. Direct re-knocks are limited to 20 per second per source IP, with a burst of 40. Server replicas behind one endpoint must share a private `CookieSigningKeyBase64` key. The existing relay and DHP evidence paths keep their overload-only challenge policy.
+* **server:** direct and relay-forwarded access use the existing cookie challenge before it opens access. Clients must support the re-knock exchange, which adds a round trip. Re-knocks are limited to 20 per second per source IP, with a burst of 40. Server replicas behind one endpoint must share a private `CookieSigningKeyBase64` key. DHP evidence keeps its overload-only challenge policy.
 
 * **demo:** the stats site's exported region figure is renamed.
   `totalnumber.js` no longer exports `NHP_TOTAL_ATTACK_COUNTRIES`; the figure is published as `NHP_TOTAL_ATTACK_REGIONS`, and the per-day JSON reports their region columns under `region` instead of `country` (report `schema: 2`), and `history.json` records the figure under `totals.regions` instead of `totals.countries`.

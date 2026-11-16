@@ -31,7 +31,7 @@ type ConnectionData struct {
 	LocalAddr          *net.UDPAddr
 	RemoteAddr         *net.UDPAddr
 	RealRemoteAddr     *net.UDPAddr // set for relay-forwarded connections: the real client address behind the relay
-	RequireKnockCookie bool         // Set by the direct UDP listener before packet parsing.
+	RequireKnockCookie bool         // Set on direct and relay-forwarded access connections.
 	CookieStore        *CookieStore
 	TimeoutMs          int
 	SendQueue          chan *Packet

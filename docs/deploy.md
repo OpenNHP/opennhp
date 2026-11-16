@@ -404,8 +404,11 @@ Before upgrading a multi-instance server, set the same private
 base64-encoded 32-byte random key. A generated process-local key works for a
 single replica. Do not use the key from the Docker demo in a public deployment.
 
-Direct and relay-forwarded access now take one additional round trip. Verify that deployed
-clients retry the knock after the cookie challenge. The server permits 20
+Direct and relay-forwarded access now take one additional round trip. Upgrade native Go agents and applications that embed the nhpdevice library to
+a build containing the fast cookie-reply fix before upgrading the server.
+Older native builds can retry the knock but still drop an ACK that follows
+the challenge within 20 ms. Other clients must support the existing cookie
+retry exchange. The server permits 20
 re-knocks per second from one IP, with a burst of 40. Account for clients
 that share an egress IP before the upgrade.
 

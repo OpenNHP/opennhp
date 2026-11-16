@@ -535,8 +535,8 @@ func TestDirectAccessKnockUsesExistingCookieExchange(t *testing.T) {
 		if response.HeaderType != NHP_COK {
 			t.Fatalf("challenge has header type %d", response.HeaderType)
 		}
-		if err := json.Unmarshal(response.Message, &proof); err != nil {
-			t.Fatal(err)
+		if decodeErr := json.Unmarshal(response.Message, &proof); decodeErr != nil {
+			t.Fatal(decodeErr)
 		}
 	default:
 		t.Fatal("server did not emit a cookie challenge")
@@ -548,7 +548,7 @@ func TestDirectAccessKnockUsesExistingCookieExchange(t *testing.T) {
 	var cookie [CookieSize]byte
 	copy(cookie[:], value)
 	rkn := buildAgentRKNWithCookie(t, agent, curvePubKey(server), &cookie, conn.RemoteAddr)
-	if err := parse(rkn); err != nil {
-		t.Fatalf("server refused a direct re-knock with its cookie: %v", err)
+	if parseErr := parse(rkn); parseErr != nil {
+		t.Fatalf("server refused a direct re-knock with its cookie: %v", parseErr)
 	}
 }

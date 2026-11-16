@@ -689,8 +689,10 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
+	directReknock := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_RKN && ppd.requiresKnockCookie()
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
+		if remoteSendTime < ppd.ConnData.LastRemoteSendTime ||
+			(directReknock && remoteSendTime == ppd.ConnData.LastRemoteSendTime) {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -703,7 +705,6 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		}
 	}
 	// A cookie-proven direct RKN can arrive within one minimum packet interval.
-	directReknock := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_RKN && ppd.requiresKnockCookie()
 	if !directReknock && shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop

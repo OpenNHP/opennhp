@@ -841,7 +841,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 	}
 
-	// Require source proof before processing a direct access knock.
+	// Require source proof before processing a direct access knock. DHP
+	// provides evidence appraisal and retains its overload-only challenge.
 	// sendCookie derives the cookie statelessly from the device's signing
 	// key, source IP, peer key, and time window, so there is nothing to
 	// pre-generate or store per connection.

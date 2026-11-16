@@ -1251,7 +1251,7 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
 		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
 
-	// Same RKN-under-overload gate as the direct-UDP path
+	// Rate limit relay-forwarded RKNs under overload
 	// (recvPacketRoutine), but keyed on the REAL client IP rather than the
 	// relay's: a relay legitimately fans out many clients, so keying on
 	// the relay address would let one busy relay's honest traffic throttle

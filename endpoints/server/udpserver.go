@@ -188,13 +188,13 @@ type UdpServer struct {
 	relayForwardBlockMapMutex sync.Mutex
 	relayForwardBlockMap      map[string]time.Time // indexed by relay-forward mapKey, value is expiry
 
-	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
+	// rknLimiter gates the cookie-verify ECDH for RKN per
 	// source IP. Shared (internally locked) between the direct-UDP receive
 	// loop and the relay-forward handlers. See rknRateLimiter.
 	rknLimiter *rknRateLimiter
 
 	// packetLimiter is the general valid-packet gate. It deliberately lives
-	// alongside (and does not replace) rknLimiter: overload RKNs still need the
+	// alongside (and does not replace) rknLimiter: RKNs still need the
 	// tighter pre-ECDH budget enforced by the existing limiter.
 	packetLimiter        *ipRateLimiter
 	packetRateLimitDrops atomic.Int64
@@ -541,7 +541,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 			log.Critical("failed to generate random cookie signing key: %v", readErr)
 			return fmt.Errorf("failed to generate random cookie signing key: %v", readErr)
 		}
-		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
+		log.Warning("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
 	} else {
 		log.Info("CookieSigningKeyBase64 configured; cookies are stateless and shared across the cluster")
 		// Catch operators who copy the docker-compose demo config and
@@ -663,10 +663,10 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.relayForwardBlockMap = make(map[string]time.Time)
 	s.rknLimiter = newRknRateLimiter(
-		OverloadRknRatePerSecondPerIP,
-		OverloadRknBurstPerIP,
-		OverloadRknLimiterMaxEntries,
-		OverloadRknLimiterIdleSeconds*int64(time.Second),
+		RknRatePerSecondPerIP,
+		RknBurstPerIP,
+		RknLimiterMaxEntries,
+		RknLimiterIdleSeconds*int64(time.Second),
 	)
 	s.packetLimiter = newIPRateLimiter(
 		PacketRatePerSecondPerIP,

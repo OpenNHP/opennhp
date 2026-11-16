@@ -525,6 +525,10 @@ func TestDirectAccessKnockUsesExistingCookieExchange(t *testing.T) {
 		t.Fatalf("initial direct knock got %v, want cookie challenge", got)
 	}
 
+	if conn.LastRemoteSendTime == 0 {
+		t.Fatal("initial knock did not advance the receive watermark")
+	}
+
 	var proof common.ServerCookieMsg
 	select {
 	case response := <-server.msgToPacketQueue:

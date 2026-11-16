@@ -702,7 +702,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
+	// A cookie-proven direct RKN can arrive within one minimum packet interval.
+	directReknock := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_RKN && ppd.requiresKnockCookie()
+	if !directReknock && shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
@@ -833,8 +835,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	directChallenge := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_KNK && ppd.requiresKnockCookie()
 	// ART is deduplicated after this function. It must not rewind the shared
 	// AOL watermark or clear threat state before a replay is rejected.
-	// A direct challenge also leaves the watermark alone so a fast RKN can follow it.
-	if !directChallenge && !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
+	if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
 		atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
 		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 	}

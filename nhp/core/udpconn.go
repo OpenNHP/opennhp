@@ -26,17 +26,18 @@ type ConnectionData struct {
 	channelSendWg sync.WaitGroup
 
 	// common
-	Device           *Device
-	LocalAddr        *net.UDPAddr
-	RemoteAddr       *net.UDPAddr
-	RealRemoteAddr   *net.UDPAddr // set for relay-forwarded connections: the real client address behind the relay
-	CookieStore      *CookieStore
-	TimeoutMs        int
-	SendQueue        chan *Packet
-	RecvQueue        chan *Packet
-	BlockSignal      chan struct{}
-	SetTimeoutSignal chan struct{}
-	StopSignal       chan struct{}
+	Device             *Device
+	LocalAddr          *net.UDPAddr
+	RemoteAddr         *net.UDPAddr
+	RealRemoteAddr     *net.UDPAddr // set for relay-forwarded connections: the real client address behind the relay
+	RequireKnockCookie bool         // Set by the direct UDP listener before packet parsing.
+	CookieStore        *CookieStore
+	TimeoutMs          int
+	SendQueue          chan *Packet
+	RecvQueue          chan *Packet
+	BlockSignal        chan struct{}
+	SetTimeoutSignal   chan struct{}
+	StopSignal         chan struct{}
 
 	closed atomic.Bool
 

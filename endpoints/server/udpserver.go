@@ -942,7 +942,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 
-		// Rate-limit RKN-under-overload per source IP BEFORE the packet
+		// Rate-limit direct RKN per source IP BEFORE the packet
 		// reaches the connection routine (and thus before the cookie-
 		// verify ECDH in responder.checkHMAC). This is the only path that
 		// pays a Noise IK floor per packet ahead of authentication and
@@ -952,11 +952,11 @@ func (s *UdpServer) recvPacketRoutine() {
 		// threats, not block-listed — so honest agents and shared-NAT
 		// egress IPs degrade to dropped-RKN (which agents retry) rather
 		// than a hard block. recvTime is reused as the monotonic-ish now.
-		if pkt.HeaderType == core.NHP_RKN && s.device.IsOverload() {
+		if pkt.HeaderType == core.NHP_RKN {
 			if !s.rknLimiter.allow(remoteAddr, recvTime) {
 				s.device.ReleasePoolPacket(pkt)
 				s.metrics.recordDroppedPacket("rate_limited")
-				log.Warning("RKN from %s dropped: per-IP rate limit exceeded under overload", addrStr)
+				log.Warning("RKN from %s dropped: per-IP rate limit exceeded", addrStr)
 				continue
 			}
 		}
@@ -990,11 +990,12 @@ func (s *UdpServer) recvPacketRoutine() {
 			conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
-				InitTime:          recvTime,
-				LastLocalRecvTime: recvTime, // not in multithreaded yet, directly assign value
-				Device:            s.device,
-				LocalAddr:         s.listenAddr,
-				RemoteAddr:        remoteAddr,
+				InitTime:           recvTime,
+				LastLocalRecvTime:  recvTime, // not in multithreaded yet, directly assign value
+				Device:             s.device,
+				LocalAddr:          s.listenAddr,
+				RemoteAddr:         remoteAddr,
+				RequireKnockCookie: true,
 				// CookieStore omitted: server cookies are now stateless
 				// (HMAC of remote ip:port + time window). The legacy
 				// per-conn store is dead state on the server side.

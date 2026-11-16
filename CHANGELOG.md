@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
+* **server:** direct UDP access uses the existing cookie challenge before it opens access. Clients must support the re-knock exchange. Server replicas behind one endpoint must share a cookie signing key.
+
 * **demo:** the stats site's exported region figure is renamed.
   `totalnumber.js` no longer exports `NHP_TOTAL_ATTACK_COUNTRIES`; the figure is published as `NHP_TOTAL_ATTACK_REGIONS`, and the per-day JSON reports their region columns under `region` instead of `country` (report `schema: 2`), and `history.json` records the figure under `totals.regions` instead of `totals.countries`.
   The ISO 3166-1 alpha-2 codes the figure counts belong to dependencies, disputed areas and special political areas as well as to states, so a published constant called a country count is a claim about those codes that the standard does not support.

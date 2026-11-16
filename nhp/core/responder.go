@@ -339,7 +339,7 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 		}
 
 		// for RKN, check HMAC with cookie. For remaining allowed key messages, check HMAC without cookie.
-		sumCookie := overload && ppd.HeaderType == NHP_RKN
+		sumCookie := ppd.HeaderType == NHP_RKN && (overload || ppd.requiresKnockCookie())
 		if !ppd.checkHMAC(sumCookie) {
 			msgType := HeaderTypeToString(ppd.HeaderType)
 			log.Error("HMAC validation failed on server side. msgType=%s, sumCookie=%v, cipherScheme=%d, bodySize=%d, devicePubKey=%s",
@@ -830,18 +830,21 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// responder_test.go drives authenticated packets through validatePeer to
 	// fence this cross-package contract.
 	ppd.RemoteSendTime = remoteSendTime
+	directChallenge := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_KNK && ppd.requiresKnockCookie()
 	// ART is deduplicated after this function. It must not rewind the shared
 	// AOL watermark or clear threat state before a replay is rejected.
-	if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
+	// A direct challenge also leaves the watermark alone so a fast RKN can follow it.
+	if !directChallenge && !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
 		atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
 		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 	}
 
-	// handle knock packet at overload before going into body decryption.
+	// Require source proof before processing a direct access knock.
 	// sendCookie derives the cookie statelessly from the device's signing
-	// key and the remote ip:port + time window, so there is nothing to
+	// key, source IP, peer key, and time window, so there is nothing to
 	// pre-generate or store per connection.
-	if ppd.device.deviceType == NHP_SERVER && ppd.Overload && (ppd.HeaderType == NHP_KNK || ppd.HeaderType == DHP_KNK) {
+	if directChallenge || (ppd.device.deviceType == NHP_SERVER && ppd.Overload &&
+		(ppd.HeaderType == NHP_KNK || ppd.HeaderType == DHP_KNK)) {
 		ppd.sendCookie()
 		err = ErrServerRejectWithCookie
 		return err
@@ -997,8 +1000,12 @@ func (ppd *PacketParserData) sendCookie() {
 		Message:        cokBytes,
 	}
 
-	log.Debug("Send cookie back to %s: %s ", ppd.ConnData.RemoteAddr, string(md.Message))
+	log.Debug("Sent cookie challenge to %s", ppd.ConnData.RemoteAddr)
 	ppd.device.SendMsgToPacket(md)
+}
+
+func (ppd *PacketParserData) requiresKnockCookie() bool {
+	return ppd.ConnData != nil && ppd.ConnData.RequireKnockCookie
 }
 
 func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
@@ -1022,10 +1029,7 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		// defer. ppd.Destroy still clears hmacHash when the parser
 		// tears down, so leaving it untouched here leaks nothing.
 		//
-		// Only reachable on NHP_SERVER under Overload (validatePeer
-		// gates the sumCookie=true case behind those two conditions);
-		// startup guarantees a signing key is installed, so missing
-		// params here is a programmer error.
+		// The server installs signing parameters before accepting direct UDP.
 		key, win := ppd.device.StatelessCookieParams()
 		if len(key) == 0 || win <= 0 {
 			log.Critical("checkHMAC(sumCookie): device has no stateless cookie params")

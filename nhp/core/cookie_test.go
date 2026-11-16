@@ -2,6 +2,8 @@ package core
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"net"
 	"testing"
 	"time"
@@ -487,5 +489,62 @@ func TestCookieVerify_RejectsWrongCookie(t *testing.T) {
 
 	if err := parseRKNOnServer(t, serverDev, wire, remote); err == nil {
 		t.Fatal("expected cookie verify to reject an RKN whose cookie is bound to a different source IP, but it passed")
+	}
+}
+
+func TestDirectAccessKnockUsesExistingCookieExchange(t *testing.T) {
+	agent := newCurveDevice(t, NHP_AGENT, 11)
+	server := newCurveDevice(t, NHP_SERVER, 22)
+	server.AddPeer(&UdpPeer{PubKeyBase64: agent.PublicKeyBase64(), Type: NHP_AGENT})
+	server.SetStatelessCookieParams(bytes.Repeat([]byte{0x42}, 32), 5)
+	conn := sentinelConnection(server, 12346, 12345)
+	conn.RequireKnockCookie = true
+	parse := func(wire []byte) error {
+		ppd, err := server.createPacketParserData(&PacketData{
+			BasePacket: &Packet{Content: wire},
+			ConnData:   conn, InitTime: time.Now().UnixNano(),
+		})
+		if ppd != nil {
+			t.Cleanup(ppd.Destroy)
+		}
+		if err != nil {
+			return err
+		}
+		return ppd.validatePeer()
+	}
+
+	knk, err := agent.MsgToPacket(&MsgData{
+		ConnData: sentinelConnection(agent, 12345, 12346),
+		PeerPk:   curvePubKey(server), HeaderType: NHP_KNK,
+		TransactionId: 1, Message: []byte("{}"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parse(bytes.Clone(knk.BasePacket.Content)); got != ErrServerRejectWithCookie {
+		t.Fatalf("initial direct knock got %v, want cookie challenge", got)
+	}
+
+	var proof common.ServerCookieMsg
+	select {
+	case response := <-server.msgToPacketQueue:
+		if response.HeaderType != NHP_COK {
+			t.Fatalf("challenge has header type %d", response.HeaderType)
+		}
+		if err := json.Unmarshal(response.Message, &proof); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal("server did not emit a cookie challenge")
+	}
+	value, err := base64.StdEncoding.DecodeString(proof.Cookie)
+	if err != nil || len(value) != CookieSize {
+		t.Fatal("server returned an invalid cookie")
+	}
+	var cookie [CookieSize]byte
+	copy(cookie[:], value)
+	rkn := buildAgentRKNWithCookie(t, agent, curvePubKey(server), &cookie, conn.RemoteAddr)
+	if err := parse(rkn); err != nil {
+		t.Fatalf("server refused a direct re-knock with its cookie: %v", err)
 	}
 }

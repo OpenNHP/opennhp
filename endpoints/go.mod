@@ -6,7 +6,7 @@ require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/emmansun/gmsm v0.45.3
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/gin-contrib/sessions v1.1.3
+	github.com/gin-contrib/sessions v1.1.4
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -18,7 +18,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/urfave/cli/v2 v2.27.7
 	golang.org/x/mobile v0.0.0-20190719004257-d2bd2a29d028
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	modernc.org/sqlite v1.61.1
 )
 

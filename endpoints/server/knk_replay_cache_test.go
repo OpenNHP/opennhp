@@ -142,11 +142,26 @@ func TestKNKReplayTTLFollowsWindow(t *testing.T) {
 	if short >= long {
 		t.Fatalf("TTL for a 60 s window (%s) must be shorter than for 600 s (%s)", short, long)
 	}
-	if want := 120 * time.Second; short != want {
+	if want := 420 * time.Second; short != want {
 		t.Fatalf("TTL for a 60 s window = %s, want %s", short, want)
 	}
 	// A zero (unset) window falls back to the protocol default.
 	if knkReplayTTL(0) != short {
 		t.Fatalf("TTL for an unset window = %s, want %s", knkReplayTTL(0), short)
+	}
+}
+
+func TestKNKReplayCachePeerQuotaAndCleanup(t *testing.T) {
+	cache := newKNKReplayCacheWithParams(8, 20*time.Millisecond)
+	peer := artTestPubkey(1)
+	if !cache.MarkSeen(peer, 1, time.Now().Add(time.Minute).UnixNano()) {
+		t.Fatal("first entry rejected")
+	}
+	if cache.MarkSeen(peer, 2, 0) || !cache.MarkSeen(artTestPubkey(2), 2, 0) {
+		t.Fatal("a full peer quota must leave room for another peer")
+	}
+	time.Sleep(40 * time.Millisecond)
+	if !cache.MarkSeen(peer, 3, 0) || cache.Len() != 1 {
+		t.Fatal("expired entries must release their peer quotas")
 	}
 }

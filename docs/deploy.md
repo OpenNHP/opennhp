@@ -518,12 +518,13 @@ the server after changes. A larger limit also widens the window in which a
 captured knock can be replayed. The forward bound (how far ahead of the server
 a knock may be stamped) is a protocol constant and is not configurable.
 
-The cache retains accepted triples for the effective window plus 60 seconds.
+The cache retains accepted triples for the effective window plus 360 seconds for forward clock skew and a margin.
 Set `KNKReplayCacheEntries` to peak knocks/s times that retention plus burst
 headroom (0 selects 100,000; maximum 1,000,000; restart required). Memory grows
 with usage up to that cap, at several hundred bytes per entry. Alert on
 `nhp_server_knk_replay_cache_capacity_refusals_total`. A full cache retains
-live entries and refuses new knocks until it can reclaim space. Replay and
+live entries and refuses new knocks until it can reclaim space. Each peer can
+use up to one eighth of the cache, with a minimum of one entry. Replay and
 capacity refusals appear as
 `nhp_server_packets_dropped_total{stage="knk_replay"}`. Detailed clock-skew and
 replay warnings are limited to once per minute.

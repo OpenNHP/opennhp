@@ -1,8 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,8 +36,8 @@ import (
 // remaining replay window after a restart. A full cache refuses new knocks and retains live entries.
 const (
 	// knkReplayCacheSize is the default number of KNK replay entries.
-	// A knock is one packet per agent access attempt, so even a busy
-	// server stays well under 100k entries at a 660 s TTL.
+	// A knock is one packet per agent access attempt, so even a server can size this
+	// against its peak knock rate and configured freshness window.
 	knkReplayCacheSize = 100_000
 	// knkReplayCacheMaxSize is the largest accepted KNKReplayCacheEntries;
 	// docs/deploy.md and the server config template quote it.
@@ -55,34 +53,41 @@ const (
 // The outer mutex makes lookup and insertion one operation.
 type knkReplayCache struct {
 	mu               sync.Mutex
-	lru              *simplelru.LRU[string, time.Time]
+	lru              *simplelru.LRU[knkReplayIdentity, time.Time]
 	ttl              time.Duration
 	capacity         int
+	peerCapacity     int
+	peerEntries      map[string]int
 	capacityRefusals atomic.Uint64
 }
 
-// newKNKReplayCache returns a cache sized for the default entry count and
-// the TTL derived from the protocol's default KNK staleness window.
+type knkReplayIdentity struct {
+	peer     string
+	txid     uint64
+	sendTime int64
+}
+
+// newKNKReplayCache uses the default capacity and freshness window.
 func newKNKReplayCache() *knkReplayCache {
 	return newKNKReplayCacheWithParams(knkReplayCacheSize, knkReplayTTL(core.KNKRecvStalenessFloorSeconds))
 }
 
-// knkReplayTTL derives the cache TTL from the EFFECTIVE staleness window
-// in seconds: the window plus a margin. Shortening the window therefore
-// shortens how long an entry is retained, which is the point of making
-// the window configurable.
+// knkReplayTTL covers the configured packet age, maximum clock lead, and a margin.
 func knkReplayTTL(windowSeconds int) time.Duration {
 	if windowSeconds <= 0 {
 		windowSeconds = core.KNKRecvStalenessFloorSeconds
 	}
-	return time.Duration(windowSeconds+knkReplayCacheMarginSeconds) * time.Second
+	return time.Duration(windowSeconds+core.ARTRecvFutureSkewSeconds+knkReplayCacheMarginSeconds) * time.Second
 }
 
 // newKNKReplayCacheWithParams allows short TTLs and small capacities in tests.
 func newKNKReplayCacheWithParams(size int, ttl time.Duration) *knkReplayCache {
-	c := &knkReplayCache{ttl: ttl, capacity: size}
+	c := &knkReplayCache{
+		ttl: ttl, capacity: size, peerCapacity: max(1, size/8),
+		peerEntries: make(map[string]int),
+	}
 	var err error
-	c.lru, err = simplelru.NewLRU[string, time.Time](size, nil)
+	c.lru, err = simplelru.NewLRU[knkReplayIdentity, time.Time](size, nil)
 	if err != nil {
 		panic(err)
 	} // sizes are validated at startup; tests use positive sizes.
@@ -90,7 +95,7 @@ func newKNKReplayCacheWithParams(size int, ttl time.Duration) *knkReplayCache {
 }
 
 // MarkSeen records the (peerPubkey, txid, sendTime) triple and returns
-// true on first observation, false if the triple is already in the cache.
+// true on first observation, false if the cache cannot accept it.
 //
 // Caller contract — peerPubkey and sendTime must both be the
 // AEAD-authenticated values from PacketParserData (ppd.RemotePubKey and
@@ -116,37 +121,35 @@ func (c *knkReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		return false
 	}
 
-	key := knkReplayKey(peerPubkey, txid, sendTime)
+	peer := string(peerPubkey)
+	key := knkReplayIdentity{peer: peer, txid: txid, sendTime: sendTime}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Round(0) strips the monotonic reading so expiry is compared on the
-	// wall clock, the same clock the responder's staleness gate uses.
-	now := time.Now().Round(0)
-	if expires, exists := c.lru.Peek(key); exists {
-		if now.Before(expires) {
-			return false
-		}
-		c.lru.Remove(key)
-	}
-	if c.lru.Len() == c.capacity {
-		_, oldestExpiry, _ := c.lru.GetOldest()
-		if now.Before(oldestExpiry) {
-			c.capacityRefusals.Add(1)
-			return false
+	// Equal TTLs keep monotonic expiries in insertion order. Keep the wall-clock
+	// deadline too because the receive freshness check uses the wall clock.
+	now := time.Now()
+	for {
+		oldest, expires, exists := c.lru.GetOldest()
+		if !exists || now.Before(expires) || now.UnixNano() < expires.UnixNano() {
+			break
 		}
 		c.lru.RemoveOldest()
+		c.peerEntries[oldest.peer]--
+		if c.peerEntries[oldest.peer] == 0 {
+			delete(c.peerEntries, oldest.peer)
+		}
 	}
-	// Anchor expiry to the later of receive time and the authenticated send
-	// time. The staleness gate is measured from the send time, so a
-	// forward-dated knock (fast sender clock) would otherwise keep passing
-	// it after a receive-anchored entry had expired, and replay.
-	anchor := now
-	if sent := time.Unix(0, sendTime); sent.After(anchor) {
-		anchor = sent
+	if _, exists := c.lru.Peek(key); exists {
+		return false
 	}
-	c.lru.Add(key, anchor.Add(c.ttl))
+	if c.lru.Len() == c.capacity || c.peerEntries[peer] >= c.peerCapacity {
+		c.capacityRefusals.Add(1)
+		return false
+	}
+	c.lru.Add(key, now.Add(c.ttl))
+	c.peerEntries[peer]++
 	return true
 }
 
@@ -162,19 +165,10 @@ func (c *knkReplayCache) Len() int {
 	return c.lru.Len()
 }
 
-// CapacityRefusals reports how many new knocks were refused at capacity.
+// CapacityRefusals reports how many new knocks reached the server or peer capacity limit.
 func (c *knkReplayCache) CapacityRefusals() uint64 {
 	if c == nil {
 		return 0
 	}
 	return c.capacityRefusals.Load()
-}
-
-// knkReplayKey concatenates the base64 pubkey, the decimal txid and the
-// decimal sendTime. The '|' separator cannot make two keys collide: the
-// pubkey prefix has a known length and the two decimal fields contain no
-// '|'.
-func knkReplayKey(peerPubkey []byte, txid uint64, sendTime int64) string {
-	return base64.StdEncoding.EncodeToString(peerPubkey) + "|" +
-		strconv.FormatUint(txid, 10) + "|" + strconv.FormatInt(sendTime, 10)
 }

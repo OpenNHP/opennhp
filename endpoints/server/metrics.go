@@ -79,7 +79,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 		})
 
 	reg.NewCounterFunc("nhp_server_knk_replay_cache_capacity_refusals_total",
-		"New knocks refused because the KNK replay cache is full.",
+		"New knocks refused at the server or peer replay cache capacity limit.",
 		func() float64 {
 			if s.knkReplay == nil {
 				return 0

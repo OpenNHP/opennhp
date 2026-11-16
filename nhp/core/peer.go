@@ -37,8 +37,7 @@ type Peer interface {
 	SendAddr() net.Addr
 	LastSendTime() int64
 	UpdateSend(currTime int64)
-	LastRemoteSendTime() int64
-	UpdateRemoteSend(currTime int64)
+	IsRemoteReplayOtherwiseUpdate(currTime int64) bool
 
 	// LastRecvTime is the timestamp of the most recent successfully validated
 	// packet from this peer (across all connections). Used by AC/DB discovery
@@ -247,13 +246,18 @@ func (p *UdpPeer) LastRemoteSendTime() int64 {
 	return p.lastRemoteSendTime
 }
 
-func (p *UdpPeer) UpdateRemoteSend(currTime int64) {
+// Avoid check and update separately to prevent race condition.
+// Return true if the remote send time is earlier than or equal to the last recorded one.
+func (p *UdpPeer) IsRemoteReplayOtherwiseUpdate(remoteSendTime int64) bool {
 	p.Lock()
 	defer p.Unlock()
 
-	if currTime > p.lastRemoteSendTime {
-		p.lastRemoteSendTime = currTime
+	if remoteSendTime <= p.lastRemoteSendTime {
+		return true
 	}
+
+	p.lastRemoteSendTime = remoteSendTime
+	return false
 }
 
 func (p *UdpPeer) TeePublicKeyBase64() string {

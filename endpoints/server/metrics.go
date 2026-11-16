@@ -78,13 +78,13 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return float64(s.artReplay.capacityEvictions)
 		})
 
-	reg.NewCounterFunc("nhp_server_knk_replay_cache_evictions_total",
-		"Unexpired KNK replay entries removed by capacity pressure; replay coverage is reduced.",
+	reg.NewCounterFunc("nhp_server_knk_replay_cache_capacity_refusals_total",
+		"New knocks refused at the server or peer replay cache capacity limit.",
 		func() float64 {
 			if s.knkReplay == nil {
 				return 0
 			}
-			return float64(s.knkReplay.CapacityEvictions())
+			return float64(s.knkReplay.CapacityRefusals())
 		})
 
 	sm := &serverMetrics{
@@ -101,7 +101,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			"Source addresses blocked after exceeding the threat threshold.").With(),
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
 			"Inbound packets discarded before becoming a decrypted message, by stage "+
-				"(replay, too_short, blocked, precheck, rate_limited, per_ip_conn_limit, conn_limit, conn_duplicate, parse, validate, decrypt, queue_full, stale, knk_replay). "+
+				"(replay, too_short, blocked, precheck, rate_limited, per_ip_conn_limit, conn_limit, conn_duplicate, parse, validate, decrypt, queue_full, stale, knk_replay, knk_replay_capacity). "+
 				"The knk_replay stage is counted after decryption, when the knock replay cache rejects a duplicate knock.", "stage"),
 		handlerDropped: reg.NewCounter("nhp_server_handler_dropped_total",
 			"Decrypted messages dropped because the handler goroutine budget "+
@@ -122,6 +122,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 		"too_short", "blocked", "precheck", "rate_limited", "per_ip_conn_limit", "conn_limit", "conn_duplicate", // recvPacketRoutine, pre-decryption
 		"replay", "parse", "validate", "decrypt", "queue_full", "stale", // packetToMsgRoutine, via OnPacketDropped
 		"knk_replay", // HandleKnockRequest, after the body AEAD verified the knock
+		"knk_replay_capacity",
 	} {
 		sm.packetsDropped.With(stage)
 	}

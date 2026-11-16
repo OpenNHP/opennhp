@@ -12,10 +12,10 @@ import (
 func TestKNKReplayCacheRejectsDuplicate(t *testing.T) {
 	cache := newKNKReplayCache()
 	key := artTestPubkey(1)
-	if !cache.MarkSeen(key, 7, 1000) {
+	if cache.MarkSeen(key, 7, 1000) != "" {
 		t.Fatal("first knock rejected")
 	}
-	if cache.MarkSeen(key, 7, 1000) {
+	if cache.MarkSeen(key, 7, 1000) == "" {
 		t.Fatal("replayed knock accepted")
 	}
 	if cache.Len() != 1 {
@@ -29,10 +29,10 @@ func TestKNKReplayCacheRejectsDuplicate(t *testing.T) {
 func TestKNKReplayCacheAcceptsNewTransactionID(t *testing.T) {
 	cache := newKNKReplayCache()
 	key := artTestPubkey(1)
-	if !cache.MarkSeen(key, 7, 1000) {
+	if cache.MarkSeen(key, 7, 1000) != "" {
 		t.Fatal("first knock rejected")
 	}
-	if !cache.MarkSeen(key, 8, 1000) {
+	if cache.MarkSeen(key, 8, 1000) != "" {
 		t.Fatal("knock with a new transaction id rejected")
 	}
 	if cache.Len() != 2 {
@@ -46,10 +46,10 @@ func TestKNKReplayCacheAcceptsNewTransactionID(t *testing.T) {
 func TestKNKReplayCacheAcceptsNewSendTime(t *testing.T) {
 	cache := newKNKReplayCache()
 	key := artTestPubkey(1)
-	if !cache.MarkSeen(key, 7, 1000) {
+	if cache.MarkSeen(key, 7, 1000) != "" {
 		t.Fatal("first knock rejected")
 	}
-	if !cache.MarkSeen(key, 7, 2000) {
+	if cache.MarkSeen(key, 7, 2000) != "" {
 		t.Fatal("knock with the same transaction id but a new send time rejected")
 	}
 }
@@ -58,13 +58,13 @@ func TestKNKReplayCacheAcceptsNewSendTime(t *testing.T) {
 func TestKNKReplayCacheSeparatesPeers(t *testing.T) {
 	cache := newKNKReplayCache()
 	keyA, keyB := artTestPubkey(1), artTestPubkey(2)
-	if !cache.MarkSeen(keyA, 7, 1000) {
+	if cache.MarkSeen(keyA, 7, 1000) != "" {
 		t.Fatal("first agent's knock rejected")
 	}
-	if !cache.MarkSeen(keyB, 7, 1000) {
+	if cache.MarkSeen(keyB, 7, 1000) != "" {
 		t.Fatal("second agent's knock rejected")
 	}
-	if cache.MarkSeen(keyA, 7, 1000) {
+	if cache.MarkSeen(keyA, 7, 1000) == "" {
 		t.Fatal("replayed knock accepted")
 	}
 }
@@ -76,14 +76,14 @@ func TestKNKReplayCacheSeparatesPeers(t *testing.T) {
 func TestKNKReplayCacheExpiresAfterTTL(t *testing.T) {
 	cache := newKNKReplayCacheWithParams(10, 20*time.Millisecond)
 	key := artTestPubkey(1)
-	if !cache.MarkSeen(key, 7, 1000) {
+	if cache.MarkSeen(key, 7, 1000) != "" {
 		t.Fatal("first knock rejected")
 	}
-	if cache.MarkSeen(key, 7, 1000) {
+	if cache.MarkSeen(key, 7, 1000) == "" {
 		t.Fatal("replayed knock accepted")
 	}
 	time.Sleep(40 * time.Millisecond)
-	if !cache.MarkSeen(key, 7, 1000) {
+	if cache.MarkSeen(key, 7, 1000) != "" {
 		t.Fatal("knock rejected after the TTL expired")
 	}
 }
@@ -93,10 +93,10 @@ func TestKNKReplayCacheExpiresAfterTTL(t *testing.T) {
 // under one slot.
 func TestKNKReplayCacheRejectsInvalidPubKey(t *testing.T) {
 	cache := newKNKReplayCache()
-	if cache.MarkSeen(nil, 1, 1) {
+	if cache.MarkSeen(nil, 1, 1) == "" {
 		t.Fatal("empty pubkey accepted")
 	}
-	if cache.MarkSeen([]byte{1, 2, 3}, 1, 1) {
+	if cache.MarkSeen([]byte{1, 2, 3}, 1, 1) == "" {
 		t.Fatal("short pubkey accepted")
 	}
 	if cache.Len() != 0 {
@@ -110,28 +110,26 @@ func TestKNKReplayCacheSupportsCurveAndGMSMKeys(t *testing.T) {
 	for _, size := range []int{core.PublicKeySize, core.PublicKeySizeEx} {
 		cache := newKNKReplayCache()
 		key := artTestPubkey(1, size)
-		if !cache.MarkSeen(key, 1, 1) {
+		if cache.MarkSeen(key, 1, 1) != "" {
 			t.Fatalf("first %d-byte key rejected", size)
 		}
-		if cache.MarkSeen(key, 1, 1) {
+		if cache.MarkSeen(key, 1, 1) == "" {
 			t.Fatalf("replayed %d-byte key accepted", size)
 		}
 	}
 }
 
-// TestKNKReplayCacheCountsCapacityEvictions ensures the eviction counter
-// advances when the cache is full — the signal an operator needs to size
-// the cache correctly.
-func TestKNKReplayCacheCountsCapacityEvictions(t *testing.T) {
-	cache := newKNKReplayCacheWithParams(2, time.Minute)
+func TestKNKReplayCacheRetainsLiveEntriesAtCapacity(t *testing.T) {
+	cache := newKNKReplayCacheWithParams(1, time.Minute)
 	key := artTestPubkey(1)
-	for i := uint64(1); i <= 4; i++ {
-		if !cache.MarkSeen(key, i, int64(i)) {
-			t.Fatalf("knock %d rejected", i)
-		}
+	if cache.MarkSeen(key, 1, 1) != "" {
+		t.Fatal("empty cache refused first knock")
 	}
-	if got := cache.CapacityEvictions(); got == 0 {
-		t.Fatal("capacity evictions not counted")
+	if cache.MarkSeen(artTestPubkey(2), 2, 2) != "knk_replay_capacity" {
+		t.Fatal("full cache accepted new knock")
+	}
+	if cache.MarkSeen(key, 1, 1) == "" || cache.CapacityRefusals() != 1 {
+		t.Fatal("full cache did not retain the first entry")
 	}
 }
 
@@ -144,11 +142,26 @@ func TestKNKReplayTTLFollowsWindow(t *testing.T) {
 	if short >= long {
 		t.Fatalf("TTL for a 60 s window (%s) must be shorter than for 600 s (%s)", short, long)
 	}
-	if want := 120 * time.Second; short != want {
+	if want := 420 * time.Second; short != want {
 		t.Fatalf("TTL for a 60 s window = %s, want %s", short, want)
 	}
 	// A zero (unset) window falls back to the protocol default.
 	if knkReplayTTL(0) != short {
 		t.Fatalf("TTL for an unset window = %s, want %s", knkReplayTTL(0), short)
+	}
+}
+
+func TestKNKReplayCachePeerQuotaAndCleanup(t *testing.T) {
+	cache := newKNKReplayCacheWithParams(8, 20*time.Millisecond)
+	peer := artTestPubkey(1)
+	if cache.MarkSeen(peer, 1, time.Now().Add(time.Minute).UnixNano()) != "" {
+		t.Fatal("first entry rejected")
+	}
+	if cache.MarkSeen(peer, 2, 0) != "knk_replay_capacity" || cache.MarkSeen(artTestPubkey(2), 2, 0) != "" {
+		t.Fatal("a full peer quota must leave room for another peer")
+	}
+	time.Sleep(40 * time.Millisecond)
+	if cache.MarkSeen(peer, 3, 0) != "" || cache.Len() != 1 {
+		t.Fatal("expired entries must release their peer quotas")
 	}
 }

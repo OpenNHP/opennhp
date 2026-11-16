@@ -95,7 +95,7 @@ func newKNKReplayCacheWithParams(size int, ttl time.Duration) *knkReplayCache {
 }
 
 // MarkSeen records the (peerPubkey, txid, sendTime) triple and returns
-// true on first observation, false if the cache cannot accept it.
+// an empty drop stage on success, or the reason for refusing it.
 //
 // Caller contract — peerPubkey and sendTime must both be the
 // AEAD-authenticated values from PacketParserData (ppd.RemotePubKey and
@@ -105,20 +105,20 @@ func newKNKReplayCacheWithParams(size int, ttl time.Duration) *knkReplayCache {
 // forged-but-header-valid packet from poisoning a real agent's triple.
 //
 // Curve and GMSM use different authenticated public-key lengths. Any other
-// length fails closed (returns false, i.e. "already seen"), so a caller
+// length fails closed, so a caller
 // that skips the upstream length guard still cannot key every empty
 // pubkey under one slot.
 //
-// A nil receiver also fails closed (returns false), the same shape as the
+// A nil receiver also fails closed, the same as the
 // ART replay cache: a server with no replay cache must not accept knocks
 // it cannot protect. Start() always builds the cache before the device
 // starts, so this only fires on a mis-wired server.
-func (c *knkReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64) bool {
+func (c *knkReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64) string {
 	if c == nil {
-		return false
+		return "knk_replay"
 	}
 	if len(peerPubkey) != core.PublicKeySize && len(peerPubkey) != core.PublicKeySizeEx {
-		return false
+		return "knk_replay"
 	}
 
 	peer := string(peerPubkey)
@@ -142,15 +142,15 @@ func (c *knkReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		}
 	}
 	if _, exists := c.lru.Peek(key); exists {
-		return false
+		return "knk_replay"
 	}
 	if c.lru.Len() == c.capacity || c.peerEntries[peer] >= c.peerCapacity {
 		c.capacityRefusals.Add(1)
-		return false
+		return "knk_replay_capacity"
 	}
 	c.lru.Add(key, now.Add(c.ttl))
 	c.peerEntries[peer]++
-	return true
+	return ""
 }
 
 // Len is the current entry count, exposed for tests. Takes the same mutex

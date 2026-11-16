@@ -254,13 +254,13 @@ func (s *UdpServer) dedupeRecvKNK(ppd *core.PacketParserData, addrStr string) *c
 		log.Critical("server[dedupeRecvKNK] invalid peer pubkey length %d for txid=%d (want %d or %d)", l, ppd.SenderTrxId, core.PublicKeySize, core.PublicKeySizeEx)
 		return common.ErrServerMissingPeerPubkey
 	}
-	if !s.knkReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
-		s.metrics.recordDroppedPacket("knk_replay")
+	if stage := s.knkReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime); stage != "" {
+		s.metrics.recordDroppedPacket(stage)
 		now := time.Now().UnixNano()
 		last := lastKNKReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastKNKReplayWarn.CompareAndSwap(last, now) {
-			log.Warning("server[dedupeRecvKNK] dropped replayed knock (txid=%d, pubkey=%s, sendTime=%d, src=%s)",
-				ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime, addrStr)
+			log.Warning("server[dedupeRecvKNK] dropped knock (stage=%s, txid=%d, pubkey=%s, sendTime=%d, src=%s)",
+				stage, ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime, addrStr)
 		}
 		return common.ErrServerDuplicateTransaction
 	}

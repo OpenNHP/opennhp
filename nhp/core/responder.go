@@ -603,7 +603,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			ppd.device.optionMutex.Lock()
 			fallback := ppd.device.option.PeerLookupFallback
 			ppd.device.optionMutex.Unlock()
-			if fallback != nil && fallback(peerPk, ppd.HeaderType) {
+			if fallback != nil && fallback(peerPkBase64, ppd.HeaderType) {
 				log.Info("validatePeer: %s peer accepted via fallback, pubkey=%s",
 					peerDeviceTypeName, peerPkBase64)
 				// Skip expiry/address checks for fallback peers.

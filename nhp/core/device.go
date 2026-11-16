@@ -29,7 +29,7 @@ const (
 // PeerLookupFallbackFunc is called when a peer is not found in the static
 // peer pool. If it returns true, the peer is accepted as valid (used by
 // the server to check dynamically-registered agent keys in SQLite).
-type PeerLookupFallbackFunc func(pubKey []byte, headerType int) bool
+type PeerLookupFallbackFunc func(pkBase64 string, headerType int) bool
 
 type DeviceOptions struct {
 	AOPRecvStalenessSeconds     int // Zero uses the protocol default. Set before Start.

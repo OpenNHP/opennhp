@@ -452,18 +452,21 @@ func (s *AgentKeyStore) GetAgentKey(userId, deviceId string) (*AgentKeyRecord, e
 // is registered, active, and not expired. This is the gate consulted by
 // the noise-layer peer validation fallback; an expired key behaves as if
 // the agent were never registered.
-func (s *AgentKeyStore) FindAgentByPublicKey(pubKeyBase64 string) (bool, error) {
-	var count int
+func (s *AgentKeyStore) FindAgentByPublicKey(pubKeyBase64 string) (bool, int64, error) {
+	var expiresAt sql.NullInt64
 	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM agent_keys
+		`SELECT expires_at FROM agent_keys
 		 WHERE public_key = ? AND active = 1
 		   AND (expires_at IS NULL OR expires_at > ?)`,
 		pubKeyBase64, time.Now().Unix(),
-	).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("keystore: find agent by pubkey: %w", err)
+	).Scan(&expiresAt)
+	if err == sql.ErrNoRows {
+		return false, 0, fmt.Errorf("keystore: cannot find valid agent by pubkey: %w", err)
 	}
-	return count > 0, nil
+	if err != nil {
+		return false, 0, fmt.Errorf("keystore: find agent by pubkey: %w", err)
+	}
+	return true, expiresAt.Int64, nil
 }
 
 // IsAgentRegistered returns true if the user+device pair has an active,

@@ -31,7 +31,9 @@
 #   which a captured knock can be replayed.
 # KNKReplayCacheEntries (-): capacity of the KNK replay cache. 0 selects
 #   100000; the maximum is 1000000. Restart required. Size it for peak
-#   knocks/s times (the effective staleness window + 60 seconds).
+#   knocks/s times (the effective staleness window + 360 seconds). Each peer can use at most
+#   512 entries or one eighth of the cache, whichever is smaller, with a
+#   minimum of one entry.
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # DisableAgentValidation: whether for the server to skip the agent's public key validation.
 # AllowPrivateRelaySource: accept private (RFC1918 / loopback / CGNAT)

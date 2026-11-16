@@ -49,8 +49,9 @@ CookieTimeWindowSeconds = 60
 #
 # KNKReplayCacheEntries (-): capacity of the KNK replay cache. 0
 #   selects 100000; the maximum is 1000000. Restart required. Size it
-#   for peak knocks/s times (the effective staleness window + 60
-#   seconds).
+#   for peak knocks/s times (the effective staleness window + 360
+#   seconds). Each peer can use at most 512 entries or one eighth of the cache,
+#   whichever is smaller, with a minimum of one entry.
 #
 # Both default to the protocol values; leaving them out keeps the
 # built-in behavior.

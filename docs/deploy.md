@@ -524,7 +524,10 @@ headroom (0 selects 100,000; maximum 1,000,000; restart required). Memory grows
 with usage up to that cap, at several hundred bytes per entry. Alert on
 `nhp_server_knk_replay_cache_capacity_refusals_total`. A full cache retains
 live entries and refuses new knocks until it can reclaim space. Each peer can
-use up to one eighth of the cache, with a minimum of one entry. Replay and
+use up to 512 entries or one eighth of the cache, whichever is smaller, with
+a minimum of one entry. The global limit can still refuse all new knocks
+until entries expire. Size the cache for aggregate demand and monitor refusals
+on deployments that accept unregistered agent keys. Replay and
 capacity refusals use the `knk_replay` and `knk_replay_capacity` stages in
 `nhp_server_packets_dropped_total`. Detailed clock-skew and
 replay warnings are limited to once per minute.

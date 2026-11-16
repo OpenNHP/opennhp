@@ -36,12 +36,12 @@ import (
 // remaining replay window after a restart. A full cache refuses new knocks and retains live entries.
 const (
 	// knkReplayCacheSize is the default number of KNK replay entries.
-	// A knock is one packet per agent access attempt, so even a server can size this
-	// against its peak knock rate and configured freshness window.
+	// Size for the peak knock rate and configured freshness window.
 	knkReplayCacheSize = 100_000
 	// knkReplayCacheMaxSize is the largest accepted KNKReplayCacheEntries;
 	// docs/deploy.md and the server config template quote it.
-	knkReplayCacheMaxSize = 1_000_000
+	knkReplayCacheMaxSize        = 1_000_000
+	knkReplayCacheMaxPeerEntries = 512
 	// knkReplayCacheMarginSeconds is added to the effective staleness
 	// window to derive the TTL. The window is measured from the packet's
 	// own send time, so an entry must outlive the window by a margin to
@@ -83,7 +83,7 @@ func knkReplayTTL(windowSeconds int) time.Duration {
 // newKNKReplayCacheWithParams allows short TTLs and small capacities in tests.
 func newKNKReplayCacheWithParams(size int, ttl time.Duration) *knkReplayCache {
 	c := &knkReplayCache{
-		ttl: ttl, capacity: size, peerCapacity: max(1, size/8),
+		ttl: ttl, capacity: size, peerCapacity: min(knkReplayCacheMaxPeerEntries, max(1, size/8)),
 		peerEntries: make(map[string]int),
 	}
 	var err error

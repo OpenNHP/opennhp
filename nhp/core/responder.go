@@ -644,8 +644,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
+	validPeerFound:
 	}
-validPeerFound:
 
 	ppd.RemotePubKey = peerPk
 	if ppd.ConnPeerPublicKey != nil {
@@ -689,7 +689,7 @@ validPeerFound:
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime || remoteSendTime < peer.LastRecvTime() {
+		if remoteSendTime < ppd.ConnData.LastRemoteSendTime || (peer != nil && ppd.LocalInitTime > peer.LastRecvTime()) {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -703,7 +703,7 @@ validPeerFound:
 	}
 	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) ||
-			remoteSendTime < peer.LastRecvTime()+MinimalRecvIntervalMs*int64(time.Millisecond) {
+			(peer != nil && ppd.LocalInitTime > peer.LastRecvTime()) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			// threat plus 1

@@ -216,7 +216,9 @@ func (p *UdpPeer) UpdateSend(currTime int64) {
 	p.Lock()
 	defer p.Unlock()
 
-	p.lastSendTime = currTime
+	if currTime > p.lastSendTime {
+		p.lastSendTime = currTime
+	}
 }
 
 func (p *UdpPeer) LastRecvTime() int64 {
@@ -230,7 +232,9 @@ func (p *UdpPeer) UpdateRecv(currTime int64) {
 	p.Lock()
 	defer p.Unlock()
 
-	p.lastRecvTime = currTime
+	if currTime > p.lastRecvTime {
+		p.lastRecvTime = currTime
+	}
 }
 
 func (p *UdpPeer) TeePublicKeyBase64() string {

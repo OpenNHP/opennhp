@@ -37,6 +37,8 @@ type Peer interface {
 	SendAddr() net.Addr
 	LastSendTime() int64
 	UpdateSend(currTime int64)
+	LastRemoteSendTime() int64
+	UpdateRemoteSend(currTime int64)
 
 	// LastRecvTime is the timestamp of the most recent successfully validated
 	// packet from this peer (across all connections). Used by AC/DB discovery
@@ -62,6 +64,7 @@ type UdpPeer struct {
 	// mutable fields
 	lastSendTime                     int64
 	lastRecvTime                     int64
+	lastRemoteSendTime               int64
 	lastNSLookupTime                 int64
 	lastNSLookupErr                  error // most recent net.LookupHost failure; nil once a lookup succeeds
 	resolvedIpArr                    []string
@@ -234,6 +237,22 @@ func (p *UdpPeer) UpdateRecv(currTime int64) {
 
 	if currTime > p.lastRecvTime {
 		p.lastRecvTime = currTime
+	}
+}
+
+func (p *UdpPeer) LastRemoteSendTime() int64 {
+	p.Lock()
+	defer p.Unlock()
+
+	return p.lastRemoteSendTime
+}
+
+func (p *UdpPeer) UpdateRemoteSend(currTime int64) {
+	p.Lock()
+	defer p.Unlock()
+
+	if currTime > p.lastRemoteSendTime {
+		p.lastRemoteSendTime = currTime
 	}
 }
 

@@ -644,6 +644,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
+		peer.UpdateRecv(ppd.LocalInitTime)
 	validPeerFound:
 	}
 
@@ -689,7 +690,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime || (peer != nil && ppd.LocalInitTime > peer.LastRecvTime()) {
+		if remoteSendTime < ppd.ConnData.LastRemoteSendTime || (peer != nil && remoteSendTime <= peer.LastRemoteSendTime()) {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -703,7 +704,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	}
 	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) ||
-			(peer != nil && ppd.LocalInitTime > peer.LastRecvTime()) {
+			(peer != nil && remoteSendTime <= peer.LastRemoteSendTime()) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			// threat plus 1
@@ -721,7 +722,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// packet replay and flood checked, record peer last recv timestamp and proceed to the next checkpoint.
 	// CRITICAL: if peer bound last recv timestamp is not checked, an attacker may use replayed packet from
 	// a legitimate peer to create a new connection and still pass the connection bound timestamp check.
-	peer.UpdateRecv(ppd.LocalInitTime)
+	if peer != nil {
+		peer.UpdateRemoteSend(remoteSendTime)
+	}
 
 	// Bound clock skew on the relay→server path. The justification
 	// here is NOT the TTL-cache argument that drove the original

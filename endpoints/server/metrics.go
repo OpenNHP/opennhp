@@ -78,13 +78,13 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return float64(s.artReplay.capacityEvictions)
 		})
 
-	reg.NewCounterFunc("nhp_server_knk_replay_cache_evictions_total",
-		"Unexpired KNK replay entries removed by capacity pressure; replay coverage is reduced.",
+	reg.NewCounterFunc("nhp_server_knk_replay_cache_capacity_refusals_total",
+		"New knocks refused because the KNK replay cache is full.",
 		func() float64 {
 			if s.knkReplay == nil {
 				return 0
 			}
-			return float64(s.knkReplay.CapacityEvictions())
+			return float64(s.knkReplay.CapacityRefusals())
 		})
 
 	sm := &serverMetrics{

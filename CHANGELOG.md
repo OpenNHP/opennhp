@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * **server:** an agent knock is now accepted for 60 seconds, down from 600.
   This is an upgrade change: **synchronize the agent and server clocks before deploying**, or an agent whose clock drifts by more than a minute has every knock rejected as stale.
+  The server also drops knocks stamped more than 300 seconds ahead of its clock.
   A stale knock is a drop, not a connection block, so a skewed agent retries rather than being locked out.
   Set `KNKRecvStalenessSeconds` in the server's `etc/config.toml` to 1..600 seconds if a deployment needs more tolerance; zero selects 60. Restart the server after changes. A larger limit also widens the window in which a captured knock can be replayed.
 * **demo:** the stats site's exported region figure is renamed.

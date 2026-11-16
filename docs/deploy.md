@@ -522,8 +522,9 @@ The cache retains accepted triples for the effective window plus 60 seconds.
 Set `KNKReplayCacheEntries` to peak knocks/s times that retention plus burst
 headroom (0 selects 100,000; maximum 1,000,000; restart required). Memory grows
 with usage up to that cap, at several hundred bytes per entry. Alert on
-`nhp_server_knk_replay_cache_evictions_total`; unexpired eviction shortens
-replay coverage. Refused replays appear as
+`nhp_server_knk_replay_cache_capacity_refusals_total`. A full cache retains
+live entries and refuses new knocks until it can reclaim space. Replay and
+capacity refusals appear as
 `nhp_server_packets_dropped_total{stage="knk_replay"}`. Detailed clock-skew and
 replay warnings are limited to once per minute.
 

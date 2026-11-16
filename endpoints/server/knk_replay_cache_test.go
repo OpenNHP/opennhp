@@ -119,19 +119,17 @@ func TestKNKReplayCacheSupportsCurveAndGMSMKeys(t *testing.T) {
 	}
 }
 
-// TestKNKReplayCacheCountsCapacityEvictions ensures the eviction counter
-// advances when the cache is full — the signal an operator needs to size
-// the cache correctly.
-func TestKNKReplayCacheCountsCapacityEvictions(t *testing.T) {
-	cache := newKNKReplayCacheWithParams(2, time.Minute)
+func TestKNKReplayCacheRetainsLiveEntriesAtCapacity(t *testing.T) {
+	cache := newKNKReplayCacheWithParams(1, time.Minute)
 	key := artTestPubkey(1)
-	for i := uint64(1); i <= 4; i++ {
-		if !cache.MarkSeen(key, i, int64(i)) {
-			t.Fatalf("knock %d rejected", i)
-		}
+	if !cache.MarkSeen(key, 1, 1) {
+		t.Fatal("empty cache refused first knock")
 	}
-	if got := cache.CapacityEvictions(); got == 0 {
-		t.Fatal("capacity evictions not counted")
+	if cache.MarkSeen(artTestPubkey(2), 2, 2) {
+		t.Fatal("full cache accepted new knock")
+	}
+	if cache.MarkSeen(key, 1, 1) || cache.CapacityRefusals() != 1 {
+		t.Fatal("full cache did not retain the first entry")
 	}
 }
 

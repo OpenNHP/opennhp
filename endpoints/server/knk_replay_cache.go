@@ -35,8 +35,7 @@ import (
 //
 // State is process-local: a restart clears it. The staleness floor
 // (nhp/core/responder.go, KNKRecvStalenessFloorSeconds) bounds the
-// remaining replay window after a restart. Entries can also be lost under
-// capacity pressure — the eviction counter below makes that observable.
+// remaining replay window after a restart. A full cache refuses new knocks and retains live entries.
 const (
 	// knkReplayCacheSize is the default number of KNK replay entries.
 	// A knock is one packet per agent access attempt, so even a busy
@@ -55,10 +54,11 @@ const (
 // knkReplayCache is a bounded set with lazy expiry. It owns no goroutine.
 // The outer mutex makes lookup and insertion one operation.
 type knkReplayCache struct {
-	mu                sync.Mutex
-	lru               *simplelru.LRU[string, time.Time]
-	ttl               time.Duration
-	capacityEvictions atomic.Uint64
+	mu               sync.Mutex
+	lru              *simplelru.LRU[string, time.Time]
+	ttl              time.Duration
+	capacity         int
+	capacityRefusals atomic.Uint64
 }
 
 // newKNKReplayCache returns a cache sized for the default entry count and
@@ -80,13 +80,9 @@ func knkReplayTTL(windowSeconds int) time.Duration {
 
 // newKNKReplayCacheWithParams allows short TTLs and small capacities in tests.
 func newKNKReplayCacheWithParams(size int, ttl time.Duration) *knkReplayCache {
-	c := &knkReplayCache{ttl: ttl}
+	c := &knkReplayCache{ttl: ttl, capacity: size}
 	var err error
-	c.lru, err = simplelru.NewLRU[string, time.Time](size, func(_ string, expires time.Time) {
-		if time.Now().Before(expires) {
-			c.capacityEvictions.Add(1)
-		}
-	})
+	c.lru, err = simplelru.NewLRU[string, time.Time](size, nil)
 	if err != nil {
 		panic(err)
 	} // sizes are validated at startup; tests use positive sizes.
@@ -128,8 +124,19 @@ func (c *knkReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	// Round(0) strips the monotonic reading so expiry is compared on the
 	// wall clock, the same clock the responder's staleness gate uses.
 	now := time.Now().Round(0)
-	if expires, exists := c.lru.Get(key); exists && now.Before(expires) {
-		return false
+	if expires, exists := c.lru.Peek(key); exists {
+		if now.Before(expires) {
+			return false
+		}
+		c.lru.Remove(key)
+	}
+	if c.lru.Len() == c.capacity {
+		_, oldestExpiry, _ := c.lru.GetOldest()
+		if now.Before(oldestExpiry) {
+			c.capacityRefusals.Add(1)
+			return false
+		}
+		c.lru.RemoveOldest()
 	}
 	// Anchor expiry to the later of receive time and the authenticated send
 	// time. The staleness gate is measured from the send time, so a
@@ -155,14 +162,12 @@ func (c *knkReplayCache) Len() int {
 	return c.lru.Len()
 }
 
-// CapacityEvictions reports how many unexpired entries were removed by
-// capacity pressure. A non-zero value means the replay window is shorter
-// than the configured TTL for the entries that were evicted.
-func (c *knkReplayCache) CapacityEvictions() uint64 {
+// CapacityRefusals reports how many new knocks were refused at capacity.
+func (c *knkReplayCache) CapacityRefusals() uint64 {
 	if c == nil {
 		return 0
 	}
-	return c.capacityEvictions.Load()
+	return c.capacityRefusals.Load()
 }
 
 // knkReplayKey concatenates the base64 pubkey, the decimal txid and the

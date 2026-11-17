@@ -161,6 +161,10 @@ type UdpServer struct {
 	// Field name is kept as `relayReplay` for call-site stability; the
 	// type is what changed.
 	relayReplay *relayReplayWindow
+	// knockReplay rejects a captured knock replayed on a new connection;
+	// the responder's own timestamp check is per connection. See
+	// dedupeRecvKNK.
+	knockReplay *artReplayCache
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
@@ -507,6 +511,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 			"Please remove the field from your config.")
 	}
 	s.relayReplay = newRelayReplayWindow()
+	s.knockReplay = newKnockReplayCache()
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for
@@ -514,6 +519,9 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// (a packet only walks the chain until the first match).
 	s.device.SetRecvReplayDedupe(func(ppd *core.PacketParserData) error {
 		if dedupeErr := s.dedupeRecvART(ppd); dedupeErr != nil {
+			return dedupeErr
+		}
+		if dedupeErr := s.dedupeRecvKNK(ppd); dedupeErr != nil {
 			return dedupeErr
 		}
 		return s.dedupeRecvRLY(ppd)
@@ -1869,6 +1877,49 @@ func (s *UdpServer) dedupeRecvART(ppd *core.PacketParserData) error {
 		last := lastARTReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastARTReplayWarn.CompareAndSwap(last, now) {
 			log.Warning("server[dedupeRecvART] dropped replayed ART (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		}
+		return common.ErrServerDuplicateTransaction
+	}
+	return nil
+}
+
+var lastKnockReplayWarn atomic.Int64
+
+// dedupeRecvKNK rejects a knock that has already been accepted, whatever
+// connection it arrives on.
+//
+// The responder's monotonic timestamp check is per connection: a replayer
+// who sends a captured, still-authenticated knock from a fresh source port
+// gets a fresh connection, a reset check, and the knock is honored again
+// for as long as the staleness floor accepts it. The AC then opens for the
+// replayer's address. A knock is the one message whose whole purpose is to
+// authorize access, so it needs the cross-connection dedupe the ART and
+// RLY paths already have.
+//
+// This runs after peer validation, so ppd.RemotePubKey is the
+// authenticated sender's static key. Unlike dedupeRecvART there is no
+// peer-map lookup: agents may be registered dynamically
+// (PeerLookupFallback), and requiring a configured entry here would refuse
+// knocks the server is supposed to serve.
+//
+// Legitimate traffic is unaffected: every knock is built with a fresh
+// TransactionId from Device.NextCounterIndex(), and nothing in the send
+// path retransmits a byte-identical packet, so no two honest knocks share
+// a key.
+func (s *UdpServer) dedupeRecvKNK(ppd *core.PacketParserData) error {
+	if !isKnockReplayHeaderType(ppd.HeaderType) {
+		return nil
+	}
+	if l := len(ppd.RemotePubKey); l != core.PublicKeySize && l != core.PublicKeySizeEx {
+		log.Critical("server[dedupeRecvKNK] invalid peer pubkey length %d for txid=%d (want %d or %d)", l, ppd.SenderTrxId, core.PublicKeySize, core.PublicKeySizeEx)
+		return common.ErrServerMissingPeerPubkey
+	}
+	if !s.knockReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+		now := time.Now().UnixNano()
+		last := lastKnockReplayWarn.Load()
+		if now-last >= int64(time.Minute) && lastKnockReplayWarn.CompareAndSwap(last, now) {
+			log.Warning("server[dedupeRecvKNK] dropped replayed %s (txid=%d, pubkey=%s, sendTime=%d)",
+				core.HeaderTypeToString(ppd.HeaderType), ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
 		}
 		return common.ErrServerDuplicateTransaction
 	}

@@ -461,7 +461,7 @@ func (s *AgentKeyStore) FindAgentByPublicKey(pubKeyBase64 string) (bool, int64, 
 		pubKeyBase64, time.Now().Unix(),
 	).Scan(&expiresAt)
 	if err == sql.ErrNoRows {
-		return false, 0, fmt.Errorf("keystore: cannot find valid agent by pubkey: %w", err)
+		return false, 0, nil
 	}
 	if err != nil {
 		return false, 0, fmt.Errorf("keystore: find agent by pubkey: %w", err)

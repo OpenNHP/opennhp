@@ -70,7 +70,11 @@ type UdpAC struct {
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
 	// etcd client
-	etcdConn                *etcd.EtcdConn
+	etcdConn *etcd.EtcdConn
+	// serverLossReported keeps the fail-closed notice to one line per
+	// outage; the discovery check runs every few seconds. Cleared when a
+	// server answers again, so a later outage is reported again.
+	serverLossReported      atomic.Bool
 	remoteConfigUpdateMutex sync.Mutex
 }
 
@@ -726,11 +730,22 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 					}
 
 					if totalFail < int32(len(discoveryFailStatusArr)) {
+						a.serverLossReported.Store(false)
 						if a.config.FilterMode == FilterMode_IPTABLES {
 							a.iptables.ResetAllInput()
 						}
-					} else {
-						if a.config.FilterMode == FilterMode_IPTABLES {
+					} else if a.config.FilterMode == FilterMode_IPTABLES {
+						// Every configured server is unreachable. What
+						// happens next is a deployment's choice between
+						// availability and containment; see
+						// Config.FailCloseOnServerLoss.
+						if a.config.FailCloseOnServerLoss {
+							// Fail closed: leave the rules alone. Live
+							// knocks keep their grants until they expire,
+							// and nothing new opens, because nothing can
+							// authorize a knock without a server.
+							a.logServerLossFailClosed()
+						} else {
 							a.iptables.AcceptAllInput()
 						}
 					}
@@ -975,4 +990,19 @@ func (a *UdpAC) RemoveServerPeer(serverEndpointKey string) {
 
 func (a *UdpAC) GetConfig() *Config {
 	return a.config // return  config
+}
+
+// logServerLossFailClosed says, once per outage, that the AC is holding
+// its rules shut because every server is unreachable.
+//
+// Once and not every five seconds: this fires on a timer, and an operator
+// debugging an outage should find one line that explains the posture, not
+// a wall of them. The flag resets when a server answers again, so a second
+// outage is reported again.
+func (a *UdpAC) logServerLossFailClosed() {
+	if a.serverLossReported.Swap(true) {
+		return
+	}
+	log.Warning("all configured nhp-servers are unreachable and FailCloseOnServerLoss is set: the AC is keeping its filter closed. " +
+		"Live knocks keep their grants until they expire; no new access can be authorized until a server answers.")
 }

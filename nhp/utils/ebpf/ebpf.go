@@ -23,6 +23,19 @@ type srcDestKey struct {
 	DstIP uint32 `ebpf:"dst_ip"`
 }
 
+// The port fields of the map keys below are network byte order on the kernel
+// side: nhp/ebpf/xdp/nhp_maps.h declares them __be16, and the programs copy
+// them straight out of the packet (ct_key.dport = tcp->dest), so the bytes
+// the kernel looks up are the bytes on the wire. User space therefore has to
+// write the port with binary.BigEndian -- a host-order port would be looked
+// up as its byte swap, and the rule would admit bswap(port) instead of port.
+//
+// SrcIP is the other way round and deliberately so: it is the raw address
+// bytes read as a little-endian integer (parseIP) and written back as one
+// (binary.LittleEndian.PutUint32), and the two cancel out, so the bytes in
+// the map are the address bytes. Do not "fix" that one -- it is already
+// right, and the tests in ebpf_test.go pin it.
+
 type portListKey struct {
 	SrcIP        uint32 `ebpf:"src_ip"`
 	DstPortStart uint16 `ebpf:"dst_port_start"`
@@ -57,6 +70,23 @@ const (
 	MapTypeSrcAndPort    = 4
 	MapTypeSrcPortList   = 5
 	MapTypeProtocolPort  = 6
+)
+
+// AnyPortRangeStart and AnyPortRangeEnd are the only port range the eBPF
+// programs ever look up in the port_list map.
+//
+// The map's key is {src_ip, min_port, max_port}, but the programs do not look
+// up "the range that was installed": they look up the single key
+// {src_ip, MIN_PORT, MAX_PORT} -- MIN_PORT/MAX_PORT in nhp_ebpf_xdp.c, and
+// the same two numbers written out in tc_egress.c. The range in the key is
+// therefore not a range the program evaluates; it is a fixed sentinel.
+//
+// A range other than this one is an entry the programs can never find, so
+// installing it is a silent loss of access rather than a narrower access:
+// AddEbpfRuleForSrcDestPortList refuses it instead of writing it.
+const (
+	AnyPortRangeStart = 0
+	AnyPortRangeEnd   = 65535
 )
 
 type EbpfRuleParams struct {
@@ -102,7 +132,7 @@ func (r *srcDestKey) ToSdValue(ttlSec uint64) whitelistValue {
 
 func (r *procoPortKey) ToPpKey() []byte {
 	keyBytes := make([]byte, 3)
-	binary.LittleEndian.PutUint16(keyBytes[0:2], r.DstPort)
+	binary.BigEndian.PutUint16(keyBytes[0:2], r.DstPort)
 	keyBytes[2] = r.Protocol
 	return keyBytes
 }
@@ -118,8 +148,8 @@ func (r *procoPortKey) ToPpValue(ttlSec uint64) procoPortValue {
 func (r *portListKey) ToPlKey() []byte {
 	keyBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint32(keyBytes[0:4], r.SrcIP)
-	binary.LittleEndian.PutUint16(keyBytes[4:6], r.DstPortStart)
-	binary.LittleEndian.PutUint16(keyBytes[6:8], r.DstPortEnd)
+	binary.BigEndian.PutUint16(keyBytes[4:6], r.DstPortStart)
+	binary.BigEndian.PutUint16(keyBytes[6:8], r.DstPortEnd)
 	return keyBytes
 }
 
@@ -134,7 +164,7 @@ func (r *portListKey) ToPlValue(ttlSec uint64) whitelistValue {
 func (r *srcIPdstPortKey) ToSpKey() []byte {
 	keyBytes := make([]byte, 6)
 	binary.LittleEndian.PutUint32(keyBytes[0:4], r.SrcIP)
-	binary.LittleEndian.PutUint16(keyBytes[4:6], r.DstPort)
+	binary.BigEndian.PutUint16(keyBytes[4:6], r.DstPort)
 	return keyBytes
 }
 
@@ -323,6 +353,26 @@ func AddEbpfIcmpRuleForSrcDst(srcIPStr, dstIPStr string, ttlSec uint64) error {
 
 // function for update port_list map
 func AddEbpfRuleForSrcDestPortList(srcIPStr string, dstPortStart, dstPortEnd int, ttlSec uint64) error {
+	// The range is checked before anything is written, and before the map is
+	// even opened, so that a refusal is the same answer whether or not the
+	// pin exists.
+	//
+	// The eBPF programs look up exactly one key in this map: {src_ip, 0,
+	// 65535} (MIN_PORT/MAX_PORT in nhp_ebpf_xdp.c, the same two numbers in
+	// tc_egress.c). They do not evaluate the range in the key -- they look up
+	// the sentinel. An entry with any other range is therefore an entry no
+	// lookup can ever find, and installing it would look like an access was
+	// granted while the peer is in fact still locked out. Refusing it is the
+	// honest answer.
+	if dstPortStart != AnyPortRangeStart || dstPortEnd != AnyPortRangeEnd {
+		err := fmt.Errorf("port_list only supports the wildcard port range %d-%d: "+
+			"the eBPF programs look up that one key (MIN_PORT/MAX_PORT) and no other, "+
+			"so an entry with the range %d-%d could never be matched and would grant no access at all",
+			AnyPortRangeStart, AnyPortRangeEnd, dstPortStart, dstPortEnd)
+		log.Error("refusing to add port_list entry: %v", err)
+		return err
+	}
+
 	portListMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/port_list", nil)
 	if err != nil {
 		log.Error("failed to load pinned port_list map: %v", err)
@@ -478,10 +528,14 @@ func parseIP(ipStr string) (uint32, error) {
 }
 
 // Parse the port
+//
+// The port is returned as the host-order port number, the same form the other
+// key encoders take: the map key is written with binary.BigEndian, so the
+// bytes that reach the map are the network-order bytes the kernel looks up.
 func parsePort(portStr string) (uint16, error) {
 	port, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
 		return 0, err
 	}
-	return binary.LittleEndian.Uint16([]byte{byte(port >> 8), byte(port & 0xFF)}), nil
+	return uint16(port), nil
 }

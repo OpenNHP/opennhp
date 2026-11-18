@@ -453,6 +453,15 @@ func (r *whitelistKey) ToWlValue(ttlSec uint64) whitelistValue {
 }
 ```
 
+**The port in a key is network byte order.** The C side declares the port fields of the five keys `__be16` (`nhp_maps.h`), and the programs fill them from the packet — `ct_key.dport = tcp->dest` — so the bytes the kernel looks up are the bytes on the wire. Every encoder in user space therefore writes the port with `binary.BigEndian`. Writing it host order does not produce a rule that matches nothing: it produces a rule that matches the **byte-swapped** port, which is how a knock for tcp/443 used to admit the peer to 47873 and close 443 (GHSA-j2qp-fw3h-rpfh).
+
+The source address is the other way round and is already right: it is the raw address bytes read as a little-endian integer (`parseIP`) and written back as one, and the two cancel out, so the bytes in the map are the address bytes. The ports and the addresses are encoded in opposite byte orders, on purpose, and the tests in `nhp/utils/ebpf/ebpf_test.go` pin both against the C sources.
+
+**`port_list` is read with one fixed key.** Its key carries a port range, but the programs do not evaluate that range: they look up `{src_ip, 0, 65535}` — `MIN_PORT`/`MAX_PORT` in `nhp_ebpf_xdp.c`, the same two numbers written out in `tc_egress.c`. So the range in the key is a sentinel, and an entry with any other range is an entry no lookup can find. User space writes the sentinel (`ebpf.AnyPortRangeStart` / `ebpf.AnyPortRangeEnd`) and **refuses** any other range rather than installing an entry that grants nothing.
+
+**Two of the five shapes are only written in one mode.** `spp`, `sdwhitelist` and `icmpwhitelist` are written for every knock. `src_port` and `port_list` are written only in the AC's `IpPassMode = 1` (`PASS_KNOCKIP_WITH_RANGE`) mode, where a knock opens a port for the peer *and* the addresses around it; the default `IpPassMode = 0` (`PASS_KNOCK_IP`) never writes them, and neither does the demo's AC. A deployment that says nothing about `IpPassMode` is unaffected by the byte-order fix.
+```
+
 ### The reverse branch, and `knock_peers`
 
 The AC is a client too — it talks to the nhp-server, to resolvers, to package mirrors. The replies to those flows have to come back in, and the only way to tell them apart from a knock-authorised flow is to know which flows the *AC* opened.
@@ -505,6 +514,8 @@ All of the AC's maps are pinned with `LIBBPF_PIN_BY_NAME`, which is how the ingr
 | `knock_peers` | `LRU_HASH` | peer IP + service port + protocol |
 | `nhp_config` | `ARRAY` | one slot: the ephemeral-port floor |
 | `events` | `PERF_EVENT_ARRAY` | the perf ring user space drains (not pinned) |
+
+**Every port in a key is network byte order**, because the programs fill the key from the packet and look it up as it is; see *The port in a key is network byte order* above. The `port_list` key's port range is not evaluated by the programs: they look up the one fixed key `{src IP, 0, 65535}`, so that is the only range user space writes and the only one it accepts.
 
 Two rules govern these maps, and both matter:
 

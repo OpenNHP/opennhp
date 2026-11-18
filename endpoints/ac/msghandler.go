@@ -404,8 +404,8 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								} else {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:        srcIpStr,
-										DstPortStart: 1,
-										DstPortEnd:   65535,
+										DstPortStart: ebpf.AnyPortRangeStart,
+										DstPortEnd:   ebpf.AnyPortRangeEnd,
 									}
 									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
 									if addErr != nil {
@@ -430,8 +430,8 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								} else {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:        srcIpStr,
-										DstPortStart: 1,
-										DstPortEnd:   65535,
+										DstPortStart: ebpf.AnyPortRangeStart,
+										DstPortEnd:   ebpf.AnyPortRangeEnd,
 									}
 									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
 									if addErr != nil {

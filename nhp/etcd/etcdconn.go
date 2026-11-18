@@ -67,7 +67,7 @@ func (conn *EtcdConn) InitClient() error {
 	if err != nil {
 		return err
 	}
-	if err := conn.checkEndpointSchemes(tlsConf != nil); err != nil {
+	if err = conn.checkEndpointSchemes(tlsConf != nil); err != nil {
 		return err
 	}
 

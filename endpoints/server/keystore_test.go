@@ -43,7 +43,7 @@ func TestRegisterAgentKey_TTLZeroStoresNull(t *testing.T) {
 		t.Fatalf("expected expiresAt=nil for TTL=0, got %v", *exp)
 	}
 
-	found, err := s.FindAgentByPublicKey(pkA)
+	found, _, err := s.FindAgentByPublicKey(pkA)
 	if err != nil || !found {
 		t.Fatalf("FindAgentByPublicKey: found=%v err=%v", found, err)
 	}
@@ -94,7 +94,7 @@ func TestFindAgentByPublicKey_ExpiredKeyHidden(t *testing.T) {
 	// Wait past expiry.
 	time.Sleep(2500 * time.Millisecond)
 
-	found, err := s.FindAgentByPublicKey(pkA)
+	found, _, err := s.FindAgentByPublicKey(pkA)
 	if err != nil {
 		t.Fatalf("FindAgentByPublicKey: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestSweepExpiredDeactivates_ExpiresExpiredOnly(t *testing.T) {
 
 	// After sweep, the expired row's active is 0, so FindAgentByPublicKey
 	// is already false (the SQL filter on expires_at already hid it).
-	found, err := s.FindAgentByPublicKey(pkA)
+	found, _, err := s.FindAgentByPublicKey(pkA)
 	if err != nil {
 		t.Fatalf("FindAgentByPublicKey: %v", err)
 	}

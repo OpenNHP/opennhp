@@ -159,9 +159,14 @@ func (ha *HttpAC) initRouter() {
 		// prefix after URL decoding so percent escapes do not dilute the prefix.
 		log.Info("get refresh request. token: %s, query: %v", common.RedactToken(token), ctx.Request.URL.RawQuery)
 
+		// The source address comes from the connection, never from the
+		// request. RemoteIP() and not ClientIP(): the engine is gin.New()
+		// with no SetTrustedProxies, so gin trusts every proxy by default
+		// and ClientIP() would read X-Forwarded-For — a header the caller
+		// writes. See HandleHttpRefreshOperations.
 		req := &common.HttpRefreshRequest{
 			Token: token,
-			SrcIp: ctx.Query("srcip"),
+			SrcIp: ctx.RemoteIP(),
 		}
 
 		ha.HandleHttpRefreshOperations(ctx, req)
@@ -196,8 +201,16 @@ func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRe
 		return
 	}
 
+	// Refresh extends an existing grant; it does not create one.
+	//
+	// This used to add the address to the entry when it was not already
+	// there, and then program the filter for it. Combined with the source
+	// address coming from a query parameter, one access token opened the
+	// protected destination to any address its holder cared to name.
+	// Enrolment belongs to the knock, which the NHP protocol
+	// authenticates; a refresh that arrives from somewhere the entry does
+	// not cover is refused, and the client knocks again.
 	var found bool
-	var newSrcAddr *common.NetAddress
 	for _, addr := range entry.SrcAddrs {
 		if addr.Ip == req.SrcIp {
 			found = true
@@ -205,12 +218,9 @@ func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRe
 		}
 	}
 	if !found {
-		newSrcAddr = &common.NetAddress{
-			Ip:       req.SrcIp,
-			Port:     entry.SrcAddrs[0].Port,
-			Protocol: entry.SrcAddrs[0].Protocol,
-		}
-		entry.SrcAddrs = append(entry.SrcAddrs, newSrcAddr)
+		log.Error("refresh from %s is not covered by the token's access entry; refusing (knock again to authorize this address)", req.SrcIp)
+		c.String(http.StatusOK, "{\"errMsg\": \"source address not authorized for this token\"}")
+		return
 	}
 
 	_, err = ha.ua.HandleAccessControl(entry.User, entry.SrcAddrs, entry.DstAddrs, entry.OpenTime, nil)

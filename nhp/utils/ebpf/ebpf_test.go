@@ -49,13 +49,14 @@ func networkPortBytes(p uint16) []byte {
 // to the byte-swapped port instead.
 func TestSrcPortKeyIsNetworkByteOrder(t *testing.T) {
 	key := &srcIPdstPortKey{
-		SrcIP:   0x0200000a, // 10.0.0.2, as parseIP hands it over
-		DstPort: testPort,
+		SrcIP:    0x0200000a, // 10.0.0.2, as parseIP hands it over
+		DstPort:  testPort,
+		Protocol: ProtocolTCP,
 	}
 	got := key.ToSpKey()
 
-	if len(got) != 6 {
-		t.Fatalf("the src_port key is %d bytes, want 6", len(got))
+	if len(got) != 7 {
+		t.Fatalf("the src_port key is %d bytes, want 7", len(got))
 	}
 	want := networkPortBytes(testPort)
 	if got[4] != want[0] || got[5] != want[1] {
@@ -64,6 +65,9 @@ func TestSrcPortKeyIsNetworkByteOrder(t *testing.T) {
 	}
 	if got[4] == 0xBB && got[5] == 0x01 {
 		t.Error("the src_port key carries the port in host order; the kernel would look up bswap(port)")
+	}
+	if got[6] != ProtocolTCP {
+		t.Errorf("the src_port key carries the protocol as %d, want %d", got[6], ProtocolTCP)
 	}
 }
 
@@ -74,11 +78,12 @@ func TestPortListKeyIsNetworkByteOrder(t *testing.T) {
 		SrcIP:        0x0200000a,
 		DstPortStart: AnyPortRangeStart,
 		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolTCP,
 	}
 	got := key.ToPlKey()
 
-	if len(got) != 8 {
-		t.Fatalf("the port_list key is %d bytes, want 8", len(got))
+	if len(got) != 9 {
+		t.Fatalf("the port_list key is %d bytes, want 9", len(got))
 	}
 	if got[4] != 0x00 || got[5] != 0x00 {
 		t.Errorf("the port_list key's min port is %02x %02x, want 00 00", got[4], got[5])
@@ -86,8 +91,133 @@ func TestPortListKeyIsNetworkByteOrder(t *testing.T) {
 	if got[6] != 0xFF || got[7] != 0xFF {
 		t.Errorf("the port_list key's max port is %02x %02x, want ff ff", got[6], got[7])
 	}
+	if got[8] != ProtocolTCP {
+		t.Errorf("the port_list key carries the protocol as %d, want %d", got[8], ProtocolTCP)
+	}
 	if AnyPortRangeStart != 0 || AnyPortRangeEnd != 65535 {
 		t.Errorf("the wildcard range is %d-%d, want 0-65535", AnyPortRangeStart, AnyPortRangeEnd)
+	}
+}
+
+// A port-scoped grant is for one protocol.
+//
+// The `src_port` and `port_list` keys carry the IP protocol number, and the
+// programs look them up with the protocol of the packet they are judging. So
+// an entry written for TCP is not found by a UDP packet: a knock for tcp/443
+// does not open udp/443.
+//
+// Without the protocol in the key, one entry admitted every protocol, and the
+// eBPF mode was then strictly wider than the ipset mode -- whose set entries
+// carry the protocol themselves ("net,443" is TCP, "net,udp:443" is UDP).
+func TestPortScopedKeysCarryTheProtocol(t *testing.T) {
+	tcp := (&srcIPdstPortKey{
+		SrcIP:    0x0200000a,
+		DstPort:  testPort,
+		Protocol: ProtocolTCP,
+	}).ToSpKey()
+	udp := (&srcIPdstPortKey{
+		SrcIP:    0x0200000a,
+		DstPort:  testPort,
+		Protocol: ProtocolUDP,
+	}).ToSpKey()
+	if string(tcp) == string(udp) {
+		t.Error("the src_port key for tcp and for udp are the same key; " +
+			"a grant for tcp/443 would admit udp/443 as well")
+	}
+
+	tcpPl := (&portListKey{
+		SrcIP:        0x0200000a,
+		DstPortStart: AnyPortRangeStart,
+		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolTCP,
+	}).ToPlKey()
+	udpPl := (&portListKey{
+		SrcIP:        0x0200000a,
+		DstPortStart: AnyPortRangeStart,
+		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolUDP,
+	}).ToPlKey()
+	if string(tcpPl) == string(udpPl) {
+		t.Error("the port_list key for tcp and for udp are the same key; " +
+			"a wildcard grant for one protocol would admit every port of every protocol")
+	}
+}
+
+// The set of protocols a port-scoped grant covers is the one the ipset mode
+// writes for the same resource: TCP and UDP when no protocol is named, and
+// only the named one otherwise.
+func TestPortScopedProtocols(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		want []uint8
+	}{
+		{"", []uint8{ProtocolTCP, ProtocolUDP}},
+		{"any", []uint8{ProtocolTCP, ProtocolUDP}},
+		{"tcp", []uint8{ProtocolTCP}},
+		{"udp", []uint8{ProtocolUDP}},
+	} {
+		got, err := portScopedProtocols(c.name)
+		if err != nil {
+			t.Errorf("portScopedProtocols(%q): %v", c.name, err)
+			continue
+		}
+		if len(got) != len(c.want) {
+			t.Errorf("portScopedProtocols(%q) is %v, want %v", c.name, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("portScopedProtocols(%q) is %v, want %v", c.name, got, c.want)
+				break
+			}
+		}
+	}
+
+	if _, err := portScopedProtocols("icmp"); err == nil {
+		t.Error("portScopedProtocols(\"icmp\") was accepted; ICMP has no port, " +
+			"so a port-scoped entry for it could never be looked up")
+	}
+	if _, err := portScopedProtocols("sctp"); err == nil {
+		t.Error("portScopedProtocols(\"sctp\") was accepted; an unknown protocol must be refused")
+	}
+}
+
+// The two port-scoped maps are keyed on the protocol on the C side as well,
+// and the programs fill it from the packet. This is the other half of the
+// contract: a change to one side has to be made on the other.
+func TestPortScopedKeysCarryTheProtocolInC(t *testing.T) {
+	mapsPath := filepath.Join("..", "..", "ebpf", "xdp", "nhp_maps.h")
+	raw, err := os.ReadFile(mapsPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", mapsPath, err)
+	}
+	src := string(raw)
+
+	for _, structName := range []string{"src_port_list_key", "port_list_key"} {
+		body := cStructBody(t, src, structName)
+		got := cFieldType(t, body, "protocol")
+		if got != "__u8" {
+			t.Errorf("%s.protocol is declared %s in %s, want __u8: the key has to name "+
+				"the protocol, or one grant covers every protocol", structName, got, mapsPath)
+		}
+	}
+
+	// And the programs have to fill it with the protocol of the packet.
+	for _, path := range []string{
+		filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"),
+		filepath.Join("..", "..", "ebpf", "xdp", "tc_egress.c"),
+	} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, structName := range []string{"src_port_list_key", "port_list_key"} {
+			block := cInitBody(t, string(raw), structName)
+			if !strings.Contains(block, "protocol") {
+				t.Errorf("%s does not fill the protocol of its %s key: the entry would be "+
+					"written for one protocol and looked up with another", path, structName)
+			}
+		}
 	}
 }
 
@@ -176,13 +306,71 @@ func TestEbpfRuleAddRejectsANonWildcardPortRange(t *testing.T) {
 	}
 	defer m.Close()
 
-	key := (&portListKey{SrcIP: 0x0200000a, DstPortStart: 100, DstPortEnd: 200}).ToPlKey()
+	key := (&portListKey{SrcIP: 0x0200000a, DstPortStart: 100, DstPortEnd: 200, Protocol: ProtocolTCP}).ToPlKey()
 	var value whitelistValue
 	err = m.Lookup(key, &value)
 	if err == nil {
 		t.Error("the refused range was written to the port_list map")
 	} else if !errors.Is(err, ebpf.ErrKeyNotExist) {
 		t.Errorf("the port_list map did not answer for the refused key: %v", err)
+	}
+}
+
+// A protocol nobody knows is refused, rather than being turned into a grant
+// that means something else.
+func TestEbpfRuleAddRejectsAnUnknownProtocol(t *testing.T) {
+	for _, mapType := range []int{MapTypeSrcAndPort, MapTypeSrcPortList} {
+		err := EbpfRuleAdd(mapType, EbpfRuleParams{
+			SrcIP:        "10.0.0.2",
+			DstPort:      443,
+			DstPortStart: AnyPortRangeStart,
+			DstPortEnd:   AnyPortRangeEnd,
+			Protocol:     "sctp",
+		}, 30)
+		if err == nil {
+			t.Errorf("map type %d accepted the protocol \"sctp\"", mapType)
+		} else if !strings.Contains(err.Error(), "unsupported protocol") {
+			t.Errorf("map type %d: the refusal does not say what is wrong: %v", mapType, err)
+		}
+	}
+}
+
+// A port-scoped grant for a resource that names no protocol is written once
+// for TCP and once for UDP -- the two entries the ipset mode writes for the
+// same resource -- and not once for every protocol there is.
+func TestEbpfRuleAddWritesOneEntryPerProtocol(t *testing.T) {
+	m, err := ebpf.LoadPinnedMap("/sys/fs/bpf/src_port", nil)
+	if err != nil {
+		t.Skipf("the src_port pin is not available here: %v", err)
+	}
+	defer m.Close()
+
+	const srcIP = "10.0.0.2"
+	err = EbpfRuleAdd(MapTypeSrcAndPort, EbpfRuleParams{
+		SrcIP:   srcIP,
+		DstPort: 443,
+	}, 30)
+	if err != nil {
+		t.Skipf("cannot write the src_port map: %v", err)
+	}
+
+	ip, err := parseIP(srcIP)
+	if err != nil {
+		t.Fatalf("parseIP(%q): %v", srcIP, err)
+	}
+	for _, protocol := range []uint8{ProtocolTCP, ProtocolUDP} {
+		key := (&srcIPdstPortKey{SrcIP: ip, DstPort: 443, Protocol: protocol}).ToSpKey()
+		var value whitelistValue
+		if err := m.Lookup(key, &value); err != nil {
+			t.Errorf("no src_port entry for protocol %d: %v", protocol, err)
+		}
+	}
+	for _, protocol := range []uint8{ProtocolICMP, 47, 255} {
+		key := (&srcIPdstPortKey{SrcIP: ip, DstPort: 443, Protocol: protocol}).ToSpKey()
+		var value whitelistValue
+		if err := m.Lookup(key, &value); err == nil {
+			t.Errorf("the src_port map holds an entry for protocol %d, which the grant does not cover", protocol)
+		}
 	}
 }
 
@@ -324,10 +512,11 @@ func TestGoKeysMatchTheWireBytes(t *testing.T) {
 	dstIP := []byte{10, 0, 0, 1}
 
 	src := &srcIPdstPortKey{
-		SrcIP:   binary.LittleEndian.Uint32(srcIP),
-		DstPort: testPort,
+		SrcIP:    binary.LittleEndian.Uint32(srcIP),
+		DstPort:  testPort,
+		Protocol: ProtocolTCP,
 	}
-	want := append(append([]byte{}, srcIP...), 0x01, 0xBB)
+	want := append(append([]byte{}, srcIP...), 0x01, 0xBB, ProtocolTCP)
 	got := src.ToSpKey()
 	for i := range want {
 		if got[i] != want[i] {
@@ -353,8 +542,9 @@ func TestGoKeysMatchTheWireBytes(t *testing.T) {
 		SrcIP:        binary.LittleEndian.Uint32(srcIP),
 		DstPortStart: AnyPortRangeStart,
 		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolTCP,
 	}
-	wantPl := append(append([]byte{}, srcIP...), 0x00, 0x00, 0xFF, 0xFF)
+	wantPl := append(append([]byte{}, srcIP...), 0x00, 0x00, 0xFF, 0xFF, ProtocolTCP)
 	gotPl := pl.ToPlKey()
 	for i := range wantPl {
 		if gotPl[i] != wantPl[i] {
@@ -370,8 +560,8 @@ func TestGoKeysMatchTheWireBytes(t *testing.T) {
 // looks up is the port on the wire, so the swapped port is the one that was
 // admitted.
 func TestTheSwappedPortIsNotTheOneAdmitted(t *testing.T) {
-	key := (&srcIPdstPortKey{SrcIP: 0x0200000a, DstPort: testPort}).ToSpKey()
-	swapped := (&srcIPdstPortKey{SrcIP: 0x0200000a, DstPort: testPortSwap}).ToSpKey()
+	key := (&srcIPdstPortKey{SrcIP: 0x0200000a, DstPort: testPort, Protocol: ProtocolTCP}).ToSpKey()
+	swapped := (&srcIPdstPortKey{SrcIP: 0x0200000a, DstPort: testPortSwap, Protocol: ProtocolTCP}).ToSpKey()
 	if string(key) == string(swapped) {
 		t.Error("the src_port key for 443 is the key for 47873; the rule admits the wrong port")
 	}

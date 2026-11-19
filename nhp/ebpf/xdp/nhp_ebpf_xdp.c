@@ -1162,15 +1162,22 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         .protocol = iph->protocol
     };
 
+    /* The protocol is part of both keys: a grant written for tcp/443 must
+     * not admit udp/443, and the ipset mode's entries carry the protocol
+     * themselves ("net,443" is TCP, "net,udp:443" is UDP). Without it the
+     * eBPF mode was strictly wider than the ipset mode for the same
+     * resource. */
     struct src_port_list_key spkey = {
         .src_ip = iph->saddr,
-        .dst_port = ct_key.dport
+        .dst_port = ct_key.dport,
+        .protocol = iph->protocol
     };
 
     struct port_list_key pl_key = {
         .src_ip = iph->saddr,
         .min_port = MIN_PORT,
-        .max_port = MAX_PORT
+        .max_port = MAX_PORT,
+        .protocol = iph->protocol
     };
     struct protocol_port_key pp_key = {
         .dst_port = ct_key.dport,

@@ -460,7 +460,10 @@ The source address is the other way round and is already right: it is the raw ad
 **`port_list` is read with one fixed key.** Its key carries a port range, but the programs do not evaluate that range: they look up `{src_ip, 0, 65535}` — `MIN_PORT`/`MAX_PORT` in `nhp_ebpf_xdp.c`, the same two numbers written out in `tc_egress.c`. So the range in the key is a sentinel, and an entry with any other range is an entry no lookup can find. User space writes the sentinel (`ebpf.AnyPortRangeStart` / `ebpf.AnyPortRangeEnd`) and **refuses** any other range rather than installing an entry that grants nothing.
 
 **Two of the five shapes are only written in one mode.** `spp`, `sdwhitelist` and `icmpwhitelist` are written for every knock. `src_port` and `port_list` are written only in the AC's `IpPassMode = 1` (`PASS_KNOCKIP_WITH_RANGE`) mode, where a knock opens a port for the peer *and* the addresses around it; the default `IpPassMode = 0` (`PASS_KNOCK_IP`) never writes them, and neither does the demo's AC. A deployment that says nothing about `IpPassMode` is unaffected by the byte-order fix.
-```
+
+**`src_port` and `port_list` carry the protocol, so a grant is for one protocol.** Both keys name the IP protocol number as their last byte (6 for TCP, 17 for UDP), and the programs look them up with the protocol of the packet they are judging (`iph->protocol`). A knock for `tcp/443` therefore opens tcp/443 and not udp/443, and a resource that names no protocol is written twice — once for TCP and once for UDP — which is what the `ipset` mode writes for the same resource (`net,443` is TCP, `net,udp:443` is UDP). Before the protocol was part of the key, one entry covered every protocol, and the eBPF mode was then strictly wider than the `ipset` mode for the same resource.
+
+**The eBPF mode and the `ipset` mode are not identical everywhere.** The two port-scoped shapes behave the same way in both modes. The difference is the address that knocked *itself*: for a resource that names no protocol, the eBPF mode writes an `sdwhitelist` entry for that address pair, which covers every port and every protocol of it, while the `ipset` mode grants the named port for TCP and UDP. A deployment that wants the narrower of the two names the protocol and the port of every resource.
 
 ### The reverse branch, and `knock_peers`
 
@@ -506,8 +509,8 @@ All of the AC's maps are pinned with `LIBBPF_PIN_BY_NAME`, which is how the ingr
 |-----|------|-----|
 | `spp` | `LRU_HASH` | src IP + dst IP + dst port + protocol |
 | `sdwhitelist` | `LRU_HASH` | src IP + dst IP |
-| `src_port` | `LRU_HASH` | src IP + dst port |
-| `port_list` | `LRU_HASH` | src IP + port range |
+| `src_port` | `LRU_HASH` | src IP + dst port + protocol |
+| `port_list` | `LRU_HASH` | src IP + port range + protocol |
 | `protocol_port` | `LRU_HASH` | dst port + protocol |
 | `icmpwhitelist` | `HASH` | src IP + dst IP |
 | `conn_track` | `LRU_HASH` | the 4-tuple + direction + flags |
@@ -515,7 +518,7 @@ All of the AC's maps are pinned with `LIBBPF_PIN_BY_NAME`, which is how the ingr
 | `nhp_config` | `ARRAY` | one slot: the ephemeral-port floor |
 | `events` | `PERF_EVENT_ARRAY` | the perf ring user space drains (not pinned) |
 
-**Every port in a key is network byte order**, because the programs fill the key from the packet and look it up as it is; see *The port in a key is network byte order* above. The `port_list` key's port range is not evaluated by the programs: they look up the one fixed key `{src IP, 0, 65535}`, so that is the only range user space writes and the only one it accepts.
+**Every port in a key is network byte order**, because the programs fill the key from the packet and look it up as it is; see *The port in a key is network byte order* above. The `port_list` key's port range is not evaluated by the programs: they look up the one fixed key `{src IP, 0, 65535}`, so that is the only range user space writes and the only one it accepts. The `src_port` and `port_list` keys carry the IP protocol as well, so a grant written for one protocol is not found by a packet of another.
 
 Two rules govern these maps, and both matter:
 

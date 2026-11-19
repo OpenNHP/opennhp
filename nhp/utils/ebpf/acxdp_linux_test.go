@@ -127,6 +127,20 @@ func tcpSynPacket(src, dst net.IP, sport, dport uint16) []byte {
 	return append(pkt, tcp...)
 }
 
+// udpPacket builds a whole Ethernet/IPv4/UDP frame.
+//
+// The two programs read the L4 header the same way -- at ihl * 4 -- and the
+// ingress program takes the destination port of a UDP packet into the map
+// key just as it does for TCP.
+func udpPacket(src, dst net.IP, sport, dport uint16) []byte {
+	udp := make([]byte, 8)
+	binary.BigEndian.PutUint16(udp[0:2], sport)
+	binary.BigEndian.PutUint16(udp[2:4], dport)
+	binary.BigEndian.PutUint16(udp[4:6], 8) // length
+	pkt := append(testEth(src, dst), testIPv4(src, dst, 17, len(udp))...)
+	return append(pkt, udp...)
+}
+
 // ---- the maps, as Go sees them ----
 
 // wireIP and wirePort put a number into the form the eBPF maps use: the raw
@@ -563,8 +577,9 @@ func TestAcFilterOpensThePortTheKnockAskedFor(t *testing.T) {
 	}
 
 	key := &srcIPdstPortKey{
-		SrcIP:   wireIP(peer),
-		DstPort: knockedPort,
+		SrcIP:    wireIP(peer),
+		DstPort:  knockedPort,
+		Protocol: ProtocolTCP,
 	}
 	if err := maps.Srcportlist.Put(key.ToSpKey(), whitelistValue{
 		Allowed:    1,
@@ -610,6 +625,7 @@ func TestAcFilterOpensEveryPortForThePeerThatKnocked(t *testing.T) {
 		SrcIP:        wireIP(peer),
 		DstPortStart: AnyPortRangeStart,
 		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolTCP,
 	}
 	if err := maps.Portlist.Put(key.ToPlKey(), whitelistValue{
 		Allowed:    1,
@@ -628,5 +644,95 @@ func TestAcFilterOpensEveryPortForThePeerThatKnocked(t *testing.T) {
 	stranger := tcpSynPacket(net.IPv4(10, 0, 0, 9), host, 40000, anyPort)
 	if ret := runProgram(t, xdpProg, stranger); ret != xdpDrop {
 		t.Errorf("a peer that never knocked was admitted to a port of somebody else's wildcard knock (XDP %d)", ret)
+	}
+}
+
+// A grant for one protocol is a grant for that protocol.
+//
+// The src_port and port_list keys carry the IP protocol number, and the
+// program looks them up with the protocol of the packet it is judging. A
+// knock for tcp/443 therefore opens tcp/443 and not udp/443 -- which is what
+// the ipset mode does with the same resource, its set entries carrying the
+// protocol themselves ("net,443" is TCP, "net,udp:443" is UDP).
+//
+// The check is the kernel's own verdict, on the real object.
+func TestAcFilterGrantsAreProtocolScoped(t *testing.T) {
+	pinDir := testPinDir(t)
+	xdpProg, _, maps := loadAcObjects(t, pinDir)
+
+	host := net.IPv4(10, 0, 0, 1)
+	peer := net.IPv4(10, 0, 0, 2)
+	const knockedPort = 443
+
+	now, err := getBootTimeNanos()
+	if err != nil {
+		t.Skipf("cannot read the monotonic clock: %v", err)
+	}
+
+	// The grant is for TCP only.
+	key := &srcIPdstPortKey{
+		SrcIP:    wireIP(peer),
+		DstPort:  knockedPort,
+		Protocol: ProtocolTCP,
+	}
+	if err := maps.Srcportlist.Put(key.ToSpKey(), whitelistValue{
+		Allowed:    1,
+		ExpireTime: now + uint64(time.Minute),
+	}); err != nil {
+		t.Skipf("cannot write the src_port map: %v", err)
+	}
+
+	// TCP is open.
+	syn := tcpSynPacket(peer, host, 40000, knockedPort)
+	if ret := runProgram(t, xdpProg, syn); ret != xdpPass {
+		t.Errorf("the connection to the port the peer knocked for was dropped (XDP %d); "+
+			"the knock must open the port that was asked for", ret)
+	}
+
+	// UDP on the same port is not.
+	udp := udpPacket(peer, host, 40000, knockedPort)
+	if ret := runProgram(t, xdpProg, udp); ret != xdpDrop {
+		t.Errorf("a TCP grant admitted the peer to udp/%d (XDP %d); the grant is for one protocol", knockedPort, ret)
+	}
+}
+
+// The same, for the wildcard shape: a grant for every port of one protocol
+// is not a grant for every port of every protocol.
+func TestAcFilterWildcardGrantsAreProtocolScoped(t *testing.T) {
+	pinDir := testPinDir(t)
+	xdpProg, _, maps := loadAcObjects(t, pinDir)
+
+	host := net.IPv4(10, 0, 0, 1)
+	peer := net.IPv4(10, 0, 0, 2)
+	const anyPort = 8443
+
+	now, err := getBootTimeNanos()
+	if err != nil {
+		t.Skipf("cannot read the monotonic clock: %v", err)
+	}
+
+	key := &portListKey{
+		SrcIP:        wireIP(peer),
+		DstPortStart: AnyPortRangeStart,
+		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolTCP,
+	}
+	if err := maps.Portlist.Put(key.ToPlKey(), whitelistValue{
+		Allowed:    1,
+		ExpireTime: now + uint64(time.Minute),
+	}); err != nil {
+		t.Skipf("cannot write the port_list map: %v", err)
+	}
+
+	syn := tcpSynPacket(peer, host, 40000, anyPort)
+	if ret := runProgram(t, xdpProg, syn); ret != xdpPass {
+		t.Errorf("the connection to a port of the peer's wildcard knock was dropped (XDP %d); "+
+			"the wildcard range must open the port", ret)
+	}
+
+	udp := udpPacket(peer, host, 40000, anyPort)
+	if ret := runProgram(t, xdpProg, udp); ret != xdpDrop {
+		t.Errorf("a TCP wildcard grant admitted the peer to udp/%d (XDP %d); "+
+			"the grant is for one protocol", anyPort, ret)
 	}
 }

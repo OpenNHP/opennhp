@@ -223,8 +223,8 @@ func TestPortScopedKeysCarryTheProtocolInC(t *testing.T) {
 //
 // The protocol_port key is pinned byte for byte: it used to be written with
 // a byte swap in parsePort and a little-endian write in the encoder, and the
-// two cancelled out. The bytes on the wire were correct and have to stay
-// exactly the same -- an already-authorised peer must not be locked out by
+// two canceled out. The bytes on the wire were correct and have to stay
+// exactly the same -- an already-authorized peer must not be locked out by
 // a change that is supposed to be a no-op.
 func TestWhitelistAndProtocolPortKeys(t *testing.T) {
 	wl := &whitelistKey{
@@ -254,7 +254,7 @@ func TestWhitelistAndProtocolPortKeys(t *testing.T) {
 
 	// The port that reaches the encoder is the one parsePort hands over.
 	// It used to hand over a byte-swapped port and the encoder wrote it
-	// little endian, and the two cancelled out; now the encoder writes
+	// little endian, and the two canceled out; now the encoder writes
 	// network order and the port arrives in the host order it is written in.
 	// The bytes are the same either way, and they have to stay the same.
 	parsed, err := parsePort("443")

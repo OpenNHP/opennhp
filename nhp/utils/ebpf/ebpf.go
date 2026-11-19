@@ -561,8 +561,8 @@ func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 	var err error
 	TtlSec64 := uint64(TtlSec)
 
-	if err := validateProtocol(params.Protocol); err != nil {
-		return err
+	if protoErr := validateProtocol(params.Protocol); protoErr != nil {
+		return protoErr
 	}
 
 	switch mapType {

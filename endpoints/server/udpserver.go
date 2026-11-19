@@ -698,7 +698,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// are not in the static agent.toml peer pool.
 	if s.keyStore != nil {
 		opt := s.device.GetOption()
-		opt.PeerLookupFallback = func(pubKey []byte, headerType int) bool {
+		opt.PeerLookupFallback = func(pkBase64 string, headerType int) bool {
 			// Agent-initiated packet types a dynamically-registered
 			// agent (not in agent.toml) can legitimately send after a
 			// successful NHP-REG. NHP_OTP / NHP_REG skip peer
@@ -710,9 +710,18 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 				headerType != core.NHP_RKN && headerType != core.NHP_EXT {
 				return false
 			}
-			pk := base64.StdEncoding.EncodeToString(pubKey)
-			found, _ := s.keyStore.FindAgentByPublicKey(pk)
-			return found
+			found, expire, _ := s.keyStore.FindAgentByPublicKey(pkBase64)
+			if found {
+				// create a persistent agent peer object
+				peer := &core.UdpPeer{
+					PubKeyBase64: strings.Clone(pkBase64),
+					Type:         core.NHP_AGENT,
+					ExpireTime:   expire,
+				}
+				s.AddAgentPeer(peer)
+				return true
+			}
+			return false
 		}
 		s.device.SetOption(opt)
 	}
@@ -2209,11 +2218,11 @@ func (us *UdpServer) FindPluginHandler(aspId string) plugins.PluginHandler {
 }
 
 // DHP
-func (s *UdpServer) AddDEPeer(device *core.UdpPeer) {
-	if device.DeviceType() == core.NHP_DB {
-		s.device.AddPeer(device)
+func (s *UdpServer) AddDBPeer(peer *core.UdpPeer) {
+	if peer.DeviceType() == core.NHP_DB {
+		s.device.AddPeer(peer)
 		s.dbPeerMapMutex.Lock()
-		s.dbPeerMap[device.PublicKeyBase64()] = device
+		s.dbPeerMap[peer.PublicKeyBase64()] = peer
 		s.dbPeerMapMutex.Unlock()
 	}
 }

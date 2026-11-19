@@ -596,18 +596,18 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		peerDeviceTypeName := DeviceTypeToString(peerDeviceType)
 		log.Debug("validatePeer: looking up %s peer pubkey=%s in peer pool", peerDeviceTypeName, peerPkBase64)
 
-		peer = ppd.device.LookupPeer(peerPk)
+		peer = ppd.device.LookupPeer(peerPkBase64)
 		if peer == nil {
 			// Fallback: check dynamically-registered peers (e.g., agents
 			// registered via NHP-REG stored in SQLite).
 			ppd.device.optionMutex.Lock()
 			fallback := ppd.device.option.PeerLookupFallback
 			ppd.device.optionMutex.Unlock()
-			if fallback != nil && fallback(peerPk, ppd.HeaderType) {
+			if fallback != nil && fallback(peerPkBase64, ppd.HeaderType) {
 				log.Info("validatePeer: %s peer accepted via fallback, pubkey=%s",
 					peerDeviceTypeName, peerPkBase64)
 				// Skip expiry/address checks for fallback peers.
-				goto peerAccepted
+				goto validPeerFound
 			}
 			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
 				peerDeviceTypeName, peerPkBase64)
@@ -645,7 +645,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
 		peer.UpdateRecv(ppd.LocalInitTime)
-	peerAccepted:
+	validPeerFound:
 	}
 
 	ppd.RemotePubKey = peerPk
@@ -695,8 +695,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	if cookieReply {
 		lastSendTime = max(lastSendTime, atomic.LoadInt64(&ppd.ConnData.LastRemoteCookieSendTime))
 	}
+	// Keep the peer watermark: a new connection must not reset replay protection.
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < lastSendTime || ((proofReknock || cookieReply) && remoteSendTime == lastSendTime) {
+		if (peer != nil && peer.IsRemoteReplayOtherwiseUpdate(remoteSendTime)) || remoteSendTime < lastSendTime || ((proofReknock || cookieReply) && remoteSendTime == lastSendTime) {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -725,6 +726,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
+
 	// Bound clock skew on the relay→server path. The justification
 	// here is NOT the TTL-cache argument that drove the original
 	// ART check (the relay RLY path uses a per-relay sliding

@@ -107,11 +107,10 @@ func TestAddPeerKeyHoldsOneRole(t *testing.T) {
 	key := NewECDH(ECC_CURVE25519).PublicKeyBase64()
 	d.AddPeer(&UdpPeer{PubKeyBase64: key, Type: NHP_AGENT})
 	d.AddPeer(&UdpPeer{PubKeyBase64: key, Type: NHP_DB})
-	pk := (&UdpPeer{PubKeyBase64: key}).PublicKey()
-	if got := d.LookupPeer(pk).DeviceType(); got != NHP_DB {
+	if got := d.LookupPeer(key).DeviceType(); got != NHP_DB {
 		t.Fatalf("key kept role %s, want the last one added (%s)", DeviceTypeToString(got), DeviceTypeToString(NHP_DB))
 	}
-	if peerRoleAllowed(NHP_AGENT, d.LookupPeer(pk).DeviceType()) {
+	if peerRoleAllowed(NHP_AGENT, d.LookupPeer(key).DeviceType()) {
 		t.Fatal("the replaced agent role is still accepted")
 	}
 }

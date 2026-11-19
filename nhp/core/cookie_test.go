@@ -559,7 +559,14 @@ func testAccessKnockCookieExchange(t *testing.T, client *net.UDPAddr) {
 	var cookie [CookieSize]byte
 	copy(cookie[:], value)
 	rkn := buildAgentRKNWithCookie(t, agent, curvePubKey(server), &cookie, conn.RemoteAddr)
-	if parseErr := parse(rkn); parseErr != nil {
+	if parseErr := parse(bytes.Clone(rkn)); parseErr != nil {
 		t.Fatalf("server refused a re-knock with its cookie: %v", parseErr)
+	}
+	// A new source port must not reset the peer replay watermark.
+	conn = sentinelConnection(server, 12346, 12347)
+	conn.RequireKnockCookie = true
+	conn.RealRemoteAddr = client
+	if got := parse(bytes.Clone(rkn)); got != ErrReplayPacketReceived {
+		t.Fatalf("re-knock replay on a new connection got %v, want replay rejection", got)
 	}
 }

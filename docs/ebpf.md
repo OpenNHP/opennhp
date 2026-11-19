@@ -119,7 +119,7 @@ There are three eBPF programs in the tree, and they belong to two different daem
 
 The server and the AC share no maps at all. The server's policy is "these two things may reach me"; the AC's policy is "this peer, for this port, until this knock expires". They have nothing to say to each other, so they do not share a schema.
 
-What they *do* share is everything around the maps — memlock handling, object loading, pinning under `/sys/fs/bpf`, resolving the default-route interface, attaching, draining the perf ring into a log, and tearing the pins down again. That lives in one file, `nhp/utils/ebpf/engine_linux.go`, and the caller selects the variant:
+What they *do* share is everything around the maps — memlock handling, object loading, pinning under `/sys/fs/bpf`, resolving the default-route interface, attaching, draining the perf ring into a log, and tearing the pins down again. That lives in `nhp/utils/ebpf/engine_linux.go` and `nhp/utils/ebpf/pindir.go` (which records the pin directory, so the rule writers and the cleanup both act on the one the load used), and the caller selects the variant:
 
 ```go
 // EngineVariant selects which object file, map set and attachment points a load
@@ -528,6 +528,8 @@ Two rules govern these maps, and both matter:
   > every outgoing packet, which kept the door open long past OpenTime.
 
 - **`knock_peers` is never deleted**, by either program. It is an LRU so it stays bounded, but an entry that aged out would let the hole it closes reopen.
+
+User space opens these maps by path, and the path is the pin directory the loader recorded — not a hard-coded `/sys/fs/bpf`. The loader records it in `nhp/utils/ebpf/pindir.go`, so a rule written after a load lands in the map that load created, and a test can point the writers at a directory of its own. That last part is not a nicety: a test that wrote a grant through the hard-coded path would have installed a real whitelist entry — for a real peer, on a real port — into the filter of an `nhp-acd` running on the same host, and never removed it.
 
 The AC's perf events carry a two-valued action — 0 = `DENY`, 1 = `ACCEPT` — and are written to two separate logs, `nhp_deny` and `nhp_accept`. The server writes one file, `nhp_server_xdp`, because its actions say *why* a packet was passed or dropped, and splitting them by verdict would throw that away.
 

@@ -328,7 +328,7 @@ func AddSrcipDestPortRule(whitelistMap *ebpf.Map, rule *srcIPdstPortKey, ttlSec 
 }
 
 func AddEbpfRuleForSrcDstPortProto(srcIPStr, dstIPStr string, protocol uint8, dstPort uint16, ttlSec uint64) error {
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/spp", nil)
+	whitelistMap, err := ebpf.LoadPinnedMap(acMapPath("spp"), nil)
 	if err != nil {
 		log.Error("failed to load pinned whitelist map: %v", err)
 		return err
@@ -358,7 +358,7 @@ func AddEbpfRuleForSrcDstPortProto(srcIPStr, dstIPStr string, protocol uint8, ds
 }
 
 func AddEbpfRuleForSrcDst(srcIPStr, dstIPStr string, ttlSec uint64) error {
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/sdwhitelist", nil)
+	whitelistMap, err := ebpf.LoadPinnedMap(acMapPath("sdwhitelist"), nil)
 	if err != nil {
 		log.Error("failed to load pinned whitelist map: %v", err)
 		return err
@@ -390,7 +390,7 @@ func AddEbpfRuleForSrcDst(srcIPStr, dstIPStr string, ttlSec uint64) error {
 // packet it is judging, and an entry written for TCP is not found by a UDP
 // packet.
 func AddEbpfRuleForSrcDestPort(srcIPStr string, protocols []uint8, dstPort int, ttlSec uint64) error {
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/src_port", nil)
+	whitelistMap, err := ebpf.LoadPinnedMap(acMapPath("src_port"), nil)
 	if err != nil {
 		log.Error("failed to load pinned whitelist map: %v", err)
 		return err
@@ -425,7 +425,7 @@ func AddEbpfRuleForSrcDestPort(srcIPStr string, protocols []uint8, dstPort int, 
 
 // function for update icmpwhitelist map
 func AddEbpfIcmpRuleForSrcDst(srcIPStr, dstIPStr string, ttlSec uint64) error {
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/icmpwhitelist", nil)
+	whitelistMap, err := ebpf.LoadPinnedMap(acMapPath("icmpwhitelist"), nil)
 	if err != nil {
 		log.Error("failed to load pinned whitelist map: %v", err)
 		return err
@@ -479,7 +479,7 @@ func AddEbpfRuleForSrcDestPortList(srcIPStr string, protocols []uint8, dstPortSt
 		return err
 	}
 
-	portListMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/port_list", nil)
+	portListMap, err := ebpf.LoadPinnedMap(acMapPath("port_list"), nil)
 	if err != nil {
 		log.Error("failed to load pinned port_list map: %v", err)
 		return err
@@ -527,7 +527,7 @@ func AddEbpfRuleForProtocolPort(protocol uint8, dstPort uint16, ttlSec uint64) e
 		log.Error("failed to parsePort: %v", portStr)
 		return err
 	}
-	portListMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/protocol_port", nil)
+	portListMap, err := ebpf.LoadPinnedMap(acMapPath("protocol_port"), nil)
 	if err != nil {
 		log.Error("failed to load pinned protocol_port map: %v", err)
 		return err

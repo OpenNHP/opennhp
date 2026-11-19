@@ -406,16 +406,6 @@ var (
 	// cleanupPins can close it on the shutdown path. log.Logger.Close is
 	// idempotent, so closing it again from the caller is harmless.
 	acStatsLogger *log.Logger
-
-	// Where each variant last pinned, so the exported CleanupBPFFiles(variant)
-	// — which takes no directory, and is called from daemon shutdown paths and
-	// from the server's watchdog — removes the pins this process actually
-	// created. DefaultPinDir until a load says otherwise, which is also the
-	// right guess for the pre-load sweep of a previous run's leftovers.
-	// Unsynchronized, like the links above: callers serialize their own loads
-	// (see endpoints/server/ebpf, which holds a mutex over both).
-	acPinDir     = DefaultPinDir
-	serverPinDir = DefaultPinDir
 )
 
 // pinnedFiles is the variant's pin list under dir.
@@ -429,21 +419,6 @@ func pinnedFiles(variant EngineVariant, dir string) []string {
 		paths = append(paths, filepath.Join(dir, name))
 	}
 	return paths
-}
-
-func activePinDir(variant EngineVariant) string {
-	if variant == VariantServer {
-		return serverPinDir
-	}
-	return acPinDir
-}
-
-func recordPinDir(variant EngineVariant, dir string) {
-	if variant == VariantServer {
-		serverPinDir = dir
-		return
-	}
-	acPinDir = dir
 }
 
 func init() {

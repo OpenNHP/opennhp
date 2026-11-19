@@ -2,14 +2,11 @@ package ebpf
 
 import (
 	"encoding/binary"
-	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/cilium/ebpf"
 )
 
 // The ports in the map keys are network byte order.
@@ -283,6 +280,14 @@ func TestWhitelistAndProtocolPortKeys(t *testing.T) {
 // with any other range is an entry no lookup can find, so writing it would
 // report an access that was never granted. The refusal has to happen
 // instead, and it has to happen before the entry is written.
+// The refusal has to happen before the map is opened at all, so that it is
+// the same answer whether or not a filter is running on this host. That is
+// what makes this test independent of the kernel: a rule that opened the
+// live map to find out whether it could write would already have touched it.
+//
+// The half that checks that nothing was written is in
+// TestEbpfRuleAddWritesNothingForARefusedPortRange, which runs against a
+// pin directory of its own.
 func TestEbpfRuleAddRejectsANonWildcardPortRange(t *testing.T) {
 	const srcIP = "10.0.0.2"
 	err := EbpfRuleAdd(MapTypeSrcPortList, EbpfRuleParams{
@@ -296,23 +301,6 @@ func TestEbpfRuleAddRejectsANonWildcardPortRange(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "wildcard port range") {
 		t.Errorf("the refusal does not say what is wrong: %v", err)
-	}
-
-	// Nothing may have been written. The pin only exists on a host that runs
-	// the AC, so this half is skipped where there is none.
-	m, err := ebpf.LoadPinnedMap("/sys/fs/bpf/port_list", nil)
-	if err != nil {
-		t.Skipf("the port_list pin is not available here: %v", err)
-	}
-	defer m.Close()
-
-	key := (&portListKey{SrcIP: 0x0200000a, DstPortStart: 100, DstPortEnd: 200, Protocol: ProtocolTCP}).ToPlKey()
-	var value whitelistValue
-	err = m.Lookup(key, &value)
-	if err == nil {
-		t.Error("the refused range was written to the port_list map")
-	} else if !errors.Is(err, ebpf.ErrKeyNotExist) {
-		t.Errorf("the port_list map did not answer for the refused key: %v", err)
 	}
 }
 
@@ -335,44 +323,11 @@ func TestEbpfRuleAddRejectsAnUnknownProtocol(t *testing.T) {
 	}
 }
 
-// A port-scoped grant for a resource that names no protocol is written once
-// for TCP and once for UDP -- the two entries the ipset mode writes for the
-// same resource -- and not once for every protocol there is.
-func TestEbpfRuleAddWritesOneEntryPerProtocol(t *testing.T) {
-	m, err := ebpf.LoadPinnedMap("/sys/fs/bpf/src_port", nil)
-	if err != nil {
-		t.Skipf("the src_port pin is not available here: %v", err)
-	}
-	defer m.Close()
-
-	const srcIP = "10.0.0.2"
-	err = EbpfRuleAdd(MapTypeSrcAndPort, EbpfRuleParams{
-		SrcIP:   srcIP,
-		DstPort: 443,
-	}, 30)
-	if err != nil {
-		t.Skipf("cannot write the src_port map: %v", err)
-	}
-
-	ip, err := parseIP(srcIP)
-	if err != nil {
-		t.Fatalf("parseIP(%q): %v", srcIP, err)
-	}
-	for _, protocol := range []uint8{ProtocolTCP, ProtocolUDP} {
-		key := (&srcIPdstPortKey{SrcIP: ip, DstPort: 443, Protocol: protocol}).ToSpKey()
-		var value whitelistValue
-		if err := m.Lookup(key, &value); err != nil {
-			t.Errorf("no src_port entry for protocol %d: %v", protocol, err)
-		}
-	}
-	for _, protocol := range []uint8{ProtocolICMP, 47, 255} {
-		key := (&srcIPdstPortKey{SrcIP: ip, DstPort: 443, Protocol: protocol}).ToSpKey()
-		var value whitelistValue
-		if err := m.Lookup(key, &value); err == nil {
-			t.Errorf("the src_port map holds an entry for protocol %d, which the grant does not cover", protocol)
-		}
-	}
-}
+// The shape of a port-scoped grant -- one entry per protocol -- is checked
+// against a real kernel map in TestEbpfRuleAddWritesOneEntryPerProtocol
+// (acrule_linux_test.go), which runs against a pin directory of its own.
+// Writing it here would have meant writing into the map of an access
+// controller running on this host.
 
 // ---- the contract with the C side ----
 

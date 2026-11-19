@@ -70,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The server answers an access knock with a cookie challenge and admits the follow-up re-knock only when its HMAC proves the client holds that cookie: the challenge is the `common.ServerCookieMsg` JSON object the Go server sends, and the value that enters the re-knock's HMAC is the base64-decoded 32 bytes it carries, hashed after the header prefix.
   The SDK stored the whole JSON body as the cookie and hashed it before the header prefix, so the server could never reproduce the HMAC and every browser-side knock failed with `HMAC validation failed on server side. msgType=NHP-RKN, sumCookie=true` — the failure the cookie challenge above turned from dormant into deterministic.
   The SDK now decodes the challenge and hashes the cookie last, in both the Curve25519 and the GMSM path, and a challenge that is not a well-formed `ServerCookieMsg` is rejected instead of being stored and used.
+* **ci:** the js-agent SDK's unit tests run on every pull request.
+  `npm run test:run` only ran in the deploy pipeline, so a browser-side protocol break — the re-knock cookie exchange above — could reach the demo with a green pipeline.
 
 ## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
 

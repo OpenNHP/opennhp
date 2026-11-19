@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
-* **server:** direct and relay-forwarded access use the existing cookie challenge before it opens access. Upgrade native Go agents and applications that use the nhpdevice library before upgrading the server. Older native builds can drop a fast ACK after the cookie challenge. The exchange adds a round trip. Re-knocks are limited to 20 per second per source IP, with a burst of 40. Server replicas behind one endpoint must share a private `CookieSigningKeyBase64` key. DHP evidence keeps its overload-only challenge policy.
+* **server:** direct and relay-forwarded access use the existing cookie challenge before it opens access. Upgrade native Go agents and applications that use the nhpdevice library before upgrading the server. Older native builds can drop a fast ACK after the cookie challenge. The exchange adds a round trip. Re-knocks are limited to 20 per second per source IP, with a burst of 40. Server replicas behind one endpoint must share a private `CookieSigningKeyBase64` key. DHP evidence keeps its overload-only challenge policy. The js-agent browser SDK is affected too — a bundle older than the fix below fails the re-knock with `HMAC validation failed on server side. msgType=NHP-RKN, sumCookie=true`.
 
 * **demo:** the stats site's exported region figure is renamed.
   `totalnumber.js` no longer exports `NHP_TOTAL_ATTACK_COUNTRIES`; the figure is published as `NHP_TOTAL_ATTACK_REGIONS`, and the per-day JSON reports their region columns under `region` instead of `country` (report `schema: 2`), and `history.json` records the figure under `totals.regions` instead of `totals.countries`.
@@ -66,6 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The grace is a classification, not a verdict — the packet now goes on to the other whitelists, and only a packet that nothing admits is dropped as the expired knock it is.
 * **demo:** the stats site's deploy no longer depends on the AC's deploy succeeding.
   The collector already tolerates a source it cannot list, so a failed AC deploy now leaves the server's own data published instead of blocking the whole site.
+* **js-agent:** the browser SDK's re-knock now carries the server's cookie the way the server computes it.
+  The server answers an access knock with a cookie challenge and admits the follow-up re-knock only when its HMAC proves the client holds that cookie: the challenge is the `common.ServerCookieMsg` JSON object the Go server sends, and the value that enters the re-knock's HMAC is the base64-decoded 32 bytes it carries, hashed after the header prefix.
+  The SDK stored the whole JSON body as the cookie and hashed it before the header prefix, so the server could never reproduce the HMAC and every browser-side knock failed with `HMAC validation failed on server side. msgType=NHP-RKN, sumCookie=true` — the failure the cookie challenge above turned from dormant into deterministic.
+  The SDK now decodes the challenge and hashes the cookie last, in both the Curve25519 and the GMSM path, and a challenge that is not a well-formed `ServerCookieMsg` is rejected instead of being stored and used.
+* **ci:** the js-agent SDK's unit tests run on every pull request.
+  `npm run test:run` only ran in the deploy pipeline, so a browser-side protocol break — the re-knock cookie exchange above — could reach the demo with a green pipeline.
 
 ## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
 

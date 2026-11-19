@@ -128,6 +128,17 @@ jobs:
         cp ../../endpoints/js-agent/package.json node_modules/@opennhp/agent/package.json
         npm run build
 
+    # The js-agent SDK's unit tests run at PR time. They used to run only in
+    # the deploy pipeline (deploy-demo-v2.yml), which is how a broken
+    # browser-side protocol — e.g. the re-knock cookie exchange the Go server
+    # requires since the 2026-11-15 breaking change — could reach the demo
+    # with a green pipeline.
+    - name: Test js-agent SDK
+      working-directory: endpoints/js-agent
+      run: |
+        npm ci --no-audit --no-fund
+        npm run test:run
+
     # govulncheck scans the demoapp module's dependency graph for known
     # advisories (e.g. the go-jose CVE-2025-27144 that prompted the
     # v4.0.5 bump in review #1). Advisory only (continue-on-error):

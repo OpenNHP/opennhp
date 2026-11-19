@@ -286,6 +286,21 @@ Verify CI still works by running the `deploy-demo-v2` workflow.
 enforces its per-knock whitelist with XDP ingress + TC egress instead of
 iptables+ipset. Several operational consequences.
 
+### The demo AC is not the AC the byte-order bug applies to
+
+`deploy/config-templates/ac/config.toml` also ships `IpPassMode = 0`
+(`PASS_KNOCK_IP`), which is the default. Only `IpPassMode = 1`
+(`PASS_KNOCKIP_WITH_RANGE`) writes the two whitelist shapes that
+GHSA-j2qp-fw3h-rpfh was about — `src_port` (peer + port) and `port_list`
+(peer + a wildcard port range) — and only under `FilterMode = 1`. The demo
+writes neither, so its behaviour is unchanged by that fix and by the
+`Changed` entry that comes with it: a knock here opens a port for the peer
+that knocked, through the `spp` key, and that key was never affected.
+
+Do not read the demo's health as evidence about an AC that runs with
+`IpPassMode = 1`: the two modes do not write the same keys, and only the
+second one was affected.
+
 ### The host's own traffic
 
 Everything the AC's own processes send still has to be answered: the answer

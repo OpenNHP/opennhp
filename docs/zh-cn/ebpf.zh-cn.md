@@ -119,7 +119,7 @@ Go 这一侧，加载器使用 [`github.com/cilium/ebpf`](https://github.com/cil
 
 server 和 AC 完全没有共用的 map。server 的策略是"只有这两样东西可以到达我"，AC 的策略是"这个来源，这个端口，直到这次敲门过期"。两者之间无话可说，所以也不共用一套 schema。
 
-它们真正共用的是 map 周边的一切——memlock 处理、目标文件加载、在 `/sys/fs/bpf` 下做 pin、解析默认路由网卡、挂载、把 perf ring 抽成日志、再把 pin 拆掉。这些都在一个文件里：`nhp/utils/ebpf/engine_linux.go`，由调用方选择变体：
+它们真正共用的是 map 周边的一切——memlock 处理、目标文件加载、在 `/sys/fs/bpf` 下做 pin、解析默认路由网卡、挂载、把 perf ring 抽成日志、再把 pin 拆掉。这些都在 `nhp/utils/ebpf/engine_linux.go` 和 `nhp/utils/ebpf/pindir.go` 里（后者记录 pin 目录，让写规则的代码和清理 pin 的代码用的是同一次加载所用的那个目录），由调用方选择变体：
 
 ```go
 // EngineVariant selects which object file, map set and attachment points a load
@@ -514,6 +514,8 @@ AC 的所有 map 都用 `LIBBPF_PIN_BY_NAME` 做 pin，入站程序和出站程�
   > every outgoing packet, which kept the door open long past OpenTime.
 
 - **`knock_peers` 永远不会被删除**，两个程序都不会删。它是 LRU，所以有界；但一个老化的条目会让它堵住的那个洞重新打开。
+
+用户态按路径打开这些 map，而这个路径是加载器记录下来的 pin 目录，不是写死的 `/sys/fs/bpf`。加载器把它记在 `nhp/utils/ebpf/pindir.go` 里，所以加载之后写入的规则会落到那次加载创建的 map 里，而测试也可以把写规则的代码指向一个属于自己的目录。最后这点不是锦上添花：一个通过写死的路径写规则的测试，会把一条真实的白名单条目——给一个真实的对端、开一个真实的端口——装进同一台主机上运行中的 `nhp-acd` 的过滤器里，而且从不删除它。
 
 AC 的 perf 事件带一个二值 action——0 = `DENY`，1 = `ACCEPT`——并写入两个独立的日志：`nhp_deny` 和 `nhp_accept`。server 只写一个文件 `nhp_server_xdp`，因为它的 action 说的是报文**为什么**被放行或丢弃，按判定结果拆开会把这些信息丢掉。
 

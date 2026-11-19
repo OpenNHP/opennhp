@@ -119,7 +119,7 @@ There are three eBPF programs in the tree, and they belong to two different daem
 
 The server and the AC share no maps at all. The server's policy is "these two things may reach me"; the AC's policy is "this peer, for this port, until this knock expires". They have nothing to say to each other, so they do not share a schema.
 
-What they *do* share is everything around the maps — memlock handling, object loading, pinning under `/sys/fs/bpf`, resolving the default-route interface, attaching, draining the perf ring into a log, and tearing the pins down again. That lives in one file, `nhp/utils/ebpf/engine_linux.go`, and the caller selects the variant:
+What they *do* share is everything around the maps — memlock handling, object loading, pinning under `/sys/fs/bpf`, resolving the default-route interface, attaching, draining the perf ring into a log, and tearing the pins down again. That lives in `nhp/utils/ebpf/engine_linux.go` and `nhp/utils/ebpf/pindir.go` (which records the pin directory, so the rule writers and the cleanup both act on the one the load used), and the caller selects the variant:
 
 ```go
 // EngineVariant selects which object file, map set and attachment points a load
@@ -453,6 +453,18 @@ func (r *whitelistKey) ToWlValue(ttlSec uint64) whitelistValue {
 }
 ```
 
+**The port in a key is network byte order.** The C side declares the port fields of the five keys `__be16` (`nhp_maps.h`), and the programs fill them from the packet — `ct_key.dport = tcp->dest` — so the bytes the kernel looks up are the bytes on the wire. Every encoder in user space therefore writes the port with `binary.BigEndian`. Writing it host order does not produce a rule that matches nothing: it produces a rule that matches the **byte-swapped** port, which is how a knock for tcp/443 used to admit the peer to 47873 and close 443 (GHSA-j2qp-fw3h-rpfh).
+
+The source address is the other way round and is already right: it is the raw address bytes read as a little-endian integer (`parseIP`) and written back as one, and the two cancel out, so the bytes in the map are the address bytes. The ports and the addresses are encoded in opposite byte orders, on purpose, and the tests in `nhp/utils/ebpf/ebpf_test.go` pin both against the C sources.
+
+**`port_list` is read with one fixed key.** Its key carries a port range, but the programs do not evaluate that range: they look up `{src_ip, 0, 65535}` — `MIN_PORT`/`MAX_PORT` in `nhp_ebpf_xdp.c`, the same two numbers written out in `tc_egress.c`. So the range in the key is a sentinel, and an entry with any other range is an entry no lookup can find. User space writes the sentinel (`ebpf.AnyPortRangeStart` / `ebpf.AnyPortRangeEnd`) and **refuses** any other range rather than installing an entry that grants nothing.
+
+**Two of the five shapes are only written in one mode.** `spp`, `sdwhitelist` and `icmpwhitelist` are written for every knock. `src_port` and `port_list` are written only in the AC's `IpPassMode = 1` (`PASS_KNOCKIP_WITH_RANGE`) mode, where a knock opens a port for the peer *and* the addresses around it; the default `IpPassMode = 0` (`PASS_KNOCK_IP`) never writes them, and neither does the demo's AC. A deployment that says nothing about `IpPassMode` is unaffected by the byte-order fix.
+
+**`src_port` and `port_list` carry the protocol, so a grant is for one protocol.** Both keys name the IP protocol number as their last byte (6 for TCP, 17 for UDP), and the programs look them up with the protocol of the packet they are judging (`iph->protocol`). A knock for `tcp/443` therefore opens tcp/443 and not udp/443, and a resource that names no protocol is written twice — once for TCP and once for UDP — which is what the `ipset` mode writes for the same resource (`net,443` is TCP, `net,udp:443` is UDP). Before the protocol was part of the key, one entry covered every protocol, and the eBPF mode was then strictly wider than the `ipset` mode for the same resource.
+
+**The eBPF mode and the `ipset` mode are not identical everywhere.** The two port-scoped shapes behave the same way in both modes. The difference is the address that knocked *itself*: for a resource that names no protocol, the eBPF mode writes an `sdwhitelist` entry for that address pair, which covers every port and every protocol of it, while the `ipset` mode grants the named port for TCP and UDP. A deployment that wants the narrower of the two names the protocol and the port of every resource.
+
 ### The reverse branch, and `knock_peers`
 
 The AC is a client too — it talks to the nhp-server, to resolvers, to package mirrors. The replies to those flows have to come back in, and the only way to tell them apart from a knock-authorised flow is to know which flows the *AC* opened.
@@ -497,14 +509,16 @@ All of the AC's maps are pinned with `LIBBPF_PIN_BY_NAME`, which is how the ingr
 |-----|------|-----|
 | `spp` | `LRU_HASH` | src IP + dst IP + dst port + protocol |
 | `sdwhitelist` | `LRU_HASH` | src IP + dst IP |
-| `src_port` | `LRU_HASH` | src IP + dst port |
-| `port_list` | `LRU_HASH` | src IP + port range |
+| `src_port` | `LRU_HASH` | src IP + dst port + protocol |
+| `port_list` | `LRU_HASH` | src IP + port range + protocol |
 | `protocol_port` | `LRU_HASH` | dst port + protocol |
 | `icmpwhitelist` | `HASH` | src IP + dst IP |
 | `conn_track` | `LRU_HASH` | the 4-tuple + direction + flags |
 | `knock_peers` | `LRU_HASH` | peer IP + service port + protocol |
 | `nhp_config` | `ARRAY` | one slot: the ephemeral-port floor |
 | `events` | `PERF_EVENT_ARRAY` | the perf ring user space drains (not pinned) |
+
+**Every port in a key is network byte order**, because the programs fill the key from the packet and look it up as it is; see *The port in a key is network byte order* above. The `port_list` key's port range is not evaluated by the programs: they look up the one fixed key `{src IP, 0, 65535}`, so that is the only range user space writes and the only one it accepts. The `src_port` and `port_list` keys carry the IP protocol as well, so a grant written for one protocol is not found by a packet of another.
 
 Two rules govern these maps, and both matter:
 
@@ -514,6 +528,8 @@ Two rules govern these maps, and both matter:
   > every outgoing packet, which kept the door open long past OpenTime.
 
 - **`knock_peers` is never deleted**, by either program. It is an LRU so it stays bounded, but an entry that aged out would let the hole it closes reopen.
+
+User space opens these maps by path, and the path is the pin directory the loader recorded — not a hard-coded `/sys/fs/bpf`. The loader records it in `nhp/utils/ebpf/pindir.go`, so a rule written after a load lands in the map that load created, and a test can point the writers at a directory of its own. That last part is not a nicety: a test that wrote a grant through the hard-coded path would have installed a real whitelist entry — for a real peer, on a real port — into the filter of an `nhp-acd` running on the same host, and never removed it.
 
 The AC's perf events carry a two-valued action — 0 = `DENY`, 1 = `ACCEPT` — and are written to two separate logs, `nhp_deny` and `nhp_accept`. The server writes one file, `nhp_server_xdp`, because its actions say *why* a packet was passed or dropped, and splitting them by verdict would throw that away.
 

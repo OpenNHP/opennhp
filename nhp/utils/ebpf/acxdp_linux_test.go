@@ -127,13 +127,31 @@ func tcpSynPacket(src, dst net.IP, sport, dport uint16) []byte {
 	return append(pkt, tcp...)
 }
 
+// udpPacket builds a whole Ethernet/IPv4/UDP frame.
+//
+// The two programs read the L4 header the same way -- at ihl * 4 -- and the
+// ingress program takes the destination port of a UDP packet into the map
+// key just as it does for TCP.
+func udpPacket(src, dst net.IP, sport, dport uint16) []byte {
+	udp := make([]byte, 8)
+	binary.BigEndian.PutUint16(udp[0:2], sport)
+	binary.BigEndian.PutUint16(udp[2:4], dport)
+	binary.BigEndian.PutUint16(udp[4:6], 8) // length
+	pkt := append(testEth(src, dst), testIPv4(src, dst, 17, len(udp))...)
+	return append(pkt, udp...)
+}
+
 // ---- the maps, as Go sees them ----
 
 // wireIP and wirePort put a number into the form the eBPF maps use: the raw
 // bytes as they appear on the wire, read as a little-endian integer. The
-// production code does the same (parseIP and parsePort in ebpf.go), because
-// the C side keeps __be32 and __be16 fields and a Go uint32 marshals
-// little-endian.
+// production code does the same (parseIP in ebpf.go), because the C side
+// keeps __be32 and __be16 fields and a Go uint32 marshals little-endian.
+//
+// The map keys the production code writes by hand are a different case: the
+// encoder there puts the bytes on the wire itself (binary.BigEndian for a
+// port), so the port in those Go structs is the host-order port number and
+// is written as it is. See ToWlKey, ToPpKey, ToPlKey and ToSpKey.
 func wireIP(ip net.IP) uint32 {
 	return binary.LittleEndian.Uint32(ip.To4())
 }
@@ -505,7 +523,7 @@ func TestAcFilterAdmitsDespiteALapsedPortScopedKnock(t *testing.T) {
 
 	// And the port itself is open to anyone.
 	ppKey := procoPortKey{
-		DstPort:  wirePort(openPort),
+		DstPort:  openPort,
 		Protocol: 6,
 	}
 	if err := maps.Protocolport.Put(ppKey.ToPpKey(), procoPortValue{
@@ -529,5 +547,192 @@ func TestAcFilterAdmitsDespiteALapsedPortScopedKnock(t *testing.T) {
 	if ret := runProgram(t, xdpProg, closed); ret != xdpDrop {
 		t.Errorf("a connection to a port nothing opens was admitted (XDP %d); "+
 			"the grace must not turn a lapsed knock into a way in", ret)
+	}
+}
+
+// A knock for one port opens that port, and only that port.
+//
+// The src_port map is keyed by the peer's address and the destination port,
+// and the port in that key is network byte order -- the program copies it out
+// of the packet (ct_key.dport = tcp->dest) and looks it up as it is. User
+// space used to write it the other way round, so the entry it installed was
+// the byte-swapped port: the peer was admitted to a port nobody asked for
+// and locked out of the one that was asked for.
+//
+// The check is the kernel's own verdict, on the real object: the peer knocks
+// for 443, and 443 is open to it while the swapped port is not.
+func TestAcFilterOpensThePortTheKnockAskedFor(t *testing.T) {
+	pinDir := testPinDir(t)
+	xdpProg, _, maps := loadAcObjects(t, pinDir)
+
+	host := net.IPv4(10, 0, 0, 1)
+	peer := net.IPv4(10, 0, 0, 2)
+	const knockedPort = 443
+	// bswap(443): the port the old, host-order encoder admitted.
+	const swappedPort = 47873
+
+	now, err := getBootTimeNanos()
+	if err != nil {
+		t.Skipf("cannot read the monotonic clock: %v", err)
+	}
+
+	key := &srcIPdstPortKey{
+		SrcIP:    wireIP(peer),
+		DstPort:  knockedPort,
+		Protocol: ProtocolTCP,
+	}
+	if err := maps.Srcportlist.Put(key.ToSpKey(), whitelistValue{
+		Allowed:    1,
+		ExpireTime: now + uint64(time.Minute),
+	}); err != nil {
+		t.Skipf("cannot write the src_port map: %v", err)
+	}
+
+	syn := tcpSynPacket(peer, host, 40000, knockedPort)
+	if ret := runProgram(t, xdpProg, syn); ret != xdpPass {
+		t.Errorf("the connection to the port the peer knocked for was dropped (XDP %d); "+
+			"the knock must open the port that was asked for", ret)
+	}
+
+	// The port nobody knocked for: the byte-swapped one. Before the fix the
+	// entry was written under this port and this packet was admitted.
+	swapped := tcpSynPacket(peer, host, 40001, swappedPort)
+	if ret := runProgram(t, xdpProg, swapped); ret != xdpDrop {
+		t.Errorf("the peer was admitted to port %d, which nobody knocked for (XDP %d)", swappedPort, ret)
+	}
+}
+
+// A knock for any port opens any port -- and only for the peer that knocked.
+//
+// The port_list map is keyed by the peer and a port range, but the program
+// does not evaluate the range: it looks up one fixed key, {src_ip, 0, 65535}.
+// That is the key user space has to write, and it is the key this test
+// writes.
+func TestAcFilterOpensEveryPortForThePeerThatKnocked(t *testing.T) {
+	pinDir := testPinDir(t)
+	xdpProg, _, maps := loadAcObjects(t, pinDir)
+
+	host := net.IPv4(10, 0, 0, 1)
+	peer := net.IPv4(10, 0, 0, 2)
+	const anyPort = 8443
+
+	now, err := getBootTimeNanos()
+	if err != nil {
+		t.Skipf("cannot read the monotonic clock: %v", err)
+	}
+
+	key := &portListKey{
+		SrcIP:        wireIP(peer),
+		DstPortStart: AnyPortRangeStart,
+		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolTCP,
+	}
+	if err := maps.Portlist.Put(key.ToPlKey(), whitelistValue{
+		Allowed:    1,
+		ExpireTime: now + uint64(time.Minute),
+	}); err != nil {
+		t.Skipf("cannot write the port_list map: %v", err)
+	}
+
+	syn := tcpSynPacket(peer, host, 40000, anyPort)
+	if ret := runProgram(t, xdpProg, syn); ret != xdpPass {
+		t.Errorf("the connection to a port of the peer's wildcard knock was dropped (XDP %d); "+
+			"the wildcard range must open the port", ret)
+	}
+
+	// The same packet from a peer that never knocked stays dropped.
+	stranger := tcpSynPacket(net.IPv4(10, 0, 0, 9), host, 40000, anyPort)
+	if ret := runProgram(t, xdpProg, stranger); ret != xdpDrop {
+		t.Errorf("a peer that never knocked was admitted to a port of somebody else's wildcard knock (XDP %d)", ret)
+	}
+}
+
+// A grant for one protocol is a grant for that protocol.
+//
+// The src_port and port_list keys carry the IP protocol number, and the
+// program looks them up with the protocol of the packet it is judging. A
+// knock for tcp/443 therefore opens tcp/443 and not udp/443 -- which is what
+// the ipset mode does with the same resource, its set entries carrying the
+// protocol themselves ("net,443" is TCP, "net,udp:443" is UDP).
+//
+// The check is the kernel's own verdict, on the real object.
+func TestAcFilterGrantsAreProtocolScoped(t *testing.T) {
+	pinDir := testPinDir(t)
+	xdpProg, _, maps := loadAcObjects(t, pinDir)
+
+	host := net.IPv4(10, 0, 0, 1)
+	peer := net.IPv4(10, 0, 0, 2)
+	const knockedPort = 443
+
+	now, err := getBootTimeNanos()
+	if err != nil {
+		t.Skipf("cannot read the monotonic clock: %v", err)
+	}
+
+	// The grant is for TCP only.
+	key := &srcIPdstPortKey{
+		SrcIP:    wireIP(peer),
+		DstPort:  knockedPort,
+		Protocol: ProtocolTCP,
+	}
+	if err := maps.Srcportlist.Put(key.ToSpKey(), whitelistValue{
+		Allowed:    1,
+		ExpireTime: now + uint64(time.Minute),
+	}); err != nil {
+		t.Skipf("cannot write the src_port map: %v", err)
+	}
+
+	// TCP is open.
+	syn := tcpSynPacket(peer, host, 40000, knockedPort)
+	if ret := runProgram(t, xdpProg, syn); ret != xdpPass {
+		t.Errorf("the connection to the port the peer knocked for was dropped (XDP %d); "+
+			"the knock must open the port that was asked for", ret)
+	}
+
+	// UDP on the same port is not.
+	udp := udpPacket(peer, host, 40000, knockedPort)
+	if ret := runProgram(t, xdpProg, udp); ret != xdpDrop {
+		t.Errorf("a TCP grant admitted the peer to udp/%d (XDP %d); the grant is for one protocol", knockedPort, ret)
+	}
+}
+
+// The same, for the wildcard shape: a grant for every port of one protocol
+// is not a grant for every port of every protocol.
+func TestAcFilterWildcardGrantsAreProtocolScoped(t *testing.T) {
+	pinDir := testPinDir(t)
+	xdpProg, _, maps := loadAcObjects(t, pinDir)
+
+	host := net.IPv4(10, 0, 0, 1)
+	peer := net.IPv4(10, 0, 0, 2)
+	const anyPort = 8443
+
+	now, err := getBootTimeNanos()
+	if err != nil {
+		t.Skipf("cannot read the monotonic clock: %v", err)
+	}
+
+	key := &portListKey{
+		SrcIP:        wireIP(peer),
+		DstPortStart: AnyPortRangeStart,
+		DstPortEnd:   AnyPortRangeEnd,
+		Protocol:     ProtocolTCP,
+	}
+	if err := maps.Portlist.Put(key.ToPlKey(), whitelistValue{
+		Allowed:    1,
+		ExpireTime: now + uint64(time.Minute),
+	}); err != nil {
+		t.Skipf("cannot write the port_list map: %v", err)
+	}
+
+	syn := tcpSynPacket(peer, host, 40000, anyPort)
+	if ret := runProgram(t, xdpProg, syn); ret != xdpPass {
+		t.Errorf("the connection to a port of the peer's wildcard knock was dropped (XDP %d); "+
+			"the wildcard range must open the port", ret)
+	}
+
+	udp := udpPacket(peer, host, 40000, anyPort)
+	if ret := runProgram(t, xdpProg, udp); ret != xdpDrop {
+		t.Errorf("a TCP wildcard grant admitted the peer to udp/%d (XDP %d); "+
+			"the grant is for one protocol", anyPort, ret)
 	}
 }

@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* **ac:** with `IpPassMode = 1` (`PASS_KNOCKIP_WITH_RANGE`) and the eBPF/XDP filter, a knock for a port of the addresses around the peer now opens **that** port, and a knock for any port now opens any port.
+  The two shapes that mode relies on (`src_port` and `port_list`) were installed under keys the kernel could never find — see the `Fixed` entry below — so neither of them granted anything, while the `ipset` mode (`FilterMode = 0`) was never affected and already behaved this way.
+  The grant is scoped to the resource's protocol, as the `ipset` mode's grant is: a knock for `tcp/443` opens tcp/443 to those addresses and not udp/443, and a resource that names no protocol covers TCP and UDP — the two entries the `ipset` mode writes for the same resource.
+  The two modes are **not** identical everywhere, and the difference is not in the port-scoped shapes: for the address that knocked *itself*, the eBPF mode expresses a resource that names no protocol as a grant for that address pair (`sdwhitelist`), which covers every port and every protocol, while the `ipset` mode grants the named port for TCP and UDP. A deployment that wants the narrower of the two names the protocol and the port of every resource.
 * **ac:** the nhp-ac's XDP ingress filter is narrowed to the nhp-server's rules: UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and by the answers to the host's own queries, a non-first IPv4 fragment is not judged by bytes that are not a header, and an ICMP echo reply needs the same whitelist entry the echo request does.
 * **ac:** the nhp-ac's audit ring now spends two separate global allowances — one for the deny channel, one for the accept channel — so that a flood of drops cannot exhaust the log that records what was *admitted*.
 * **ac:** a peer whose knock window has closed is classified as a legitimate peer for a further 60 seconds (`NHP_KNOCK_EXPIRED_GRACE_SEC`) instead of for one packet.
@@ -43,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* **ac:** the eBPF whitelist keys are written with the port in network byte order, so a knock opens the port it asked for.
+  The kernel looks a whitelist key up with the port as it appears in the packet (`ct_key.dport = tcp->dest`, a `__be16` field), but user space wrote two of the five keys host order: the entry installed for tcp/443 was the entry for 47873, so the peer was admitted to a port nobody asked for and locked out of the one that was asked for (GHSA-j2qp-fw3h-rpfh).
+  The `port_list` key is written the same way now, and it carries the wildcard range the programs actually look up (`0-65535`, the `MIN_PORT`/`MAX_PORT` sentinel) instead of `1-65535`, which no lookup could ever find; any other range is refused rather than installed as an entry that grants nothing.
+  The `spp` and `protocol_port` keys were already correct and are unchanged — the bytes on the wire are the same as before.
+  The two affected keys now carry the IP protocol as well, so a grant is for one protocol: the programs look them up with the protocol of the packet they are judging, and an entry written for TCP is not found by a UDP packet. A knock for `tcp/443` opens tcp/443 and not udp/443, and a resource that names no protocol is written once for TCP and once for UDP — the two entries the `ipset` mode writes for it. Before this, one entry covered every protocol, which made the eBPF mode wider than the `ipset` mode for the same resource.
+  Only the `IpPassMode = 1` (`PASS_KNOCKIP_WITH_RANGE`) mode writes the two affected shapes, and only under `FilterMode = 1` (eBPF/XDP); the default configuration, the `ipset` mode and the demo deployment are unaffected.
+* **ci:** the eBPF tests no longer write into the map of a running access controller.
+  The rule writers opened the AC's whitelist maps by a hard-coded `/sys/fs/bpf/<name>` path, so a test that called one installed a real grant — for a real peer, on a real port — into the filter of an `nhp-acd` running on the same host, and never removed it.
+  The pin directory is now recorded by the loader and read back by the rule writers, so a test points them at a directory of its own and the grants land there; the path the daemon uses is unchanged.
 * **ci,deploy:** a new eBPF object is now loaded into a real kernel before anything acts on it.
   Compiling an object proves nothing about it — the kernel's verifier decides whether a program is loadable, and on the AC a refused object is an outage (`nhp-acd` cannot start and the fail-closed backstop keeps tcp/443 shut), while on the server it is a silent loss of protection (`nhp-serverd` falls open).
   Two gates answer the question: every PR runs the `ebpf-verifier` job, which loads the three objects into the runner's kernel and runs the programs against packets, and every demo deploy loads the new objects on the AL2023 host before it stops the running daemon — a refusal aborts the deploy with the service still up.

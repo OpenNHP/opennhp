@@ -393,8 +393,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								srcIpStr := iterIP.String()
 								if dstAddr.Port != 0 {
 									ebpfHashStr := ebpf.EbpfRuleParams{
-										SrcIP:   srcIpStr,
-										DstPort: dstAddr.Port,
+										SrcIP:    srcIpStr,
+										DstPort:  dstAddr.Port,
+										Protocol: "tcp",
 									}
 									addErr := ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
 									if addErr != nil {
@@ -404,8 +405,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								} else {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:        srcIpStr,
-										DstPortStart: 1,
-										DstPortEnd:   65535,
+										DstPortStart: ebpf.AnyPortRangeStart,
+										DstPortEnd:   ebpf.AnyPortRangeEnd,
+										Protocol:     "tcp",
 									}
 									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
 									if addErr != nil {
@@ -420,8 +422,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 								if dstAddr.Port != 0 {
 									ebpfHashStr := ebpf.EbpfRuleParams{
-										SrcIP:   srcIpStr,
-										DstPort: dstAddr.Port,
+										SrcIP:    srcIpStr,
+										DstPort:  dstAddr.Port,
+										Protocol: "udp",
 									}
 									addErr := ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
 									if addErr != nil {
@@ -430,8 +433,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								} else {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:        srcIpStr,
-										DstPortStart: 1,
-										DstPortEnd:   65535,
+										DstPortStart: ebpf.AnyPortRangeStart,
+										DstPortEnd:   ebpf.AnyPortRangeEnd,
+										Protocol:     "udp",
 									}
 									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
 									if addErr != nil {

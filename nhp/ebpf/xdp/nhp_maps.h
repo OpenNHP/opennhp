@@ -223,15 +223,41 @@ struct whitelist_key {
     __u8 protocol;
 } __attribute__((packed));
 
+/*
+ * `src_port` and `port_list` carry the protocol, and they have to.
+ *
+ * A resource that names a protocol names the protocol the service speaks:
+ * tcp/443 is a TCP service and nothing else. The `ipset` mode expresses
+ * that in the set entry itself (`net,443` is TCP, `net,udp:443` is UDP), so
+ * a tcp-only resource opens tcp/443 and not udp/443.
+ *
+ * These two keys used to carry only the address and the port, and the
+ * programs looked them up with only the address and the port -- so an entry
+ * written for a tcp resource admitted the same port over every protocol. A
+ * knock for tcp/443 also opened udp/443, and a knock for "any port" opened
+ * every port of every protocol for all 128 addresses around the peer. The
+ * eBPF mode was therefore strictly wider than the `ipset` mode for the same
+ * resource.
+ *
+ * The protocol is the IP protocol number, the same value `iph->protocol`
+ * holds and the same one `whitelist_key` and `protocol_port_key` carry: 6 for
+ * TCP, 17 for UDP, 1 for ICMP. The programs fill it from the packet, so an
+ * entry is only hit by a packet of the protocol it was written for.
+ *
+ * The port fields stay `__be16` and the protocol is a plain byte, so the
+ * layout is: address, port, protocol.
+ */
 struct src_port_list_key {
     __be32 src_ip;
     __be16 dst_port;
+    __u8 protocol;
 } __attribute__((packed));
 
 struct port_list_key {
     __be32 src_ip;
     __be16 min_port;
     __be16 max_port;
+    __u8 protocol;
 } __attribute__((packed));
 
 struct protocol_port_key {

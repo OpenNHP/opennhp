@@ -97,9 +97,14 @@ static __always_inline bool peer_is_knocking(__be32 src_ip, __be32 dst_ip,
     if (bpf_map_lookup_elem(&spp, &wl_key))
         return true;
 
+    /* The protocol is part of the key, and it is the protocol of the packet:
+     * the ingress program looks the same key up with the protocol of the
+     * packet it is judging, so a grant for tcp/443 is a grant for tcp/443 and
+     * not for udp/443. */
     struct src_port_list_key sp_key = {
         .src_ip = dst_ip,
         .dst_port = sport,
+        .protocol = protocol,
     };
     if (bpf_map_lookup_elem(&src_port, &sp_key))
         return true;
@@ -139,6 +144,7 @@ static __always_inline bool peer_holds_wildcard_knock(__be32 dst_ip,
         .src_ip = dst_ip,
         .min_port = 0,
         .max_port = 65535,
+        .protocol = protocol,
     };
     if (bpf_map_lookup_elem(&port_list, &pl_key))
         return true;

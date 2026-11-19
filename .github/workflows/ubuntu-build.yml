@@ -308,6 +308,8 @@ jobs:
           TestAcEgressProgramRecordsTheHostsOwnFlow \
           TestAcFilterKeepsTheKnockedEchoReply \
           TestAcFilterAdmitsDespiteALapsedPortScopedKnock \
+          TestEbpfRuleAddWritesOneEntryPerProtocol \
+          TestEbpfRuleAddWritesNothingForARefusedPortRange \
           TestServerEngineLoadAttachesToLoopback \
           TestServerFilterKnocksOnTheConfiguredPort \
           TestServerFilterLetsTheRelaySendShortKnocks

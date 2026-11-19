@@ -18,8 +18,6 @@ DefaultCipherScheme = 1
 UserId = "agent-0"
 OrganizationId = "opennhp.org"
 LogLevel = 4
-# UserData: a customized user entry for flexibility.
-# Its key-value pairs will be send to server along with knock message.
 # FailCloseOnServerLoss: what the AC does when it considers EVERY configured
 # nhp-server unreachable (each one has missed 3 consecutive discovery probes).
 # Only consulted in FilterMode 0; FilterMode 1 has never had this fallback.
@@ -33,6 +31,9 @@ LogLevel = 4
 #     grants until they expire, existing sessions are not cut, and nothing new
 #     opens. Choose this where exposure is worse than an outage.
 # FailCloseOnServerLoss = false
+
+# UserData: a customized user entry for flexibility.
+# Its key-value pairs will be send to server along with knock message.
 
 [UserData]
 "ExampleKey0" = "StringValue"

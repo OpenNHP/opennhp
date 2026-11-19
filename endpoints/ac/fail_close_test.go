@@ -151,3 +151,81 @@ func TestShippedConfigsDocumentTheSetting(t *testing.T) {
 		}
 	}
 }
+
+// An AC with no servers configured is not "every server unreachable".
+//
+// The discovery check totals the per-server failure flags and compares
+// against the list length, so with an empty list 0 < 0 is false and the
+// code fell through to the all-servers-lost branch. In fail-open mode that
+// opened INPUT and FORWARD on a host that was never given a control plane;
+// in fail-closed mode it logged that servers were unreachable, which is
+// not what happened. It is now its own case.
+func TestEmptyServerListIsNotAllServersLost(t *testing.T) {
+	src, err := os.ReadFile("udpac.go")
+	if err != nil {
+		t.Fatalf("read udpac.go: %v", err)
+	}
+	code := string(src)
+
+	loc := regexp.MustCompile(`totalFail < int32\(len\(discoveryFailStatusArr\)\)`).FindStringIndex(code)
+	if loc == nil {
+		t.Fatal("discovery comparison not found; re-anchor this test rather than deleting it")
+	}
+	// The empty-list case has to be decided before the comparison, or the
+	// arithmetic answers it first.
+	before := code[:loc[0]]
+	guard := regexp.MustCompile(`len\(discoveryFailStatusArr\) == 0`).FindAllStringIndex(before, -1)
+	if len(guard) == 0 {
+		t.Error("nothing checks for an empty server list before the failure comparison")
+	}
+}
+
+// Both postures say what they did, once per outage. The default is the
+// exposing one, so the operator who never touched the setting is the one
+// who most needs the line.
+func TestBothPosturesAreReported(t *testing.T) {
+	src, err := os.ReadFile("udpac.go")
+	if err != nil {
+		t.Fatalf("read udpac.go: %v", err)
+	}
+	fn := regexp.MustCompile(`(?s)func \(a \*UdpAC\) onAllServersLost\(\) \{.*?\n\}`).FindString(string(src))
+	if fn == "" {
+		t.Fatal("onAllServersLost not found")
+	}
+	if !strings.Contains(fn, "serverLossReported.Swap(true)") {
+		t.Error("the fail-open branch does not report the posture once per outage")
+	}
+	if !strings.Contains(fn, "logServerLossFailClosed()") {
+		t.Error("the fail-closed branch does not report the posture")
+	}
+}
+
+// Stale 0.0.0.0/0 ACCEPT rules from an unclean exit are cleared at
+// startup, not left to ResetAllInput — which returns early because
+// AcceptInputMode is in-memory and starts false.
+func TestStartupClearsStaleAcceptAllRules(t *testing.T) {
+	src, err := os.ReadFile("udpac.go")
+	if err != nil {
+		t.Fatalf("read udpac.go: %v", err)
+	}
+	if !strings.Contains(string(src), "ClearStaleAcceptAllInput()") {
+		t.Error("startup does not clear stale ACCEPT rules; an AC killed while failed open stays open " +
+			"even after the operator sets FailCloseOnServerLoss")
+	}
+
+	ipt, err := os.ReadFile(filepath.Join("..", "..", "nhp", "utils", "iptables.go"))
+	if err != nil {
+		t.Fatalf("read iptables.go: %v", err)
+	}
+	fn := regexp.MustCompile(`(?s)func \(table \*IPTables\) ClearStaleAcceptAllInput\(\) \{.*?\n\}`).FindString(string(ipt))
+	if fn == "" {
+		t.Fatal("ClearStaleAcceptAllInput not found")
+	}
+	// It must not consult the flag; that is the whole point.
+	if strings.Contains(fn, "if !table.AcceptInputMode") || strings.Contains(fn, "if table.AcceptInputMode") {
+		t.Error("ClearStaleAcceptAllInput gates on AcceptInputMode, which is exactly the flag that is wrong after an unclean exit")
+	}
+	if !strings.Contains(fn, "DEL_IPTABLES_RULE_OPERATION") {
+		t.Error("ClearStaleAcceptAllInput does not delete the rules")
+	}
+}

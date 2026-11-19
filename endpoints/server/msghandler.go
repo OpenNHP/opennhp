@@ -1251,18 +1251,18 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
 		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
 
-	// Same RKN-under-overload gate as the direct-UDP path
-	// (recvPacketRoutine), but keyed on the REAL client IP rather than the
+	// Rate limit relay-forwarded RKNs before cookie verification. Key the
+	// limiter on the client IP reported by the authenticated relay rather than the
 	// relay's: a relay legitimately fans out many clients, so keying on
 	// the relay address would let one busy relay's honest traffic throttle
 	// itself while doing nothing to isolate a single abusive client. The
 	// inner RKN reaches the same cookie-verify ECDH (via
 	// ForwardInboundPacket -> connectionRoutine -> RecvPacketToMsg), so it
 	// needs the same pre-ECDH throttle. Dropped-only, no block-listing.
-	if innerType == core.NHP_RKN && s.device.IsOverload() {
+	if innerType == core.NHP_RKN {
 		if !s.rknLimiter.allow(realAddr, time.Now().UnixNano()) {
 			s.device.ReleasePoolPacket(innerPkt)
-			log.Warning("server-relay[HandleRelayForward] inner RKN from real client %s (via relay %s) dropped: per-IP rate limit exceeded under overload",
+			log.Warning("server-relay[HandleRelayForward] inner RKN from real client %s (via relay %s) dropped: per-IP rate limit exceeded",
 				realAddr, relayAddrStr)
 			return fmt.Errorf("rkn rate limit exceeded")
 		}
@@ -1400,12 +1400,13 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		conn = &UdpConn{mapKey: connKey, timeoutUpdate: make(chan struct{}, 1)}
 		conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 		conn.ConnData = &core.ConnectionData{
-			InitTime:          recvTime,
-			LastLocalRecvTime: recvTime,
-			Device:            s.device,
-			LocalAddr:         s.listenAddr,
-			RemoteAddr:        relayAddr,
-			RealRemoteAddr:    realAddr,
+			InitTime:           recvTime,
+			LastLocalRecvTime:  recvTime,
+			Device:             s.device,
+			LocalAddr:          s.listenAddr,
+			RemoteAddr:         relayAddr,
+			RealRemoteAddr:     realAddr,
+			RequireKnockCookie: true,
 			// CookieStore omitted: see udpserver.go for rationale.
 			RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 			TimeoutMs:            DefaultAgentConnectionTimeoutMs,

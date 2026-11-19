@@ -339,7 +339,7 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 		}
 
 		// for RKN, check HMAC with cookie. For remaining allowed key messages, check HMAC without cookie.
-		sumCookie := overload && ppd.HeaderType == NHP_RKN
+		sumCookie := ppd.HeaderType == NHP_RKN && (overload || ppd.requiresKnockCookie())
 		if !ppd.checkHMAC(sumCookie) {
 			msgType := HeaderTypeToString(ppd.HeaderType)
 			log.Error("HMAC validation failed on server side. msgType=%s, sumCookie=%v, cipherScheme=%d, bodySize=%d, devicePubKey=%s",
@@ -596,18 +596,18 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		peerDeviceTypeName := DeviceTypeToString(peerDeviceType)
 		log.Debug("validatePeer: looking up %s peer pubkey=%s in peer pool", peerDeviceTypeName, peerPkBase64)
 
-		peer = ppd.device.LookupPeer(peerPk)
+		peer = ppd.device.LookupPeer(peerPkBase64)
 		if peer == nil {
 			// Fallback: check dynamically-registered peers (e.g., agents
 			// registered via NHP-REG stored in SQLite).
 			ppd.device.optionMutex.Lock()
 			fallback := ppd.device.option.PeerLookupFallback
 			ppd.device.optionMutex.Unlock()
-			if fallback != nil && fallback(peerPk, ppd.HeaderType) {
+			if fallback != nil && fallback(peerPkBase64, ppd.HeaderType) {
 				log.Info("validatePeer: %s peer accepted via fallback, pubkey=%s",
 					peerDeviceTypeName, peerPkBase64)
 				// Skip expiry/address checks for fallback peers.
-				goto peerAccepted
+				goto validPeerFound
 			}
 			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
 				peerDeviceTypeName, peerPkBase64)
@@ -645,7 +645,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
 		peer.UpdateRecv(ppd.LocalInitTime)
-	peerAccepted:
+	validPeerFound:
 	}
 
 	ppd.RemotePubKey = peerPk
@@ -689,8 +689,15 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
+	proofReknock := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_RKN && ppd.requiresKnockCookie()
+	cookieReply := ppd.device.deviceType == NHP_AGENT && ppd.HeaderType == NHP_COK
+	lastSendTime := atomic.LoadInt64(&ppd.ConnData.LastRemoteSendTime)
+	if cookieReply {
+		lastSendTime = max(lastSendTime, atomic.LoadInt64(&ppd.ConnData.LastRemoteCookieSendTime))
+	}
+	// Keep the peer watermark: a new connection must not reset replay protection.
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
+		if (peer != nil && peer.IsRemoteReplayOtherwiseUpdate(remoteSendTime)) || remoteSendTime < lastSendTime || ((proofReknock || cookieReply) && remoteSendTime == lastSendTime) {
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
@@ -702,8 +709,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
+	// A fast cookie exchange can finish within one minimum packet interval.
+	if !proofReknock && !cookieReply && shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
+		if remoteSendTime < lastSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 			// threat plus 1
@@ -718,6 +726,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
+
 	// Bound clock skew on the relay→server path. The justification
 	// here is NOT the TTL-cache argument that drove the original
 	// ART check (the relay RLY path uses a per-relay sliding
@@ -830,18 +839,23 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// responder_test.go drives authenticated packets through validatePeer to
 	// fence this cross-package contract.
 	ppd.RemoteSendTime = remoteSendTime
+	proofChallenge := ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_KNK && ppd.requiresKnockCookie()
 	// ART is deduplicated after this function. It must not rewind the shared
 	// AOL watermark or clear threat state before a replay is rejected.
-	if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
+	if cookieReply {
+		atomic.StoreInt64(&ppd.ConnData.LastRemoteCookieSendTime, remoteSendTime)
+	} else if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
 		atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
 		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 	}
 
-	// handle knock packet at overload before going into body decryption.
+	// Require source proof before processing an access knock. DHP
+	// provides evidence appraisal and retains its overload-only challenge.
 	// sendCookie derives the cookie statelessly from the device's signing
-	// key and the remote ip:port + time window, so there is nothing to
+	// key, source IP, peer key, and time window, so there is nothing to
 	// pre-generate or store per connection.
-	if ppd.device.deviceType == NHP_SERVER && ppd.Overload && (ppd.HeaderType == NHP_KNK || ppd.HeaderType == DHP_KNK) {
+	if proofChallenge || (ppd.device.deviceType == NHP_SERVER && ppd.Overload &&
+		(ppd.HeaderType == NHP_KNK || ppd.HeaderType == DHP_KNK)) {
 		ppd.sendCookie()
 		err = ErrServerRejectWithCookie
 		return err
@@ -997,8 +1011,12 @@ func (ppd *PacketParserData) sendCookie() {
 		Message:        cokBytes,
 	}
 
-	log.Debug("Send cookie back to %s: %s ", ppd.ConnData.RemoteAddr, string(md.Message))
+	log.Debug("Sent cookie challenge to %s", ppd.ConnData.RemoteAddr)
 	ppd.device.SendMsgToPacket(md)
+}
+
+func (ppd *PacketParserData) requiresKnockCookie() bool {
+	return ppd.ConnData != nil && ppd.ConnData.RequireKnockCookie
 }
 
 func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
@@ -1022,10 +1040,7 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		// defer. ppd.Destroy still clears hmacHash when the parser
 		// tears down, so leaving it untouched here leaks nothing.
 		//
-		// Only reachable on NHP_SERVER under Overload (validatePeer
-		// gates the sumCookie=true case behind those two conditions);
-		// startup guarantees a signing key is installed, so missing
-		// params here is a programmer error.
+		// The server installs signing parameters before accepting access traffic.
 		key, win := ppd.device.StatelessCookieParams()
 		if len(key) == 0 || win <= 0 {
 			log.Critical("checkHMAC(sumCookie): device has no stateless cookie params")

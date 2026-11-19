@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -91,7 +92,36 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		log.Error("refusing to start the HTTP knock listener: %v", err)
 		return err
 	}
-	store := cookie.NewStore([]byte("nhpstore"))
+	// Session keys are generated per process start, never baked in.
+	//
+	// This was cookie.NewStore([]byte("nhpstore")) -- one constant, visible
+	// in the repository, shared by every deployment. gorilla's CookieStore
+	// uses that value as the HMAC key for the session cookie, so anyone who
+	// had read the source could mint a cookie that any nhp-server accepted.
+	// The session is not incidental: it is handed to auth plugins through
+	// SessionGet/Set/Save/Clear (see NewHttpServerHelper), so forging it
+	// forges whatever a plugin keeps there -- for the bundled
+	// authenticator, whether a QR login was confirmed.
+	//
+	// Two keys, not one: the first authenticates the cookie, the second
+	// encrypts it. With only an auth key the contents are signed but sit in
+	// the client's browser in the clear.
+	//
+	// Generating them per start means sessions do not survive a restart.
+	// That is the right trade here -- these sessions live for the length of
+	// one login, and the alternative is a key at rest that has to be
+	// distributed and rotated.
+	authKey := make([]byte, 64)
+	encKey := make([]byte, 32)
+	if _, err := rand.Read(authKey); err != nil {
+		log.Error("refusing to start the HTTP knock listener: cannot generate a session authentication key: %v", err)
+		return err
+	}
+	if _, err := rand.Read(encKey); err != nil {
+		log.Error("refusing to start the HTTP knock listener: cannot generate a session encryption key: %v", err)
+		return err
+	}
+	store := cookie.NewStore(authKey, encKey)
 	hs.ginEngine.Use(sessions.Sessions("nhpsessions", store))
 	hs.ginEngine.Use(corsMiddleware())
 	hs.ginEngine.Use(gin.LoggerWithWriter(us.log.Writer()))

@@ -3,6 +3,7 @@ package ac
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -176,6 +177,54 @@ func TestExpiredAccessTokenIsNotUsableBeforeTheSweep(t *testing.T) {
 	}
 	if !entry.ExpireTime.Equal(expired) {
 		t.Errorf("a refresh on an expired token renewed it, from %v to %v", expired, entry.ExpireTime)
+	}
+}
+
+// The same address written differently on the two sides still matches.
+//
+// The entry's spelling comes from the knock and the request's from
+// whoever calls this listener, so they need not agree character for
+// character. A refusal is now a real refusal, so a spelling difference
+// would turn away a client the entry covers.
+func TestRefreshMatchesAddressesNotSpelling(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	for _, tc := range []struct {
+		name  string
+		entry string
+		query string
+	}{
+		{"v4-mapped request", "10.0.0.5", "::ffff:10.0.0.5"},
+		{"v4-mapped entry", "::ffff:10.0.0.5", "10.0.0.5"},
+		{"compressed against expanded v6", "2001:db8::1", "2001:0db8:0000:0000:0000:0000:0000:0001"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &UdpAC{
+				tokenStore: common.NewTokenStore[*AccessEntry](),
+				config:     &Config{FilterMode: FilterMode_IPTABLES},
+			}
+			entry := &AccessEntry{
+				User:     &common.AgentUser{},
+				SrcAddrs: []*common.NetAddress{{Ip: tc.entry, Port: 443, Protocol: "tcp"}},
+				DstAddrs: []*common.NetAddress{{Ip: "10.0.0.9", Port: 443, Protocol: "tcp"}},
+				OpenTime: 30,
+			}
+			entry.ExpireTime = time.Now().Add(30 * time.Second)
+			token := pathSafeAccessToken(t, a, entry)
+
+			ha := &HttpAC{ua: a, ginEngine: gin.New()}
+			ha.initRouter()
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet,
+				"/refresh/"+token+"?srcip="+url.QueryEscape(tc.query), nil)
+			req.RemoteAddr = "127.0.0.1:40000"
+			ha.ginEngine.ServeHTTP(w, req)
+
+			if strings.Contains(w.Body.String(), "not authorized") {
+				t.Errorf("%s was refused against an entry holding %s: %s", tc.query, tc.entry, w.Body.String())
+			}
+		})
 	}
 }
 

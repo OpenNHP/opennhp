@@ -232,9 +232,18 @@ func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRe
 	// Enrolment belongs to the knock, which the NHP protocol
 	// authenticates; a refresh that arrives from somewhere the entry does
 	// not cover is refused, and the client knocks again.
+	//
+	// Compared as addresses, not as text. The two spellings come from
+	// different places -- the entry's from the knock, the request's from
+	// whoever calls this listener -- so the same address can be written
+	// differently on each side: ::ffff:10.0.0.5 against 10.0.0.5, or a
+	// zero-compressed IPv6 address against an expanded one. While a
+	// mismatch quietly enrolled the address that cost nothing; now that
+	// it refuses, a spelling difference would turn away a client the
+	// entry does cover.
 	var found bool
 	for _, addr := range entry.SrcAddrs {
-		if addr.Ip == req.SrcIp {
+		if entryIp := net.ParseIP(addr.Ip); entryIp != nil && entryIp.Equal(netIp) {
 			found = true
 			break
 		}

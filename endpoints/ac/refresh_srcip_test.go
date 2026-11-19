@@ -124,6 +124,61 @@ func TestRefreshFromUnauthorizedAddressIsRefusedViaRoute(t *testing.T) {
 	}
 }
 
+// An expired token is not usable in the window before the sweeper
+// removes it, and a request on one does not bring it back.
+//
+// TokenStore.Load only looks the token up; expired entries leave the map
+// on a sweep every TokenStoreRefreshInterval seconds. Inside that gap the
+// entry is still there, and a renewal resets the expiry to a full window
+// -- so without an expiry check at lookup, a token could be revived
+// indefinitely by asking during the gap.
+func TestExpiredAccessTokenIsNotUsableBeforeTheSweep(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	a := &UdpAC{
+		tokenStore: common.NewTokenStore[*AccessEntry](),
+		config:     &Config{FilterMode: FilterMode_IPTABLES},
+	}
+	entry := &AccessEntry{
+		User:     &common.AgentUser{},
+		SrcAddrs: []*common.NetAddress{{Ip: "10.0.0.5", Port: 443, Protocol: "tcp"}},
+		DstAddrs: []*common.NetAddress{{Ip: "10.0.0.9", Port: 443, Protocol: "tcp"}},
+		OpenTime: 30,
+	}
+	token := pathSafeAccessToken(t, a, entry)
+
+	// Expired a second ago; the sweep runs every
+	// TokenStoreRefreshInterval seconds, so the entry is still stored.
+	expired := time.Now().Add(-time.Second)
+	entry.ExpireTime = expired
+	if _, stillStored := a.tokenStore.Load(token); !stillStored {
+		t.Fatal("the entry left the store before the sweep ran; this test no longer covers the gap")
+	}
+
+	if got := a.VerifyAccessToken(token); got != nil {
+		t.Error("VerifyAccessToken accepted an expired token")
+	}
+	if !entry.ExpireTime.Equal(expired) {
+		t.Errorf("an expired token was renewed, from %v to %v", expired, entry.ExpireTime)
+	}
+
+	ha := &HttpAC{ua: a, ginEngine: gin.New()}
+	ha.initRouter()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		"/refresh/"+token+"?srcip=10.0.0.5", nil)
+	req.RemoteAddr = "127.0.0.1:40000"
+	ha.ginEngine.ServeHTTP(w, req)
+
+	if !strings.Contains(w.Body.String(), "token verification failed") {
+		t.Errorf("response = %q, want the refresh refused", w.Body.String())
+	}
+	if !entry.ExpireTime.Equal(expired) {
+		t.Errorf("a refresh on an expired token renewed it, from %v to %v", expired, entry.ExpireTime)
+	}
+}
+
 // A refused refresh must not have renewed the token on its way to the
 // refusal.
 //

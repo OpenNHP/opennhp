@@ -50,9 +50,22 @@ func (a *UdpAC) IssueACTokenIfSuccess(artMsg *common.ACOpsResultMsg, entry *Acce
 // LookupAccessToken returns the entry a token refers to without touching
 // it, for callers that have to decide something before the token's life
 // is extended.
+//
+// An expired entry is not returned. The store removes expired tokens on
+// a sweep every TokenStoreRefreshInterval seconds, so between the moment
+// an entry expires and the next sweep it is still in the map; without
+// this check a request landing in that window would be served, and since
+// a renewal resets the expiry to a full window, an expired token could be
+// brought back to life -- repeatedly, by any client that keeps asking.
+// "Expired" now means the same thing to every caller, not only to the
+// sweeper. The late-packet buffer is already part of ExpireTime, so
+// packets arriving while enforcement is torn down are unaffected.
 func (a *UdpAC) LookupAccessToken(token string) *AccessEntry {
 	entry, found := a.tokenStore.Load(token)
 	if !found {
+		return nil
+	}
+	if time.Now().After(entry.ExpireTime) {
 		return nil
 	}
 	return entry

@@ -124,6 +124,49 @@ func TestRefreshFromUnauthorizedAddressIsRefusedViaRoute(t *testing.T) {
 	}
 }
 
+// A refused refresh must not have renewed the token on its way to the
+// refusal.
+//
+// The lookup used to renew unconditionally, so a token holder could keep
+// an entry alive forever by naming any srcip at all and being told "not
+// authorized" each time -- the refusal read as though nothing had
+// happened, and something had.
+func TestRefusedRefreshDoesNotRenewTheToken(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	a := &UdpAC{
+		tokenStore: common.NewTokenStore[*AccessEntry](),
+		config:     &Config{FilterMode: FilterMode_IPTABLES},
+	}
+	entry := &AccessEntry{
+		User:     &common.AgentUser{},
+		SrcAddrs: []*common.NetAddress{{Ip: "10.0.0.5", Port: 443, Protocol: "tcp"}},
+		DstAddrs: []*common.NetAddress{{Ip: "10.0.0.9", Port: 443, Protocol: "tcp"}},
+		OpenTime: 30,
+	}
+	token := pathSafeAccessToken(t, a, entry)
+
+	// Wind the expiry back so a renewal would be unmistakable.
+	nearlyExpired := time.Now().Add(2 * time.Second)
+	entry.ExpireTime = nearlyExpired
+
+	ha := &HttpAC{ua: a, ginEngine: gin.New()}
+	ha.initRouter()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		"/refresh/"+token+"?srcip=203.0.113.7", nil)
+	req.RemoteAddr = "127.0.0.1:40000"
+	ha.ginEngine.ServeHTTP(w, req)
+
+	if !strings.Contains(w.Body.String(), "not authorized") {
+		t.Fatalf("response = %q, want a refusal", w.Body.String())
+	}
+	if !entry.ExpireTime.Equal(nearlyExpired) {
+		t.Errorf("a refused refresh moved the expiry from %v to %v", nearlyExpired, entry.ExpireTime)
+	}
+}
+
 // A refresh from an address the entry does not cover is refused, not
 // enrolled. Refresh extends an existing grant; enrollment belongs to the
 // knock, which the NHP protocol authenticates.

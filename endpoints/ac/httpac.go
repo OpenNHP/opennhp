@@ -174,6 +174,14 @@ func (ha *HttpAC) initRouter() {
 		// already covers, and the entry's addresses were authenticated by
 		// the NHP knock. Naming an address is no longer a way to acquire
 		// one. That was the defect; see GHSA-7g2g-wvgm-35qx.
+		//
+		// What the parameter still decides is which of an entry's
+		// already-authorized addresses gets re-applied. Any process on
+		// this host -- or a front end that copies a client-controlled
+		// header such as X-Forwarded-For into srcip -- can choose that,
+		// and can keep a grant alive for an address it does not hold.
+		// Narrowing it further would mean authenticating the local front
+		// end, which this endpoint does not do.
 		req := &common.HttpRefreshRequest{
 			Token: token,
 			SrcIp: ctx.Query("srcip"),
@@ -204,7 +212,11 @@ func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRe
 		return
 	}
 
-	entry := ha.ua.VerifyAccessToken(req.Token)
+	// Looked up without renewing: this handler can still refuse below,
+	// and a refusal that had already reset the expiry would keep the
+	// grant alive for a request it rejected. The token is renewed on the
+	// path that re-applies the grant, at the end.
+	entry := ha.ua.LookupAccessToken(req.Token)
 	if entry == nil {
 		log.Error("token verification failed")
 		c.String(http.StatusOK, "{\"errMsg\": \"token verification failed\"}")
@@ -239,6 +251,9 @@ func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRe
 		c.String(http.StatusOK, "{\"errMsg\": \"%s\"}", err)
 		return
 	}
+
+	// The grant has been re-applied, so the token gets a full window.
+	ha.ua.RenewAccessToken(entry)
 
 	c.JSON(http.StatusOK, entry)
 }

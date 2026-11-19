@@ -47,29 +47,50 @@ func (a *UdpAC) IssueACTokenIfSuccess(artMsg *common.ACOpsResultMsg, entry *Acce
 	artMsg.ACToken = a.GenerateAccessToken(entry)
 }
 
-// VerifyAccessToken validates a token and resets its expiry if valid.
-// Returns the AccessEntry if found, nil otherwise.
+// LookupAccessToken returns the entry a token refers to without touching
+// it, for callers that have to decide something before the token's life
+// is extended.
+func (a *UdpAC) LookupAccessToken(token string) *AccessEntry {
+	entry, found := a.tokenStore.Load(token)
+	if !found {
+		return nil
+	}
+	return entry
+}
+
+// RenewAccessToken resets an entry's expiry to a full window.
 //
 // Resets, not extends. The previous form added OpenTime to the expiry the
-// entry already carried, so each verification bought another full window
-// on top of whatever was left and N calls gave N*OpenTime of life. The
+// entry already carried, so each verification bought another window on
+// top of whatever was left and N calls gave N*OpenTime of life. The
 // window is now the same whether a token is used once or often.
 //
-// This bounds how long one verification is worth; it does not bound the
-// entry. A client that refreshes more often than every OpenTime keeps its
-// grant alive indefinitely, which is what "refresh" means. Requiring a
-// fresh knock eventually would need an absolute cap — issue time plus a
-// maximum lifetime — which is a separate decision.
+// This bounds how long one use is worth; it does not bound the entry. A
+// client that refreshes more often than every OpenTime keeps its grant
+// alive indefinitely, which is what "refresh" means. Requiring a fresh
+// knock eventually would need an absolute cap -- issue time plus a
+// maximum lifetime -- which is a separate decision.
 //
 // The window matches GenerateAccessToken's, late-packet buffer included:
-// without it the first refresh would shorten the token's life by the
+// without it the first renewal would shorten the token's life by the
 // seconds that exist so late packets still match while enforcement is
 // being torn down.
+func (a *UdpAC) RenewAccessToken(entry *AccessEntry) {
+	entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime+accessTokenLatePacketBufferSeconds) * time.Second)
+}
+
+// VerifyAccessToken validates a token and renews it. Returns the
+// AccessEntry if found, nil otherwise.
+//
+// Callers that may refuse the request after the lookup must not use this:
+// renewing and then refusing keeps the grant alive for a request that was
+// rejected. Use LookupAccessToken, decide, and renew on the path that
+// acts.
 func (a *UdpAC) VerifyAccessToken(token string) *AccessEntry {
-	entry, found := a.tokenStore.Load(token)
-	if found {
-		entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime+accessTokenLatePacketBufferSeconds) * time.Second)
-		return entry
+	entry := a.LookupAccessToken(token)
+	if entry == nil {
+		return nil
 	}
-	return nil
+	a.RenewAccessToken(entry)
+	return entry
 }

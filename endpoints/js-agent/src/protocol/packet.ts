@@ -98,6 +98,54 @@ export class PacketContext {
 const defaultContext = new PacketContext();
 
 /**
+ * Size of the server's stateless cookie, in bytes.
+ * Mirrors nhp/core/constants.go CookieSize.
+ */
+const SERVER_COOKIE_SIZE = 32;
+
+/**
+ * Decode the cookie carried by an NHP-COK body.
+ *
+ * The Go server sends the challenge as a common.ServerCookieMsg JSON object
+ * (nhp/core/responder.go sendCookie):
+ *
+ *   {"trxId":<n>,"cookie":"<base64 of 32 raw bytes>"}
+ *
+ * The value that takes part in the re-knock HMAC is the DECODED 32 bytes,
+ * not the JSON body — see nhp/core/initiator.go addHMAC, which hashes the
+ * cookie bytes, and the Go agent's endpoints/agent/knock.go, which unmarshals
+ * the JSON and base64-decodes the "cookie" field before re-knocking.
+ *
+ * Returns undefined when the body is not a well-formed challenge.
+ */
+function decodeServerCookie(body: Uint8Array): Uint8Array | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytesToString(body));
+  } catch {
+    return undefined;
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    return undefined;
+  }
+
+  const encoded = (parsed as { cookie?: unknown }).cookie;
+  if (typeof encoded !== 'string') {
+    return undefined;
+  }
+
+  let raw: Uint8Array;
+  try {
+    raw = base64ToBytes(encoded);
+  } catch {
+    return undefined;
+  }
+
+  return raw.length === SERVER_COOKIE_SIZE ? raw : undefined;
+}
+
+/**
  * Retrieve and consume the chain key saved by the most recent buildNHPPacket
  * call for the given remotePublicKey.  Returns undefined if no key was saved.
  * The entry is deleted after retrieval so it cannot be re-used accidentally.
@@ -227,14 +275,19 @@ export async function buildNHPPacket(
   const payloadSize = payload.byteLength + FIELD_SIZES.AEAD_TAG;
   header.typeAndPayloadSize = { type, size: payloadSize };
 
-  // Compute HMAC
+  // Compute HMAC.
+  // Canonical order (nhp/core/initiator.go addHMAC, mirrored by the server's
+  // re-derivation in nhp/core/responder.go checkHMAC):
+  //   Hash(InitialHashString || serverPubKey || header[0:size-hmacLen] || cookie)
+  // The cookie is hashed LAST — hashing it before the header prefix makes the
+  // re-knock fail the server's HMAC check.
+  updateBlake2s(hmacHasher, packet.subarray(0, header.size - FIELD_SIZES.HMAC));
   if (type === NHP_PACKET_TYPES.RNK) {
     const cookie = context.serverCookies.get(remotePublicKey);
     if (cookie) {
       updateBlake2s(hmacHasher, cookie);
     }
   }
-  updateBlake2s(hmacHasher, packet.subarray(0, header.size - FIELD_SIZES.HMAC));
   header.hmac = sumBlake2s(hmacHasher);
 
   // Save the final chain key so parseNHPPacket can continue the Noise chain
@@ -406,7 +459,14 @@ export async function parseNHPPacket(
 
   // Handle cookie packets
   if (type === NHP_PACKET_TYPES.COK) {
-    context.serverCookies.set(remotePublicKey, msg);
+    const cookie = decodeServerCookie(msg);
+    if (!cookie) {
+      // Drop any stale value: a challenge we cannot decode must not leave an
+      // older cookie behind for the next re-knock to sign with.
+      context.serverCookies.delete(remotePublicKey);
+      throw new Error('Invalid cookie challenge');
+    }
+    context.serverCookies.set(remotePublicKey, cookie);
   }
 
   return {
@@ -532,14 +592,16 @@ async function buildNHPPacketGMSM(
   header.typeAndPayloadSize = { type, size: payloadSize };
 
   // Compute HMAC using plain SM3 hash (matching Go server's hmacHash pattern):
-  //   SM3(InitialHashString || serverPubKey || [cookie] || header[0:size-32])
+  //   SM3(InitialHashString || serverPubKey || header[0:size-32] || [cookie])
+  // The cookie is hashed LAST, after the header prefix — see the curve path in
+  // buildNHPPacket for the canonical order.
+  hmacData = concatBytes(hmacData, packet.subarray(0, header.size - FIELD_SIZES.HMAC));
   if (type === NHP_PACKET_TYPES.RNK) {
     const cookie = context.serverCookies.get(remotePublicKey);
     if (cookie) {
       hmacData = concatBytes(hmacData, cookie);
     }
   }
-  hmacData = concatBytes(hmacData, packet.subarray(0, header.size - FIELD_SIZES.HMAC));
   header.hmac = sm3(hmacData);
 
   // Save the final chain key so parseNHPPacketGMSM can continue the Noise chain
@@ -683,7 +745,14 @@ async function parseNHPPacketGMSM(
 
   // Handle cookie packets
   if (type === NHP_PACKET_TYPES.COK) {
-    context.serverCookies.set(remotePublicKey, msg);
+    const cookie = decodeServerCookie(msg);
+    if (!cookie) {
+      // Drop any stale value: a challenge we cannot decode must not leave an
+      // older cookie behind for the next re-knock to sign with.
+      context.serverCookies.delete(remotePublicKey);
+      throw new Error('Invalid cookie challenge');
+    }
+    context.serverCookies.set(remotePublicKey, cookie);
   }
 
   return {

@@ -116,8 +116,7 @@ type Config struct {
 	AllowPrivateRelaySource bool `json:"allowPrivateRelaySource"`
 
 	// CookieSigningKeyBase64 is a base64-encoded 32-byte HMAC key used to
-	// derive overload-mode cookies statelessly from (remoteAddr || time
-	// window). When multiple nhp-server instances sit behind a load
+	// derive stateless cookies from the source IP, peer key and time window. When multiple nhp-server instances sit behind a load
 	// balancer / round-robin DNS, an agent's KNK and its follow-up RKN may
 	// land on different instances; with per-instance random cookie state
 	// (the legacy CookieStore), the second instance can't validate the
@@ -451,6 +450,15 @@ type RemoteConfig struct {
 	Endpoints []string
 	Username  string
 	Password  string
+
+	// Optional TLS for the etcd connection. Unset means plaintext, which
+	// is what every deployment has today. See nhp/etcd.EtcdConfig for why
+	// turning it on matters: the value under Key is the trusted-peer
+	// configuration, so whoever can rewrite it on the wire can install
+	// their own nhp-server public key as trusted.
+	CAFile   string
+	CertFile string
+	KeyFile  string
 }
 
 type HttpConfig struct {
@@ -1229,6 +1237,21 @@ func (s *UdpServer) loadSourceIps() error {
 	return nil
 }
 
+// resolveRemoteConfigPath makes a relative TLS file path relative to the
+// install directory, the way xdpConfigFileName and the audit ledger do.
+//
+// remote.toml is read from ExeDirPath/etc, so an operator who writes
+// "etc/etcd-ca.pem" there means the file next to it. Passed through
+// unchanged it would resolve against the process's working directory
+// instead, and a daemon started by systemd without WorkingDirectory=, or
+// in a container, would refuse to start on a path that looks right.
+func resolveRemoteConfigPath(p string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(ExeDirPath, p)
+}
+
 func (s *UdpServer) initRemoteConn() error {
 	// remote.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "remote.toml")
@@ -1267,6 +1290,9 @@ func (s *UdpServer) initRemoteConn() error {
 			Username:  conf.Username,
 			Password:  conf.Password,
 			Key:       conf.Key,
+			CAFile:    resolveRemoteConfigPath(conf.CAFile),
+			CertFile:  resolveRemoteConfigPath(conf.CertFile),
+			KeyFile:   resolveRemoteConfigPath(conf.KeyFile),
 		}
 
 		err = s.etcdConn.InitClient()

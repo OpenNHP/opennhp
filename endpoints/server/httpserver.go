@@ -510,8 +510,6 @@ func (hs *HttpServer) initRouter() {
 
 	hs.initStorageRouter()
 
-	hs.initKbsRouter()
-
 	/*
 		refreshGrp := g.Group("refresh")
 		refreshGrp.GET("/:token", func(ctx *gin.Context) {

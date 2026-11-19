@@ -118,8 +118,7 @@ type Config struct {
 	AllowPrivateRelaySource bool `json:"allowPrivateRelaySource"`
 
 	// CookieSigningKeyBase64 is a base64-encoded 32-byte HMAC key used to
-	// derive overload-mode cookies statelessly from (remoteAddr || time
-	// window). When multiple nhp-server instances sit behind a load
+	// derive stateless cookies from the source IP, peer key and time window. When multiple nhp-server instances sit behind a load
 	// balancer / round-robin DNS, an agent's KNK and its follow-up RKN may
 	// land on different instances; with per-instance random cookie state
 	// (the legacy CookieStore), the second instance can't validate the

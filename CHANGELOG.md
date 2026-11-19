@@ -9,12 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠ BREAKING CHANGES
 
-* **server:** an agent knock is now accepted for 60 seconds, down from 600.
-  This is an upgrade change: **synchronize the agent and server clocks before deploying**, or an agent whose clock drifts by more than a minute has every knock rejected as stale.
-  The server also drops knocks stamped more than 300 seconds ahead of its clock. Cache entries include that clock allowance in their retention time.
-  A server at replay cache capacity refuses new knocks until entries expire. Size the cache for the configured freshness window plus 360 seconds of peak traffic; each agent has a separate quota.
-  A stale knock is a drop, not a connection block, so a skewed agent retries rather than being locked out.
-  Set `KNKRecvStalenessSeconds` in the server's `etc/config.toml` to 1..600 seconds if a deployment needs more tolerance; zero selects 60. Restart the server after changes. A larger limit also widens the window in which a captured knock can be replayed.
+* **server:** direct and relay-forwarded access use the existing cookie challenge before it opens access. Upgrade native Go agents and applications that use the nhpdevice library before upgrading the server. Older native builds can drop a fast ACK after the cookie challenge. The exchange adds a round trip. Re-knocks are limited to 20 per second per source IP, with a burst of 40. Server replicas behind one endpoint must share a private `CookieSigningKeyBase64` key. DHP evidence keeps its overload-only challenge policy.
+
 * **demo:** the stats site's exported region figure is renamed.
   `totalnumber.js` no longer exports `NHP_TOTAL_ATTACK_COUNTRIES`; the figure is published as `NHP_TOTAL_ATTACK_REGIONS`, and the per-day JSON reports their region columns under `region` instead of `country` (report `schema: 2`), and `history.json` records the figure under `totals.regions` instead of `totals.countries`.
   The ISO 3166-1 alpha-2 codes the figure counts belong to dependencies, disputed areas and special political areas as well as to states, so a published constant called a country count is a claim about those codes that the standard does not support.

@@ -397,6 +397,21 @@ not /64 networks. Static IPs in configured AC, DB and relay peers bypass only
 this per-source admission check so infrastructure can reconnect under pressure.
 Spoofed traffic can claim those addresses too; authentication and the global
 cap still apply. Peers configured only by key or hostname have no IP exemption.
+### Access cookie upgrade
+
+Before upgrading a multi-instance server, set the same private
+`CookieSigningKeyBase64` on every replica behind the endpoint. Use a
+base64-encoded 32-byte random key. A generated process-local key works for a
+single replica. Do not use the key from the Docker demo in a public deployment.
+
+Direct and relay-forwarded access now take one additional round trip. Upgrade native Go agents and applications that embed the nhpdevice library to
+a build containing the fast cookie-reply fix before upgrading the server.
+Older native builds can retry the knock but still drop an ACK that follows
+the challenge within 20 ms. Other clients must support the existing cookie
+retry exchange. The server permits 20
+re-knocks per second from one IP, with a burst of 40. Account for clients
+that share an egress IP before the upgrade.
+
 ### AOP clock tolerance
 
 AOP requests now default to a 120-second maximum age, down from 600 seconds.

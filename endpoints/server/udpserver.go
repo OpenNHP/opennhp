@@ -202,13 +202,13 @@ type UdpServer struct {
 	relayForwardBlockMapMutex sync.Mutex
 	relayForwardBlockMap      map[string]time.Time // indexed by relay-forward mapKey, value is expiry
 
-	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
+	// rknLimiter gates the cookie-verify ECDH for RKN per
 	// source IP. Shared (internally locked) between the direct-UDP receive
 	// loop and the relay-forward handlers. See rknRateLimiter.
 	rknLimiter *rknRateLimiter
 
 	// packetLimiter is the general valid-packet gate. It deliberately lives
-	// alongside (and does not replace) rknLimiter: overload RKNs still need the
+	// alongside (and does not replace) rknLimiter: RKNs still need the
 	// tighter pre-ECDH budget enforced by the existing limiter.
 	packetLimiter        *ipRateLimiter
 	packetRateLimitDrops atomic.Int64
@@ -585,7 +585,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 			log.Critical("failed to generate random cookie signing key: %v", readErr)
 			return fmt.Errorf("failed to generate random cookie signing key: %v", readErr)
 		}
-		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
+		log.Warning("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
 	} else {
 		log.Info("CookieSigningKeyBase64 configured; cookies are stateless and shared across the cluster")
 		// Catch operators who copy the docker-compose demo config and
@@ -995,7 +995,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 
-		// Rate-limit RKN-under-overload per source IP BEFORE the packet
+		// Rate-limit direct RKN per source IP BEFORE the packet
 		// reaches the connection routine (and thus before the cookie-
 		// verify ECDH in responder.checkHMAC). This is the only path that
 		// pays a Noise IK floor per packet ahead of authentication and
@@ -1005,11 +1005,11 @@ func (s *UdpServer) recvPacketRoutine() {
 		// threats, not block-listed — so honest agents and shared-NAT
 		// egress IPs degrade to dropped-RKN (which agents retry) rather
 		// than a hard block. recvTime is reused as the monotonic-ish now.
-		if pkt.HeaderType == core.NHP_RKN && s.device.IsOverload() {
+		if pkt.HeaderType == core.NHP_RKN {
 			if !s.rknLimiter.allow(remoteAddr, recvTime) {
 				s.device.ReleasePoolPacket(pkt)
 				s.metrics.recordDroppedPacket("rate_limited")
-				log.Warning("RKN from %s dropped: per-IP rate limit exceeded under overload", addrStr)
+				log.Warning("RKN from %s dropped: per-IP rate limit exceeded", addrStr)
 				continue
 			}
 		}
@@ -1043,11 +1043,12 @@ func (s *UdpServer) recvPacketRoutine() {
 			conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
-				InitTime:          recvTime,
-				LastLocalRecvTime: recvTime, // not in multithreaded yet, directly assign value
-				Device:            s.device,
-				LocalAddr:         s.listenAddr,
-				RemoteAddr:        remoteAddr,
+				InitTime:           recvTime,
+				LastLocalRecvTime:  recvTime, // not in multithreaded yet, directly assign value
+				Device:             s.device,
+				LocalAddr:          s.listenAddr,
+				RemoteAddr:         remoteAddr,
+				RequireKnockCookie: true,
 				// CookieStore omitted: server cookies are now stateless
 				// (HMAC of remote ip:port + time window). The legacy
 				// per-conn store is dead state on the server side.

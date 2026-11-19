@@ -2,6 +2,8 @@ package core
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"net"
 	"testing"
 	"time"
@@ -487,5 +489,84 @@ func TestCookieVerify_RejectsWrongCookie(t *testing.T) {
 
 	if err := parseRKNOnServer(t, serverDev, wire, remote); err == nil {
 		t.Fatal("expected cookie verify to reject an RKN whose cookie is bound to a different source IP, but it passed")
+	}
+}
+
+func TestAccessKnockUsesExistingCookieExchange(t *testing.T) {
+	t.Run("direct", func(t *testing.T) {
+		testAccessKnockCookieExchange(t, nil)
+	})
+	t.Run("forwarded", func(t *testing.T) {
+		testAccessKnockCookieExchange(t, &net.UDPAddr{IP: net.ParseIP("203.0.113.14"), Port: 40000})
+	})
+}
+
+func testAccessKnockCookieExchange(t *testing.T, client *net.UDPAddr) {
+	t.Helper()
+	agent := newCurveDevice(t, NHP_AGENT, 11)
+	server := newCurveDevice(t, NHP_SERVER, 22)
+	server.AddPeer(&UdpPeer{PubKeyBase64: agent.PublicKeyBase64(), Type: NHP_AGENT})
+	server.SetStatelessCookieParams(bytes.Repeat([]byte{0x42}, 32), 5)
+	conn := sentinelConnection(server, 12346, 12345)
+	conn.RequireKnockCookie = true
+	conn.RealRemoteAddr = client
+	parse := func(wire []byte) error {
+		ppd, err := server.createPacketParserData(&PacketData{
+			BasePacket: &Packet{Content: wire},
+			ConnData:   conn, InitTime: time.Now().UnixNano(),
+		})
+		if ppd != nil {
+			t.Cleanup(ppd.Destroy)
+		}
+		if err != nil {
+			return err
+		}
+		return ppd.validatePeer()
+	}
+
+	knk, err := agent.MsgToPacket(&MsgData{
+		ConnData: sentinelConnection(agent, 12345, 12346),
+		PeerPk:   curvePubKey(server), HeaderType: NHP_KNK,
+		TransactionId: 1, Message: []byte("{}"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parse(bytes.Clone(knk.BasePacket.Content)); got != ErrServerRejectWithCookie {
+		t.Fatalf("initial knock got %v, want cookie challenge", got)
+	}
+
+	if conn.LastRemoteSendTime == 0 {
+		t.Fatal("initial knock did not advance the receive watermark")
+	}
+
+	var proof common.ServerCookieMsg
+	select {
+	case response := <-server.msgToPacketQueue:
+		if response.HeaderType != NHP_COK {
+			t.Fatalf("challenge has header type %d", response.HeaderType)
+		}
+		if decodeErr := json.Unmarshal(response.Message, &proof); decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+	default:
+		t.Fatal("server did not emit a cookie challenge")
+	}
+	value, err := base64.StdEncoding.DecodeString(proof.Cookie)
+	if err != nil || len(value) != CookieSize {
+		t.Fatal("server returned an invalid cookie")
+	}
+	var cookie [CookieSize]byte
+	copy(cookie[:], value)
+	rkn := buildAgentRKNWithCookie(t, agent, curvePubKey(server), &cookie, conn.RemoteAddr)
+	if parseErr := parse(bytes.Clone(rkn)); parseErr != nil {
+		t.Fatalf("server refused a re-knock with its cookie: %v", parseErr)
+	}
+	// A new source port must not reset the peer replay watermark.
+	conn = sentinelConnection(server, 12346, 12347)
+	conn.RequireKnockCookie = true
+	conn.RealRemoteAddr = client
+	if got := parse(bytes.Clone(rkn)); got != ErrReplayPacketReceived {
+		t.Fatalf("re-knock replay on a new connection got %v, want replay rejection", got)
 	}
 }

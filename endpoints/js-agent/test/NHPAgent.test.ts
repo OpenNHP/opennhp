@@ -464,6 +464,41 @@ describe('knock body HeaderType', () => {
     await agent.close();
   });
 
+  it('answers the cookie challenge with an authenticated RNK header', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+    agent.setIdentity({ userId: 'u', deviceId: 'd' });
+
+    // Decouple from crypto + networking: capture the body buildNHPPacket
+    // receives and resolve the response immediately, so we exercise the
+    // per-send injection for both packet types deterministically.
+    const buildSpy = vi
+      .spyOn(packetModule, 'buildNHPPacket')
+      .mockResolvedValue(new Uint8Array([0]));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(agent as any, 'sendAndWaitForResponse')
+      .mockResolvedValueOnce({ type: NHP_PACKET_TYPES.COK, message: '{}' })
+      .mockResolvedValueOnce({ type: NHP_PACKET_TYPES.ACK, message: JSON.stringify(SUCCESS_ACK) });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+
+    const result = await agent.knockResource({
+      resourceId: 'r', serviceId: 's',
+      serverHost: 'nhp.example.com', serverPort: 62206,
+    });
+    expect(result.success).toBe(true);
+
+    const bodyFor = (pt: number) => {
+      const call = buildSpy.mock.calls.find(c => c[0] === pt);
+      expect(call, `buildNHPPacket not called with packet type ${pt}`).toBeTruthy();
+      return JSON.parse(call![4] as string);
+    };
+    expect(bodyFor(NHP_PACKET_TYPES.KNK).headerType).toBe(1); // NHP_KNK
+    expect(bodyFor(NHP_PACKET_TYPES.RNK).headerType).toBe(8); // NHP_RKN
+
+    await agent.close();
+  });
+
   it('sets headerType per send (KNK then RNK) without mutating the shared knockMsg', async () => {
     const server = generateX25519KeyPairBase64();
     const agent = new NHPAgent({ transport: 'websocket' });

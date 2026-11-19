@@ -6,6 +6,13 @@
 # MasterPublicKeyBase64: base64 encoded master public key of KGC
 # DefaultCipherScheme: 0: curve25519, 1: gmsm.
 # MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
-MasterPrivateKeyBase64 = "4KnNzGFzeyhPlf6g/dbIa41jYnZHWM/8T45BwPtEuJQ="
-MasterPublicKeyBase64 = "Vh1qLWYyduCXE0xvZOiFbusAtGTL0T30zejCr5FQQBpaw6SvNrnVID/S1Ud/Otr6JZrJFxRVrUdOXPJ3HnZf/Q=="
+# The key pair below is intentionally EMPTY. Run `nhp-kgc setup` once per
+# deployment to generate it. A value shipped here would be the same master
+# private key in every installation, and in IBC the master private key
+# derives the private key of every identity the KGC serves -- so a shipped
+# one lets anyone holding this file impersonate any user of any deployment
+# that did not replace it. The loader refuses to start while either field is
+# empty (kgc.go), which is what makes `setup` mandatory rather than advisory.
+MasterPrivateKeyBase64 = ""
+MasterPublicKeyBase64 = ""
 DefaultCipherScheme = 0

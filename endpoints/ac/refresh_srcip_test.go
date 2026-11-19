@@ -3,8 +3,6 @@ package ac
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -14,36 +12,115 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 )
 
-// The refresh source address comes from the connection, never from the
-// request.
+// pathSafeAccessToken issues a token whose base64 has no '/' or '+'.
 //
-// It used to be ctx.Query("srcip"). Combined with the enrollment below,
-// one access token opened the protected destination to any address its
-// holder named. Asserted on the source because the binding happens in a
-// route closure built by initRouter, which needs a live listener to
-// exercise; what must not regress is which function supplies the value.
-func TestRefreshSourceComesFromTheConnection(t *testing.T) {
-	src, err := os.ReadFile("httpac.go")
-	if err != nil {
-		t.Fatalf("read httpac.go: %v", err)
+// Those two don't survive a URL path segment: '/' splits it, and '+'
+// becomes a space in the handler's unescape. The character set is the
+// only thing being worked around; the token is otherwise exactly what a
+// client would present.
+func pathSafeAccessToken(t *testing.T, a *UdpAC, entry *AccessEntry) string {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		token := a.GenerateAccessToken(entry)
+		if !strings.ContainsAny(token, "/+") {
+			return token
+		}
 	}
-	code := stripACLineComments(string(src))
+	t.Fatal("no path-safe access token after 100 attempts")
+	return ""
+}
 
-	m := regexp.MustCompile(`(?s)common\.HttpRefreshRequest\{.*?\}`).FindString(code)
-	if m == "" {
-		t.Fatal("HttpRefreshRequest literal not found; re-anchor this test rather than deleting it")
+// A refresh from an address the entry already covers goes through the
+// route and succeeds.
+//
+// This is the test the first version of this change lacked, and its
+// absence is why a regression got as far as review: switching the source
+// to ctx.RemoteIP() refused every legitimate refresh, because this
+// listener binds 127.0.0.1 only (HttpAC.Start) while an entry holds the
+// agent's real address from the knock. The old tests called the handler
+// directly with SrcIp pre-filled, or matched the source text, so neither
+// went through the route and neither noticed.
+func TestRefreshFromAuthorizedAddressSucceeds(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	// FilterMode_IPTABLES with no ipset: HandleAccessControl refuses at
+	// its first step. That is deliberate — programming a real filter is
+	// not something a unit test can do, and this gives the authorized
+	// path a deterministic stop just past the authorization decision, so
+	// the two outcomes are told apart by which refusal comes back.
+	a := &UdpAC{
+		tokenStore: common.NewTokenStore[*AccessEntry](),
+		config:     &Config{FilterMode: FilterMode_IPTABLES},
 	}
-	if strings.Contains(m, `Query(`) {
-		t.Errorf("the refresh source address is read from the request:\n%s", m)
+	entry := &AccessEntry{
+		User:     &common.AgentUser{},
+		SrcAddrs: []*common.NetAddress{{Ip: "10.0.0.5", Port: 443, Protocol: "tcp"}},
+		DstAddrs: []*common.NetAddress{{Ip: "10.0.0.9", Port: 443, Protocol: "tcp"}},
+		OpenTime: 30,
 	}
-	if !strings.Contains(m, "RemoteIP()") {
-		t.Errorf("the refresh source address does not come from RemoteIP():\n%s", m)
+	entry.ExpireTime = time.Now().Add(30 * time.Second)
+	token := pathSafeAccessToken(t, a, entry)
+
+	ha := &HttpAC{ua: a, ginEngine: gin.New()}
+	ha.initRouter()
+
+	// The connection is loopback, as it always is here; the real client
+	// address arrives as the parameter the local front end passes.
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		"/refresh/"+token+"?srcip=10.0.0.5", nil)
+	req.RemoteAddr = "127.0.0.1:40000"
+	ha.ginEngine.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if strings.Contains(body, "not authorized") {
+		t.Fatalf("a refresh from an authorized address was refused: %s", body)
 	}
-	// ClientIP() would be just as wrong: the engine is gin.New() with no
-	// SetTrustedProxies, so gin trusts every proxy and ClientIP() reads
-	// X-Forwarded-For, which the caller writes.
-	if strings.Contains(m, "ClientIP()") {
-		t.Errorf("the refresh source address comes from ClientIP(), which honors caller-supplied forwarding headers:\n%s", m)
+	if !strings.Contains(body, common.ErrACIPSetNotFound.Error()) {
+		t.Fatalf("response = %q, want the refresh to have reached the filter step", body)
+	}
+	if len(entry.SrcAddrs) != 1 {
+		t.Errorf("the entry grew to %d source addresses", len(entry.SrcAddrs))
+	}
+}
+
+// And one naming an address the entry does not cover is refused, through
+// the same route.
+func TestRefreshFromUnauthorizedAddressIsRefusedViaRoute(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	a := &UdpAC{
+		tokenStore: common.NewTokenStore[*AccessEntry](),
+		config:     &Config{FilterMode: FilterMode_IPTABLES},
+	}
+	entry := &AccessEntry{
+		User:     &common.AgentUser{},
+		SrcAddrs: []*common.NetAddress{{Ip: "10.0.0.5", Port: 443, Protocol: "tcp"}},
+		DstAddrs: []*common.NetAddress{{Ip: "10.0.0.9", Port: 443, Protocol: "tcp"}},
+		OpenTime: 30,
+	}
+	entry.ExpireTime = time.Now().Add(30 * time.Second)
+	token := pathSafeAccessToken(t, a, entry)
+
+	ha := &HttpAC{ua: a, ginEngine: gin.New()}
+	ha.initRouter()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		"/refresh/"+token+"?srcip=203.0.113.7", nil)
+	req.RemoteAddr = "127.0.0.1:40000"
+	ha.ginEngine.ServeHTTP(w, req)
+
+	if !strings.Contains(w.Body.String(), "not authorized") {
+		t.Errorf("response = %q, want a refusal", w.Body.String())
+	}
+	if len(entry.SrcAddrs) != 1 {
+		t.Errorf("the entry grew to %d source addresses; a refresh must not enroll one", len(entry.SrcAddrs))
+	}
+	for _, addr := range entry.SrcAddrs {
+		if addr.Ip == "203.0.113.7" {
+			t.Error("the unauthorized address was added to the entry")
+		}
 	}
 }
 
@@ -101,22 +178,13 @@ func TestVerifyAccessTokenResetsRatherThanAccumulates(t *testing.T) {
 
 	// Five verifications must not buy five windows.
 	remaining := time.Until(entry.ExpireTime)
-	if remaining > 35*time.Second {
-		t.Errorf("after 5 verifications the entry has %v left; OpenTime is 30s, so the expiry is accumulating", remaining)
+	full := time.Duration(entry.OpenTime+accessTokenLatePacketBufferSeconds) * time.Second
+	if remaining > full+time.Second {
+		t.Errorf("after 5 verifications the entry has %v left; one window is %v, so the expiry is accumulating", remaining, full)
 	}
-	if remaining < 25*time.Second {
-		t.Errorf("after verification the entry has only %v left; a successful use should restore the full window", remaining)
+	// The window must match GenerateAccessToken's, buffer included: a
+	// refresh that returned only OpenTime would shorten the token.
+	if remaining < full-time.Second {
+		t.Errorf("after verification the entry has %v left, want about %v (OpenTime plus the late-packet buffer)", remaining, full)
 	}
-}
-
-func stripACLineComments(s string) string {
-	var b strings.Builder
-	for _, line := range strings.Split(s, "\n") {
-		if i := strings.Index(line, "//"); i >= 0 {
-			line = line[:i]
-		}
-		b.WriteString(line)
-		b.WriteString("\n")
-	}
-	return b.String()
 }

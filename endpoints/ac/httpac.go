@@ -159,14 +159,24 @@ func (ha *HttpAC) initRouter() {
 		// prefix after URL decoding so percent escapes do not dilute the prefix.
 		log.Info("get refresh request. token: %s, query: %v", common.RedactToken(token), ctx.Request.URL.RawQuery)
 
-		// The source address comes from the connection, never from the
-		// request. RemoteIP() and not ClientIP(): the engine is gin.New()
-		// with no SetTrustedProxies, so gin trusts every proxy by default
-		// and ClientIP() would read X-Forwarded-For — a header the caller
-		// writes. See HandleHttpRefreshOperations.
+		// srcip stays a parameter, deliberately.
+		//
+		// This listener binds 127.0.0.1 only (see Start), so every caller
+		// is a local process — a reverse proxy or a portal on the AC host
+		// — and the connection's own address is always loopback, while an
+		// access entry holds the agent's real address from the knock.
+		// Deriving the source from the connection here would refuse every
+		// legitimate refresh. The parameter is how the local front end
+		// passes the real client address along.
+		//
+		// Accepting it is safe because of what HandleHttpRefreshOperations
+		// does with it: a refresh can only re-apply a grant the entry
+		// already covers, and the entry's addresses were authenticated by
+		// the NHP knock. Naming an address is no longer a way to acquire
+		// one. That was the defect; see GHSA-7g2g-wvgm-35qx.
 		req := &common.HttpRefreshRequest{
 			Token: token,
-			SrcIp: ctx.RemoteIP(),
+			SrcIp: ctx.Query("srcip"),
 		}
 
 		ha.HandleHttpRefreshOperations(ctx, req)

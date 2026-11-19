@@ -51,15 +51,24 @@ func (a *UdpAC) IssueACTokenIfSuccess(artMsg *common.ACOpsResultMsg, entry *Acce
 // Returns the AccessEntry if found, nil otherwise.
 //
 // Resets, not extends. The previous form added OpenTime to the expiry the
-// entry already carried, so each successful verification bought another
-// full window on top of whatever was left: N calls gave N*OpenTime of
-// life, and a client that simply polled could hold an entry open
-// indefinitely without knocking again. A token's lifetime is now the same
-// whether it is used once or often — OpenTime from the last use.
+// entry already carried, so each verification bought another full window
+// on top of whatever was left and N calls gave N*OpenTime of life. The
+// window is now the same whether a token is used once or often.
+//
+// This bounds how long one verification is worth; it does not bound the
+// entry. A client that refreshes more often than every OpenTime keeps its
+// grant alive indefinitely, which is what "refresh" means. Requiring a
+// fresh knock eventually would need an absolute cap — issue time plus a
+// maximum lifetime — which is a separate decision.
+//
+// The window matches GenerateAccessToken's, late-packet buffer included:
+// without it the first refresh would shorten the token's life by the
+// seconds that exist so late packets still match while enforcement is
+// being torn down.
 func (a *UdpAC) VerifyAccessToken(token string) *AccessEntry {
 	entry, found := a.tokenStore.Load(token)
 	if found {
-		entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime) * time.Second)
+		entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime+accessTokenLatePacketBufferSeconds) * time.Second)
 		return entry
 	}
 	return nil

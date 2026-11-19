@@ -60,12 +60,6 @@ FilterMode = 0
 #   ListenPort: TCP port, defaults to 9101 when empty/zero (distinct from the
 #     nhp-server default 9100 so a shared host does not collide).
 #   Note: read once at startup; changing it needs a restart.
-[Metrics]
-Enabled = false
-ListenIp = "127.0.0.1"
-ListenPort = 9101
-
-
 # FailCloseOnServerLoss: what the AC does when it considers EVERY configured
 # nhp-server unreachable (each one has missed 3 consecutive discovery probes).
 # Only consulted in FilterMode 0; FilterMode 1 has never had this fallback.
@@ -79,3 +73,8 @@ ListenPort = 9101
 #     grants until they expire, existing sessions are not cut, and nothing new
 #     opens. Choose this where exposure is worse than an outage.
 # FailCloseOnServerLoss = false
+
+[Metrics]
+Enabled = false
+ListenIp = "127.0.0.1"
+ListenPort = 9101

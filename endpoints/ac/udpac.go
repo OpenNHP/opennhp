@@ -734,20 +734,8 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 						if a.config.FilterMode == FilterMode_IPTABLES {
 							a.iptables.ResetAllInput()
 						}
-					} else if a.config.FilterMode == FilterMode_IPTABLES {
-						// Every configured server is unreachable. What
-						// happens next is a deployment's choice between
-						// availability and containment; see
-						// Config.FailCloseOnServerLoss.
-						if a.config.FailCloseOnServerLoss {
-							// Fail closed: leave the rules alone. Live
-							// knocks keep their grants until they expire,
-							// and nothing new opens, because nothing can
-							// authorize a knock without a server.
-							a.logServerLossFailClosed()
-						} else {
-							a.iptables.AcceptAllInput()
-						}
+					} else {
+						a.onAllServersLost()
 					}
 				}
 			}
@@ -990,6 +978,43 @@ func (a *UdpAC) RemoveServerPeer(serverEndpointKey string) {
 
 func (a *UdpAC) GetConfig() *Config {
 	return a.config // return  config
+}
+
+// onAllServersLost is what the AC does once every configured server is
+// unreachable: a deployment's choice between availability and containment.
+// See Config.FailCloseOnServerLoss.
+//
+// Split out of the discovery loop so the decision can be tested as
+// behavior. Testing it in place meant matching the source with a regex
+// and a fixed look-back window, which breaks on a rename or a reflow and
+// proves less than running it.
+func (a *UdpAC) onAllServersLost() {
+	if a.config == nil || a.config.FilterMode != FilterMode_IPTABLES {
+		// FilterMode 1 (eBPF/XDP) has never had this fallback.
+		return
+	}
+	if failOpenOnServerLoss(a.config) {
+		a.iptables.AcceptAllInput()
+		return
+	}
+	// Fail closed: leave the rules alone. Live knocks keep their grants
+	// until they expire, and nothing new opens, because nothing can
+	// authorize a knock without a server.
+	a.logServerLossFailClosed()
+}
+
+// failOpenOnServerLoss reports whether losing every configured server
+// should open the filter.
+//
+// A pure function of the config so the decision can be tested directly:
+// a.iptables is a concrete *utils.IPTables, so onAllServersLost cannot be
+// driven with a stand-in without changing that field's type everywhere it
+// is used.
+func failOpenOnServerLoss(cfg *Config) bool {
+	if cfg == nil || cfg.FilterMode != FilterMode_IPTABLES {
+		return false
+	}
+	return !cfg.FailCloseOnServerLoss
 }
 
 // logServerLossFailClosed says, once per outage, that the AC is holding

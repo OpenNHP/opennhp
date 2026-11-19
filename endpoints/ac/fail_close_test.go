@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // The default must stay fail-open, because that is what every existing
@@ -20,40 +22,56 @@ func TestFailCloseDefaultsToCurrentBehavior(t *testing.T) {
 	}
 }
 
-// The fail-open path is reached only when the deployment has not asked to
-// fail closed, and only in FilterMode 0.
+// Whether losing every server opens the filter is decided by the config
+// alone, and the matrix is checked by running the decision.
 //
-// Asserted on the source: driving the real path needs a discovery loop, a
-// server that stops answering and a live iptables, none of which a unit
-// test can stand up. What must not regress is the shape of the branch —
-// that AcceptAllInput cannot be reached without consulting the flag.
-func TestAcceptAllInputIsGatedByTheFlag(t *testing.T) {
+// The previous version of this test located the AcceptAllInput call and
+// scanned a fixed window of characters before it for two guard names,
+// which breaks on a rename or a gofmt reflow and never runs the code.
+func TestFailOpenOnServerLossMatrix(t *testing.T) {
+	for name, tc := range map[string]struct {
+		cfg  *Config
+		want bool
+	}{
+		"iptables, default":     {&Config{FilterMode: FilterMode_IPTABLES}, true},
+		"iptables, fail closed": {&Config{FilterMode: FilterMode_IPTABLES, FailCloseOnServerLoss: true}, false},
+		"xdp, default":          {&Config{FilterMode: FilterMode_EBPFXDP}, false},
+		"xdp, fail closed":      {&Config{FilterMode: FilterMode_EBPFXDP, FailCloseOnServerLoss: true}, false},
+		"no config":             {nil, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := failOpenOnServerLoss(tc.cfg); got != tc.want {
+				t.Errorf("failOpenOnServerLoss = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// AcceptAllInput has exactly one call site and it is inside
+// onAllServersLost, which consults the predicate above.
+//
+// This is the one thing the matrix cannot show — that the decision is
+// actually wired to the call. Kept deliberately narrow: a call count and a
+// containing function, not a regex over a window of source.
+func TestAcceptAllInputHasOneGatedCallSite(t *testing.T) {
 	src, err := os.ReadFile("udpac.go")
 	if err != nil {
 		t.Fatalf("read udpac.go: %v", err)
 	}
 	code := string(src)
 
-	calls := regexp.MustCompile(`a\.iptables\.AcceptAllInput\(\)`).FindAllStringIndex(code, -1)
-	if len(calls) != 1 {
-		t.Fatalf("found %d calls to AcceptAllInput, want exactly 1; every one of them opens INPUT and FORWARD to 0.0.0.0/0", len(calls))
+	if n := strings.Count(code, "iptables.AcceptAllInput()"); n != 1 {
+		t.Fatalf("%d call sites for AcceptAllInput, want exactly 1; each one opens INPUT and FORWARD to 0.0.0.0/0", n)
 	}
-
-	// The 600 characters before the call must contain both gates.
-	start := calls[0][0] - 600
-	if start < 0 {
-		start = 0
+	fn := regexp.MustCompile(`(?s)func \(a \*UdpAC\) onAllServersLost\(\) \{.*?\n\}`).FindString(code)
+	if fn == "" {
+		t.Fatal("onAllServersLost not found; re-anchor this test rather than deleting it")
 	}
-	ctx := code[start:calls[0][0]]
-	for _, want := range []string{"FailCloseOnServerLoss", "FilterMode_IPTABLES"} {
-		if !strings.Contains(ctx, want) {
-			t.Errorf("the AcceptAllInput call is not guarded by %s", want)
-		}
+	if !strings.Contains(fn, "iptables.AcceptAllInput()") {
+		t.Error("AcceptAllInput is called from outside onAllServersLost")
 	}
-
-	// Fail-closed must be the branch that does NOT call it.
-	if !regexp.MustCompile(`(?s)if a\.config\.FailCloseOnServerLoss \{.*?logServerLossFailClosed\(\).*?\} else \{\s*a\.iptables\.AcceptAllInput\(\)`).MatchString(code) {
-		t.Error("the fail-closed branch does not look like 'report and leave the rules alone'")
+	if !strings.Contains(fn, "failOpenOnServerLoss(") {
+		t.Error("onAllServersLost does not consult failOpenOnServerLoss")
 	}
 }
 
@@ -67,9 +85,12 @@ func TestServerLossNoticeIsOncePerOutage(t *testing.T) {
 	if !a.serverLossReported.Load() {
 		t.Error("the first notice did not arm the once-flag")
 	}
-	// Second call must be a no-op: Swap returns the previous value.
-	if !a.serverLossReported.Swap(true) {
-		t.Error("the flag was cleared by a repeat call")
+	// Call the function again rather than Swap directly: the claim is that
+	// the function returns early, and poking the flag by hand would pass
+	// even if it did not.
+	a.logServerLossFailClosed()
+	if !a.serverLossReported.Load() {
+		t.Error("a repeat call cleared the once-flag")
 	}
 	// A server answering again re-arms it for the next outage.
 	a.serverLossReported.Store(false)
@@ -79,9 +100,17 @@ func TestServerLossNoticeIsOncePerOutage(t *testing.T) {
 	}
 }
 
-// Every shipped AC config documents the setting, including that it also
-// opens FORWARD — the part that makes this about the whole protected
-// segment rather than just the AC host.
+// Every shipped AC config documents the setting, says that fail-open also
+// opens FORWARD, and — the part a string check cannot see — places the
+// documented line where uncommenting it actually works.
+//
+// TOML scopes every key after a [table] header into that table. The first
+// version of this change appended the block to the end of two files, which
+// put it under [Metrics] and [UserData]; an operator who followed the
+// comment would have set Metrics.FailCloseOnServerLoss, which
+// toml.Unmarshal silently discards. The AC would then fail OPEN during an
+// outage, with no error and no warning — the exact outcome the setting
+// exists to prevent, reached by doing what the file said.
 func TestShippedConfigsDocumentTheSetting(t *testing.T) {
 	for _, p := range []string{
 		filepath.Join("main", "etc", "config.toml"),
@@ -100,6 +129,25 @@ func TestShippedConfigsDocumentTheSetting(t *testing.T) {
 		}
 		if !strings.Contains(s, "FORWARD") {
 			t.Errorf("%s documents the setting without saying FORWARD is opened too", p)
+		}
+
+		// Uncomment the documented line and parse the file for real. This
+		// is the check that catches a misplaced block: a key under a table
+		// header unmarshals into that table and is dropped.
+		live := regexp.MustCompile(`(?m)^#\s*FailCloseOnServerLoss\s*=.*$`).
+			ReplaceAllString(s, "FailCloseOnServerLoss = true")
+		if live == s {
+			t.Errorf("%s has no commented FailCloseOnServerLoss line to uncomment", p)
+			continue
+		}
+		var cfg Config
+		if err := toml.Unmarshal([]byte(live), &cfg); err != nil {
+			t.Errorf("%s does not parse after uncommenting the setting: %v", p, err)
+			continue
+		}
+		if !cfg.FailCloseOnServerLoss {
+			t.Errorf("%s: uncommenting the documented line does not set FailCloseOnServerLoss. "+
+				"It is almost certainly below a [table] header, so the key lands in that table and is discarded.", p)
 		}
 	}
 }

@@ -70,7 +70,14 @@ type UdpAC struct {
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
 	// etcd client
-	etcdConn                *etcd.EtcdConn
+	etcdConn *etcd.EtcdConn
+	// serverLossReported keeps the fail-closed notice to one line per
+	// outage; the discovery check runs every few seconds. Cleared when a
+	// server answers again, so a later outage is reported again.
+	serverLossReported atomic.Bool
+	// noServersReported keeps the "no servers configured" notice to one
+	// line; the discovery check runs every few seconds.
+	noServersReported       atomic.Bool
 	remoteConfigUpdateMutex sync.Mutex
 }
 
@@ -135,6 +142,20 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			log.Error("iptables command not found")
 			return
 		}
+
+		// Remove any 0.0.0.0/0 ACCEPT rules a previous run left behind.
+		//
+		// AcceptInputMode is in-memory and starts false, so it records what
+		// this process did, not what is in the kernel. An AC that had
+		// opened the filter and was then killed uncleanly never ran its
+		// deferred ResetAllInput, and those rules outlive it; on the next
+		// start ResetAllInput returns early on the false flag and, while
+		// the servers are still unreachable, nothing else touches them. An
+		// operator who has just set FailCloseOnServerLoss would be running
+		// a host that is still wide open while the daemon reports a closed
+		// posture. Deleting an absent rule is not an error, so this is
+		// unconditional.
+		a.iptables.ClearStaleAcceptAllInput()
 
 		a.ipset, err = utils.NewIPSet(false)
 		if err != nil {
@@ -725,14 +746,21 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 						totalFail += atomic.LoadInt32(status)
 					}
 
-					if totalFail < int32(len(discoveryFailStatusArr)) {
+					if len(discoveryFailStatusArr) == 0 {
+						// No servers configured at all. "every configured
+						// server is unreachable" is vacuously true here,
+						// and the arithmetic below treats it that way --
+						// which in fail-open mode opened INPUT and FORWARD
+						// on a host that was never given a control plane.
+						// Say so instead, once, and change nothing.
+						a.logNoServersConfigured()
+					} else if totalFail < int32(len(discoveryFailStatusArr)) {
+						a.serverLossReported.Store(false)
 						if a.config.FilterMode == FilterMode_IPTABLES {
 							a.iptables.ResetAllInput()
 						}
 					} else {
-						if a.config.FilterMode == FilterMode_IPTABLES {
-							a.iptables.AcceptAllInput()
-						}
+						a.onAllServersLost()
 					}
 				}
 			}
@@ -975,4 +1003,74 @@ func (a *UdpAC) RemoveServerPeer(serverEndpointKey string) {
 
 func (a *UdpAC) GetConfig() *Config {
 	return a.config // return  config
+}
+
+// onAllServersLost is what the AC does once every configured server is
+// unreachable: a deployment's choice between availability and containment.
+// See Config.FailCloseOnServerLoss.
+//
+// Split out of the discovery loop so the decision can be tested as
+// behavior. Testing it in place meant matching the source with a regex
+// and a fixed look-back window, which breaks on a rename or a reflow and
+// proves less than running it.
+func (a *UdpAC) onAllServersLost() {
+	if a.config == nil || a.config.FilterMode != FilterMode_IPTABLES {
+		// FilterMode 1 (eBPF/XDP) has never had this fallback.
+		return
+	}
+	if failOpenOnServerLoss(a.config) {
+		// Said once per outage, like the fail-closed notice. The default
+		// is the exposing one, so an operator who never touched the
+		// setting is the one who most needs to see it in the log.
+		if !a.serverLossReported.Swap(true) {
+			log.Warning("all configured nhp-servers are unreachable: opening INPUT and FORWARD to 0.0.0.0/0 until one answers. " +
+				"Set FailCloseOnServerLoss = true to keep the filter closed through an outage instead.")
+		}
+		a.iptables.AcceptAllInput()
+		return
+	}
+	// Fail closed: leave the rules alone. Live knocks keep their grants
+	// until they expire, and nothing new opens, because nothing can
+	// authorize a knock without a server.
+	a.logServerLossFailClosed()
+}
+
+// failOpenOnServerLoss reports whether losing every configured server
+// should open the filter.
+//
+// A pure function of the config so the decision can be tested directly:
+// a.iptables is a concrete *utils.IPTables, so onAllServersLost cannot be
+// driven with a stand-in without changing that field's type everywhere it
+// is used.
+func failOpenOnServerLoss(cfg *Config) bool {
+	if cfg == nil || cfg.FilterMode != FilterMode_IPTABLES {
+		return false
+	}
+	return !cfg.FailCloseOnServerLoss
+}
+
+// logServerLossFailClosed says, once per outage, that the AC is holding
+// its rules shut because every server is unreachable.
+//
+// Once and not every five seconds: this fires on a timer, and an operator
+// debugging an outage should find one line that explains the posture, not
+// a wall of them. The flag resets when a server answers again, so a second
+// outage is reported again.
+func (a *UdpAC) logServerLossFailClosed() {
+	if a.serverLossReported.Swap(true) {
+		return
+	}
+	log.Warning("all configured nhp-servers are unreachable and FailCloseOnServerLoss is set: the AC is keeping its filter closed. " +
+		"Live knocks keep their grants until they expire; no new access can be authorized until a server answers.")
+}
+
+// logNoServersConfigured reports, once, that the discovery check has no
+// servers to watch. Separate from the server-loss notice because it is a
+// configuration problem, not an outage, and the remedy is different.
+func (a *UdpAC) logNoServersConfigured() {
+	if a.noServersReported.Swap(true) {
+		return
+	}
+	log.Warning("no nhp-servers are configured: the AC cannot authorize any knock. " +
+		"The filter is left as it is; add a server to etc/server.toml.")
 }

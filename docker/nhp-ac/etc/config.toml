@@ -18,8 +18,23 @@ DefaultCipherScheme = 1
 UserId = "agent-0"
 OrganizationId = "opennhp.org"
 LogLevel = 4
+# FailCloseOnServerLoss: what the AC does when it considers EVERY configured
+# nhp-server unreachable (each one has missed 3 consecutive discovery probes).
+# Only consulted in FilterMode 0; FilterMode 1 has never had this fallback.
+#   false (default) - fail open. The AC installs unconditional ACCEPT rules on
+#     INPUT *and FORWARD* for 0.0.0.0/0, so the host and everything it forwards
+#     to become reachable from any address until a server answers again. This
+#     keeps protected services usable when the control plane is lost, at the
+#     cost of the AC becoming fully transparent exactly when it cannot
+#     authorize a knock.
+#   true - fail closed. The AC leaves its rules alone: live knocks keep their
+#     grants until they expire, existing sessions are not cut, and nothing new
+#     opens. Choose this where exposure is worse than an outage.
+# FailCloseOnServerLoss = false
+
 # UserData: a customized user entry for flexibility.
 # Its key-value pairs will be send to server along with knock message.
+
 [UserData]
 "ExampleKey0" = "StringValue"
 "ExampleKey1" = 1

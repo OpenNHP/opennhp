@@ -59,6 +59,29 @@ type Config struct {
 	FilterMode              int             `json:"filterMode"`
 	Metrics                 metrics.Config  `json:"metrics"`
 
+	// FailCloseOnServerLoss decides what the AC does when it considers
+	// every configured nhp-server unreachable. Restart-only; the zero
+	// value keeps the behavior the AC has always had.
+	//
+	// false (default) — fail open. The AC installs unconditional ACCEPT
+	// rules on INPUT and FORWARD for 0.0.0.0/0, so the host and everything
+	// it forwards to become reachable from any address until a server
+	// answers again. The reasoning is availability: losing the control
+	// plane should not lock the protected services away. The cost is that
+	// the component whose job is "nothing is visible until you knock"
+	// becomes fully transparent exactly when it cannot authorize a knock,
+	// and reaching that state only takes making the AC unable to talk to
+	// its servers.
+	//
+	// true — fail closed. The AC leaves its rules as they are: whatever
+	// live knocks admitted stays admitted until it expires, and nothing
+	// new opens, because nothing can authorize a knock without a server.
+	// Existing sessions are not cut.
+	//
+	// Only consulted in FilterMode 0 (iptables). FilterMode 1 (eBPF/XDP)
+	// has never had this fallback and is unaffected either way.
+	FailCloseOnServerLoss bool `json:"failCloseOnServerLoss"`
+
 	// DisableIPv6Filter turns the XDP filter's IPv6 tree off: every IPv6
 	// packet is passed to the host, the way it was before the tree existed.
 	// Restart-only; the zero value keeps the tree on.

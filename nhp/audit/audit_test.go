@@ -1357,25 +1357,35 @@ func TestAsyncDropRecordsGapMarkerInChain(t *testing.T) {
 		t.Fatal("expected drops while the writer was stalled")
 	}
 
-	// Recover the writer, then keep logging until the "audit_gap" marker
-	// recordGapLocked chains on the first post-recovery entry that can
-	// enqueue actually shows up in the written bytes, polling rather than
-	// hardcoding a settle time + fixed iteration count — the previous fixed
-	// 100ms-then-30*5ms schedule could flake on a contended CI runner.
+	// Recover the writer, then keep logging until a marker accounts for
+	// every drop.
+	//
+	// Waiting for *any* "audit_gap" is not enough, and that is what made
+	// this test flaky. recordGapLocked runs at the top of every Log and
+	// writes the dropped count as a cumulative snapshot, so while the
+	// writer was stalled an early call — one made before the queue filled
+	// — could already chain a marker reporting a partial count. Once the
+	// writer drains, that stale marker appears in the buffer, the old
+	// condition fired on it, and the assertion below then compared a
+	// partial count against every drop. On CI that showed up as
+	// "gap marker reports 7 dropped, but 38 Log calls failed".
+	//
+	// Polling on the number the assertion actually uses keeps the two in
+	// step.
 	close(bw.release)
 	deadline := time.Now().Add(10 * time.Second)
-	foundGap := false
-	for i := 0; !foundGap && time.Now().Before(deadline); i++ {
+	var reported uint64
+	for i := 0; reported < uint64(drops) && time.Now().Before(deadline); i++ {
 		_ = l.Log("knock", SeverityInfo, map[string]string{"post": strconv.Itoa(i)})
 		bw.mu.Lock()
-		foundGap = bytes.Contains(bw.buf.Bytes(), []byte(`"audit_gap"`))
+		reported = maxGapDropped(bw.buf.Bytes())
 		bw.mu.Unlock()
-		if !foundGap {
+		if reported < uint64(drops) {
 			time.Sleep(2 * time.Millisecond)
 		}
 	}
-	if !foundGap {
-		t.Fatal("audit_gap marker never appeared in the chain within the deadline")
+	if reported < uint64(drops) {
+		t.Fatalf("no audit_gap marker accounted for all %d drops within the deadline (best: %d)", drops, reported)
 	}
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
@@ -1389,20 +1399,7 @@ func TestAsyncDropRecordsGapMarkerInChain(t *testing.T) {
 		t.Fatalf("chain with gap marker failed to verify: %v", res.Err)
 	}
 
-	var gapDropped uint64
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		var e Event
-		if json.Unmarshal(sc.Bytes(), &e) != nil {
-			continue
-		}
-		if e.Type == "audit_gap" {
-			if n, _ := strconv.ParseUint(e.Fields["dropped"], 10, 64); n > gapDropped {
-				gapDropped = n
-			}
-		}
-	}
+	gapDropped := maxGapDropped(data)
 	if gapDropped == 0 {
 		t.Fatalf("no audit_gap marker found in the chain:\n%s", data)
 	}
@@ -2186,4 +2183,28 @@ func TestAsyncWriterPartialWriteNoByteDuplication(t *testing.T) {
 	if res.Count < 18 {
 		t.Fatalf("only %d entries survived one partial write: %v", res.Count, res)
 	}
+}
+
+// maxGapDropped returns the largest "dropped" count any audit_gap marker in
+// the ledger reports.
+//
+// The largest and not the sum: recordGapLocked writes the cumulative
+// counter, so a later marker supersedes an earlier one rather than adding
+// to it.
+func maxGapDropped(data []byte) uint64 {
+	var best uint64
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var e Event
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		if e.Type == "audit_gap" {
+			if n, _ := strconv.ParseUint(e.Fields["dropped"], 10, 64); n > best {
+				best = n
+			}
+		}
+	}
+	return best
 }

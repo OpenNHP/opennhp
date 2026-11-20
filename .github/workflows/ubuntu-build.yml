@@ -71,14 +71,14 @@ jobs:
       run: make
 
     # `make` does not touch the eBPF C sources, so without this step a
-    # compile error in nhp_ebpf_xdp.c / tc_egress.c / nhp_server_xdp.c only
+    # compile error in nhp_ac_xdp.c / tc_egress.c / nhp_server_xdp.c only
     # surfaces when deploy-demo-v2 runs `make ebpf-objs` at deploy time.
     - name: Build eBPF objects
       run: |
         sudo apt-get update
         sudo apt-get install -y clang libbpf-dev
         make ebpf-objs
-        test -s release/nhp-ac/etc/nhp_ebpf_xdp.o
+        test -s release/nhp-ac/etc/nhp_ac_xdp.o
         test -s release/nhp-ac/etc/tc_egress.o
         test -s release/nhp-server/etc/nhp_server_xdp.o
 
@@ -268,7 +268,7 @@ jobs:
         # Root holds CAP_BPF; a load without it is refused with EPERM, which
         # says nothing about the program.
         sudo "$verify" --variant ac \
-          --obj release/nhp-ac/etc/nhp_ebpf_xdp.o \
+          --obj release/nhp-ac/etc/nhp_ac_xdp.o \
           --tc-obj release/nhp-ac/etc/tc_egress.o
         sudo "$verify" --variant server \
           --obj release/nhp-server/etc/nhp_server_xdp.o \

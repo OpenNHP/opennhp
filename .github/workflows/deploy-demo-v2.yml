@@ -143,7 +143,7 @@ jobs:
           exit 1
 
       # The demo AC runs in eBPF/XDP mode (FilterMode = 1), so the build has to
-      # compile nhp_ebpf_xdp.o / tc_egress.o with clang. libbpf-dev is required,
+      # compile nhp_ac_xdp.o / tc_egress.o with clang. libbpf-dev is required,
       # not optional: the sources #include <bpf/bpf_helpers.h>,
       # <bpf/bpf_core_read.h> and <bpf/bpf_endian.h>, which are NOT vendored in
       # the repo (only vmlinux.h is). Without it clang fails with
@@ -270,7 +270,7 @@ jobs:
 
           # nhp-acd refuses to start if either object is missing, so fail the
           # build here rather than at deploy time on the live host.
-          test -s release/nhp-ac/etc/nhp_ebpf_xdp.o
+          test -s release/nhp-ac/etc/nhp_ac_xdp.o
           test -s release/nhp-ac/etc/tc_egress.o
           # nhp-serverd falls open (no ingress filter) if its object is
           # missing, which is a silent loss of protection rather than a
@@ -303,7 +303,7 @@ jobs:
           # eBPF objects loaded by nhp-acd at startup in FilterMode=1. They must
           # land in etc/ next to the binary on the AC host.
           mkdir -p artifact/ac/etc
-          cp release/nhp-ac/etc/nhp_ebpf_xdp.o artifact/ac/etc/
+          cp release/nhp-ac/etc/nhp_ac_xdp.o artifact/ac/etc/
           cp release/nhp-ac/etc/tc_egress.o artifact/ac/etc/
 
           # Relay
@@ -2667,7 +2667,7 @@ jobs:
           if [ "$FILTER_MODE" = "1" ]; then
             echo "Checking that the kernel accepts the new eBPF objects..."
             scp ./artifact/ebpf-verify/nhp-ebpf-verify nhp-ac:/tmp/nhp-ebpf-verify
-            scp ./artifact/ac/etc/nhp_ebpf_xdp.o nhp-ac:/tmp/nhp-verify-xdp.o
+            scp ./artifact/ac/etc/nhp_ac_xdp.o nhp-ac:/tmp/nhp-verify-xdp.o
             scp ./artifact/ac/etc/tc_egress.o nhp-ac:/tmp/nhp-verify-tc.o
             ssh nhp-ac "chmod +x /tmp/nhp-ebpf-verify"
             # A pin directory left behind by a run that was killed would be
@@ -2717,7 +2717,7 @@ jobs:
           # .toml, so it cannot clobber these.
           echo "Uploading eBPF objects..."
           ssh nhp-ac "mkdir -p $REMOTE_DIR/etc"
-          scp ./artifact/ac/etc/nhp_ebpf_xdp.o nhp-ac:$REMOTE_DIR/etc/
+          scp ./artifact/ac/etc/nhp_ac_xdp.o nhp-ac:$REMOTE_DIR/etc/
           scp ./artifact/ac/etc/tc_egress.o nhp-ac:$REMOTE_DIR/etc/
 
           # The iptables bootstrap script is always shipped: it is the baseline

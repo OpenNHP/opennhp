@@ -33,7 +33,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string, opts LoadOptions)
 
 	handle, err := utilsebpf.EngineLoad(utilsebpf.EngineLoadParams{
 		Variant:       utilsebpf.VariantAC,
-		ProgObjPath:   filepath.Join(bpfDir, "nhp_ebpf_xdp.o"),
+		ProgObjPath:   filepath.Join(bpfDir, "nhp_ac_xdp.o"),
 		TcProgObjPath: filepath.Join(bpfDir, "tc_egress.o"),
 		PinDir:        utilsebpf.DefaultPinDir,
 		ComponentId:   acId,

@@ -1087,9 +1087,9 @@ func TestServerActionNamesCoverTheProgramsActionCodes(t *testing.T) {
 // a code the table does not know shows up in the published log as
 // "REASON=UNKNOWN-7", which the site's classifier cannot place.
 func TestAcActionNamesCoverTheProgramsActionCodes(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"))
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ac_xdp.c"))
 	if err != nil {
-		t.Fatalf("read nhp_ebpf_xdp.c: %v", err)
+		t.Fatalf("read nhp_ac_xdp.c: %v", err)
 	}
 
 	re := regexp.MustCompile(`(?m)^#define\s+(ACT_AC_\w+)\s+(\d+)`)

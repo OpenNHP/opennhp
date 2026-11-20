@@ -174,7 +174,7 @@ func (p *cExprParser) parseFactor(t *testing.T) int {
 // on it proves nothing.
 func TestLegacyAuditDropFloodCannotSilenceAdmits(t *testing.T) {
 	statsPath := filepath.Join("..", "..", "ebpf", "xdp", "nhp_xdp_stats.h")
-	progPath := filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c")
+	progPath := filepath.Join("..", "..", "ebpf", "xdp", "nhp_ac_xdp.c")
 
 	src, err := os.ReadFile(statsPath)
 	if err != nil {

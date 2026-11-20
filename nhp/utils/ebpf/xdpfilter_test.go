@@ -27,9 +27,9 @@ import (
 // acIngressSource reads the AC's ingress program.
 func acIngressSource(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ac_xdp.c"))
 	if err != nil {
-		t.Fatalf("read nhp_ebpf_xdp.c: %v", err)
+		t.Fatalf("read nhp_ac_xdp.c: %v", err)
 	}
 	return string(b)
 }
@@ -391,7 +391,7 @@ func TestExpiredKnocksAreNotScans(t *testing.T) {
 // the packet is judged exactly like one that was never admitted.
 func TestLapsedKnocksKeepTheirGrace(t *testing.T) {
 	text := acIngressSource(t)
-	defs := cDefines(t, filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"))
+	defs := cDefines(t, filepath.Join("..", "..", "ebpf", "xdp", "nhp_ac_xdp.c"))
 
 	// The grace is a number of seconds, and it is bounded: long enough to
 	// cover the TCP retransmission ladder, short enough not to be a second

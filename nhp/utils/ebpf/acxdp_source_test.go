@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// acProgramSource returns nhp_ebpf_xdp.c, the AC's ingress program.
+// acProgramSource returns nhp_ac_xdp.c, the AC's ingress program.
 //
 // These are source-shape tests rather than kernel ones on purpose: loading
 // the program needs CAP_BPF + CAP_NET_ADMIN and a compiled object, so the
@@ -18,9 +18,9 @@ import (
 // that always runs.
 func acProgramSource(t *testing.T) string {
 	t.Helper()
-	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"))
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_ac_xdp.c"))
 	if err != nil {
-		t.Fatalf("read nhp_ebpf_xdp.c: %v", err)
+		t.Fatalf("read nhp_ac_xdp.c: %v", err)
 	}
 	return string(src)
 }
@@ -84,7 +84,7 @@ func acUnconditionalUDPSpan(t *testing.T, src string) string {
 	)
 	i := strings.Index(src, start)
 	if i < 0 {
-		t.Fatalf("cannot locate %q in nhp_ebpf_xdp.c; if the program was restructured, "+
+		t.Fatalf("cannot locate %q in nhp_ac_xdp.c; if the program was restructured, "+
 			"re-anchor this test rather than deleting it", start)
 	}
 	i += len(start)
@@ -92,7 +92,7 @@ func acUnconditionalUDPSpan(t *testing.T, src string) string {
 	// conn_track helpers defined above xdp_white_prog().
 	rel := strings.Index(src[i:], end)
 	if rel < 0 {
-		t.Fatalf("cannot locate %q after %q in nhp_ebpf_xdp.c; if the program was restructured, "+
+		t.Fatalf("cannot locate %q after %q in nhp_ac_xdp.c; if the program was restructured, "+
 			"re-anchor this test rather than deleting it", end, start)
 	}
 	return src[i : i+rel]
@@ -238,7 +238,7 @@ func TestAcIngressNeverAdmitsOnSourcePortAlone(t *testing.T) {
 	code := acProgramCode(t)
 
 	if strings.Contains(code, "DNS_PORT") {
-		t.Error("nhp_ebpf_xdp.c still mentions DNS_PORT; a UDP source port of 53 must not admit anything")
+		t.Error("nhp_ac_xdp.c still mentions DNS_PORT; a UDP source port of 53 must not admit anything")
 	}
 
 	paired, _ := pairedPortComparisons(code)

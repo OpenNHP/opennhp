@@ -330,6 +330,10 @@ check-plugin-deps:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Checking plugin dependency alignment... $(END_COLOUR)"
 	@./scripts/check-plugin-deps.sh
 
+check-version-sync:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Checking version sync... $(END_COLOUR)"
+	@./scripts/check-version-sync.sh
+
 plugins: check-plugin-deps
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building plugins... $(END_COLOUR)"
 	@for dir in ./examples/server_plugin/*/; do \
@@ -491,4 +495,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp init-demoapp test-demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf ebpf-objs clean_ebpf ebpf-verify
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp init-demoapp test-demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps check-version-sync dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf ebpf-objs clean_ebpf ebpf-verify

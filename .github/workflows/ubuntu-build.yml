@@ -46,6 +46,13 @@ jobs:
     steps:
     - uses: actions/checkout@v7
 
+    # The public pages (agent.opennhp.org / demo.opennhp.org) render the SDK
+    # version from nhp/version/VERSION. If that file drifts from the released
+    # version in .release-please-manifest.json, the pages advertise a stale
+    # SDK — so fail here, before anything is built or deployed.
+    - name: Check version sync
+      run: bash scripts/check-version-sync.sh
+
     - name: Set up Go
       uses: actions/setup-go@v7
       with:

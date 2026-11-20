@@ -1,8 +1,10 @@
 // Shared page footer, mirroring the one on https://agent.opennhp.org/:
-// a monospace public-IP line, an OpenNHP attribution, the sponsor credit,
-// and a link to this demo app's source. The IP is fetched client-side
-// from ipify (same pattern as the js-agent demo); the app's CSP
+// a monospace public-IP line, the SDK version badge, an OpenNHP attribution,
+// the sponsor credit, and a link to this demo app's source. The IP is fetched
+// client-side from ipify (same pattern as the js-agent demo); the app's CSP
 // connect-src must allow api.ipify.org / api6.ipify.org for it to load.
+
+import { NHPAgent } from '@opennhp/agent';
 
 import { t } from '../i18n.js';
 
@@ -26,6 +28,7 @@ export function renderFooter(root: HTMLElement): void {
   footer.className = 'footer';
   footer.innerHTML = `
     <div class="ip-display" id="ipDisplay">${t('footer.detectingIp')}</div>
+    <div class="sdk-version">${t('footer.sdkVersion', { version: NHPAgent.version || '—' })}</div>
     <div>${t('footer.poweredBy')}</div>
     <div>${t('footer.sponsoredBy')}</div>
   `;

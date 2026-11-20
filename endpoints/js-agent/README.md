@@ -37,6 +37,26 @@ npm run build      # emits dist/index.js + dist/index.d.ts (vite + tsc)
 npm run test:run   # vitest
 ```
 
+## Version
+
+The SDK's version number comes from `nhp/version/VERSION`, the same file the Go
+binaries read. It is injected at build time by `vite.config.ts` as
+`__SDK_VERSION__` and exposed as `NHPAgent.version`. The public pages render it
+(agent.opennhp.org, reg.opennhp.org and demo.opennhp.org), so it must match the
+released version.
+
+It is kept in sync automatically. `release-please-config.json` declares
+`nhp/version/VERSION` as the release's `version-file` and this package's
+`package.json` (plus `package-lock.json`) under `extra-files`, so the
+release-please release PR bumps them together with
+`.release-please-manifest.json`. `scripts/check-version-sync.sh` (run in CI and
+via `make check-version-sync`) fails the build if they ever drift apart.
+
+> The `release-please` workflow deliberately passes **no** `release-type` input
+> to the action: the action only reads `release-please-config.json` when that
+> input is absent. With it set, the action runs in "simple" mode and ignores
+> the config file, so the version files would silently stop being updated.
+
 ## Demo deployment
 
 Built and deployed by the `deploy-jsagent` job in

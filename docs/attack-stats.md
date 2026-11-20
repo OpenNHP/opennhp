@@ -142,13 +142,15 @@ What each one means:
 | --- | --- | --- | --- |
 | `[NHP-STAT]` | One per active class per window (`WINDOW=60s`) | **Exact** | `PKTS` (packets in this window), `LOGGED` (how many were also written per-packet), `TOTAL` (the class's running total since the daemon started) |
 | `[NHP-DROP]` | Per sampled packet | **A sample** | `REASON`, `SRC`, `DST`, `LEN`, `PROTO`, `SPT`, `DPT`, `RELAY` |
-| `[NHP-SCAN]` | Periodic summary (`WINDOW=300s`) | A summary of a sample | `UNIQ_SRC`, `UNIQ_PORT`, `PKTS`, and `LRU`, the flag that says the counting tables were at least 95% full |
+| `[NHP-SCAN]` | Periodic summary (`WINDOW=300s`) | Exact per window, unless `LRU=1` | `UNIQ_SRC`, `UNIQ_PORT`, `PKTS` — the window's dropped packets, counted per source and per destination port — and `LRU`, the flag that says the counting tables were at least 95% full and may have evicted entries |
 | `EVENT_LOG_BUDGET_EXHAUSTED` | Once per day | — | The day's per-packet byte budget is spent; the `[NHP-STAT]` totals continue |
 
 The distinction between the first two lines is the single most important thing to understand about the published numbers:
 
 - **`[NHP-STAT]` is the count of record.** It is emitted per class per window, it is not rate-limited, and it is where the site's exact packet totals come from.
 - **`[NHP-DROP]` is a sample.** It is written under a token bucket in the kernel, so it shows *what* was dropped and *from where*, but never *how many*. Any ranking derived from it — the top sources, the top destination ports — is a ranking of a sample.
+
+The third line is a third channel again, and the site does not publish from it. The kernel counts *every* dropped packet into two bounded tables — one per (protocol, destination port), one per source — whatever the reporting budget says, so the `PKTS` on that line is an exact count of the window's drops. The tables are LRU, so a sweep wider than the table evicts the coldest keys and the ranking becomes approximate; `LRU=1` is what announces that. The site's own top sources and top destination ports come from the sampled per-packet lines instead.
 
 The `TOTAL` field is cumulative since the daemon started. That is what makes a restart visible: a `TOTAL` that goes backwards between two windows means the daemon restarted, and the site reports that as `restarts_detected`.
 
@@ -221,7 +223,7 @@ The key is pinned to the relay's private address and carries `restrict`, which t
 from="<relay private IP>",restrict,command="<path>/nhp-xdplog-export.sh" <collector public key>
 ```
 
-**Hop 3 — the collector caches.** The collector runs on the relay host, once a day. For every (source, day) it pulls the day whose cache is missing, smaller than the remote, or is today, it runs `get`, rejects an empty download, trims a trailing partial line, gzips the result with `gzip -n`, and writes it atomically. A sidecar records the size and mtime the server reported, so the next run can tell "unchanged" from "changed" without comparing against the compressed local copy. The cache directory is mode 0700 and is the only place on the relay where unmasked source addresses exist.
+**Hop 3 — the collector caches.** The collector runs on the relay host, once a day. For every (source, day) it pulls a day when the cache or its sidecar is missing, when the day is today — its log is still being written — or when the size or mtime the server reports for it has changed. For each such day it runs `get`, rejects an empty download, trims a trailing partial line, gzips the result with `gzip -n`, and writes it atomically. The sidecar is what makes the third case work: it records the size and mtime the server reported at the moment of the pull, so the next run can tell "unchanged" from "changed" without comparing against the compressed local copy. The cache directory is mode 0700 and is the only place on the relay where unmasked source addresses exist.
 
 Two operational details of this hop are worth knowing:
 
@@ -377,7 +379,7 @@ const NHP_TOTAL_ATTACK_REGIONS = <regions>;
 
 All three are written even on an empty site, as `0`, so an embedding page never gets a 404 and a dangling reference. The third constant counts **regions**: the two-letter ISO 3166-1 alpha-2 codes the international standard assigns to every country and area it lists, which includes dependencies, disputed areas and special political areas as well as states. It was once called `NHP_TOTAL_ATTACK_COUNTRIES`, and that name is gone — a published figure called a country count is a claim about those codes that the standard does not support. The old name is still *read* when the `history` subcommand parses an older file, and is never written.
 
-**The detail page's JSON is a `Report`, schema 2.** It carries the day's totals (`total_pkts`, `drop_pkts`, `pass_pkts`, `drop_share`, `non_attack_drop_pkts`), the per-reason and per-category breakdowns, the top sources and top destination ports, the hourly series, the protocol mix, the restart list, and the unknown reasons. The hourly series is present only for hours that have a `[NHP-STAT]` line, which is why a missing hour is not a quiet hour.
+**The detail page's JSON is a `Report`, schema 2.** It carries the day's totals (`total_pkts`, `drop_pkts`, `pass_pkts`, `drop_share`, `non_attack_drop_pkts`), the per-reason and per-category breakdowns, the top sources and top destination ports, the hourly series, the protocol mix, the restart list, and the unknown reasons. The hourly series is present only for hours that have a `[NHP-STAT]` line, which is why a missing hour is not a quiet hour. It also says how representative the sampled figures are: `drop_sampled_events` is how many dropped packets were written out per-packet, and `drop_sampling_rate` is that number over the day's exact drop total — the share of the drops the filter managed to write down.
 
 **The homepage renders a source's display name, the JSON does not.** `server` reads as a generic noun in a table that is otherwise all dates and numbers, so the homepage shows `nhp-server` and `nhp-ac`. `source` is a published field of `index.json` and renaming it would break anyone already parsing it, so the JSON keeps the raw directory name.
 
@@ -438,7 +440,7 @@ The operational truth for this pipeline is the runbook, not this article. This c
 
 **Adding a source.** A new source needs four things: a line in `sources.conf` (the name must be `server` or `ac`, because the log prefix `nhp_<name>_xdp` is derived from it), an export script on that host, a collector public key installed in that host's `authorized_keys` behind that script, and a parser that understands the log's shape. The nhp-ac's export script is a near-copy of the nhp-server's; the two hosts' data ends up in the same published site.
 
-**Where the procedures are.** `terraform/demo/RUNBOOK.md` carries the deployment and rollback steps, the recovery paths, the manual backfill procedure when a timer window is missed, and the key rotation procedure. `terraform/demo/VERIFY-server-xdp.zh-cn.md` carries the netns rehearsal for a filter change, the pre-deploy baseline, and the same commands to run after a deploy.
+**Where the procedures are.** `terraform/demo/RUNBOOK.md` carries the deployment and rollback steps, the recovery paths, the manual backfill procedure when a timer window is missed, and the key rotation procedure. The hands-on procedure — the netns rehearsal for a filter change, the pre-deploy baseline, and the same commands to run after a deploy — is in `terraform/demo/VERIFY-server-xdp.zh-cn.md`, which is written in Chinese. An English reader who wants the filter's behavior explained rather than rehearsed is served by [eBPF Internals](/ebpf/) and by the runbook's own *nhp-server ingress filter (XDP)* section.
 
 ### Source locations
 
@@ -446,7 +448,7 @@ The operational truth for this pipeline is the runbook, not this article. This c
 - `deploy/scripts/xdpstats-collect.sh` — the `-f` / `XDPSTATS_SITE_FORCE` path.
 - `.github/workflows/deploy-demo-v2.yml` — the `deploy-xdpstats` job: its preflight, its forced rebuild, and its gates.
 - `terraform/demo/RUNBOOK.md` — sections *XDP attack stats site (stats.opennhp.org)*, *Analysing the XDP event log (attack report)*, and *nhp-server ingress filter (XDP)*.
-- `terraform/demo/VERIFY-server-xdp.zh-cn.md` — the verification procedure.
+- `terraform/demo/VERIFY-server-xdp.zh-cn.md` — the verification procedure (Chinese).
 
 ## 9. Where to look next
 
@@ -456,7 +458,7 @@ The operational truth for this pipeline is the runbook, not this article. This c
 | Where things live in the repository | [Understand the Code](/code/) |
 | The CLI of the analyzer, every flag, and the report's fields | `endpoints/xdplog-report/README.md` |
 | Deploying, rolling back, and recovering the stats site | `terraform/demo/RUNBOOK.md` |
-| Verifying a filter change before and after it ships | `terraform/demo/VERIFY-server-xdp.zh-cn.md` |
+| Verifying a filter change before and after it ships | `terraform/demo/VERIFY-server-xdp.zh-cn.md` (Chinese) |
 | The protocol the filter deliberately does not parse | [Protocol Reference](/protocol/) |
 | The default-deny property this layer implements | [Features](/features/) |
 

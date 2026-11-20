@@ -380,3 +380,5 @@ OpenNHP 的入站过滤是在内核中实现的，源码位于 `nhp/ebpf/xdp/`�
 - `nhp/utils/ebpf/engine_linux.go`：两个守护进程共用的加载器，负责加载、挂载、能力回收与白名单热重载。
 
 加载顺序、能力（capability）回收的语义，以及 `etc/xdp.toml` 每个字段的生效方式，详见 [eBPF 原理](/zh-cn/ebpf/)。
+
+过滤器丢弃的包由 `endpoints/xdplog-report` 离线分析，并发布为 <https://stats.opennhp.org/> 上的每日汇总。这条流水线的接缝、发布产物与每个数字的确切含义，详见 [攻击统计](/zh-cn/attack-stats/)。

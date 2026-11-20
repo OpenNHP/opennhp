@@ -62,6 +62,9 @@ The `endpoints` module contains executable daemons:
 | `ac/` | `nhp-ac` | Access Controller managing firewall rules |
 | `db/` | `nhp-db` | Data Broker for DHP (Data-content Hiding Protocol) |
 | `kgc/` | `nhp-kgc` | Key Generation Center for IBC keys |
+| `xdplog-report/` | `xdplog-report` | Offline XDP event-log analyzer; publishes stats.opennhp.org — see [Attack Stats](/attack-stats/) |
+
+The analyzer is the reader half of a two-part pipeline: the XDP filter decides what may exist, and this tool turns the filter's daily log into the published summaries at <https://stats.opennhp.org/>. [Attack Stats](/attack-stats/) explains how the two fit together and what each published figure means.
 
 #### NHP-DB operational notes
 

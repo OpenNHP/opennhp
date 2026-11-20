@@ -160,6 +160,8 @@ release/nhp-ac/etc/tc_egress.o
 release/nhp-server/etc/nhp_server_xdp.o
 ```
 
+AC 的 XDP 目标文件同时被纳入版本库，位置是 `endpoints/ac/main/etc/nhp_ac_xdp.o`：从该目录启动的运行会从那里加载它——加载器的目标文件路径相对于工作目录（`endpoints/ac/ebpf/ebpfegine.go` 找的是 `etc/nhp_ac_xdp.o`），而不是上面那个 release 目录。纳入版本库的构建产物是一个承诺，所以 CI 会守住它：`ebpf-verifier` job 用 `nhp-ebpf-verify` 把这个文件本身加载进 runner 的内核，`nhp/utils/ebpf/acxdp_tracked_test.go` 再把它与当前源码编译出的目标文件对比，过期的副本不会被悄悄提交。
+
 因此"缺少目标文件"是一个**运行时**状态，有两种不同的答案——AC 拒绝启动，server 不带过滤运行。第 7 章会回到这个分歧，因为它是这一层里最出人意料的事情。
 
 注意 `docker/Dockerfile.server` 用的是 `make init serverd plugins`，并不编译 eBPF 目标文件，所以容器镜像里根本没有 `nhp_server_xdp.o`。容器化的 `nhp-serverd` 因此不带入站过滤器运行——对于一台暴露面由别处管理的主机来说，这正是正确的 fail-open 答案。

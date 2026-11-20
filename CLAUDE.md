@@ -427,6 +427,19 @@ open. Two gates answer the question before anything acts on it:
   neither reused nor touched; a refusal aborts the deploy with the service
   still up.
 
+The PR gate asks about a fourth object as well: the AC's XDP object is
+tracked in the source tree (`endpoints/ac/main/etc/nhp_ac_xdp.o`), because a
+run started from there loads it from there — the loader's object paths are
+relative to the working directory (`endpoints/ac/ebpf/ebpfegine.go` asks for
+`etc/nhp_ac_xdp.o`) — and not from the release directory the job builds. It
+is a build artifact of a toolchain the repository does not pin, so it is
+loaded into the runner's kernel as well: an object nobody loads is an object
+nobody knows, and a refusal of it would surface only on the machine that
+runs from the source tree, where the fail-closed backstop then keeps tcp/443
+shut. `nhp/utils/ebpf/acxdp_tracked_test.go` keeps it equal to what the
+current source builds (same maps, same programs, same constants), so a stale
+copy cannot be committed unnoticed.
+
 The load goes through the loader the daemons use (`nhp/utils/ebpf`), not
 through `bpftool`, and that is not a preference:
 

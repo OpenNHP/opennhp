@@ -160,6 +160,8 @@ release/nhp-ac/etc/tc_egress.o
 release/nhp-server/etc/nhp_server_xdp.o
 ```
 
+The AC's XDP object is tracked in the source tree as well, at `endpoints/ac/main/etc/nhp_ac_xdp.o`, because a run started from that directory loads it from there: the loader's object paths are relative to the working directory (`endpoints/ac/ebpf/ebpfegine.go` asks for `etc/nhp_ac_xdp.o`), not for the release directory above. A tracked build artifact is a promise, so CI keeps it honest — the `ebpf-verifier` job loads this exact file into the runner's kernel with `nhp-ebpf-verify`, and `nhp/utils/ebpf/acxdp_tracked_test.go` compares it with the object the current source builds, so a stale copy cannot be committed unnoticed.
+
 "Missing object" is therefore a runtime condition with two different answers — the AC refuses to start, the server runs unfiltered. Chapter 7 returns to that split, because it is the single most surprising thing in this layer.
 
 Note that `docker/Dockerfile.server` builds with `make init serverd plugins` and does not build the eBPF objects, so the container image ships no `nhp_server_xdp.o` at all. A containerized `nhp-serverd` therefore runs without the ingress filter, which is the correct fail-open answer for a host whose exposure is managed elsewhere.

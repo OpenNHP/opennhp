@@ -302,6 +302,57 @@ jobs:
           exit 1
         fi
 
+    # The AC's XDP object is tracked in the source tree as well
+    # (endpoints/ac/main/etc/nhp_ac_xdp.o): a run started from there loads
+    # it from there -- the loader's object paths are relative to the working
+    # directory (endpoints/ac/ebpf/ebpfegine.go asks for
+    # "etc/nhp_ac_xdp.o") -- and not from the release directory this job
+    # fills. It is a build artifact of a toolchain this repository does not
+    # pin, so it has to be asked about here as well: an object nobody loads
+    # is an object nobody knows, and a refusal of it would surface only on
+    # the machine that runs from the source tree, where the fail-closed
+    # backstop then keeps tcp/443 shut.
+    #
+    # The TC egress object is the one this job built: the tree carries the
+    # XDP object alone, and the two share their maps by name, which is how
+    # the daemon loads them.
+    - name: Ask the kernel about the tracked AC object
+      run: |
+        set -euo pipefail
+        verify=release/nhp-ebpf-verify/nhp-ebpf-verify
+        tracked=endpoints/ac/main/etc/nhp_ac_xdp.o
+        if [ ! -x "$verify" ]; then
+          echo "::error::$verify is missing; the step above builds it with `make ebpf-verify`"
+          exit 1
+        fi
+        if [ ! -s "$tracked" ]; then
+          # A tree that does not track the object has nothing to ask about;
+          # a tree that tracks it and lost it is broken.
+          if git ls-files --error-unmatch "$tracked" >/dev/null 2>&1; then
+            echo "::error::$tracked is tracked but missing or empty"
+            exit 1
+          fi
+          echo "the tree tracks no $tracked; there is nothing to ask about"
+          exit 0
+        fi
+        # A leftover from an earlier run that was killed would make the check
+        # at the end fail for the wrong reason, so it is cleared first.
+        sudo rm -rf /sys/fs/bpf/nhp-verify-*
+        # Root holds CAP_BPF; a load without it is refused with EPERM, which
+        # says nothing about the program.
+        sudo "$verify" --variant ac \
+          --obj "$tracked" \
+          --tc-obj release/nhp-ac/etc/tc_egress.o
+        # The load pins into a directory of its own and removes it again;
+        # nothing of a running daemon's is touched. This asserts it, so a
+        # change that starts leaving pins behind fails here rather than on a
+        # demo host.
+        if sudo ls -A /sys/fs/bpf | grep -q '^nhp-verify'; then
+          echo "::error::the verify load left pins behind in /sys/fs/bpf"
+          sudo ls -A /sys/fs/bpf
+          exit 1
+        fi
+
     - name: Run the eBPF tests with CAP_BPF
       working-directory: nhp
       run: |

@@ -25,7 +25,7 @@
 #   ExecStopPost=+  ... up            close again when the daemon goes away
 #
 # IPv6 is a special case: the XDP program returns XDP_PASS for every
-# ETH_P_IPV6 frame (nhp/ebpf/xdp/nhp_ebpf_xdp.c), i.e. it does not filter IPv6
+# ETH_P_IPV6 frame (nhp/ebpf/xdp/nhp_ac_xdp.c), i.e. it does not filter IPv6
 # at all. Nothing takes over v6 filtering after the cutover, so this script
 # treats v6 as "stays closed by default":
 #   * the v6 backstop chain is *permanent* - `up` installs it and `down`
@@ -553,7 +553,7 @@ cmd_flush_legacy() {
 	fi
 
 	# IPv6: same rule cleanup, but the DROP policy deliberately stays. XDP
-	# does not look at IPv6 at all (nhp_ebpf_xdp.c XDP_PASSes every
+	# does not look at IPv6 at all (nhp_ac_xdp.c XDP_PASSes every
 	# ETH_P_IPV6 frame) and the permanent v6 backstop only covers the
 	# guarded tcp ports, so dropping the policy here would leave sshd and
 	# the NHP UDP listener on :: with no ingress filtering whatsoever.

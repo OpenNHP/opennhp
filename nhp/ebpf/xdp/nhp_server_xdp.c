@@ -1,6 +1,6 @@
 /* Ingress filter for the nhp-server host.
  *
- * Unlike the AC's nhp_ebpf_xdp.c, which opens ports per knock, the server's
+ * Unlike the AC's nhp_ac_xdp.c, which opens ports per knock, the server's
  * *listening* exposure is fixed and tiny: the NHP UDP knock port, and SSH from
  * the relay jump host. Everything else that would start a new flow is dropped
  * at the driver, before the kernel's network stack sees it. There are therefore
@@ -626,7 +626,7 @@ int xdp_server_prog(struct xdp_md *ctx) {
              * indistinguishable from a listener. Dropping it is terminal for
              * the lease and takes the host off every port once the lease
              * expires. Admitted by port pair instead, which is also what the
-             * AC's program does now (nhp/ebpf/xdp/nhp_ebpf_xdp.c -- it used to
+             * AC's program does now (nhp/ebpf/xdp/nhp_ac_xdp.c -- it used to
              * test the destination port alone, `DHCP_PORT_R || DHCP_PORT_O`,
              * and that shape is the bypass fixed there); the pair is narrow
              * enough that a neighbour's broadcast DHCPDISCOVER to udp/67 is

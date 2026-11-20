@@ -166,7 +166,7 @@ func singleProtocol(name string) (uint8, error) {
 //
 // The map's key is {src_ip, min_port, max_port}, but the programs do not look
 // up "the range that was installed": they look up the single key
-// {src_ip, MIN_PORT, MAX_PORT} -- MIN_PORT/MAX_PORT in nhp_ebpf_xdp.c, and
+// {src_ip, MIN_PORT, MAX_PORT} -- MIN_PORT/MAX_PORT in nhp_ac_xdp.c, and
 // the same two numbers written out in tc_egress.c. The range in the key is
 // therefore not a range the program evaluates; it is a fixed sentinel.
 //
@@ -464,7 +464,7 @@ func AddEbpfRuleForSrcDestPortList(srcIPStr string, protocols []uint8, dstPortSt
 	// pin exists.
 	//
 	// The eBPF programs look up exactly one key in this map: {src_ip, 0,
-	// 65535} (MIN_PORT/MAX_PORT in nhp_ebpf_xdp.c, the same two numbers in
+	// 65535} (MIN_PORT/MAX_PORT in nhp_ac_xdp.c, the same two numbers in
 	// tc_egress.c). They do not evaluate the range in the key -- they look up
 	// the sentinel. An entry with any other range is therefore an entry no
 	// lookup can ever find, and installing it would look like an access was

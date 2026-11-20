@@ -272,7 +272,7 @@ only harder: a packet the security group drops never reaches the NIC, so the
 AC's XDP filter never sees it, never counts it, and the AC's column on
 stats.opennhp.org undercounts the attacks (in the narrow posture only tcp/443
 and the knock port are reachable, so most scans are gone before the filter can
-see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by `nhp-acd` in
+see them). The AC's filter (`nhp_ac_xdp.c`, attached by `nhp-acd` in
 `FilterMode = 1`) is then the only inbound control on everything but tcp/22;
 tcp/22 stays restricted to the relay SG.
 

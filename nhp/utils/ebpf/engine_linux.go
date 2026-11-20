@@ -4,7 +4,7 @@ package ebpf
 
 // Loader shared by the two eBPF users in the tree.
 //
-// The AC (nhp/ebpf/xdp/nhp_ebpf_xdp.c + tc_egress.c) opens and closes protected
+// The AC (nhp/ebpf/xdp/nhp_ac_xdp.c + tc_egress.c) opens and closes protected
 // ports per knock; the server (nhp/ebpf/xdp/nhp_server_xdp.c) applies one fixed
 // ingress policy. They have no maps in common, but everything around the
 // maps -- memlock, LoadCollectionSpec, pinning under /sys/fs/bpf, resolving the
@@ -432,12 +432,12 @@ func init() {
 	log.Info("​​System boot time: %v", bootTime)
 }
 
-// varNhpAcFilterIPv6 is the .rodata constant in nhp/ebpf/xdp/nhp_ebpf_xdp.c
+// varNhpAcFilterIPv6 is the .rodata constant in nhp/ebpf/xdp/nhp_ac_xdp.c
 // that decides whether the AC's IPv6 tree runs. Keep the name in sync with the
 // declaration there.
 const varNhpAcFilterIPv6 = "nhp_ac_filter_ipv6"
 
-// The .rodata constants in nhp/ebpf/xdp/nhp_ebpf_xdp.c that narrow the two
+// The .rodata constants in nhp/ebpf/xdp/nhp_ac_xdp.c that narrow the two
 // client-protocol pairs to the sources the host's own servers answer from.
 // Keep the names in sync with the declarations there.
 const (
@@ -466,7 +466,7 @@ const (
 // would leave the tree on, or the pair open, while the log said otherwise --
 // the opposite of what was asked for, on the knobs whose whole purpose is to
 // change what the filter admits. An object that predates the constants is a
-// stale nhp_ebpf_xdp.o next to a new binary; rebuilding it is the fix.
+// stale nhp_ac_xdp.o next to a new binary; rebuilding it is the fix.
 func setAcConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
 	if err := setAcSourceNets(spec, params); err != nil {
 		return err
@@ -684,7 +684,7 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 		return nil, err
 	}
 
-	//load ebpf nhp_ebpf_xdp.o to net interface which default route exit
+	//load ebpf nhp_ac_xdp.o to net interface which default route exit
 	acXdpLink, err = link.AttachXDP(link.XDPOptions{
 		Program:   objs.XdpProg,
 		Interface: iface.Index,
@@ -1407,7 +1407,7 @@ func serverActionName(action uint8) (verdict, reason string) {
 // below is written once.
 type actionNamer func(action uint8) (verdict, reason string)
 
-// Action codes reported by nhp/ebpf/xdp/nhp_ebpf_xdp.c, the nhp-ac's own
+// Action codes reported by nhp/ebpf/xdp/nhp_ac_xdp.c, the nhp-ac's own
 // ingress program. Mirror the ACT_AC_* defines there; a test fails if the two
 // drift apart.
 //

@@ -1,7 +1,7 @@
 /*
  * Shared eBPF map definitions for the NHP access controller.
  *
- * Both nhp_ebpf_xdp.c (XDP ingress) and tc_egress.c (TC egress) pin their maps
+ * Both nhp_ac_xdp.c (XDP ingress) and tc_egress.c (TC egress) pin their maps
  * with LIBBPF_PIN_BY_NAME, i.e. they share one kernel map per name. The loader
  * (cilium/ebpf, see endpoints/ac/ebpf/ebpfegine.go) validates map type, key
  * size, value size and max_entries when the second object reuses the pin, so

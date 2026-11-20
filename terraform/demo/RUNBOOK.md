@@ -536,7 +536,7 @@ grep -h EVENT_LOG_BUDGET_EXHAUSTED /home/ec2-user/nhp-ac/logs/*.log
 
 ### eBPF map pin mismatch at startup
 
-`nhp-acd` loads two objects — `nhp_ebpf_xdp.o` and `tc_egress.o` — that share
+`nhp-acd` loads two objects — `nhp_ac_xdp.o` and `tc_egress.o` — that share
 pinned maps by name (`conn_track`, `nhp_config`, `knock_peers`, the
 whitelists). The loader
 validates map type, key size, value size and `max_entries` when the second
@@ -906,7 +906,7 @@ senders (syslog to 514, SNMP traps) are unaffected because they expect no
 reply.
 
 **DNS is in this class as of the removal of the `sport == 53` pass** from
-`nhp_ebpf_xdp.c` (that rule admitted any datagram sent from udp/53, from
+`nhp_ac_xdp.c` (that rule admitted any datagram sent from udp/53, from
 anyone, ahead of every whitelist — it identified no resolver, only a sender
 that typed 53). DNS answers are now admitted the way the AC's other client
 traffic is, from the EGRESS `conn_track` entry the query left behind, so what
@@ -1106,7 +1106,7 @@ Checking it by hand, on a demo host, against an object you have just built:
 # the script is the manual form of the deploy's gate: it loads the object the
 # way the daemon loads it, never attaches it, and removes its pins again
 ./scripts/check-ebpf-verifier.sh --variant ac \
-    --obj release/nhp-ac/etc/nhp_ebpf_xdp.o \
+    --obj release/nhp-ac/etc/nhp_ac_xdp.o \
     --tc-obj release/nhp-ac/etc/tc_egress.o
 
 ./scripts/check-ebpf-verifier.sh --variant server \
@@ -1115,7 +1115,7 @@ Checking it by hand, on a demo host, against an object you have just built:
 # what it does, if you would rather run it by hand
 make ebpf-verify                       # the tool: release/nhp-ebpf-verify/nhp-ebpf-verify
 sudo release/nhp-ebpf-verify --variant ac \
-    --obj ./nhp_ebpf_xdp.o --tc-obj ./tc_egress.o
+    --obj ./nhp_ac_xdp.o --tc-obj ./tc_egress.o
 ```
 
 It needs CAP_BPF, so it runs as root. The pins it makes live in
@@ -1486,7 +1486,7 @@ workflow input `open_ac_all_ports` sets it, and the workflow refuses `true` in a
 plan that creates or replaces `aws_instance.ac`) opens `aws_security_group.ac`
 the same way: `0.0.0.0/0` on tcp 0-21 and 23-65535, udp 0-65535 and icmp, with
 **tcp/22 still restricted to the relay SG**. The AC's XDP filter
-(`nhp/ebpf/xdp/nhp_ebpf_xdp.c`, attached by `nhp-acd` in `FilterMode = 1`) is
+(`nhp/ebpf/xdp/nhp_ac_xdp.c`, attached by `nhp-acd` in `FilterMode = 1`) is
 then the only inbound control on everything but tcp/22.
 
 The reason is the same as on the server, and the symptom is more visible: **a

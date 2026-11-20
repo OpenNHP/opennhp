@@ -114,7 +114,7 @@ There are three eBPF programs in the tree, and they belong to two different daem
 | Program | Source | Hook | Attached by | Purpose |
 |---------|--------|------|-------------|---------|
 | `nhp_server_xdp.o` | `nhp/ebpf/xdp/nhp_server_xdp.c` | `SEC("xdp")` | `nhp-serverd` | One fixed ingress policy for the whole host: knock port + SSH from the whitelist + replies to the host's own flows. |
-| `nhp_ebpf_xdp.o` | `nhp/ebpf/xdp/nhp_ebpf_xdp.c` | `SEC("xdp")` | `nhp-acd` | Opens protected ports **per knock**, and closes them when the knock expires. |
+| `nhp_ac_xdp.o` | `nhp/ebpf/xdp/nhp_ac_xdp.c` | `SEC("xdp")` | `nhp-acd` | Opens protected ports **per knock**, and closes them when the knock expires. |
 | `tc_egress.o` | `nhp/ebpf/xdp/tc_egress.c` | `SEC("tc/egress")` | `nhp-acd` | The other half of the AC's filter: lets the replies to the AC's *own* outbound flows back in, and records what it sent. |
 
 The server and the AC share no maps at all. The server's policy is "these two things may reach me"; the AC's policy is "this peer, for this port, until this knock expires". They have nothing to say to each other, so they do not share a schema.
@@ -155,7 +155,7 @@ The eBPF targets are deliberately **not** a prerequisite of `acd` / `serverd`:
 The objects land next to the daemon binaries:
 
 ```
-release/nhp-ac/etc/nhp_ebpf_xdp.o
+release/nhp-ac/etc/nhp_ac_xdp.o
 release/nhp-ac/etc/tc_egress.o
 release/nhp-server/etc/nhp_server_xdp.o
 ```
@@ -329,7 +329,7 @@ The "counted only" classes are the ones that scale with *bytes transferred* rath
 
 The AC's job is different: it is the component that actually *opens* a protected port when a knock is authorized, and closes it again when the knock expires. Its filter is therefore a per-knock whitelist with a lifetime, and it needs two programs to work.
 
-### The ingress program (`nhp_ebpf_xdp.c`, `SEC("xdp")`)
+### The ingress program (`nhp_ac_xdp.c`, `SEC("xdp")`)
 
 ```
 frame
@@ -457,7 +457,7 @@ func (r *whitelistKey) ToWlValue(ttlSec uint64) whitelistValue {
 
 The source address is the other way round and is already right: it is the raw address bytes read as a little-endian integer (`parseIP`) and written back as one, and the two cancel out, so the bytes in the map are the address bytes. The ports and the addresses are encoded in opposite byte orders, on purpose, and the tests in `nhp/utils/ebpf/ebpf_test.go` pin both against the C sources.
 
-**`port_list` is read with one fixed key.** Its key carries a port range, but the programs do not evaluate that range: they look up `{src_ip, 0, 65535}` — `MIN_PORT`/`MAX_PORT` in `nhp_ebpf_xdp.c`, the same two numbers written out in `tc_egress.c`. So the range in the key is a sentinel, and an entry with any other range is an entry no lookup can find. User space writes the sentinel (`ebpf.AnyPortRangeStart` / `ebpf.AnyPortRangeEnd`) and **refuses** any other range rather than installing an entry that grants nothing.
+**`port_list` is read with one fixed key.** Its key carries a port range, but the programs do not evaluate that range: they look up `{src_ip, 0, 65535}` — `MIN_PORT`/`MAX_PORT` in `nhp_ac_xdp.c`, the same two numbers written out in `tc_egress.c`. So the range in the key is a sentinel, and an entry with any other range is an entry no lookup can find. User space writes the sentinel (`ebpf.AnyPortRangeStart` / `ebpf.AnyPortRangeEnd`) and **refuses** any other range rather than installing an entry that grants nothing.
 
 **Two of the five shapes are only written in one mode.** `spp`, `sdwhitelist` and `icmpwhitelist` are written for every knock. `src_port` and `port_list` are written only in the AC's `IpPassMode = 1` (`PASS_KNOCKIP_WITH_RANGE`) mode, where a knock opens a port for the peer *and* the addresses around it; the default `IpPassMode = 0` (`PASS_KNOCK_IP`) never writes them, and neither does the demo's AC. A deployment that says nothing about `IpPassMode` is unaffected by the byte-order fix.
 

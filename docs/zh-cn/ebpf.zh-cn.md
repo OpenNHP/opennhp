@@ -114,7 +114,7 @@ Go 这一侧，加载器使用 [`github.com/cilium/ebpf`](https://github.com/cil
 | 程序 | 源码 | 挂载点 | 由谁挂载 | 作用 |
 |------|------|--------|----------|------|
 | `nhp_server_xdp.o` | `nhp/ebpf/xdp/nhp_server_xdp.c` | `SEC("xdp")` | `nhp-serverd` | 整台主机固定的入站策略：敲门端口 + 白名单来源的 SSH + 主机自己发起流的应答。 |
-| `nhp_ebpf_xdp.o` | `nhp/ebpf/xdp/nhp_ebpf_xdp.c` | `SEC("xdp")` | `nhp-acd` | **按次敲门**打开受保护端口，并在敲门过期后把它们关上。 |
+| `nhp_ac_xdp.o` | `nhp/ebpf/xdp/nhp_ac_xdp.c` | `SEC("xdp")` | `nhp-acd` | **按次敲门**打开受保护端口，并在敲门过期后把它们关上。 |
 | `tc_egress.o` | `nhp/ebpf/xdp/tc_egress.c` | `SEC("tc/egress")` | `nhp-acd` | AC 过滤器的另一半：让它**自己**发出的流能把应答放进来，并记录它发过什么。 |
 
 server 和 AC 完全没有共用的 map。server 的策略是"只有这两样东西可以到达我"，AC 的策略是"这个来源，这个端口，直到这次敲门过期"。两者之间无话可说，所以也不共用一套 schema。
@@ -155,7 +155,7 @@ eBPF 目标**刻意不是** `acd` / `serverd` 的前置依赖：
 目标文件会落在守护进程二进制旁边：
 
 ```
-release/nhp-ac/etc/nhp_ebpf_xdp.o
+release/nhp-ac/etc/nhp_ac_xdp.o
 release/nhp-ac/etc/tc_egress.o
 release/nhp-server/etc/nhp_server_xdp.o
 ```
@@ -329,7 +329,7 @@ IPv6 分片头中偏移非零的也一样处理（`IPV6_FRAGMENT`）。
 
 AC 的职责不同：它才是那个在敲门被授权时真正*打开*受保护端口、并在敲门过期后重新关上的组件。所以它的过滤器是一张带生命周期的、按次敲门生效的白名单，而且需要两个程序才能工作。
 
-### 入站程序（`nhp_ebpf_xdp.c`，`SEC("xdp")`）
+### 入站程序（`nhp_ac_xdp.c`，`SEC("xdp")`）
 
 ```
 frame

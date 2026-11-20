@@ -228,6 +228,16 @@ a:hover { text-decoration: underline; }
   margin-bottom: 8px;
   letter-spacing: 0.2px;
 }
+/* SDK version badge — same colour and monospace treatment as the badge on
+   https://agent.opennhp.org/, so the two pages read alike. */
+.footer .sdk-version {
+  color: #9ae42c;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: 0.2px;
+}
 
 .alert {
   padding: 10px 14px;

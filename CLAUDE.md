@@ -930,6 +930,37 @@ Pass `--regenerate` to the script (or `regenerate_keys=yes` on the workflow) to
 force a full rotation. This breaks every registered agent/ac/relay until their
 peer tables are redeployed in lockstep, so use sparingly.
 
+### Release process (release-please) and the version files
+
+The repository carries two version axes, and they must not drift apart:
+
+- **`.release-please-manifest.json`** — the released version, bumped by
+  release-please on every release.
+- **`nhp/version/VERSION`** — the build version, read by the `Makefile`
+  (`VERSION = $(shell cat nhp/version/VERSION).$(TIMESTAMP)`), by
+  `endpoints/js-agent/vite.config.ts` (the SDK's `__SDK_VERSION__` define) and
+  by `docker/Dockerfile.demoapp`. **The public pages render this one**: the
+  `SDK v…` badge on agent.opennhp.org, the version line on reg.opennhp.org and
+  the footer on demo.opennhp.org.
+
+`release-please-config.json` keeps them together: the release's
+`version-file` is `nhp/version/VERSION` (rewritten wholesale with the new
+version) and `extra-files` carries `endpoints/js-agent/package.json` and
+`package-lock.json`. The release type is `simple` rather than `go` because the
+`go` strategy's `version-file` support rewrites a `const Version = "…"` line in
+a Go source file, not a plain version file.
+
+**The `release-please` workflow must not pass a `release-type` input to the
+action.** The action only reads `release-please-config.json` when that input is
+absent; with it set, the action runs in "simple" mode, ignores the config file
+entirely, and the version files silently stop being updated.
+
+`scripts/check-version-sync.sh` (run in CI as `Check version sync`, and locally
+as `make check-version-sync`) is the guard: it asserts that
+`nhp/version/VERSION` and `endpoints/js-agent/package.json` both equal the
+released version, and that `release-please-config.json` is valid and still
+points at `nhp/version/VERSION`.
+
 ## Protocol Flow
 
 1. Agent sends encrypted knock (`NHP_KNK`) to Server

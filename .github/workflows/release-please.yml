@@ -35,5 +35,10 @@ jobs:
         # that includes this fix.
         uses: googleapis/release-please-action@0b6b3fc0186a2f7118bfd88fab9ea481e1839504
         with:
-          release-type: go
+          # No `release-type` input: the action only reads release-please-config.json
+          # when that input is absent. With it set, the action runs in "simple" mode
+          # and ignores the config file entirely — including its "version-file" and
+          # "extra-files", which is how nhp/version/VERSION and the js-agent
+          # package.json get bumped with the release. The release type now lives
+          # in release-please-config.json.
           token: ${{ steps.app-token.outputs.token }}

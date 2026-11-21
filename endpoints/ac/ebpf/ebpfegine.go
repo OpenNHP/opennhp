@@ -10,6 +10,7 @@ package ebpf
 // this file used to run inline.
 
 import (
+	"os"
 	"path/filepath"
 
 	utilsebpf "github.com/OpenNHP/opennhp/nhp/utils/ebpf"
@@ -33,7 +34,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string, opts LoadOptions)
 
 	handle, err := utilsebpf.EngineLoad(utilsebpf.EngineLoadParams{
 		Variant:       utilsebpf.VariantAC,
-		ProgObjPath:   filepath.Join(bpfDir, "nhp_ebpf_xdp.o"),
+		ProgObjPath:   acProgObjPath(bpfDir),
 		TcProgObjPath: filepath.Join(bpfDir, "tc_egress.o"),
 		PinDir:        utilsebpf.DefaultPinDir,
 		ComponentId:   acId,
@@ -64,4 +65,26 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string, opts LoadOptions)
 // clean eBPF map file
 func CleanupBPFFiles() {
 	utilsebpf.CleanupBPFFiles(utilsebpf.VariantAC)
+}
+
+// acProgObjPath resolves the XDP object path, falling back to the pre-rename
+// nhp_ebpf_xdp.o when nhp_ac_xdp.o is absent. The object was renamed from
+// nhp_ebpf_xdp.o to nhp_ac_xdp.o; a host upgraded in place keeps
+// etc/nhp_ebpf_xdp.o beside a binary that now asks for the new name, and
+// without this fallback FilterMode = 1 refuses to start (leaving the
+// fail-closed backstop holding the protected resource shut) until the operator
+// renames the file. The fallback is logged with both paths so it is not
+// silently tolerated; it can be removed once no deployed host carries the old
+// name.
+func acProgObjPath(bpfDir string) string {
+	progObjPath := filepath.Join(bpfDir, "nhp_ac_xdp.o")
+	legacyProgObjPath := filepath.Join(bpfDir, "nhp_ebpf_xdp.o")
+	if _, err := os.Stat(progObjPath); os.IsNotExist(err) {
+		if _, legacyErr := os.Stat(legacyProgObjPath); legacyErr == nil {
+			log.Warning("AC XDP filter: %s not found; using the legacy %s. Rename %s to %s to drop this fallback.",
+				progObjPath, legacyProgObjPath, legacyProgObjPath, progObjPath)
+			return legacyProgObjPath
+		}
+	}
+	return progObjPath
 }

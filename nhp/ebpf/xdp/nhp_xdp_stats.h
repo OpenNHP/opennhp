@@ -105,7 +105,7 @@ struct {
 /* The legacy audit ring has its own bank of slots in the same map.
  *
  * The nhp-ac still writes one line per admitted or dropped packet to a second
- * ring (the `events` map in nhp_ebpf_xdp.c), which lands in nhp_deny-*.log and
+ * ring (the `events` map in nhp_ac_xdp.c), which lands in nhp_deny-*.log and
  * nhp_accept-*.log. That ring is fed per packet, and with the security group
  * open to the whole internet every one of those packets is chosen by whoever
  * sent it -- so an unbounded ring is a way to fill the disk the daemon runs on.

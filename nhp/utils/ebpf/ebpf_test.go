@@ -23,7 +23,7 @@ import (
 //
 // These tests pin the byte order of every port in every key, and pin it
 // against the C sources rather than against a copy of the C sources: the
-// contract test below reads nhp_maps.h and nhp_ebpf_xdp.c, so a change on
+// contract test below reads nhp_maps.h and nhp_ac_xdp.c, so a change on
 // either side of the boundary has to be made on both sides.
 
 // The port the tests below use, and the bytes it has on the wire.
@@ -201,7 +201,7 @@ func TestPortScopedKeysCarryTheProtocolInC(t *testing.T) {
 
 	// And the programs have to fill it with the protocol of the packet.
 	for _, path := range []string{
-		filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c"),
+		filepath.Join("..", "..", "ebpf", "xdp", "nhp_ac_xdp.c"),
 		filepath.Join("..", "..", "ebpf", "xdp", "tc_egress.c"),
 	} {
 		raw, err := os.ReadFile(path)
@@ -418,7 +418,7 @@ func cInitBody(t *testing.T, src, name string) string {
 // {src_ip, AnyPortRangeStart, AnyPortRangeEnd}. The two have to be the same
 // numbers, or the entry is written and never found.
 func TestWildcardRangeMatchesThePrograms(t *testing.T) {
-	xdpPath := filepath.Join("..", "..", "ebpf", "xdp", "nhp_ebpf_xdp.c")
+	xdpPath := filepath.Join("..", "..", "ebpf", "xdp", "nhp_ac_xdp.c")
 	defs := cDefines(t, xdpPath)
 	minPort := evalCIntExpr(t, defs, defs["MIN_PORT"])
 	maxPort := evalCIntExpr(t, defs, defs["MAX_PORT"])

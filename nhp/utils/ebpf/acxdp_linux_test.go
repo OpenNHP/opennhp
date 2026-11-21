@@ -239,7 +239,7 @@ func loadAcObjects(t *testing.T, pinDir string) (xdp *ebpf.Program, tc *ebpf.Pro
 	// Reading the object is not privileged: the file is right there (the path
 	// helper above skipped if it was not), so a failure here is a broken
 	// object, not a missing privilege, and it must not be skipped.
-	spec, err := ebpf.LoadCollectionSpec(acObjPath(t, "nhp_ebpf_xdp.o"))
+	spec, err := ebpf.LoadCollectionSpec(acObjPath(t, "nhp_ac_xdp.o"))
 	if err != nil {
 		t.Fatalf("cannot read the AC's XDP object: %v", err)
 	}

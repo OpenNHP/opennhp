@@ -272,7 +272,7 @@ only harder: a packet the security group drops never reaches the NIC, so the
 AC's XDP filter never sees it, never counts it, and the AC's column on
 stats.opennhp.org undercounts the attacks (in the narrow posture only tcp/443
 and the knock port are reachable, so most scans are gone before the filter can
-see them). The AC's filter (`nhp_ebpf_xdp.c`, attached by `nhp-acd` in
+see them). The AC's filter (`nhp_ac_xdp.c`, attached by `nhp-acd` in
 `FilterMode = 1`) is then the only inbound control on everything but tcp/22;
 tcp/22 stays restricted to the relay SG.
 
@@ -426,6 +426,35 @@ open. Two gates answer the question before anything acts on it:
   directory of its own and removes it again, so the running filter's maps are
   neither reused nor touched; a refusal aborts the deploy with the service
   still up.
+
+The PR gate asks about a fourth object as well: the AC's XDP object is
+tracked in the source tree (`endpoints/ac/main/etc/nhp_ac_xdp.o`), because a
+run started from there loads it from there — the loader's object paths are
+relative to the working directory (`endpoints/ac/ebpf/ebpfegine.go` asks for
+`etc/nhp_ac_xdp.o`) — and not from the release directory the job builds. It
+is a build artifact of a toolchain the repository does not pin, so it is
+loaded into the runner's kernel as well: an object nobody loads is an object
+nobody knows, and a refusal of it would surface only on the machine that
+runs from the source tree, where the fail-closed backstop then keeps tcp/443
+shut. `nhp/utils/ebpf/acxdp_tracked_test.go` keeps it equal to what the
+current source builds (same maps, same programs, same constants), so a stale
+copy cannot be committed unnoticed.
+
+**The rename transition keeps the deployed pair matched.** The AC's XDP
+object was renamed `nhp_ebpf_xdp.o` → `nhp_ac_xdp.o` (the program itself did
+not change), and a host upgraded in place can be running the pre-rename
+binary, which asks for the legacy name and has no fallback. Two pieces cover
+it. The daemon falls back to the legacy file when the new one is absent
+(`acProgObjPath`, `endpoints/ac/ebpf/ebpfegine.go`) and says so in a
+`Warning`, so an in-place upgrade still starts instead of leaving the
+fail-closed backstop holding tcp/443 shut. And `deploy-demo-v2` ships the
+verified object under **both** names on a deploy that does not replace the
+binary — a config-only deploy uploads `tc_egress.o` unconditionally, so
+leaving the old `nhp_ebpf_xdp.o` in place would pair the new TC object with a
+stale XDP object, a pair the verify gate never saw and one the loader
+refuses when the shared pinned maps disagree on their shape. The extra copy
+is inert for the new binary (it prefers `nhp_ac_xdp.o`) and the next binary
+deploy removes it.
 
 The load goes through the loader the daemons use (`nhp/utils/ebpf`), not
 through `bpftool`, and that is not a preference:

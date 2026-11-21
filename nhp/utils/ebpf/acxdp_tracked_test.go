@@ -141,7 +141,7 @@ func comparePrograms(t *testing.T, trackedPath, builtPath string, tracked, built
 // same shape.
 //
 // The maps of the data sections (.rodata, .data, .bss) are left out: they
-// are the maps cilium/ebpf synthesises for the sections the constants live
+// are the maps cilium/ebpf synthesizes for the sections the constants live
 // in, and their size depends on how the compiler laid those sections out.
 // The constants themselves are compared by compareConstants.
 func compareMaps(t *testing.T, trackedPath, builtPath string, tracked, built *ebpf.CollectionSpec) {
@@ -185,7 +185,7 @@ func compareMaps(t *testing.T, trackedPath, builtPath string, tracked, built *eb
 	}
 }
 
-// isDataSectionMap reports whether a map is the one cilium/ebpf synthesises
+// isDataSectionMap reports whether a map is the one cilium/ebpf synthesizes
 // for a data section (.rodata, .data, .bss) rather than one of the
 // program's own maps.
 func isDataSectionMap(name string) bool {

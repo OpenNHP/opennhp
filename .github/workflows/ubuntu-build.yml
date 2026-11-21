@@ -322,7 +322,11 @@ jobs:
         verify=release/nhp-ebpf-verify/nhp-ebpf-verify
         tracked=endpoints/ac/main/etc/nhp_ac_xdp.o
         if [ ! -x "$verify" ]; then
-          echo "::error::$verify is missing; the step above builds it with `make ebpf-verify`"
+          # Single quotes around the command: inside double quotes the
+          # backticks would be a command substitution, and this error path
+          # would run the build it is complaining about and paste its output
+          # into the message.
+          echo "::error::$verify is missing; the step above builds it with 'make ebpf-verify'"
           exit 1
         fi
         if [ ! -s "$tracked" ]; then

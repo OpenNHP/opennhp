@@ -534,6 +534,34 @@ The three points to remember:
 grep -h EVENT_LOG_BUDGET_EXHAUSTED /home/ec2-user/nhp-ac/logs/*.log
 ```
 
+### The XDP object's name, and the rename transition
+
+The AC's ingress object is `etc/nhp_ac_xdp.o`. It used to be
+`etc/nhp_ebpf_xdp.o`; the source file was renamed with it
+(`nhp/ebpf/xdp/nhp_ac_xdp.c`), and the program itself did not change.
+
+Two things follow from a rename, and both are handled in the pipeline:
+
+* **The daemon falls back.** A host upgraded in place still has
+  `etc/nhp_ebpf_xdp.o` beside a binary that asks for the new name, so
+  `acProgObjPath` (`endpoints/ac/ebpf/ebpfegine.go`) falls back to the legacy
+  file and logs a `Warning` naming both paths. Without that fallback the AC
+  would refuse to start and the fail-closed backstop would keep tcp/443 shut.
+* **A config-only deploy ships the object under both names.** A deploy that
+  does not replace the binary may be talking to a host that still runs a
+  pre-rename `nhp-acd`, which knows the legacy name only. The deploy writes
+  the verified object to `etc/nhp_ebpf_xdp.o` as well as to
+  `etc/nhp_ac_xdp.o`, so whichever name the running binary asks for resolves
+  to the object the verify gate accepted. The two are byte-identical, so
+  there is no mixed pair (a new `tc_egress.o` beside a stale XDP object is
+  what the loader refuses — see the next section). The next deploy that
+  replaces the binary removes the legacy file again.
+
+So `etc/nhp_ebpf_xdp.o` on the host is the transition copy, not a stale
+artifact. To tell the two apart, look for the fallback warning in the
+daemon's log: it names the legacy path only when the daemon actually loaded
+it, which a host with both files never does (the new name wins).
+
 ### eBPF map pin mismatch at startup
 
 `nhp-acd` loads two objects — `nhp_ac_xdp.o` and `tc_egress.o` — that share

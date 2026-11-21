@@ -440,6 +440,22 @@ shut. `nhp/utils/ebpf/acxdp_tracked_test.go` keeps it equal to what the
 current source builds (same maps, same programs, same constants), so a stale
 copy cannot be committed unnoticed.
 
+**The rename transition keeps the deployed pair matched.** The AC's XDP
+object was renamed `nhp_ebpf_xdp.o` → `nhp_ac_xdp.o` (the program itself did
+not change), and a host upgraded in place can be running the pre-rename
+binary, which asks for the legacy name and has no fallback. Two pieces cover
+it. The daemon falls back to the legacy file when the new one is absent
+(`acProgObjPath`, `endpoints/ac/ebpf/ebpfegine.go`) and says so in a
+`Warning`, so an in-place upgrade still starts instead of leaving the
+fail-closed backstop holding tcp/443 shut. And `deploy-demo-v2` ships the
+verified object under **both** names on a deploy that does not replace the
+binary — a config-only deploy uploads `tc_egress.o` unconditionally, so
+leaving the old `nhp_ebpf_xdp.o` in place would pair the new TC object with a
+stale XDP object, a pair the verify gate never saw and one the loader
+refuses when the shared pinned maps disagree on their shape. The extra copy
+is inert for the new binary (it prefers `nhp_ac_xdp.o`) and the next binary
+deploy removes it.
+
 The load goes through the loader the daemons use (`nhp/utils/ebpf`), not
 through `bpftool`, and that is not a preference:
 

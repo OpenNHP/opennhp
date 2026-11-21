@@ -2723,11 +2723,25 @@ jobs:
             # The XDP object used to be named nhp_ebpf_xdp.o. The new nhp-acd
             # falls back to the legacy name when the new one is absent, so a
             # stale copy would only confuse someone during an incident; drop it.
-            # Gated on DEPLOY_BINARIES: a config-only deploy still runs the old
-            # binary, which knows only the legacy name and has no fallback, so
-            # deleting nhp_ebpf_xdp.o here would leave the host with only
-            # nhp_ac_xdp.o and the old daemon would hard-fail at startup.
+            # Safe here: the binary that is about to be installed prefers
+            # etc/nhp_ac_xdp.o, so the host keeps the object the verify gate
+            # above accepted.
             ssh nhp-ac "rm -f $REMOTE_DIR/etc/nhp_ebpf_xdp.o"
+          else
+            # A config-only deploy does not replace the binary, so the host
+            # may still be running a pre-rename nhp-acd that asks for the
+            # legacy name and has no fallback. tc_egress.o is uploaded
+            # unconditionally, so leaving the old nhp_ebpf_xdp.o in place
+            # would pair the new TC object with a stale XDP object: a pair
+            # the verify gate never saw, and one the loader refuses when the
+            # shared pinned maps disagree on their shape - which is an AC
+            # that cannot start, with the fail-closed backstop holding
+            # tcp/443 shut. So ship the verified object under both names and
+            # let whichever name the running binary asks for resolve to the
+            # object the gate accepted. The extra copy is inert for the new
+            # binary, which prefers etc/nhp_ac_xdp.o, and the next binary
+            # deploy removes it.
+            scp ./artifact/ac/etc/nhp_ac_xdp.o nhp-ac:$REMOTE_DIR/etc/nhp_ebpf_xdp.o
           fi
 
           # The iptables bootstrap script is always shipped: it is the baseline

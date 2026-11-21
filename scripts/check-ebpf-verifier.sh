@@ -27,7 +27,7 @@
 # only asks the kernel about it.
 #
 #   ./scripts/check-ebpf-verifier.sh --variant ac \
-#       --obj release/nhp-ac/etc/nhp_ebpf_xdp.o \
+#       --obj release/nhp-ac/etc/nhp_ac_xdp.o \
 #       --tc-obj release/nhp-ac/etc/tc_egress.o
 #   ./scripts/check-ebpf-verifier.sh --variant server \
 #       --obj release/nhp-server/etc/nhp_server_xdp.o --port 62206

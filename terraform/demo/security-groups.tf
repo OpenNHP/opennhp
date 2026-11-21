@@ -222,7 +222,7 @@ resource "aws_security_group" "ac" {
   }
 
   # Everything else, from anywhere -- deliberately, EXCEPT tcp/22. The AC's
-  # XDP filter (nhp/ebpf/xdp/nhp_ebpf_xdp.c, attached by nhp-acd at startup in
+  # XDP filter (nhp/ebpf/xdp/nhp_ac_xdp.c, attached by nhp-acd at startup in
   # FilterMode = 1) is the ONLY inbound control on the rest of this host in
   # this mode; the point is to let scans reach the NIC so the filter can count
   # them ([NHP-STAT] per verdict class, [NHP-SCAN] per port and per source).

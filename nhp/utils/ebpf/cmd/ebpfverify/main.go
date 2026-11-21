@@ -23,7 +23,7 @@
 //
 // Usage:
 //
-//	nhp-ebpf-verify --variant ac --obj nhp_ebpf_xdp.o --tc-obj tc_egress.o
+//	nhp-ebpf-verify --variant ac --obj nhp_ac_xdp.o --tc-obj tc_egress.o
 //	nhp-ebpf-verify --variant server --obj nhp_server_xdp.o --port 62206
 //
 // Exit status:

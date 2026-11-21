@@ -75,27 +75,27 @@ nhp-server 的 PASS 原因：
 | 原因 | 含义 |
 | --- | --- |
 | `SSH_RELAY` | 来自白名单 relay 地址的 SSH 连接 |
-| `NHP_RELAY` | 为已建立的 NHP 会话转发的流量 |
-| `NHP_DEFAULT` | 守护进程自身的默认路径上的流量 |
+| `NHP_RELAY` | 来自白名单 relay 地址、发往敲门端口的 UDP，豁免长度下限 |
+| `NHP_DEFAULT` | 发往敲门端口、且达到 NHP 最小帧长的 UDP——也就是「敲门」这一类本身 |
 | `TCP_ESTABLISHED` | 主机自己发起的连接的回应 |
 | `UDP_ESTABLISHED` | 主机自己发起的连接的回应 |
-| `ICMP_FRAG_NEEDED` | 对主机发起流的 ICMP frag-needed 回应 |
+| `ICMP_FRAG_NEEDED` | 任何 ICMP fragmentation-needed 报文（无条件放行；内核再把它匹配到一个 socket） |
 | `DHCP_CLIENT` | DHCP 客户端自身的交互（67 → 68） |
 | `NTP_CLIENT` | NTP 客户端自身的交互（123 → 123） |
-| `IPV4_FRAGMENT` | 允许流量的非首片 IPv4 分片 |
+| `IPV4_FRAGMENT` | 任何非首片 IPv4 分片（没有 L4 头可供判断；无条件放行） |
 | `ICMPV6_CONTROL` | IPv6 控制报文 |
 | `V6_ESTABLISHED` | 主机自己发起的 v6 连接的回应 |
-| `IPV6_FRAGMENT` | 允许流量的非首片 IPv6 分片 |
+| `IPV6_FRAGMENT` | 任何非首片 IPv6 分片（没有 L4 头可供判断；无条件放行） |
 
 nhp-server 的 DROP 原因，以及站点给每个原因归入的类别：
 
 | 原因 | 类别 | 含义 |
 | --- | --- | --- |
 | `TCP_SSH_OTHER` | SSH probe (non-whitelisted source) | 来自白名单之外源的 SSH 连接 |
-| `TCP_NHP_PORT` | TCP to NHP knock port | 指向 UDP 敲门端口或守护进程自身端口的 TCP |
+| `TCP_NHP_PORT` | TCP to NHP knock port | 指向 UDP 敲门端口的 TCP |
 | `TCP_OTHER` | TCP scan / probe | 其它任何入站 TCP |
 | `TCP_SYN_SCAN` | TCP SYN scan | 裸 SYN，后面没有已建立的流 |
-| `TCP_STEALTH_SCAN` | TCP scan / probe | 程序能单独识别出来的一类扫描手法 |
+| `TCP_STEALTH_SCAN` | TCP scan / probe | 不带 SYN、ACK 或 RST 的 TCP 报文——FIN、NULL 或 XMAS 扫描 |
 | `UDP_OTHER` | UDP scan / non-NHP UDP | 既不是敲门、也不是主机自身查询回应的 UDP |
 | `UDP_SHORT` | Short UDP (below NHP minimum frame) | 短于 NHP 最小帧长度的数据报 |
 | `NON_TCP_UDP` | Other protocol (ICMP etc.) | 既非 TCP 也非 UDP 的协议 |
@@ -283,7 +283,7 @@ from="<relay private IP>",restrict,command="<path>/nhp-xdplog-export.sh" <collec
 
 **`unique_attack_ips` 不能相加。** 一个每天扫描主机的地址是**一个**攻击者。把逐日计数加起来，它就被数了每天一次。因此站点的全时攻击者数字不是各行之和——它是各天之间的**并集**，由站点私下保存的逐日集合算出（见第 6 章）。
 
-**缺失的一个小时不是平静的一个小时。** 已发布的逐小时序列只包含有 `[NHP-STAT]` 行的小时。某个小时缺失，意味着过滤器没有为它产出汇总——过滤器被摘下了、守护进程正在重启，或者当天的逐包预算已经用尽。它**不**意味着那个小时没有发生过攻击。
+**缺失的一个小时不是平静的一个小时。** 已发布的逐小时序列只包含有**攻击类** `[NHP-STAT]` 行的小时——汇总是精确的，而且在当天的逐包字节预算用尽之后依然继续发出，但只有针对攻击原因的 DROP 行会进入逐小时序列。某个小时缺失，意味着过滤器没有为它产出这样的汇总：过滤器被摘下了、守护进程正在重启，或者那个小时里根本没有攻击被汇总过。它**不**意味着那个小时没有发生过攻击。
 
 ### 哪些数字是精确的，哪些来自采样
 
@@ -379,7 +379,7 @@ const NHP_TOTAL_ATTACK_REGIONS = <regions>;
 
 即使在空站点上这三个常量也会被写出，值为 `0`，这样引用它的页面不会拿到 404 和一个悬空引用。第三个常量数的是**地区**：国际标准分配给它列出的每一个国家和区域的两字母 ISO 3166-1 alpha-2 代码，其中也包括属地、争议地区和特别政治区域，而不仅仅是主权国家。它曾经叫 `NHP_TOTAL_ATTACK_COUNTRIES`，那个名字已经没有了——一个叫做国家数的已发布数字，是对那些代码提出了标准并不支持的主张。旧名字在 `history` 子命令解析旧文件时**仍会被读取**，但永远不会被写出。
 
-**详情页的 JSON 是一个 `Report`，schema 2。** 它带着当天的总数（`total_pkts`、`drop_pkts`、`pass_pkts`、`drop_share`、`non_attack_drop_pkts`）、按原因与按类别的分解、top 来源与 top 目的端口、逐小时序列、协议分布、重启列表和未知原因。逐小时序列只对有 `[NHP-STAT]` 行的小时存在，这正是「缺失的一个小时不是平静的一个小时」的原因。它还会说明采样出来的数字有多有代表性：`drop_sampled_events` 是被逐包写出来的被丢弃包数，`drop_sampling_rate` 是这个数除以当天精确的丢弃总数——也就是过滤器真正写下来的那部分丢弃所占的份额。
+**详情页的 JSON 是一个 `Report`，schema 2。** 它带着当天的总数（`total_pkts`、`drop_pkts`、`pass_pkts`、`drop_share`、`non_attack_drop_pkts`）、按原因与按类别的分解、top 来源与 top 目的端口、逐小时序列、协议分布、重启列表和未知原因。逐小时序列只对有**攻击类** `[NHP-STAT]` 行的小时存在，这正是「缺失的一个小时不是平静的一个小时」的原因。它还会说明采样出来的数字有多有代表性：`drop_sampled_events` 是被逐包写出来的被丢弃包数，`drop_sampling_rate` 是这个数除以当天精确的丢弃总数——也就是过滤器真正写下来的那部分丢弃所占的份额。
 
 **首页会渲染源的显示名，JSON 不会。** `server` 在一张其余全是日期和数字的表里读起来像个泛指名词，所以首页显示 `nhp-server` 与 `nhp-ac`。`source` 是 `index.json` 的已发布字段，改名会破坏任何已经在解析它的人，所以 JSON 保留原始目录名。
 

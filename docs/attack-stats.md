@@ -75,27 +75,27 @@ The nhp-server's PASS reasons:
 | Reason | What it means |
 | --- | --- |
 | `SSH_RELAY` | An SSH connection from a whitelisted relay address |
-| `NHP_RELAY` | Traffic relayed for an established NHP session |
-| `NHP_DEFAULT` | Traffic on the daemon's own default path |
+| `NHP_RELAY` | UDP to the knock port from a whitelisted relay address, exempt from the length floor |
+| `NHP_DEFAULT` | UDP to the knock port that meets the NHP minimum frame length — the knock class itself |
 | `TCP_ESTABLISHED` | A reply to a connection the host itself opened |
 | `UDP_ESTABLISHED` | A reply to a connection the host itself opened |
-| `ICMP_FRAG_NEEDED` | An ICMP fragment-needed reply to a host-opened flow |
+| `ICMP_FRAG_NEEDED` | Any ICMP fragmentation-needed message (passed unconditionally; the kernel matches it to a socket) |
 | `DHCP_CLIENT` | The DHCP client's own exchange (67 → 68) |
 | `NTP_CLIENT` | The NTP client's own exchange (123 → 123) |
-| `IPV4_FRAGMENT` | A non-first IPv4 fragment of an allowed flow |
+| `IPV4_FRAGMENT` | Any non-first IPv4 fragment (no L4 header to judge; passed unconditionally) |
 | `ICMPV6_CONTROL` | An IPv6 control message |
 | `V6_ESTABLISHED` | A reply to a v6 connection the host itself opened |
-| `IPV6_FRAGMENT` | A non-first IPv6 fragment of an allowed flow |
+| `IPV6_FRAGMENT` | Any non-first IPv6 fragment (no L4 header to judge; passed unconditionally) |
 
 The nhp-server's DROP reasons, and the category the site files each under:
 
 | Reason | Category | What it means |
 | --- | --- | --- |
 | `TCP_SSH_OTHER` | SSH probe (non-whitelisted source) | An SSH connection from a source that is not in the whitelist |
-| `TCP_NHP_PORT` | TCP to NHP knock port | TCP aimed at the UDP knock port, or the daemon's own port |
+| `TCP_NHP_PORT` | TCP to NHP knock port | TCP aimed at the UDP knock port |
 | `TCP_OTHER` | TCP scan / probe | Any other inbound TCP |
 | `TCP_SYN_SCAN` | TCP SYN scan | A bare SYN, with no established flow behind it |
-| `TCP_STEALTH_SCAN` | TCP scan / probe | A scan technique the program recognizes separately from a bare SYN |
+| `TCP_STEALTH_SCAN` | TCP scan / probe | A TCP segment with no SYN, ACK or RST — a FIN, NULL or XMAS scan |
 | `UDP_OTHER` | UDP scan / non-NHP UDP | UDP that is not a knock and not a reply to the host's own query |
 | `UDP_SHORT` | Short UDP (below NHP minimum frame) | A datagram shorter than the NHP minimum frame length |
 | `NON_TCP_UDP` | Other protocol (ICMP etc.) | A protocol that is neither TCP nor UDP |
@@ -283,7 +283,7 @@ Two of these need more than a line of explanation.
 
 **`unique_attack_ips` cannot be added up.** An address that scans the host every day is one attacker. Summing the per-day counts counts it once per day. The site's all-time attacker figure is therefore not the sum of the rows — it is a *union* over the days, computed from per-day sets the site keeps privately (chapter 6).
 
-**A missing hour is not a quiet hour.** The published hourly series only contains hours that have a `[NHP-STAT]` line. A missing hour means the filter produced no summary for it — the filter was detached, the daemon was restarting, or the day's per-packet budget had been spent. It does not mean zero attacks happened in that hour.
+**A missing hour is not a quiet hour.** The published hourly series only contains hours that have an attack-class `[NHP-STAT]` line — the summaries themselves are exact and keep coming after the day's per-packet byte budget is spent, but only a DROP line for an attack reason feeds the hourly series. A missing hour means the filter produced no such summary for it: the filter was detached, the daemon was restarting, or no attack was summarised in that hour. It does not mean zero attacks happened in that hour.
 
 ### Which figures are exact, and which come from the sample
 
@@ -379,7 +379,7 @@ const NHP_TOTAL_ATTACK_REGIONS = <regions>;
 
 All three are written even on an empty site, as `0`, so an embedding page never gets a 404 and a dangling reference. The third constant counts **regions**: the two-letter ISO 3166-1 alpha-2 codes the international standard assigns to every country and area it lists, which includes dependencies, disputed areas and special political areas as well as states. It was once called `NHP_TOTAL_ATTACK_COUNTRIES`, and that name is gone — a published figure called a country count is a claim about those codes that the standard does not support. The old name is still *read* when the `history` subcommand parses an older file, and is never written.
 
-**The detail page's JSON is a `Report`, schema 2.** It carries the day's totals (`total_pkts`, `drop_pkts`, `pass_pkts`, `drop_share`, `non_attack_drop_pkts`), the per-reason and per-category breakdowns, the top sources and top destination ports, the hourly series, the protocol mix, the restart list, and the unknown reasons. The hourly series is present only for hours that have a `[NHP-STAT]` line, which is why a missing hour is not a quiet hour. It also says how representative the sampled figures are: `drop_sampled_events` is how many dropped packets were written out per-packet, and `drop_sampling_rate` is that number over the day's exact drop total — the share of the drops the filter managed to write down.
+**The detail page's JSON is a `Report`, schema 2.** It carries the day's totals (`total_pkts`, `drop_pkts`, `pass_pkts`, `drop_share`, `non_attack_drop_pkts`), the per-reason and per-category breakdowns, the top sources and top destination ports, the hourly series, the protocol mix, the restart list, and the unknown reasons. The hourly series is present only for hours that have an attack-class `[NHP-STAT]` line, which is why a missing hour is not a quiet hour. It also says how representative the sampled figures are: `drop_sampled_events` is how many dropped packets were written out per-packet, and `drop_sampling_rate` is that number over the day's exact drop total — the share of the drops the filter managed to write down.
 
 **The homepage renders a source's display name, the JSON does not.** `server` reads as a generic noun in a table that is otherwise all dates and numbers, so the homepage shows `nhp-server` and `nhp-ac`. `source` is a published field of `index.json` and renaming it would break anyone already parsing it, so the JSON keeps the raw directory name.
 

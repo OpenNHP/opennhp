@@ -2719,10 +2719,16 @@ jobs:
           ssh nhp-ac "mkdir -p $REMOTE_DIR/etc"
           scp ./artifact/ac/etc/nhp_ac_xdp.o nhp-ac:$REMOTE_DIR/etc/
           scp ./artifact/ac/etc/tc_egress.o nhp-ac:$REMOTE_DIR/etc/
-          # The XDP object used to be named nhp_ebpf_xdp.o. The daemon now
-          # falls back to the legacy name when the new one is absent, so a
-          # stale copy would only confuse someone during an incident; drop it.
-          ssh nhp-ac "rm -f $REMOTE_DIR/etc/nhp_ebpf_xdp.o"
+          if [ "$DEPLOY_BINARIES" = "yes" ]; then
+            # The XDP object used to be named nhp_ebpf_xdp.o. The new nhp-acd
+            # falls back to the legacy name when the new one is absent, so a
+            # stale copy would only confuse someone during an incident; drop it.
+            # Gated on DEPLOY_BINARIES: a config-only deploy still runs the old
+            # binary, which knows only the legacy name and has no fallback, so
+            # deleting nhp_ebpf_xdp.o here would leave the host with only
+            # nhp_ac_xdp.o and the old daemon would hard-fail at startup.
+            ssh nhp-ac "rm -f $REMOTE_DIR/etc/nhp_ebpf_xdp.o"
+          fi
 
           # The iptables bootstrap script is always shipped: it is the baseline
           # in FilterMode 0 and the rollback path out of eBPF mode.

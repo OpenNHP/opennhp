@@ -891,7 +891,7 @@ CRIT   xdp config: refusing to attach the XDP ingress filter because the HTTP kn
 xdplog-report -in logs/nhp_server_xdp-2026-10-01.log -out report.md
 ```
 
-它的 `site` 子命令会发布一个静态摘要站点，而精确的报文总数取自 `[NHP-STAT]` 行，而不是逐包行——后者按设计就是一个被限速的采样。
+它的 `site` 子命令会发布一个静态摘要站点，而精确的报文总数取自 `[NHP-STAT]` 行，而不是逐包行——后者按设计就是一个被限速的采样。那个公开站点有它自己的专题页：[攻击统计](/zh-cn/attack-stats/)——过滤器的日志如何变成已发布的记录，以及每个已发布数字的确切含义。
 
 ## 延伸阅读
 
@@ -899,4 +899,5 @@ xdplog-report -in logs/nhp_server_xdp-2026-10-01.log -out report.md
 - [加密算法](/zh-cn/cryptography/) —— 第 4 章那个长度下限所依据的密码套件。
 - [协议参考](/zh-cn/protocol/) —— XDP 过滤器刻意不去解析的消息头。
 - [功能列表](/zh-cn/features/) —— 这一层实现的那个默认拒绝性质。
+- [攻击统计](/zh-cn/attack-stats/) —— 过滤器的日志如何变成 stats.opennhp.org 上每天发布的汇总，以及每个已发布数字的确切含义。
 - `terraform/demo/RUNBOOK.md` —— 运维手册："nhp-server ingress filter (XDP)" 与 "Why each rule is there"，是第 4 章和第 7 章的、由事故驱动的版本。

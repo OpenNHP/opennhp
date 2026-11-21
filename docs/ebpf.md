@@ -907,7 +907,7 @@ The same refusal covers a metrics endpoint bound off-loopback. The filter drops 
 xdplog-report -in logs/nhp_server_xdp-2026-10-01.log -out report.md
 ```
 
-Its `site` subcommand publishes a static summary site, and the exact packet totals come from the `[NHP-STAT]` lines rather than from the per-packet ones, which are a rate-limited sample by design.
+Its `site` subcommand publishes a static summary site, and the exact packet totals come from the `[NHP-STAT]` lines rather than from the per-packet ones, which are a rate-limited sample by design. That public site is the subject of its own guide: [Attack Stats](/attack-stats/) — how the filter's log becomes the published rows, and what each of the published figures means.
 
 ## Further reading
 
@@ -915,4 +915,5 @@ Its `site` subcommand publishes a static summary site, and the exact packet tota
 - [Cryptography](/cryptography/) — the cipher schemes the length floor in chapter 4 is derived from.
 - [Protocol Reference](/protocol/) — the message header the XDP filter deliberately does not parse.
 - [Features](/features/) — the default-deny property this layer implements.
+- [Attack Stats](/attack-stats/) — how the filter's log becomes the daily summaries published at stats.opennhp.org, and what each published figure means.
 - `terraform/demo/RUNBOOK.md` — the operational runbook: "nhp-server ingress filter (XDP)" and "Why each rule is there", which is the incident-driven version of chapters 4 and 7.

@@ -73,6 +73,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **ci:** the js-agent SDK's unit tests run on every pull request.
   `npm run test:run` only ran in the deploy pipeline, so a browser-side protocol break — the re-knock cookie exchange above — could reach the demo with a green pipeline.
 
+## [1.1.1](https://github.com/OpenNHP/opennhp/compare/v1.1.0...v1.1.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **ac:** fall back to legacy XDP object name on upgrade ([3148335](https://github.com/OpenNHP/opennhp/commit/31483357c4ea16d165eaf20aa0e7e475cf0e15a0))
+* **ac:** rebuild the tracked XDP object from the current source ([76fc54a](https://github.com/OpenNHP/opennhp/commit/76fc54a6ed41f81c452a33fd9d36910e10077852))
+* **ci:** quote the command in the ebpf-verify error message ([526cc86](https://github.com/OpenNHP/opennhp/commit/526cc8630646b9f2a8e45b2ff85f45b53061ea34))
+* **deploy:** keep legacy XDP object until the new binary is installed ([eac2fd3](https://github.com/OpenNHP/opennhp/commit/eac2fd3922eda2063a2fe6f072082af8bed704d4))
+* **deploy:** ship the AC XDP object under both names on config-only deploys ([67810c8](https://github.com/OpenNHP/opennhp/commit/67810c8e727560014224a57612033929ebd5ccfb))
+* **release:** sync SDK version with releases and show it on demo.opennhp.org ([0e38ee0](https://github.com/OpenNHP/opennhp/commit/0e38ee08d17ea922c307263852180ec7309ff7f9))
+* rename nhp_ebpf_xdp.o to nhp_ac_xdp.o for naming consistency ([625e84a](https://github.com/OpenNHP/opennhp/commit/625e84a632aa4db8e809a7cf2846bea581656c6b))
+* **ui:** auto-fetch SDK version and display v1.1.0 on both sites ([2f76b45](https://github.com/OpenNHP/opennhp/commit/2f76b45b6855bad79008415a153e8a3f1cce1a94))
+
 ## 1.1.0 (2026-11-19)
 
 

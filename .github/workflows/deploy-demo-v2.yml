@@ -2719,6 +2719,10 @@ jobs:
           ssh nhp-ac "mkdir -p $REMOTE_DIR/etc"
           scp ./artifact/ac/etc/nhp_ac_xdp.o nhp-ac:$REMOTE_DIR/etc/
           scp ./artifact/ac/etc/tc_egress.o nhp-ac:$REMOTE_DIR/etc/
+          # The XDP object used to be named nhp_ebpf_xdp.o. The daemon now
+          # falls back to the legacy name when the new one is absent, so a
+          # stale copy would only confuse someone during an incident; drop it.
+          ssh nhp-ac "rm -f $REMOTE_DIR/etc/nhp_ebpf_xdp.o"
 
           # The iptables bootstrap script is always shipped: it is the baseline
           # in FilterMode 0 and the rollback path out of eBPF mode.

@@ -608,11 +608,11 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retE
 	tcSpecPath := params.TcProgObjPath
 
 	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		log.Error("eBPF object file not found ")
+		log.Error("eBPF object file not found: %s", specPath)
 		return nil, err
 	}
 	if _, err := os.Stat(tcSpecPath); os.IsNotExist(err) {
-		log.Error("tc eBPF object file not found ")
+		log.Error("tc eBPF object file not found: %s", tcSpecPath)
 		return nil, err
 	}
 

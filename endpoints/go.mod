@@ -10,7 +10,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/mark3labs/mcp-go v1.5.0
+	github.com/mark3labs/mcp-go v1.6.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/viper v1.21.0

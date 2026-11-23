@@ -4,7 +4,7 @@ go 1.26.10
 
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
-	github.com/emmansun/gmsm v0.45.3
+	github.com/emmansun/gmsm v0.45.4
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-contrib/sessions v1.1.4
 	github.com/gin-gonic/gin v1.12.0
@@ -71,9 +71,9 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	go.etcd.io/etcd/api/v3 v3.7.3 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.7.3 // indirect
-	go.etcd.io/etcd/client/v3 v3.7.3 // indirect
+	go.etcd.io/etcd/api/v3 v3.7.4 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.7.4 // indirect
+	go.etcd.io/etcd/client/v3 v3.7.4 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.8.0 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

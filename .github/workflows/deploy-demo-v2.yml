@@ -67,10 +67,13 @@ env:
   # NOTE: there is no DOMAIN_SERVER / LEGACY_DOMAIN_SERVER here any more. The
   # nhp-server's HTTP demo login page was retired, so the server host no
   # longer gets an nginx vhost or a Let's Encrypt certificate and has no
-  # hostname to render into one. auth-plugin.opennhp.org still resolves to the
-  # host (NHP UDP), but demologin.opennhp.org has been removed from DNS.
-  # Canonical cluster 1 nhp-server alias (CNAME -> auth-plugin), used for
-  # display in the demo cluster picker.
+  # hostname to render into one. auth-plugin.opennhp.org -- the host's former
+  # name -- and demologin.opennhp.org have both been removed from DNS; the
+  # former appears in older certificate transparency logs, which cannot be
+  # withdrawn, so keeping it resolving would keep handing out the server's
+  # public IP.
+  # Canonical name of the cluster 1 nhp-server (an A record of its own now),
+  # used for display in the demo cluster picker.
   DOMAIN_SERVER_ALIAS: server.opennhp.org
   DOMAIN_AC: ac.opennhp.org
   DOMAIN_RELAY: relay.opennhp.org

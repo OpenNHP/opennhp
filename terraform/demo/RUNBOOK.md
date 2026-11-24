@@ -1940,6 +1940,33 @@ infra-demo (action=apply)   →   deploy-demo-v2 (confirm=deploy)
 After the first apply, subsequent deploys need no Terraform run — the record
 is in the state and DNS outlives it.
 
+### Retired hostnames (DNS)
+
+`demologin.opennhp.org` and `auth-plugin.opennhp.org` no longer resolve. Both
+were names of the cluster 1 nhp-server: `demologin` was the legacy alias of the
+retired demo login page, and `auth-plugin` was the host's original name.
+`auth-plugin` appears in certificate transparency logs from before the
+wildcard certificate replaced the per-host ones, and CT cannot be withdrawn,
+so a name that still resolves keeps handing the nhp-server's public IP to
+anyone who reads those logs. `server.opennhp.org` is the only public name of
+that host now; it never appeared in a per-host certificate, because it was a
+CNAME alias and CT records SANs.
+
+**Retiring a hostname means moving the address off it first.** `server` was a
+CNAME to `auth-plugin`, so deleting the `auth-plugin` A record alone would
+have left `server.opennhp.org` a dangling CNAME — NXDOMAIN — and taken the
+native agent flow with it: `UdpPeer.ResolveHost` (`nhp/core/peer.go`) resolves
+the peer's `Hostname` over DNS and has no static-IP fallback. The A record
+moved to `server` in the same change that dropped `auth-plugin`, so the live
+name resolves exactly as before and the retired one resolves to nothing.
+
+**Order.** Edit `terraform/demo/dns.tf`, then run `infra-demo` with
+`action=apply` and `confirm=confirm`; the commit itself cannot change DNS.
+`deploy-demo-v2` never applies Terraform — its `configure` job only reads the
+state. A retirement that only drops a DNS record needs no `deploy-demo-v2`
+run (the demologin retirement did, because the nginx vhost had to be torn
+down on the long-lived host).
+
 ### Manual recovery / debugging
 
 - **Pull didn't happen today / status is "failed":**

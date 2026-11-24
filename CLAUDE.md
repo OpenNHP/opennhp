@@ -223,6 +223,14 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > the rest (see *All-ports exposure* below); `deploy/nginx/server.conf.template` is kept for
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
+> Its DNS names are retired with it: `auth-plugin.opennhp.org` and the legacy
+> alias `demologin.opennhp.org` no longer resolve at all — the A record moved to
+> `server.opennhp.org` first, because `server` was a CNAME to `auth-plugin` and
+> dropping the target alone would have taken the live name with it.
+> `auth-plugin` appears in older certificate transparency logs, which cannot be
+> withdrawn, so leaving it resolving would keep handing out the nhp-server's
+> public IP to anyone reading them; `server.opennhp.org` never appeared in a
+> per-host certificate (it was a CNAME alias, and CT records SANs).
 
 **NHP knock port.** The UDP port `nhp-serverd` listens on for knocks is
 `var.nhp_listen_port` in `terraform/demo/variables.tf` — that variable is the

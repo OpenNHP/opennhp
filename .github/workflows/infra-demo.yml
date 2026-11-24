@@ -270,17 +270,43 @@ jobs:
       # place (it has to delete the record and create it again, and a record
       # of that name is already there).
       #
-      # So adopt the live records into the state before planning. The
-      # adoption is deliberately narrow: it happens only where the state
-      # cannot describe the live record at all -- the record is missing from
-      # the state, or the state's record type differs from the live one. Where
-      # the state and Cloudflare agree on the type, nothing is touched and
-      # Terraform's normal drift detection applies, so a record whose content
-      # was changed out of band is still corrected by the plan.
-      - name: Adopt DNS records that exist in Cloudflare but not in state
-        if: env.TF_ACTION != 'destroy'
+      # The repair imports the live record into the state. It is a repair,
+      # not a drift detector: it runs only where the state cannot describe
+      # the live record at all (the record is missing from the state, or the
+      # state holds it as another type), and it refuses to touch a record
+      # whose type the configuration does not declare -- that would leave
+      # the plan with a type to change, which the provider cannot make in
+      # place, and the name would not resolve while it tried. That one is a
+      # decision for a human, and the run stops there with the state
+      # unchanged.
+      #
+      # A plan run changes nothing: it is unattended (it runs on every push
+      # to main), it needs no confirmation, and a plan has to stay
+      # read-only. It only reports what an apply would adopt. Only an apply
+      # that was confirmed adopts, and it is the only run that writes to the
+      # state.
+      - name: Report DNS records that exist in Cloudflare but not in state
+        if: env.TF_ACTION == 'plan'
         working-directory: ${{ env.TF_WORKING_DIR }}
         env:
+          CF_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CF_ZONE: ${{ steps.secrets.outputs.cf_zone }}
+          # The provider needs its configuration to read the state and the
+          # plan. The secrets are passed the same way the plan step passes
+          # them: as TF_VAR_*, never on the command line.
+          TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
+          TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
+          TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
+          TF_VAR_server_open_all_ports: ${{ env.OPEN_ALL_PORTS }}
+          TF_VAR_ac_open_all_ports: ${{ env.OPEN_AC_ALL_PORTS }}
+        run: bash "$GITHUB_WORKSPACE/scripts/adopt-dns-records.sh" --report
+
+      - name: Adopt DNS records that exist in Cloudflare but not in state
+        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          CF_TOKEN: ${{ steps.secrets.outputs.cf_token }}
+          CF_ZONE: ${{ steps.secrets.outputs.cf_zone }}
           # The provider needs its configuration to import a record. The
           # secrets are passed the same way the plan step passes them: as
           # TF_VAR_*, never on the command line.
@@ -289,80 +315,7 @@ jobs:
           TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
           TF_VAR_server_open_all_ports: ${{ env.OPEN_ALL_PORTS }}
           TF_VAR_ac_open_all_ports: ${{ env.OPEN_AC_ALL_PORTS }}
-        run: |
-          set -euo pipefail
-
-          CF_TOKEN="${{ steps.secrets.outputs.cf_token }}"
-          CF_ZONE="${{ steps.secrets.outputs.cf_zone }}"
-
-          # The configuration's intent: one cloudflare_record per hostname,
-          # with the address, the hostname and the record type it asks for.
-          terraform show -json tfplan > plan.json
-          RECORDS=$(jq -r '
-            .planned_values.root_module.resources[]?
-            | select(.type == "cloudflare_record")
-            | [.address, .values.name, .values.type] | @tsv' plan.json)
-
-          # Every record the zone holds, fetched once. The API's own name
-          # filter is a substring match, so the records are matched on their
-          # first label instead: the zone's records are all <label>.<domain>.
-          zone_records=$(curl -sS --retry 3 -H "Authorization: Bearer ${CF_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?per_page=100")
-          if ! jq -e '.success' >/dev/null <<<"$zone_records"; then
-            echo "::error::Could not list the zone's DNS records in Cloudflare."
-            echo "${zone_records:0:500}" >&2
-            exit 1
-          fi
-
-          adopted=0
-          while IFS=$'\t' read -r addr name want; do
-            [ -n "$addr" ] || continue
-
-            live=$(jq -c --arg n "$name" \
-              '[.result[]? | select((.name | split(".")[0]) == $n)] | (.[0] // {})' \
-              <<<"$zone_records")
-            live_id=$(jq -r '.id // empty' <<<"$live")
-            live_type=$(jq -r '.type // empty' <<<"$live")
-            if [ -z "$live_id" ]; then
-              echo "No record for $name in Cloudflare; Terraform will create it."
-              continue
-            fi
-
-            # The record type the state holds, if it holds the record at all.
-            # Terraform 1.10 has no "state show -json" (the flag is not
-            # defined), so the type is read out of the human-readable output.
-            state_type=$(terraform state show "$addr" 2>/dev/null \
-              | sed -n 's/^[[:space:]]*type[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' \
-              | head -1) || true
-            if [ -n "$state_type" ] && [ "$state_type" = "$live_type" ]; then
-              # The state describes the live record; leave it to Terraform.
-              continue
-            fi
-
-            echo "::notice::Adopting the live $name record ($live_type, id $live_id) into the state as $addr (state: ${state_type:-absent}, configuration wants: $want)."
-            if [ "$live_type" != "$want" ]; then
-              echo "::warning::The live $name record is a $live_type but the configuration declares type $want. Adopting it leaves the plan with a record type to change, which the Cloudflare provider cannot do in place: it has to delete the record and create it again, and a record of that name is already there. Delete the live record in Cloudflare first, or change the configuration."
-            fi
-            # Drop whatever the state holds for the address first. The import
-            # writes the live record over it, and the stale entry is what
-            # makes the plan ask for a change the provider cannot make.
-            terraform state rm "$addr" || true
-            # The provider's importer takes "<zoneID>/<recordID>" and refuses
-            # a bare record id: "invalid id ... should be in format
-            # \"zoneID/recordID\" for import".
-            terraform import -input=false "$addr" "${CF_ZONE}/${live_id}"
-            adopted=1
-          done <<<"$RECORDS"
-          rm -f plan.json
-
-          if [ "$adopted" = "1" ]; then
-            # The plan was computed against the state as it was before the
-            # adoption, so it still asks for the record to be created. Plan
-            # again against the adopted state: the plan that gets applied has
-            # to be the one that matches the state.
-            echo "The state changed; planning again against it."
-            terraform plan -out=tfplan
-          fi
+        run: bash "$GITHUB_WORKSPACE/scripts/adopt-dns-records.sh" --apply
 
       # A host created or replaced in a plan that also opens every port has no
       # XDP program until deploy-demo-v2 runs, so it would sit fully exposed.

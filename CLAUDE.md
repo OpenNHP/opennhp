@@ -235,9 +235,14 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > delete the record and create it again, and it refuses to create a record
 > whose name is taken — so moving a name from one record type to another takes
 > two applies, and the name stops resolving in between. An apply that dies in
-> that window leaves the record in Cloudflare and out of the state;
-> `infra-demo` adopts such records back into the state before it plans (see
-> *Retired hostnames (DNS)* in `terraform/demo/RUNBOOK.md`).
+> that window leaves the record in Cloudflare and out of the state; a
+> *confirmed* `infra-demo` apply adopts such records back into the state
+> before it plans, while a plan run only reports what it would adopt (a plan
+> run must stay read-only — it is unattended and needs no confirmation). The
+> adoption stops for a human when the live record's type is not the one the
+> configuration declares, when a name holds more than one record of that type,
+> or when the state cannot be read (see *Retired hostnames (DNS)* in
+> `terraform/demo/RUNBOOK.md`).
 
 **NHP knock port.** The UDP port `nhp-serverd` listens on for knocks is
 `var.nhp_listen_port` in `terraform/demo/variables.tf` — that variable is the

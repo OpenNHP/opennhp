@@ -1971,18 +1971,56 @@ was made in one apply instead: the provider created the A record on
 `server.opennhp.org`, refused to go on with it, and the apply failed with
 the address live in Cloudflare and nothing in the state to describe it.
 
-**An apply that dies in that window is repaired by the next one.** `infra-demo`
-adopts such records back into the state before it plans: for every
-`cloudflare_record` the configuration declares, a live record whose type the
-state cannot describe — the record is missing from the state, or the state's
-type differs from the live one — is imported into the state, and the plan is
-then run again against the state it adopted. Where the state and Cloudflare
-agree on the type, nothing is touched, so a record whose content was changed
-out of band is still corrected by the plan. The adoption is a repair, not a
-drift detector, and it says what it adopted in the run's log. After an apply
-that failed this way, re-run `infra-demo` with `action=apply` and
-`confirm=confirm`: the adoption puts the record back into the state and the
+**An apply that dies in that window is repaired by the next one.**
+`scripts/adopt-dns-records.sh` adopts such records back into the state: for
+every `cloudflare_record` the configuration declares, a live record whose type
+the state cannot describe — the record is missing from the state, or the
+state's type differs from the live one — is imported into the state, and the
+plan is then run again against the state it adopted. Where the state and
+Cloudflare agree on the type, nothing is touched, so a record whose content
+was changed out of band is still corrected by the plan. The adoption is a
+repair, not a drift detector, and it says what it adopted in the run's log.
+After an apply that failed this way, re-run `infra-demo` with `action=apply`
+and `confirm=confirm`: the adoption puts the record back into the state and the
 apply then has nothing left to change for it.
+
+**Only a confirmed apply adopts.** A plan run reads the state and the zone and
+prints what an apply would adopt; it changes nothing, because a plan run is
+unattended (it runs on every push to `main`), needs no confirmation, and has
+to stay read-only. The adoption — `terraform state rm` and `terraform import` —
+is therefore an apply-only step, and it is the only step in the workflow that
+changes the state outside of the apply itself.
+
+**The adoption is covered by tests.**
+`tests/scripts/test_adopt_dns_records.sh` runs the script against a stubbed
+Terraform and a stubbed Cloudflare API: a plan run changes nothing, an apply
+adopts the live record and plans again, a record of another type is refused, a
+state that cannot be read stops the run, and a failed import puts the state
+back. It runs in the `ubuntu-build` workflow, so a change to the script cannot
+reach the demo pipeline unexercised.
+
+**Three things stop the adoption instead of guessing.** Each one leaves the
+state exactly as it was and fails the run, because each of them is a decision
+for a human:
+
+- **A live record whose type the configuration does not declare.** Adopting it
+  would leave the plan with a record type to change, which the provider cannot
+  make in place — it would delete the record and create it again, which is the
+  window in which the name does not resolve. Delete the live record in
+  Cloudflare first, or change the configuration to declare the type that is
+  live.
+- **More than one live record of the declared type on the same name.** Which
+  one the configuration means is not a question the pipeline may answer.
+- **A state that cannot be read.** A failed state read is not a state without
+  the record: it is a state the run does not understand, and treating it as
+  "the record is absent" is how a record gets removed from the state by
+  accident.
+
+**The adoption is recoverable.** Before it removes anything from the state it
+takes a backup (`terraform state pull`), and a failed import puts that backup
+back (`terraform state push -force`), so a failed adoption cannot leave a
+record in Cloudflare and out of the state — the orphan this step exists to
+repair.
 
 **Order.** Edit `terraform/demo/dns.tf`, then run `infra-demo` with
 `action=apply` and `confirm=confirm`; the commit itself cannot change DNS.

@@ -231,6 +231,13 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > withdrawn, so leaving it resolving would keep handing out the nhp-server's
 > public IP to anyone reading them; `server.opennhp.org` never appeared in a
 > per-host certificate (it was a CNAME alias, and CT records SANs).
+> A record's type cannot be changed in place — the Cloudflare provider has to
+> delete the record and create it again, and it refuses to create a record
+> whose name is taken — so moving a name from one record type to another takes
+> two applies, and the name stops resolving in between. An apply that dies in
+> that window leaves the record in Cloudflare and out of the state;
+> `infra-demo` adopts such records back into the state before it plans (see
+> *Retired hostnames (DNS)* in `terraform/demo/RUNBOOK.md`).
 
 **NHP knock port.** The UDP port `nhp-serverd` listens on for knocks is
 `var.nhp_listen_port` in `terraform/demo/variables.tf` — that variable is the

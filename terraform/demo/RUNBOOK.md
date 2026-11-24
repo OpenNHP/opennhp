@@ -1960,6 +1960,30 @@ the peer's `Hostname` over DNS and has no static-IP fallback. The A record
 moved to `server` in the same change that dropped `auth-plugin`, so the live
 name resolves exactly as before and the retired one resolves to nothing.
 
+**A record's type cannot be changed in place.** Moving a name from one record
+type to another (a CNAME to an A record) is not an update the Cloudflare
+provider can make: it has to delete the record and create it again, and it
+refuses to create a record whose name is already taken — *"expected DNS
+record to not already be present but already exists"*. So a type change takes
+**two applies**: the first drops the old record, the second creates the new
+one, and the name does not resolve in between. The `auth-plugin` retirement
+was made in one apply instead: the provider created the A record on
+`server.opennhp.org`, refused to go on with it, and the apply failed with
+the address live in Cloudflare and nothing in the state to describe it.
+
+**An apply that dies in that window is repaired by the next one.** `infra-demo`
+adopts such records back into the state before it plans: for every
+`cloudflare_record` the configuration declares, a live record whose type the
+state cannot describe — the record is missing from the state, or the state's
+type differs from the live one — is imported into the state, and the plan is
+then run again against the state it adopted. Where the state and Cloudflare
+agree on the type, nothing is touched, so a record whose content was changed
+out of band is still corrected by the plan. The adoption is a repair, not a
+drift detector, and it says what it adopted in the run's log. After an apply
+that failed this way, re-run `infra-demo` with `action=apply` and
+`confirm=confirm`: the adoption puts the record back into the state and the
+apply then has nothing left to change for it.
+
 **Order.** Edit `terraform/demo/dns.tf`, then run `infra-demo` with
 `action=apply` and `confirm=confirm`; the commit itself cannot change DNS.
 `deploy-demo-v2` never applies Terraform — its `configure` job only reads the

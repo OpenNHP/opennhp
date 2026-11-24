@@ -328,11 +328,12 @@ jobs:
               continue
             fi
 
-            if state_json=$(terraform state show -json "$addr" 2>/dev/null); then
-              state_type=$(jq -r '.values.type // empty' <<<"$state_json")
-            else
-              state_type=""
-            fi
+            # The record type the state holds, if it holds the record at all.
+            # Terraform 1.10 has no "state show -json" (the flag is not
+            # defined), so the type is read out of the human-readable output.
+            state_type=$(terraform state show "$addr" 2>/dev/null \
+              | sed -n 's/^[[:space:]]*type[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' \
+              | head -1) || true
             if [ -n "$state_type" ] && [ "$state_type" = "$live_type" ]; then
               # The state describes the live record; leave it to Terraform.
               continue
@@ -346,7 +347,10 @@ jobs:
             # writes the live record over it, and the stale entry is what
             # makes the plan ask for a change the provider cannot make.
             terraform state rm "$addr" || true
-            terraform import -input=false "$addr" "$live_id"
+            # The provider's importer takes "<zoneID>/<recordID>" and refuses
+            # a bare record id: "invalid id ... should be in format
+            # \"zoneID/recordID\" for import".
+            terraform import -input=false "$addr" "${CF_ZONE}/${live_id}"
             adopted=1
           done <<<"$RECORDS"
           rm -f plan.json

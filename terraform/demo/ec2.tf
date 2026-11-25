@@ -16,7 +16,7 @@ resource "aws_eip" "relay" {
 
 # --- EC2 Instances ---
 
-# nhp-server (auth-plugin.opennhp.org). NHP UDP only; the HTTP demo login
+# nhp-server (server.opennhp.org). NHP UDP only; the HTTP demo login
 # page and its demologin.opennhp.org alias have been retired.
 resource "aws_instance" "server" {
   ami                    = data.aws_ami.amazon_linux_2023.id

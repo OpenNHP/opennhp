@@ -67,6 +67,15 @@ jobs:
         bash -n docker/harden_nhp_server_udp.sh
         python3 docker/test_harden_nhp_server_udp.py
 
+    - name: Check the DNS adoption script
+      # The script is what repairs a DNS record the Terraform state lost, so
+      # it runs inside the demo pipeline with the state in front of it. A
+      # syntax error in it would only surface there, on the run that was
+      # meant to fix something.
+      run: |
+        bash -n scripts/adopt-dns-records.sh
+        bash tests/scripts/test_adopt_dns_records.sh scripts/adopt-dns-records.sh
+
     - name: Build
       run: make
 

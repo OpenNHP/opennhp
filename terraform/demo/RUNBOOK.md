@@ -1940,6 +1940,113 @@ infra-demo (action=apply)   →   deploy-demo-v2 (confirm=deploy)
 After the first apply, subsequent deploys need no Terraform run — the record
 is in the state and DNS outlives it.
 
+### Retired hostnames (DNS)
+
+`demologin.opennhp.org` and `auth-plugin.opennhp.org` no longer resolve. Both
+were names of the cluster 1 nhp-server: `demologin` was the legacy alias of the
+retired demo login page, and `auth-plugin` was the host's original name.
+`auth-plugin` appears in certificate transparency logs from before the
+wildcard certificate replaced the per-host ones, and CT cannot be withdrawn,
+so a name that still resolves keeps handing the nhp-server's public IP to
+anyone who reads those logs. `server.opennhp.org` is the only public name of
+that host now; it never appeared in a per-host certificate, because it was a
+CNAME alias and CT records SANs.
+
+**Retiring a hostname means moving the address off it first.** `server` was a
+CNAME to `auth-plugin`, so deleting the `auth-plugin` A record alone would
+have left `server.opennhp.org` a dangling CNAME — NXDOMAIN — and taken the
+native agent flow with it: `UdpPeer.ResolveHost` (`nhp/core/peer.go`) resolves
+the peer's `Hostname` over DNS and has no static-IP fallback. The A record
+moved to `server` in the same change that dropped `auth-plugin`, so the live
+name resolves exactly as before and the retired one resolves to nothing.
+
+**A record's type cannot be changed in place.** Moving a name from one record
+type to another (a CNAME to an A record) is not an update the Cloudflare
+provider can make: it has to delete the record and create it again, and it
+refuses to create a record whose name is already taken — *"expected DNS
+record to not already be present but already exists"*. So a type change takes
+**two applies**: the first drops the old record, the second creates the new
+one, and the name does not resolve in between. The `auth-plugin` retirement
+was made in one apply instead: the provider created the A record on
+`server.opennhp.org`, refused to go on with it, and the apply failed with
+the address live in Cloudflare and nothing in the state to describe it.
+
+**An apply that dies in that window is repaired by the next one.**
+`scripts/adopt-dns-records.sh` adopts such records back into the state: for
+every `cloudflare_record` the configuration declares, a live record the state
+cannot describe — the record is missing from the state, or the state's type
+differs from the live one, or the state names another id than the one the
+zone holds — is imported into the state, and the plan is then run again against
+the state it adopted. Where the state and Cloudflare agree on the type *and*
+the id, nothing is touched, so a record whose content was changed out of band
+is still corrected by the plan. The adoption is a repair, not a drift detector,
+and it says what it adopted in the run's log. After an apply that failed this
+way, re-run `infra-demo` with `action=apply` and `confirm=confirm`: the
+adoption puts the record back into the state and the apply then has nothing
+left to change for it.
+
+**A record's id matters as much as its type.** A state that holds the right
+type under an id the zone does not hold describes nothing that is live: the
+record was deleted and created again in the dashboard, or an apply destroyed it
+and created it again before it died. The plan then refreshes the id, gets a
+404, drops the entry and plans a create — which fails with *"expected DNS
+record to not already be present but already exists"*, the very failure this
+script exists to repair. The adoption compares the ids as well as the types,
+and replaces the stale entry the same way it replaces one of another type
+(`terraform state rm`, then `terraform import` of the live record).
+
+**Only a confirmed apply adopts.** A plan run reads the state and the zone and
+prints what an apply would adopt; it changes nothing, because a plan run is
+unattended (it runs on every push to `main`), needs no confirmation, and has
+to stay read-only. The adoption — `terraform state rm` and `terraform import` —
+is therefore an apply-only step, and it is the only step in the workflow that
+changes the state outside of the apply itself.
+
+**The Cloudflare token never reaches a command line.** The token is passed to
+the script in its environment and reaches curl through its configuration on
+stdin (`curl --config -`), not as an argument: the arguments of a process are
+readable by every other process on the machine (`ps`, `/proc/<pid>/cmdline`),
+and the script runs unattended on the runner on every push.
+
+**The adoption is covered by tests.**
+`tests/scripts/test_adopt_dns_records.sh` runs the script against a stubbed
+Terraform and a stubbed Cloudflare API: a plan run changes nothing, an apply
+adopts the live record and plans again, a record of another type is refused, a
+record the state names by another id is replaced, the token never appears
+among curl's arguments, a state that cannot be read stops the run, and a failed
+import puts the state back. It runs in the `ubuntu-build` workflow, so a change
+to the script cannot reach the demo pipeline unexercised.
+
+**Three things stop the adoption instead of guessing.** Each one leaves the
+state exactly as it was and fails the run, because each of them is a decision
+for a human:
+
+- **A live record whose type the configuration does not declare.** Adopting it
+  would leave the plan with a record type to change, which the provider cannot
+  make in place — it would delete the record and create it again, which is the
+  window in which the name does not resolve. Delete the live record in
+  Cloudflare first, or change the configuration to declare the type that is
+  live.
+- **More than one live record of the declared type on the same name.** Which
+  one the configuration means is not a question the pipeline may answer.
+- **A state that cannot be read.** A failed state read is not a state without
+  the record: it is a state the run does not understand, and treating it as
+  "the record is absent" is how a record gets removed from the state by
+  accident.
+
+**The adoption is recoverable.** Before it removes anything from the state it
+takes a backup (`terraform state pull`), and a failed import puts that backup
+back (`terraform state push -force`), so a failed adoption cannot leave a
+record in Cloudflare and out of the state — the orphan this step exists to
+repair.
+
+**Order.** Edit `terraform/demo/dns.tf`, then run `infra-demo` with
+`action=apply` and `confirm=confirm`; the commit itself cannot change DNS.
+`deploy-demo-v2` never applies Terraform — its `configure` job only reads the
+state. A retirement that only drops a DNS record needs no `deploy-demo-v2`
+run (the demologin retirement did, because the nginx vhost had to be torn
+down on the long-lived host).
+
 ### Manual recovery / debugging
 
 - **Pull didn't happen today / status is "failed":**

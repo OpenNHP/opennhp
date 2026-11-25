@@ -1973,16 +1973,27 @@ the address live in Cloudflare and nothing in the state to describe it.
 
 **An apply that dies in that window is repaired by the next one.**
 `scripts/adopt-dns-records.sh` adopts such records back into the state: for
-every `cloudflare_record` the configuration declares, a live record whose type
-the state cannot describe — the record is missing from the state, or the
-state's type differs from the live one — is imported into the state, and the
-plan is then run again against the state it adopted. Where the state and
-Cloudflare agree on the type, nothing is touched, so a record whose content
-was changed out of band is still corrected by the plan. The adoption is a
-repair, not a drift detector, and it says what it adopted in the run's log.
-After an apply that failed this way, re-run `infra-demo` with `action=apply`
-and `confirm=confirm`: the adoption puts the record back into the state and the
-apply then has nothing left to change for it.
+every `cloudflare_record` the configuration declares, a live record the state
+cannot describe — the record is missing from the state, or the state's type
+differs from the live one, or the state names another id than the one the
+zone holds — is imported into the state, and the plan is then run again against
+the state it adopted. Where the state and Cloudflare agree on the type *and*
+the id, nothing is touched, so a record whose content was changed out of band
+is still corrected by the plan. The adoption is a repair, not a drift detector,
+and it says what it adopted in the run's log. After an apply that failed this
+way, re-run `infra-demo` with `action=apply` and `confirm=confirm`: the
+adoption puts the record back into the state and the apply then has nothing
+left to change for it.
+
+**A record's id matters as much as its type.** A state that holds the right
+type under an id the zone does not hold describes nothing that is live: the
+record was deleted and created again in the dashboard, or an apply destroyed it
+and created it again before it died. The plan then refreshes the id, gets a
+404, drops the entry and plans a create — which fails with *"expected DNS
+record to not already be present but already exists"*, the very failure this
+script exists to repair. The adoption compares the ids as well as the types,
+and replaces the stale entry the same way it replaces one of another type
+(`terraform state rm`, then `terraform import` of the live record).
 
 **Only a confirmed apply adopts.** A plan run reads the state and the zone and
 prints what an apply would adopt; it changes nothing, because a plan run is
@@ -1991,13 +2002,20 @@ to stay read-only. The adoption — `terraform state rm` and `terraform import` 
 is therefore an apply-only step, and it is the only step in the workflow that
 changes the state outside of the apply itself.
 
+**The Cloudflare token never reaches a command line.** The token is passed to
+the script in its environment and reaches curl through its configuration on
+stdin (`curl --config -`), not as an argument: the arguments of a process are
+readable by every other process on the machine (`ps`, `/proc/<pid>/cmdline`),
+and the script runs unattended on the runner on every push.
+
 **The adoption is covered by tests.**
 `tests/scripts/test_adopt_dns_records.sh` runs the script against a stubbed
 Terraform and a stubbed Cloudflare API: a plan run changes nothing, an apply
 adopts the live record and plans again, a record of another type is refused, a
-state that cannot be read stops the run, and a failed import puts the state
-back. It runs in the `ubuntu-build` workflow, so a change to the script cannot
-reach the demo pipeline unexercised.
+record the state names by another id is replaced, the token never appears
+among curl's arguments, a state that cannot be read stops the run, and a failed
+import puts the state back. It runs in the `ubuntu-build` workflow, so a change
+to the script cannot reach the demo pipeline unexercised.
 
 **Three things stop the adoption instead of guessing.** Each one leaves the
 state exactly as it was and fails the run, because each of them is a decision

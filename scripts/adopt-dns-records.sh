@@ -20,12 +20,19 @@
 #     change a record's type in place -- it has to delete the record and
 #     create it again, and it refuses to create a record whose name is
 #     taken -- so a type change takes two applies, and the name does not
-#     resolve in between.
+#     resolve in between, or
+#   * the state holds it under another id: the record the state names is
+#     not the record the zone holds. That happens when the record was
+#     deleted and created again in the dashboard, or when an apply
+#     destroyed it and created it again before it died. The state then
+#     cannot describe the live record at all, and the next plan fails with
+#     "expected DNS record to not already be present but already exists"
+#     -- the very failure this script exists to repair.
 #
-# Where the state and Cloudflare agree on the type, nothing is touched and
-# Terraform's normal drift detection applies, so a record whose content was
-# changed out of band is still corrected by the plan. The adoption is a
-# repair, not a drift detector.
+# Where the state and Cloudflare agree on the type *and* the id, nothing is
+# touched and Terraform's normal drift detection applies, so a record whose
+# content was changed out of band is still corrected by the plan. The
+# adoption is a repair, not a drift detector.
 #
 # Usage:
 #   scripts/adopt-dns-records.sh --report    # read-only: report what would be adopted
@@ -49,6 +56,9 @@
 #   CF_TOKEN   Cloudflare API token (Zone:DNS:Read, Zone:Zone:Read)
 #   CF_ZONE    the Cloudflare zone id
 #   PLAN_FILE  the plan to read (default: tfplan)
+#
+# The token is never put on a command line; it reaches curl through its
+# configuration on stdin (see "the Cloudflare API" below).
 #
 # Requires: terraform, jq, curl.
 #
@@ -121,6 +131,29 @@ backup_file="$(mktemp)"
 stderr_file="$(mktemp)"
 trap 'rm -f "$plan_json" "$state_json" "$state_list" "$decisions" "$refusal_file" "$backup_file" "$stderr_file"' EXIT
 
+# --- the Cloudflare API ----------------------------------------------------
+#
+# The token is never put on a command line: the arguments of a process are
+# readable by every other process on the machine (ps, /proc/<pid>/cmdline),
+# and this script runs unattended on the CI runner on every push. curl
+# reads its configuration from stdin with "--config -", so the header
+# travels that way and never appears in argv.
+#
+# curl's configuration file reads a double-quoted value with the usual
+# backslash escapes, so the token is escaped before it goes in.
+
+cf_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '%s' "$s"
+}
+
+cf_get() {
+  printf 'header = "Authorization: Bearer %s"\n' "$(cf_escape "$CF_TOKEN")" |
+    curl -sS --retry 3 --config - "$1"
+}
+
 # --- the plan -------------------------------------------------------------
 #
 # The configuration's intent: one cloudflare_record per hostname, with the
@@ -144,8 +177,7 @@ cfg_domain="$(jq -r '.variables.domain.value // empty' "$plan_json")"
 
 # --- the zone -------------------------------------------------------------
 
-if ! zone_json="$(curl -sS --retry 3 -H "Authorization: Bearer ${CF_TOKEN}" \
-  "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}")"; then
+if ! zone_json="$(cf_get "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}")"; then
   die "ERROR: could not read the Cloudflare zone ${CF_ZONE}."
 fi
 if ! jq -e '.success == true' >/dev/null <<<"$zone_json"; then
@@ -167,8 +199,7 @@ fi
 live_records='[]'
 page=1
 while :; do
-  if ! page_json="$(curl -sS --retry 3 -H "Authorization: Bearer ${CF_TOKEN}" \
-    "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?per_page=100&page=${page}")"; then
+  if ! page_json="$(cf_get "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?per_page=100&page=${page}")"; then
     die "ERROR: could not list the DNS records of the zone ${CF_ZONE}."
   fi
   if ! jq -e '.success == true' >/dev/null <<<"$page_json"; then
@@ -199,16 +230,23 @@ if ! jq -e '.values.root_module' "$state_json" >/dev/null 2>&1; then
   die "ERROR: the state JSON has no root module; refusing to guess what the state holds."
 fi
 
-state_type_of() {
-  jq -r --arg a "$1" '
+# What the state holds for an address: one of the record's fields. The type
+# says whether the state describes the live record at all; the id says
+# whether it describes *this* record -- a state that names an id the zone
+# does not hold describes nothing that is live.
+state_field_of() {
+  jq -r --arg a "$1" --arg f "$2" '
     def mod_resources:
       (.resources // [])[], ((.child_modules // [])[] | mod_resources);
     [ .values.root_module
       | mod_resources
       | select(.address == $a)
-      | (.values.type // empty)
+      | (.values[$f] // empty)
     ] | .[0] // empty' "$state_json"
 }
+
+state_type_of() { state_field_of "$1" type; }
+state_id_of() { state_field_of "$1" id; }
 
 # --- analyse --------------------------------------------------------------
 #
@@ -219,13 +257,22 @@ state_type_of() {
 : >"$refusal_file"
 refusals=0
 
+# One decision per line: what the plan declares, what the zone holds, what
+# the state holds, and what is done about the difference.
+#
+#   address|fqdn|declared type|live id|live type|state type|state id|action
+#
+decide() {
+  printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
+    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" >>"$decisions"
+}
+
 # A refusal is recorded here and reported after the table, so the run reads
 # as one report rather than as a mix of the two.
 refuse() {
-  local addr="$1" fqdn="$2" want="$3" live_type="$4" state_type="$5" msg="$6"
+  local addr="$1" fqdn="$2" want="$3" live_type="$4" state_type="$5" state_id="$6" msg="$7"
   refusals=$((refusals + 1))
-  printf '%s|%s|%s|%s|%s|%s|%s\n' \
-    "$addr" "$fqdn" "$want" "" "$live_type" "$state_type" "refuse" >>"$decisions"
+  decide "$addr" "$fqdn" "$want" "" "$live_type" "$state_type" "$state_id" "refuse"
   printf '%s\n' "$msg" >>"$refusal_file"
 }
 
@@ -249,10 +296,11 @@ while IFS='|' read -r addr name want; do
   esac
 
   # What the state holds for this address, if it holds it at all. The
-  # presence comes from "terraform state list" and the type from the
+  # presence comes from "terraform state list" and the content from the
   # machine-readable state; both were read above, and a failure to read
   # either of them has already stopped the run.
   state_type="$(state_type_of "$addr")"
+  state_id="$(state_id_of "$addr")"
   if grep -Fxq -- "$addr" "$state_list"; then
     state_present="yes"
   else
@@ -266,8 +314,7 @@ while IFS='|' read -r addr name want; do
 
   if [ "$candidate_count" -eq 0 ]; then
     # Nothing is live under that name: Terraform creates it.
-    printf '%s|%s|%s|%s|%s|%s|%s\n' \
-      "$addr" "$fqdn" "$want" "" "" "$state_type" "create" >>"$decisions"
+    decide "$addr" "$fqdn" "$want" "" "" "$state_type" "$state_id" "create"
     continue
   fi
 
@@ -276,14 +323,14 @@ while IFS='|' read -r addr name want; do
 
   if [ "$matched_count" -gt 1 ]; then
     live_types="$(jq -r '[.[].type] | unique | join(", ")' <<<"$candidates")"
-    refuse "$addr" "$fqdn" "$want" "$live_types" "$state_type" \
+    refuse "$addr" "$fqdn" "$want" "$live_types" "$state_type" "$state_id" \
       "The zone holds ${matched_count} ${want} records for ${fqdn}. Refusing to choose one of them by guesswork: the wrong one would be adopted and then replaced by the next apply. Delete the extra records in Cloudflare, or give the configuration a name of its own."
     continue
   fi
 
   if [ "$matched_count" -eq 0 ]; then
     live_types="$(jq -r '[.[].type] | unique | join(", ")' <<<"$candidates")"
-    refuse "$addr" "$fqdn" "$want" "$live_types" "$state_type" \
+    refuse "$addr" "$fqdn" "$want" "$live_types" "$state_type" "$state_id" \
       "The live record for ${fqdn} is a ${live_types} but the configuration declares ${want}. Adopting it would leave the plan with a record type to change, which the Cloudflare provider cannot do in place: it has to delete the record and create it again, and a record of that name is already there -- the window in which the name does not resolve. Delete the live record in Cloudflare first, or change the configuration to declare the type that is live."
     continue
   fi
@@ -291,38 +338,57 @@ while IFS='|' read -r addr name want; do
   live_id="$(jq -r '.[0].id // empty' <<<"$matched")"
   live_type="$(jq -r '.[0].type // empty' <<<"$matched")"
   if [ -z "$live_id" ]; then
-    refuse "$addr" "$fqdn" "$want" "$live_type" "$state_type" \
+    refuse "$addr" "$fqdn" "$want" "$live_type" "$state_type" "$state_id" \
       "The live ${want} record for ${fqdn} has no id; there is nothing to import."
     continue
   fi
 
-  if [ "$state_present" = "yes" ] && [ -n "$state_type" ] && [ "$state_type" = "$live_type" ]; then
-    # The state describes the live record; leave it to Terraform.
-    action="insync"
-  elif [ "$state_present" = "yes" ]; then
+  if [ "$state_present" != "yes" ]; then
+    action="adopt"
+  elif [ -z "$state_type" ] || [ "$state_type" != "$live_type" ]; then
     # The state holds the address as a record of another type, or as a
     # record it cannot describe: the provider cannot change a record's
     # type in place, so the entry has to go before the live record can be
     # imported under that address.
     action="replace"
+  elif [ -n "$state_id" ] && [ "$state_id" != "$live_id" ]; then
+    # The state holds the address under another id: the record it names is
+    # not the one the zone holds. The record was deleted and created again
+    # in the dashboard, or an apply destroyed it and created it again
+    # before it died, and the state now describes nothing that is live.
+    # The plan would refresh the id, get a 404, drop the entry and plan a
+    # create -- which fails with "expected DNS record to not already be
+    # present but already exists". The entry goes and the live record is
+    # imported in its place.
+    #
+    # A state that names no id at all is left alone: it cannot be compared
+    # with anything, and guessing that it describes a different record
+    # would rewrite the whole state on every run.
+    action="replace"
   else
-    action="adopt"
+    # The state describes the live record; leave it to Terraform.
+    action="insync"
   fi
 
-  printf '%s|%s|%s|%s|%s|%s|%s\n' \
-    "$addr" "$fqdn" "$want" "$live_id" "$live_type" "$state_type" "$action" >>"$decisions"
+  decide "$addr" "$fqdn" "$want" "$live_id" "$live_type" "$state_type" "$state_id" "$action"
 done <<<"$records"
 
 # --- report ---------------------------------------------------------------
 
 printf 'Cloudflare DNS records vs the Terraform state (zone %s, %s):\n' "$CF_ZONE" "$zone_name"
-while IFS='|' read -r addr fqdn want live_id live_type state_type action; do
+while IFS='|' read -r addr fqdn want live_id live_type state_type state_id action; do
   [ -n "$addr" ] || continue
   case "$action" in
   create) verdict="not in Cloudflare; Terraform will create it" ;;
   insync) verdict="the state describes the live record" ;;
   adopt) verdict="the state has no record for it: it would be imported" ;;
-  replace) verdict="the state holds a record of another type (${state_type:-type unknown}): it would be replaced by the live ${live_type} one" ;;
+  replace)
+    if [ -z "$state_type" ] || [ "$state_type" != "$live_type" ]; then
+      verdict="the state holds a ${state_type:-record of an unknown type} where the zone holds a ${live_type}: it would be replaced by the live ${live_type} one"
+    else
+      verdict="the state holds the id ${state_id:-none} and the zone holds ${live_id}: it would be replaced by the live ${live_type} one"
+    fi
+    ;;
   refuse) verdict="needs a decision from a human" ;;
   *) verdict="?" ;;
   esac
@@ -379,17 +445,18 @@ restore_state_backup() {
 }
 
 adopted=0
-while IFS='|' read -r addr fqdn want live_id live_type state_type action; do
+while IFS='|' read -r addr fqdn want live_id live_type state_type state_id action; do
   [ -n "$addr" ] || continue
   case "$action" in
   adopt | replace) ;;
   *) continue ;;
   esac
 
-  note "Adopting the live ${fqdn} record (${live_type}, id ${live_id}) into the state as ${addr} (state: ${state_type:-absent}, configuration wants: ${want})."
+  note "Adopting the live ${fqdn} record (${live_type}, id ${live_id}) into the state as ${addr} (state: ${state_type:-absent}${state_id:+, id ${state_id}}, configuration wants: ${want})."
 
   if [ "$action" = "replace" ]; then
-    # The state holds the address as a record of another type. The import
+    # The state holds the address, but not as this record: as a record of
+    # another type, or under an id the zone does not hold. The import
     # cannot write over it, so the entry goes first -- and the state is
     # backed up before it does, so a failed import can be undone instead of
     # leaving the record in Cloudflare and out of the state, which is the

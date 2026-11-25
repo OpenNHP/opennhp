@@ -87,6 +87,8 @@ cat >"$STUB_DIR/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 # Stub Cloudflare API for tests/scripts/test_adopt_dns_records.sh
 MOCK_DIR="${MOCK_DIR:?}"
+# The arguments are recorded: the token must never be among them.
+printf 'curl %s\n' "$*" >>"$MOCK_DIR/curl.log"
 url="${*: -1}"
 case "$url" in
 *dns_records*page=2*) cat "$MOCK_DIR/dns_records.page2.json" ;;
@@ -144,6 +146,10 @@ EOF
 
 printf 'cloudflare_record.ac\ncloudflare_record.acdemo\ncloudflare_record.server\ncloudflare_record.stats\n' >"$STUB_DIR/state.list"
 
+# The state as it is, kept aside: a test that changes it puts it back.
+cp "$STUB_DIR/state.json" "$STUB_DIR/state.default.json"
+cp "$STUB_DIR/state.list" "$STUB_DIR/state.default.list"
+
 # The live zone. "server" holds two records, an A and a TXT: only the A is
 # the one the configuration declares, and only the A may be adopted. The
 # deeper "server.sub.opennhp.org" must not be matched by "server".
@@ -192,8 +198,11 @@ assert() {
 reset() {
   cp "${1:-$STUB_DIR/dns_records.default.json}" "$STUB_DIR/dns_records.json"
   cp "$STUB_DIR/plan.json" "$WORK_DIR/tfplan"
-  cp "$STUB_DIR/state.json" "$STUB_DIR/state.backup.json"
+  cp "$STUB_DIR/state.default.json" "$STUB_DIR/state.json"
+  cp "$STUB_DIR/state.default.list" "$STUB_DIR/state.list"
+  cp "$STUB_DIR/state.default.json" "$STUB_DIR/state.backup.json"
   : >"$STUB_DIR/calls.log"
+  : >"$STUB_DIR/curl.log"
   cd "$WORK_DIR" || exit 2
 }
 
@@ -206,6 +215,13 @@ run() {
 # called <pattern> — whether the stub Terraform saw a call matching it.
 called() {
   grep -qF -- "$1" "$STUB_DIR/calls.log"
+}
+
+# called_line <line> — whether the stub Terraform saw that exact call and
+# no other. "called" matches a substring, which is not enough when one
+# record's id is the prefix of another's.
+called_line() {
+  grep -qxF -- "$1" "$STUB_DIR/calls.log"
 }
 
 # imported <address> <zone/record id> — whether that import happened.
@@ -287,6 +303,70 @@ unset MOCK_IMPORT_FAIL
 assert "the apply run fails" "$([ "$rc" = 1 ] && echo 0 || echo 1)" "rc=$rc"
 assert "it restores the state from the backup" "$(called 'state push' && echo 0 || echo 1)" "$(cat "$STUB_DIR/calls.log")"
 assert "it does not plan again" "$(called 'terraform plan' && echo 1 || echo 0)" "$(cat "$STUB_DIR/calls.log")"
+
+printf '== the token never reaches a command line ==\n'
+reset
+rc="$(run --report)"
+assert "the report run succeeds" "$([ "$rc" = 0 ] && echo 0 || echo 1)" "rc=$rc out=$(cat "$STUB_DIR/out.log")"
+assert "it called the Cloudflare API" "$([ -s "$STUB_DIR/curl.log" ] && echo 0 || echo 1)" "$(cat "$STUB_DIR/curl.log" 2>/dev/null)"
+assert "the token is not among curl's arguments" \
+  "$(grep -qF -- "$CF_TOKEN" "$STUB_DIR/curl.log" && echo 1 || echo 0)" "$(cat "$STUB_DIR/curl.log")"
+
+printf '== a record the state names by another id is replaced ==\n'
+# The state holds cloudflare_record.stats as an A record with the id
+# "id-stats", and the zone holds an A record for the same name with
+# another id: the record was deleted and created again, so the state
+# describes nothing that is live. Compared on the type alone the run would
+# report it as in sync and do nothing -- and the plan that follows would
+# refresh the id, get a 404, drop the entry and plan a create, which fails
+# with "expected DNS record to not already be present but already exists".
+cat >"$STUB_DIR/dns_records.recreated.json" <<'EOF'
+{"success": true, "result": [
+  {"id": "id-ac", "name": "ac.opennhp.org", "type": "A"},
+  {"id": "id-acdemo", "name": "acdemo.opennhp.org", "type": "CNAME"},
+  {"id": "id-server-a", "name": "server.opennhp.org", "type": "A"},
+  {"id": "id-server-txt", "name": "server.opennhp.org", "type": "TXT"},
+  {"id": "id-stats-recreated", "name": "stats.opennhp.org", "type": "A"},
+  {"id": "id-deep", "name": "server.sub.opennhp.org", "type": "A"},
+  {"id": "id-retired", "name": "auth-plugin.opennhp.org", "type": "A"}],
+ "result_info": {"total_pages": 1}}
+EOF
+reset "$STUB_DIR/dns_records.recreated.json"
+rc="$(run --apply)"
+assert "the apply run succeeds" "$([ "$rc" = 0 ] && echo 0 || echo 1)" "rc=$rc out=$(cat "$STUB_DIR/out.log")"
+assert "it removes the entry the state holds" \
+  "$(called 'state rm cloudflare_record.stats' && echo 0 || echo 1)" "$(cat "$STUB_DIR/calls.log")"
+assert "it imports the live record under its own id" \
+  "$(called_line 'terraform import -input=false cloudflare_record.stats zone123/id-stats-recreated' && echo 0 || echo 1)" \
+  "$(cat "$STUB_DIR/calls.log")"
+assert "it does not import the dead id" \
+  "$(called_line 'terraform import -input=false cloudflare_record.stats zone123/id-stats' && echo 1 || echo 0)" \
+  "$(cat "$STUB_DIR/calls.log")"
+assert "the report run says the ids differ" "$(
+  reset "$STUB_DIR/dns_records.recreated.json"
+  rc="$(run --report)"
+  [ "$rc" = 0 ] &&
+    grep -q 'the state holds the id id-stats and the zone holds id-stats-recreated' "$STUB_DIR/out.log"
+  echo $?
+)" "$(cat "$STUB_DIR/out.log")"
+assert "it leaves the records whose id still matches alone" \
+  "$(called 'state rm cloudflare_record.ac ' && echo 1 || echo 0)" "$(cat "$STUB_DIR/calls.log")"
+
+printf '== a state that names no id is left alone ==\n'
+# The state holds cloudflare_record.stats as an A record but names no id:
+# there is nothing to compare with the zone's id, and guessing that the
+# state describes a different record would rewrite the state on every run.
+jq 'del(.values.root_module.resources[] | select(.address == "cloudflare_record.stats") | .values.id)' \
+  "$STUB_DIR/state.default.json" >"$STUB_DIR/state.no_id.json"
+reset "$STUB_DIR/dns_records.recreated.json"
+cp "$STUB_DIR/state.no_id.json" "$STUB_DIR/state.json"
+rc="$(run --apply)"
+assert "the apply run succeeds" "$([ "$rc" = 0 ] && echo 0 || echo 1)" "rc=$rc out=$(cat "$STUB_DIR/out.log")"
+assert "it does not remove the entry that names no id" \
+  "$(called 'state rm cloudflare_record.stats' && echo 1 || echo 0)" "$(cat "$STUB_DIR/calls.log")"
+assert "it does not import that record either" \
+  "$(called_line 'terraform import -input=false cloudflare_record.stats zone123/id-stats-recreated' && echo 1 || echo 0)" \
+  "$(cat "$STUB_DIR/calls.log")"
 
 printf '== every page of the zone is read ==\n'
 cat >"$STUB_DIR/dns_records.page1.json" <<'EOF'

@@ -49,9 +49,9 @@ env:
   AWS_REGION: us-east-2
   GO_VERSION: '1.26'
   GOMODULE: github.com/OpenNHP/opennhp/nhp
-  # glibc on the deploy targets. All three hosts run the AMI selected by
-  # terraform/demo/ami.tf (al2023-ami-2023.*-x86_64), i.e. Amazon Linux 2023,
-  # whose glibc is 2.34. The daemons are cgo builds, so a binary compiled
+  # glibc on the deploy targets. All three hosts run Amazon Linux 2023,
+  # whose glibc is 2.34. New hosts use the reviewed image pin in
+  # terraform/demo/ami.tf. The daemons are cgo builds, so a binary compiled
   # against anything newer than this dies at exec on the host with
   # "/lib64/libc.so.6: version `GLIBC_2.xx' not found" — after the deploy has
   # already stopped the daemon that was working. The build therefore runs

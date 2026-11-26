@@ -17,5 +17,5 @@ if ! command -v iptables >/dev/null 2>&1; then
     echo 'FATAL: running kernel does not match its qualified vendor package' >&2
     exit 1
   fi
-  dnf install -y iptables-nft
+  dnf install -y iptables-nft </dev/null
 fi

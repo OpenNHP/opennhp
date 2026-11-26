@@ -281,7 +281,7 @@ and confirm `Verify the XDP ingress filter attached` is green, then
 `infra-demo apply`, which returns the security group exactly to udp/knock-port +
 tcp/22 from the relay SG; recovery of an unfiltered host is still
 `aws ec2 reboot-instances`. `aws_instance.{server,ac,relay}` carry
-`ignore_changes = [ami]` so a new al2023 release never plans a replace; change
+`ignore_changes = [ami]` so a later image-pin change does not replace a live host; change
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
 

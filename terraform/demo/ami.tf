@@ -1,9 +1,19 @@
 # Keep fresh hosts on the image version admitted by the first-download guard.
-# Qualify a new image and kernel/RPM pair together before changing this pin.
+# Expected qualification pair: ami-0bdaca0026bed499d (us-east-2) boots
+# 6.12.113-138.209.amzn2023.x86_64, owned by the matching kernel6.12 RPM.
+# Confirm the actual boot before a fresh-host release; metadata is not proof.
+# Change the ID, image name and admitted pair together in one reviewed commit.
 
 data "aws_ami" "amazon_linux_2023" {
-  most_recent = false
-  owners      = ["amazon"]
+  most_recent        = false
+  include_deprecated = true
+  owners             = ["amazon"]
+
+  # Keep security rollback plans usable after the public image is deprecated.
+  filter {
+    name   = "image-id"
+    values = ["ami-0bdaca0026bed499d"]
+  }
 
   filter {
     name   = "name"

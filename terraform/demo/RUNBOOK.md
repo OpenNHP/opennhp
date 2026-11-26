@@ -1035,7 +1035,7 @@ cannot be exec'd at all: it was linked against a newer glibc than the host has.
 
 The daemons are **cgo** builds, so they carry versioned references to glibc
 symbols and run only where glibc is at least as new as the builder's. The demo
-hosts are Amazon Linux 2023 (`al2023-ami-2023.*-x86_64` — see `ami.tf`), glibc
+hosts are Amazon Linux 2023 (new hosts use the reviewed pin in `ami.tf`), glibc
 **2.34**. The build used to run straight on `ubuntu-latest`, so the day that
 image moved to a distribution with glibc 2.38 every demo host got a binary it
 could not start — with no code change and nothing in the build log to show it.
@@ -1581,9 +1581,10 @@ scan-report knobs are set.
 
 ### Replacing an AMI / rebuilding an instance
 
-`data.aws_ami.amazon_linux_2023` is `most_recent = true` and `aws_instance.ami`
-is ForceNew, so without a guard every new al2023 release plans a replace of
-all three hosts on the next `apply`. The relay's private address is not pinned
+`data.aws_ami.amazon_linux_2023` selects the reviewed image ID and version in
+`ami.tf`, including deprecated images so deprecation does not block security
+rollback plans. `aws_instance.ami` is ForceNew. Without a lifecycle guard, a
+later reviewed image pin would replace all three hosts on the next `apply`. The relay's private address is not pinned
 by default, so a replaced relay comes back on a new address that the server's
 live XDP whitelist does not contain — and the deploy that would fix the list
 has to SSH through that relay. With the security group wide open, the window
@@ -1593,7 +1594,8 @@ between boot and the filter attaching is also an all-ports exposure.
 `lifecycle { ignore_changes = [user_data, ami] }`. Mirror persistent host
 configuration in each `deploy-demo-v2` host job as well as user data; edits to
 user data do not reach existing hosts.
-`most_recent` stays, so a first-time `apply` still picks the current AMI.
+A first-time `apply` uses the reviewed image pin. Confirm its actual running
+kernel and owning RPM match the preparation helper before a fresh-host release.
 Changing the AMI is now an explicit act, one host at a time:
 
 1. Relay first, if at all: pin `var.relay_private_ip` to its current address, or
@@ -2140,9 +2142,29 @@ The Linux IPv4 TCP flaw is described in the [AWS security bulletin](https://aws.
 
 New-host user data and each server, AC, and relay deploy job run `scripts/mitigate-cve-2026-98432.sh`. It installs `layerv-kernel-mitigation.service`, matching the unit already installed on the live hosts. Reapplying it is safe. Verify the unit is active and enabled, `sysctl net.mptcp.enabled` is zero, and both raw PREROUTING and OUTPUT contain the comment-tagged DROP rule.
 
+Each path first runs `scripts/prepare-kernel-containment.sh`. If firewall tools
+are missing, it permits a download only on the exact qualified running kernel
+and owning RPM. The AMI lookup is pinned to the November 20 kernel-6.12 image;
+review and qualify the image and admitted kernel/RPM pair together before a
+later image change. A refused bootstrap is not a healthy replacement.
+Keep the existing app artifacts and identities during qualification. Do not
+replace a live host or run a broad demo deployment to qualify this source edit.
+Use the normal reviewed plan and attended release path, with binary deployment
+and key regeneration off. Fresh-host, customer and supported fixed rollback
+qualification remain open until there is actual evidence. Keep all CVE controls.
+A vulnerable host with missing firewall tools stops before download and still
+has no IP-options DROP rules; MPTCP alone does not contain the flaw. Do not
+bring it into service. Restore it from a protected fixed image or use an
+attended offline package/containment recovery. A refused deploy is not recovery.
+
 The rule deliberately drops **all IPv4 packets with IP options**, including UDP and ICMP. It does not match TCP options, ordinary IPv4 headers, or IPv6. Disabling MPTCP alone is incomplete containment.
 
-Keep containment until the running kernel reported by `uname -r`, after the vendor update and reboot, is confirmed fixed against the current Amazon Linux advisory for that kernel stream. Then remove only this mitigation:
+Keep containment until the actual running kernel is vendor-fixed after reboot,
+and every applicable replacement and supported rollback path stays protected.
+Native services and the required customer path must also pass. Keep startup
+containment wherever a vulnerable image or retained kernel can still be used.
+Deliver removal through reviewed source, a Sandbox canary and a bounded normal
+production release. Only after those gates pass, remove this mitigation:
 
 ```bash
 sudo systemctl disable --now layerv-kernel-mitigation.service

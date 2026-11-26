@@ -3,9 +3,12 @@ on:
   pull_request:
     paths:
       - scripts/mitigate-cve-2026-98432.sh
+      - scripts/prepare-kernel-containment.sh
+      - tests/scripts/test_kernel_containment_prepare.py
       - tests/scripts/test_cve_2026_98432_netns.py
       - .github/workflows/kernel-mitigation.yml
       - terraform/demo/**
+      - .github/workflows/deploy-demo-v2.yml
 permissions:
   contents: read
 jobs:
@@ -17,4 +20,7 @@ jobs:
       - run: |
           bash -n scripts/mitigate-cve-2026-98432.sh
           shellcheck scripts/mitigate-cve-2026-98432.sh
+          bash -n scripts/prepare-kernel-containment.sh
+          shellcheck scripts/prepare-kernel-containment.sh
+          python3 tests/scripts/test_kernel_containment_prepare.py
           sudo python3 tests/scripts/test_cve_2026_98432_netns.py scripts/mitigate-cve-2026-98432.sh

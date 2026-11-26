@@ -281,7 +281,7 @@ and confirm `Verify the XDP ingress filter attached` is green, then
 `infra-demo apply`, which returns the security group exactly to udp/knock-port +
 tcp/22 from the relay SG; recovery of an unfiltered host is still
 `aws ec2 reboot-instances`. `aws_instance.{server,ac,relay}` carry
-`ignore_changes = [user_data, ami]` so bootstrap edits do not stop/start a live host and a new al2023 release never plans a replace; change
+`ignore_changes = [user_data, ami]` so bootstrap edits do not stop/start a live host and a later image-pin change does not replace a live host; change
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
 
@@ -391,8 +391,8 @@ automatically when `NHP_LISTEN_PORT >= 1024`.
 
 #### Deploy binaries are built in an Amazon Linux 2023 container
 
-The three demo hosts run the AMI selected by `terraform/demo/ami.tf`
-(`al2023-ami-2023.*-x86_64`), whose glibc is **2.34**. `deploy-demo-v2` builds
+The three demo hosts run Amazon Linux 2023, whose glibc is **2.34**.
+New hosts use the reviewed image pin in `terraform/demo/ami.tf`. `deploy-demo-v2` builds
 `nhp-serverd` / `nhp-acd` / `nhp-relayd` and the server plugins inside
 `docker/Dockerfile.al2023-builder` — an `amazonlinux:2023` image carrying the
 `GO_VERSION` toolchain — not on the runner, because the daemons are **cgo**

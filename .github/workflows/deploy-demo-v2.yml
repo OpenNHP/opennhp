@@ -895,8 +895,8 @@ jobs:
           TARGET: ${{ env.DEPLOY_USER }}@${{ needs.configure.outputs.relay_public_ip }}
         run: |
           set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes "$TARGET" 'sudo bash -s' < repo/scripts/prepare-kernel-containment.sh
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes "$TARGET" 'set -eu
-            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
             sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
             sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
             sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh
@@ -1140,8 +1140,8 @@ jobs:
       - name: Apply and verify CVE-2026-98432 containment
         run: |
           set -euo pipefail
+          ssh nhp-server 'sudo bash -s' < repo/scripts/prepare-kernel-containment.sh
           ssh nhp-server 'set -eu
-            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
             sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
             sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
             sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh
@@ -1964,8 +1964,8 @@ jobs:
       - name: Apply and verify CVE-2026-98432 containment
         run: |
           set -euo pipefail
+          ssh nhp-ac 'sudo bash -s' < repo/scripts/prepare-kernel-containment.sh
           ssh nhp-ac 'set -eu
-            command -v iptables >/dev/null || sudo dnf install -y iptables-nft </dev/null
             sudo tee /run/layerv-kernel-mitigation-bootstrap.sh >/dev/null
             sudo bash /run/layerv-kernel-mitigation-bootstrap.sh
             sudo rm /run/layerv-kernel-mitigation-bootstrap.sh' < repo/scripts/mitigate-cve-2026-98432.sh

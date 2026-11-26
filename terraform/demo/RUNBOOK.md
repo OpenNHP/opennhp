@@ -2140,9 +2140,25 @@ The Linux IPv4 TCP flaw is described in the [AWS security bulletin](https://aws.
 
 New-host user data and each server, AC, and relay deploy job run `scripts/mitigate-cve-2026-98432.sh`. It installs `layerv-kernel-mitigation.service`, matching the unit already installed on the live hosts. Reapplying it is safe. Verify the unit is active and enabled, `sysctl net.mptcp.enabled` is zero, and both raw PREROUTING and OUTPUT contain the comment-tagged DROP rule.
 
+Each path first runs `scripts/prepare-kernel-containment.sh`. If firewall tools
+are missing, it permits a download only on the exact qualified running kernel
+and owning RPM. The AMI lookup is pinned to the November 20 kernel-6.12 image;
+review and qualify the image and admitted kernel/RPM pair together before a
+later image change. A refused bootstrap is not a healthy replacement.
+Keep the existing app artifacts and identities during qualification. Do not
+replace a live host or run a broad demo deployment to qualify this source edit.
+Use the normal reviewed plan and attended release path, with binary deployment
+and key regeneration off. Fresh-host, customer and supported fixed rollback
+qualification remain open until there is actual evidence. Keep all CVE controls.
+
 The rule deliberately drops **all IPv4 packets with IP options**, including UDP and ICMP. It does not match TCP options, ordinary IPv4 headers, or IPv6. Disabling MPTCP alone is incomplete containment.
 
-Keep containment until the running kernel reported by `uname -r`, after the vendor update and reboot, is confirmed fixed against the current Amazon Linux advisory for that kernel stream. Then remove only this mitigation:
+Keep containment until the actual running kernel is vendor-fixed after reboot,
+and every applicable replacement and supported rollback path stays protected.
+Native services and the required customer path must also pass. Keep startup
+containment wherever a vulnerable image or retained kernel can still be used.
+Deliver removal through reviewed source, a Sandbox canary and a bounded normal
+production release. Only after those gates pass, remove this mitigation:
 
 ```bash
 sudo systemctl disable --now layerv-kernel-mitigation.service

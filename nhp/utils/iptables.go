@@ -285,6 +285,28 @@ func (table *IPTables) ResetAllInput() {
 	table.AcceptInputMode = false
 }
 
+// ClearStaleAcceptAllInput removes the 0.0.0.0/0 INPUT and FORWARD ACCEPT
+// rules unconditionally, without consulting AcceptInputMode.
+//
+// AcceptInputMode lives only in memory and starts false, so it describes
+// what *this* process did — not what is in the kernel. An AC that had
+// opened the filter and was then killed uncleanly (SIGKILL, OOM, a crash)
+// never runs its deferred ResetAllInput, and the rules survive it. On the
+// next start ResetAllInput returns early because the flag is false, and
+// while the servers are still unreachable nothing else touches them: an
+// operator who has just chosen FailCloseOnServerLoss would be running a
+// host that is still wide open, with the daemon reporting a closed
+// posture.
+//
+// Deleting a rule that is not there is not an error for iptables, so this
+// is safe to call at every startup.
+func (table *IPTables) ClearStaleAcceptAllInput() {
+	inputPolicy := POLICY_ACCEPT
+	forwardPolicy := POLICY_ACCEPT
+	table.changeIptablesRule(&inputPolicy, &forwardPolicy, nil, DEL_IPTABLES_RULE_OPERATION, "0.0.0.0/0")
+	table.AcceptInputMode = false
+}
+
 func (table *IPTables) AcceptAllInput() {
 	if table.AcceptInputMode {
 		return

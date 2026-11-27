@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"runtime"
@@ -30,7 +29,7 @@ const (
 // PeerLookupFallbackFunc is called when a peer is not found in the static
 // peer pool. If it returns true, the peer is accepted as valid (used by
 // the server to check dynamically-registered agent keys in SQLite).
-type PeerLookupFallbackFunc func(pubKey []byte, headerType int) bool
+type PeerLookupFallbackFunc func(pkBase64 string, headerType int) bool
 
 type DeviceOptions struct {
 	AOPRecvStalenessSeconds     int // Zero uses the protocol default. Set before Start.
@@ -626,7 +625,18 @@ func (d *Device) AddPeer(peer Peer) {
 	d.peerMapMutex.Lock()
 	defer d.peerMapMutex.Unlock()
 
-	d.peerMap[peer.PublicKeyBase64()] = peer
+	key := peer.PublicKeyBase64()
+	// The pool holds one peer per public key, and validatePeer binds a
+	// typed peer to its role. A key listed in two peer tables (say
+	// agent.toml and db.toml) therefore keeps only the role added last,
+	// and the other role's messages fail with ErrPeerRoleMismatch. Say so
+	// at load time instead of leaving it to depend on load order.
+	if old, ok := d.peerMap[key]; ok && old.DeviceType() != peer.DeviceType() &&
+		old.DeviceType() != NHP_NO_DEVICE && peer.DeviceType() != NHP_NO_DEVICE {
+		log.Warning("peer %s is registered as %s and now as %s; a key holds one role, so messages for %s from it will be refused (use a separate key per role)",
+			key, DeviceTypeToString(old.DeviceType()), DeviceTypeToString(peer.DeviceType()), DeviceTypeToString(old.DeviceType()))
+	}
+	d.peerMap[key] = peer
 }
 
 func (d *Device) RemovePeer(pubKey string) {
@@ -643,13 +653,11 @@ func (d *Device) ResetPeers() {
 	d.peerMap = make(map[string]Peer)
 }
 
-func (d *Device) LookupPeer(pk []byte) Peer {
-	pkStr := base64.StdEncoding.EncodeToString(pk)
-
+func (d *Device) LookupPeer(pkBase64 string) Peer {
 	d.peerMapMutex.Lock()
 	defer d.peerMapMutex.Unlock()
 
-	peer, found := d.peerMap[pkStr]
+	peer, found := d.peerMap[pkBase64]
 	if found {
 		return peer
 	}

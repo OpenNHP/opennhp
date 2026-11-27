@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +26,22 @@ type config struct {
 	OTPPeriod    int    `toml:"OTPPeriod"`    // OTP validity period in seconds (default 30)
 	OTPDigits    int    `toml:"OTPDigits"`    // Number of OTP digits (default 6)
 	QRCodeExpiry int    `toml:"QRCodeExpiry"` // QR code expiry in seconds (default 300)
+	// OTPAllowReuse lets the same OTP code be accepted more than once while
+	// it is valid. Off by default: a code observed in transit cannot be
+	// replayed. All users share OTPSecretKey, so a deployment where several
+	// people log in within the same 30-second window needs it on.
+	OTPAllowReuse bool `toml:"OTPAllowReuse"`
+	// ShowOTPSecret renders OTPSecretKey into the public login page so a
+	// visitor can enrol it in an authenticator app. Anyone who can load the
+	// page can then generate valid codes, so OTP stops being a secret and
+	// only the rate limit is left: enable it for public demos only.
+	ShowOTPSecret bool `toml:"ShowOTPSecret"`
+	// TrustedProxies lists reverse proxies (addresses or CIDR prefixes) in
+	// front of nhp-server. OTP attempts arriving from one of them are limited
+	// by the X-Forwarded-For client address instead of the proxy's own.
+	TrustedProxies []string `toml:"TrustedProxies"`
+
+	trustedProxies []netip.Prefix
 }
 
 var (
@@ -119,16 +137,43 @@ func updateConfig(file string) (err error) {
 	if conf.OTPPeriod == 0 {
 		conf.OTPPeriod = 30
 	}
+	if conf.OTPPeriod < 15 || conf.OTPPeriod > 300 {
+		log.Error("OTPPeriod=%d is outside 15..300 seconds, using 30", conf.OTPPeriod)
+		conf.OTPPeriod = 30
+	}
 	if conf.OTPDigits == 0 {
 		conf.OTPDigits = 6
+	}
+	if conf.OTPDigits != 6 {
+		// The login page takes exactly six digits.
+		log.Error("OTPDigits=%d is not supported, using 6", conf.OTPDigits)
+		conf.OTPDigits = 6
+	}
+	if conf.trustedProxies, err = parseTrustedProxies(conf.TrustedProxies); err != nil {
+		// Fail closed: limit by the TCP peer, never trust the header.
+		log.Error("%v; ignoring TrustedProxies", err)
+		conf.trustedProxies, err = nil, nil
 	}
 	if conf.QRCodeExpiry == 0 {
 		conf.QRCodeExpiry = 300
 	}
+	if conf.ShowOTPSecret && !conf.OTPAllowReuse {
+		// With the seed on the public page anyone can compute every code,
+		// so replay protection protects nothing, and it would let anyone
+		// spend each new code the moment its step begins and lock every
+		// user out. The rate limiter cannot stop that: the codes are correct.
+		conf.OTPAllowReuse = true
+		var explicit struct {
+			OTPAllowReuse *bool `toml:"OTPAllowReuse"`
+		}
+		if toml.Unmarshal(content, &explicit) == nil && explicit.OTPAllowReuse != nil {
+			log.Warning("OTPAllowReuse = false is ignored while ShowOTPSecret = true: with a public seed it only lets anyone lock every user out")
+		}
+	}
 
 	baseConf = conf
-	log.Info("Authenticator plugin config loaded: OTPSecretKey=%s..., OTPPeriod=%d, OTPDigits=%d, QRCodeExpiry=%d",
-		conf.OTPSecretKey[:min(8, len(conf.OTPSecretKey))], conf.OTPPeriod, conf.OTPDigits, conf.QRCodeExpiry)
+	log.Info("Authenticator plugin config loaded: OTPPeriod=%d, OTPDigits=%d, QRCodeExpiry=%d, OTPAllowReuse=%v, ShowOTPSecret=%v, TrustedProxies=%d",
+		conf.OTPPeriod, conf.OTPDigits, conf.QRCodeExpiry, conf.OTPAllowReuse, conf.ShowOTPSecret, len(conf.trustedProxies))
 
 	return nil
 }
@@ -264,10 +309,10 @@ func showLoginPage(ctx *gin.Context, req *common.HttpKnockRequest, res *common.R
 		}
 	}
 
-	// Get OTP secret key from config
+	// The shared OTP seed is only published when the operator opted in.
 	otpSecretKey := ""
-	if baseConf != nil {
-		otpSecretKey = baseConf.OTPSecretKey
+	if conf := baseConf; conf != nil && conf.ShowOTPSecret {
+		otpSecretKey = conf.OTPSecretKey
 	}
 
 	ctx.HTML(http.StatusOK, "authenticator/authenticator_login.html", gin.H{
@@ -295,7 +340,8 @@ func authOTPCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 	}
 
 	// Verify OTP code using configured secret key
-	if baseConf == nil || baseConf.OTPSecretKey == "" {
+	conf := baseConf
+	if conf == nil || conf.OTPSecretKey == "" {
 		log.Error("OTP auth failed: OTPSecretKey not configured")
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -304,18 +350,53 @@ func authOTPCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		return nil, fmt.Errorf("OTPSecretKey not configured")
 	}
 
-	// Validate OTP using configured secret
-	service := GetQRAuthService()
-	if !service.ValidateConfiguredOTP(baseConf.OTPSecretKey, otpCode) {
-		log.Info("OTP verification failed: invalid OTP code")
+	clientIP := otpClientIP(ctx, conf.trustedProxies)
+	switch err := otpCheck(conf, clientIP, otpCode); {
+	case errors.Is(err, errNoClientAddr):
+		log.Error("OTP auth refused: %v (RemoteAddr %q)", err, ctx.Request.RemoteAddr)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"errMsg":  "Cannot determine the client address",
+		})
+		return nil, err
+	case errors.Is(err, errOTPRateLimited):
+		log.Warning("OTP auth refused for %s: too many failed attempts", clientIP)
+		ctx.JSON(http.StatusTooManyRequests, gin.H{
+			"success": false,
+			"errMsg":  "Too many failed attempts, try again later",
+		})
+		return nil, err
+	case errors.Is(err, errOTPInvalid):
+		log.Info("OTP verification failed for %s: invalid OTP code", clientIP)
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"errMsg":  "Invalid OTP code",
 		})
-		return nil, fmt.Errorf("invalid OTP code")
+		return nil, err
+	case errors.Is(err, errOTPUsed):
+		log.Warning("OTP verification failed for %s: code already used", clientIP)
+		ctx.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"errMsg":  "OTP code already used, wait for the next code",
+		})
+		return nil, err
+	case err != nil:
+		// Fail closed: an error this switch does not know about must never
+		// fall through to the knock.
+		log.Error("OTP auth refused for %s: %v", clientIP, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"errMsg":  "OTP verification failed",
+		})
+		return nil, err
 	}
 
 	log.Info("OTP authentication successful using configured secret key")
+
+	// Open access for the address that authenticated, not for whatever
+	// X-Forwarded-For claims: nhp-server fills req.SrcIp from gin's
+	// ClientIP, which trusts that header from any peer.
+	req.SrcIp = otpClientAddr(ctx, conf.trustedProxies)
 
 	// Proceed with knock operation
 	ackMsg, err := helper.AuthWithHttpCallbackFunc(req, res)
@@ -345,7 +426,33 @@ func authQRCode(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Reso
 		return nil, fmt.Errorf("missing sessionId for QR authentication")
 	}
 
+	// Knock only for a session confirmed by HandleQRVerify, which checks the
+	// configured OTP through the same limiter as otpvalid, for the resource
+	// it was generated for, from the client that generated it, and only once.
+	requester := otpClientIP(ctx, requestTrustedProxies())
+	if requester == "" {
+		log.Error("QR auth refused: %v (RemoteAddr %q)", errNoClientAddr, ctx.Request.RemoteAddr)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"errMsg":  "Cannot determine the client address",
+		})
+		return nil, errNoClientAddr
+	}
+	srcIp, err := GetQRAuthService().ConsumeConfirmedSession(sessionId, res.ResourceId, requester)
+	if err != nil {
+		log.Warning("QR auth refused for sessionId %s: %v", sessionId, err)
+		ctx.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"errMsg":  err.Error(),
+		})
+		return nil, err
+	}
+
 	log.Info("QR authentication for sessionId: %s", sessionId)
+
+	// Open access for the address that generated the session, never for the
+	// requester's own (see ConsumeConfirmedSession and authOTPCode).
+	req.SrcIp = srcIp
 
 	// Proceed with knock operation
 	ackMsg, err := helper.AuthWithHttpCallbackFunc(req, res)

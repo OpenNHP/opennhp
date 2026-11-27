@@ -63,6 +63,16 @@ type LoadParams struct {
 	// DisableEventLog turns off the per-packet event log (xdp.toml's
 	// EventLogEnabled = false). The summaries keep running.
 	DisableEventLog bool
+
+	// DhcpSource and NtpSource narrow the two client-protocol pairs the
+	// filter admits -- the DHCP answer (67 -> 68) and the NTP answer
+	// (123 -> 123) -- to the addresses the host's own servers answer from
+	// (xdp.toml's DhcpServerIP / NtpServerIP).
+	//
+	// A range that is not set means no narrowing: the pair is admitted by
+	// port alone, the way it was before the ranges existed.
+	DhcpSource utilsebpf.SourceNet
+	NtpSource  utilsebpf.SourceNet
 }
 
 // EngineLoad attaches the server's XDP filter.
@@ -99,6 +109,8 @@ func EngineLoad(p LoadParams) error {
 		ScanReportInterval: p.ScanReportInterval,
 		ScanReportTopN:     p.ScanReportTopN,
 		DisableEventLog:    p.DisableEventLog,
+		DhcpSource:         p.DhcpSource,
+		NtpSource:          p.NtpSource,
 	})
 	if err != nil {
 		return err

@@ -68,7 +68,7 @@ go build -o bin/xdplog-report ./xdplog-report
 | `-top` | `10` | Rows in each TOP table. |
 | `-format` | `md` | `md`, `json`, `csv`, or `html`. |
 | `-out` | stdout | Output file. The directory must already exist. |
-| `-geo-csv` | empty | Optional `cidr,country[,city]` CSV for the region section. |
+| `-geo-csv` | empty | Optional `cidr,region[,city]` CSV for the region section. |
 | `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb` for the region section. Mutually exclusive with `-geo-csv`. |
 | `-mask-ip` | `false` | Truncate source addresses for sharing: IPv4 `a.b.c.x`, IPv6 first 48 bits. |
 
@@ -96,11 +96,20 @@ be given (or discovered) in chronological order for restart detection to work.
   one per reason.
 - **Unknown reasons** mean the classifier is older than the deployed XDP build.
   Add the reason to `dropCategories` in `classify.go`, then run the tests.
+- **A drop that is not an attack** is counted apart, not in the attack
+  figures. `KNOCK_EXPIRED` — the nhp-ac's own class, a peer whose knock window
+  closed before it spoke again — is a legitimate peer arriving late, not a
+  scanner, so it is left out of the packet total, the source and region
+  counts, the per-source and per-port rankings and the day's facts, and
+  reported on its own as `non_attack_drop_pkts`. The packets are dropped by the
+  filter either way; this is about the accounting. A reason the classifier
+  does not know is treated as an attack, so a new class is never silently
+  under-reported.
 
 ### Output formats
 
 - `md`: Markdown report, suitable for a ticket or terminal.
-- `json`: Machine-readable report, `schema: 1`. Includes `bad_lines`,
+- `json`: Machine-readable report, `schema: 2`. Includes `bad_lines`,
   `scan_summary_lines`, `restarts_detected`, and `unknown_reasons`.
 - `csv`: One flat `section,key,pkts_exact,sampled_events,share,extra` table.
 - `html`: Standalone page with inline CSS, no scripts and no external assets.
@@ -153,7 +162,7 @@ Layout under `-out`:
 Beside `state.json` (i.e. under `-state`, never under `-out` on the demo
 deployment) the site keeps one private file per day,
 `facts/<source>/<day>.facts`: the day's distinct source addresses and
-countries, hashed. The all-time source and country totals are unions of
+regions, hashed. The all-time source and region totals are unions of
 those; see `totalnumber.js` below for why they cannot be summed from
 `index.json` or published in it.
 
@@ -166,10 +175,22 @@ already aged out of the collector's cache still counts as long as its
 `d/<source>/<day>.json` is on disk.
 
 Beside the packet total the hero shows two more figures, **Source IPs** and
-**Countries**: the all-time unions `totalnumber.js` exports as
-`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. All three count
+**Regions**: the all-time unions `totalnumber.js` exports as
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_REGIONS`. All three count
 up together. A figure that is zero is hidden; without a geo source there are
-no countries, and "0 Countries" would read as "attacked from nowhere".
+no regions, and "0 Regions" would read as "attacked from nowhere".
+
+A **region** is the two-letter code the international standard ISO 3166-1
+alpha-2 assigns to every country and area it lists; it is what the GeoIP
+database attributes an address to. The figure counts the regions the
+attacking addresses were attributed to — not the attackers, and not the
+addresses. The constant is named for that set:
+`NHP_TOTAL_ATTACK_REGIONS`. It used to be called
+`NHP_TOTAL_ATTACK_COUNTRIES`, and that name is gone — the standard's list
+covers dependencies, disputed areas and special political areas as well as
+states, so a published figure called a country count is a claim about those
+codes that the standard does not support. A site that embedded the old name
+has to switch; the deploy pipeline's gate greps the new one.
 
 The `<title>` is a different string — **Zero Trust in Action: Live Attacks on
 OpenNHP Servers** — because a browser tab, a search result and a chat preview
@@ -215,6 +236,156 @@ site it was serving exactly as it found it, links and hero total unchanged,
 rather than removing pages the live index still points at. The next successful
 run then does the deletions.
 
+### History baseline: `-history`
+
+The floor has a cost: the totals for the days before it are not on the site
+at all, and nothing else keeps them. `-history <history.json>` points the
+site at a **history snapshot** — a saved copy of the homepage, frozen into a
+file — and the site publishes it as the baseline its counters start from.
+
+```bash
+go run ./xdplog-report site \
+  -logs   /home/ec2-user/xdpstats/raw \
+  -out    /var/www/stats \
+  -state  /home/ec2-user/xdpstats/state.json \
+  -history /home/ec2-user/xdpstats/history.json
+```
+
+The snapshot is:
+
+```json
+{
+  "schema": 1,
+  "since": "2026-10-16",
+  "totals": { "blocked": 3501020, "source_ips": 25136, "regions": 0 },
+  "days": [
+    {
+      "source": "server",
+      "day": "2026-10-16",
+      "partial": false,
+      "drop_pkts": 89910,
+      "pass_pkts": 0,
+      "drop_share": 0.6661,
+      "unique_attack_ips": 7336,
+      "peak_hour": "2026-10-16 18:00",
+      "restarts_detected": 1,
+      "budget_exhausted": false,
+      "unknown_reasons": false,
+      "top_category": "TCP SYN scan"
+    }
+  ]
+}
+```
+
+**A live day wins.** The days the collector still has a log for are analyzed
+from it and published normally — with a detail page, with the day's attackers
+in the all-time union — and the snapshot's row for the same day is dropped.
+The snapshot's days and the collector's days overlap exactly, so counting both
+would read `7,002,040` instead of `3,501,020`. Drop a day from the snapshot
+and the next run turns it back into a live row.
+
+**A frozen day is the fallback.** A day the snapshot lists and the live site
+*cannot* produce — the collector's cache no longer reaches its log — is
+published from the snapshot. The snapshot carries the day's summary, not its
+DROP events, so the homepage renders the date as plain text and tags the row
+`history`; `index.json` marks it `"history": true`. The pages the site
+published for those days before the snapshot was installed are not deleted —
+unlinked is not unpublished — they simply stop being linked.
+
+**The floor applies to the snapshot too.** A day below `-since` is neither in
+the index nor in the hero total, whether it comes from the logs or from the
+snapshot, and the snapshot's `since` cannot put the site below the floor
+either: the site's counting start is the earliest day it publishes.
+
+**The packet total stays reproducible.** The snapshot's `totals.blocked` must
+equal the sum of its own days' `drop_pkts`, and a snapshot where it does not
+is refused. The hero total therefore stays the sum of every row of
+`index.json`, history rows included.
+
+**The source and region totals are one union, not two periods added up.**
+Every published day — analyzed from the logs or published from the snapshot —
+contributes its own set of attackers and of regions, and the site unions
+those sets. A source seen on ten days is one attacker, and a source seen in
+the snapshot's period and in the live one is one attacker too.
+
+The snapshot's own `source_ips` and `regions` are therefore **not** added on
+top of that union. Two unions can only be merged when both sets are present;
+adding their sizes instead counts a source (or a region) seen in both periods
+twice, because the sum of two set sizes is at least their union, never at most
+it. The site used to publish that sum and call it a lower bound, which is the
+opposite of what it is.
+
+The snapshot is used only for its own days whose per-day records are gone — the
+days the live site cannot produce at all — because nothing else carries those
+days' attackers. The two figures use it differently:
+
+- **Source IPs:** the part of the snapshot's `source_ips` its days with records
+  do not already cover is **added** to the union. Addresses are an open set,
+  so that remainder is mostly new attackers, but an address seen in both
+  periods is counted twice: the figure is an **upper bound**.
+- **Regions:** the snapshot's `regions` is **never applied at all**. The
+  published figure is the union over the published days and nothing else.
+  Regions are a closed set (~250 ISO 3166-1 alpha-2 codes) that the two
+  periods share almost entirely, so no arithmetic can merge the snapshot's
+  count with the live union: adding it counts most of them twice (a
+  130-region snapshot pushed the site to 162) and can push the total past the
+  number of regions there are, while the larger of the two can only ever be a
+  lower bound that misses a region seen in one period alone. The generator
+  therefore records `regions: 0` and the site ignores the field — a
+  snapshot that still carries an old count is read, warned about on stdout,
+  and has no effect on the published figure.
+
+**The invariant in one line: the snapshot contributes open-set statistics
+(source IPs) and never closed-set ones (regions).** The published region
+total is therefore bounded by the number of distinct region labels the geo
+source can produce, and by nothing else — which is why the deploy gate on it
+is 250 and not 400.
+
+The homepage and `totalnumber.js` print the same sentence saying which bound
+each figure is (`historyBaseline.boundNote`).
+
+**A snapshot that lists days below the publishing floor has no baseline at
+all.** Its own `source_ips` and `regions` are a union over *all* the days it
+lists, so the part of them that covers the days below the floor cannot be told
+apart from the part that covers the published ones — a snapshot-level total
+cannot be split by day. Subtracting the published days' facts leaves the
+unpublished days' attackers in the remainder, and adding that remainder counts
+days the site does not publish. The baseline is dropped instead of trimmed: the
+published figures are the union over the published days and nothing else, and a
+published day whose per-day records are gone then contributes nothing to them,
+so the two figures are **lower bounds**. The homepage and `totalnumber.js` say
+which of the two it is.
+
+**A snapshot that cannot be read stops the run.** `-history` pointing at a
+missing or invalid file is an error, never a silent fallback to counting only
+the site's own days — that would shrink the published totals by an amount
+nobody could audit. The file's fingerprint goes into `state.json`, so editing
+it rewrites the homepage even when no log changed.
+
+`history.json` is private: keep it beside `state.json`, out of the web root.
+
+### `history` subcommand: freezing a saved page
+
+```bash
+xdplog-report history -html <saved-index.html> -out <history.json>
+xdplog-report history -index <published-index.json> -totals <totalnumber.js> -out <history.json>
+```
+
+The first form reads a saved copy of the homepage; the second reads what the
+site published (`index.json` plus the `totalnumber.js` beside it). Both
+produce the same file.
+
+The generator refuses to write a snapshot that does not add up: the rows it
+parsed have to sum to the page's own all-time total, and the page's stated
+counting start has to be its earliest row. A parsing slip would otherwise
+freeze a wrong baseline into the site's history, permanently.
+
+The checked-in seed is `deploy/config-templates/xdpstats/history.json`, built
+from `testdata/history-page-2026-10-26.html` — a saved copy of the public
+homepage, and the only fixture in `testdata/` that is not hand-written
+synthetic data. `TestHistorySeedSnapshotIsShipped` pins the shipped file to
+the generated one, so the two cannot drift apart.
+
 ### Template changes reach published pages
 
 `state.json` records, per day, the `siteRenderVersion` that produced its page.
@@ -240,6 +411,32 @@ names the product instead of repeating a generic noun. `index.json` keeps the
 raw directory name in `source` — that field is part of the published contract
 and anyone already parsing it depends on the value.
 
+### The index is rewritten only when something moved
+
+`siteRenderVersion` covers the *day* pages. The index has no version of its
+own: `renderIndex` runs only when the run is dirty, and dirty means a day's
+raw log moved, a day was unpublished, or the history snapshot's bytes
+changed. The region and source figures are recomputed on every run, but
+their *publication* is gated.
+
+So a change to what the index says — the published figures, the hero, the
+markup — does not reach the visitors on its own. That is why the deploy
+rebuilds the site: `deploy-xdpstats` runs the collector once with
+`XDPSTATS_SITE_FORCE=1`, which passes `-force` and re-analyzes every cached
+day, so the index is rewritten from the deployed binary's own output. The
+daily timer run is not forced; there the incremental path is the point.
+
+The deploy does not take the collector's exit code as the answer. A run that
+lost the collector's lock exits zero without touching the site, and a run
+that could not list a source exits non-zero with the site perfectly rebuilt,
+so the exit code says neither "rebuilt" nor "not rebuilt". The deploy
+therefore checks two things about the run it started: the collect log lines
+*that run* wrote must contain the forced-rebuild line, and the published
+`index.html` must be newer than a marker created before the run. The first
+says the flag reached the collector; the second says the file nginx serves
+was rewritten. A source that could not be listed is reported as a warning —
+the site was rebuilt, but the published days may be stale.
+
 The hero number animates (2.5s count-up, thousands separators) using
 `countup.js`, written next to `index.html` and loaded with a plain
 `<script src="countup.js" defer>`. It is progressive enhancement: the span
@@ -258,7 +455,7 @@ a page elsewhere that wants the headline numbers and nothing else:
 <script>
   console.log(NHP_TOTAL_ATTACK_BLOCKED);    // attack packets, exact
   console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // distinct source addresses
-  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // distinct countries
+  console.log(NHP_TOTAL_ATTACK_REGIONS);  // distinct regions (ISO 3166-1 alpha-2 codes)
 </script>
 ```
 
@@ -269,23 +466,30 @@ still written, exporting `0` for all three with no counting-start comment, so
 an embedding page never gets a 404 and a dangling reference. As a classic
 script it needs no CORS header — the *importing* page's CSP governs it.
 
+The region figure is published under one name: `NHP_TOTAL_ATTACK_REGIONS`,
+the name that matches what it counts. The constant used to be called
+`NHP_TOTAL_ATTACK_COUNTRIES`; that name is gone, because the ISO 3166-1 codes
+it counts belong to dependencies, disputed areas and special political areas
+as well as to states. A site that embeds this file with `<script src>` has to
+switch to the new constant.
+
 **The two union counts are not sums, and they are not reproducible from
 `index.json`.** `unique_attack_ips` is a per-day *count*: an address that
 scans the host every day is one attacker, and adding the days up counts it
 once per day. The all-time figure is the union of the days' address sets, so
 each day's set is captured while its raw log still exists and stored in
 `facts/<source>/<day>.facts` next to `state.json` (see below). The same goes
-for countries. Private/reserved sources are excluded from both, matching the
+for regions. Private/reserved sources are excluded from both, matching the
 per-day column, and a source the GeoLite2 database cannot place belongs to no
-country — it raises the source count only.
+region — it raises the source count only.
 
 ### GeoIP: what the `-geo-mmdb` / `-geo-csv` flags change on the site
 
 Pass a geo database and every published day gains a region table, and the
-site's country total starts filling in. Each day's `state.json` entry records
+site's region total starts filling in. Each day's `state.json` entry records
 the geo source it was analysed with, so **installing a database re-analyses
 the days already published** — nothing about their raw logs changes, and
-without that fingerprint the country total would stay at whatever the days
+without that fingerprint the region total would stay at whatever the days
 after the install happened to see. Taking a database away is deliberately
 *not* a trigger in the other direction: a day's raw log may already have aged
 out of the collector's cache, and re-analysing without geo would wipe the
@@ -294,10 +498,10 @@ swapping in a newer GeoLite2 build.
 
 A day whose raw log has already been pruned cannot be re-analysed, so it keeps
 whatever its published record says. If a day's facts file is missing its
-sources and countries contribute nothing, and the run says so on stdout:
+sources and regions contribute nothing, and the run says so on stdout:
 
 ```
-site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the all-time totals are a lower bound
+site: 1 day(s) contribute no source/region data (server/2026-10-17 (…)); the all-time totals are a lower bound
 ```
 
 The run does not fail: the packet total is exact and stays published. The
@@ -305,7 +509,7 @@ line is there because a silently smaller "unique sources" number is exactly
 the kind of thing this site is written against.
 
 `state.json` and the `facts/` directory beside it (the incremental build state
-and the per-day source/country sets) go wherever `-state` says and **not**
+and the per-day source/region sets) go wherever `-state` says and **not**
 into `-out` by default on the demo deployment. `state.json` records the
 absolute path of every input file, and the fact files are derived from
 unmasked source addresses; the deploy passes a private path and the nginx
@@ -334,7 +538,7 @@ Delete the state to force a full rebuild (or pass `-force`); deleting only the
 ]
 ```
 
-The per-day JSON files reuse the single-file `Report` (`schema: 1`), so the
+The per-day JSON files reuse the single-file `Report` (`schema: 2`), so the
 existing `xdplog-report -in <one day>.json -format html` path can regenerate a
 page from any archived day. Each page is titled **Daily Attack Report:**
 followed by the day (or the day range, for a multi-day CLI report), and opens
@@ -367,10 +571,11 @@ does not need it — bump `siteRenderVersion` instead.
 | `-out` | required | Web root directory. Created if missing. Existing files are kept unless rewritten, except the detail pages of days the `-since` floor excludes, which are deleted (see above). |
 | `-state` | `<out>/state.json` | Incremental-build state. Point it OUT of the web root on a public site: it records the absolute path of every input file. |
 | `-top` | `20` | Rows in each TOP table on the per-day pages. |
-| `-geo-csv` | empty | Optional `cidr,country[,city]` CSV. Mutually exclusive with `-geo-mmdb`. |
+| `-geo-csv` | empty | Optional `cidr,region[,city]` CSV. Mutually exclusive with `-geo-mmdb`. |
 | `-geo-mmdb` | empty | Optional MaxMind GeoLite2-City `.mmdb`. |
 | `-mask-ip` | **`true`** | Truncate source addresses for the public site. Different default than the single-file CLI. |
 | `-since` | `2026-10-16` | Earliest `YYYY-MM-DD` day to publish. Older days are neither rendered nor counted, and any detail page already published for one is deleted. Empty publishes everything. |
+| `-history` | empty | Optional `history.json` snapshot: the fallback for the days the collector's cache no longer reaches, and the baseline its counters start from. A path that cannot be read is an error, not a fallback. See "History baseline" above. |
 | `-force` | `false` | Rebuild every day even if inputs are unchanged. Not needed to push a template change out: bumping `siteRenderVersion` does that. |
 
 ### Tests
@@ -382,7 +587,10 @@ go test ./xdplog-report/
 
 The fixtures under `testdata/` are hand-written synthetic logs, not captured
 from a live host. They are exempted from the repository-wide `*.log` ignore rule
-so the tests work on a fresh checkout.
+so the tests work on a fresh checkout. The one exception is
+`testdata/history-page-2026-10-26.html`: a saved copy of the public
+homepage, kept because the history generator's whole job is to read exactly
+that shape of page.
 
 ### Adding a new DROP reason
 
@@ -453,7 +661,7 @@ go build -o bin/xdplog-report ./xdplog-report
 | `-top` | `10` | 每张 TOP 表的行数。 |
 | `-format` | `md` | `md`、`json`、`csv` 或 `html`。 |
 | `-out` | stdout | 输出文件。所在目录必须已存在。 |
-| `-geo-csv` | 空 | 可选的 `cidr,country[,city]` CSV，用于地区统计。 |
+| `-geo-csv` | 空 | 可选的 `cidr,region[,city]` CSV，用于地区统计。 |
 | `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`，用于地区统计。与 `-geo-csv` 互斥。 |
 | `-mask-ip` | `false` | 对外分享时截断源地址：IPv4 为 `a.b.c.x`，IPv6 保留前 48 位。 |
 
@@ -475,11 +683,16 @@ go build -o bin/xdplog-report ./xdplog-report
   因此报告只显示一条记录，而不是每个 reason 一条。
 - **Unknown reasons** 表示分类器落后于线上部署的 XDP 版本。在 `classify.go` 的
   `dropCategories` 中补上该 reason，然后运行测试。
+- **不是攻击的丢包**单独计数，不计入攻击口径。`KNOCK_EXPIRED` 是 nhp-ac 自己的
+  类别：某个 peer 敲过门，但窗口在它再次发包前就关了——这是合法用户来晚了，不是
+  扫描。因此它不计入包数、来源与地区总数、来源/端口排行以及当天的 facts，而是
+  单独记为 `non_attack_drop_pkts`。这些包在过滤器那里照样被丢弃，区别只在统计口径。
+  分类器不认识的 reason 一律按攻击计，避免新类别被悄悄少报。
 
 ### 输出格式
 
 - `md`：Markdown 报告，适合贴到工单或在终端查看。
-- `json`：机器可读，`schema: 1`，包含 `bad_lines`、`scan_summary_lines`、
+- `json`：机器可读，`schema: 2`，包含 `bad_lines`、`scan_summary_lines`、
   `restarts_detected`、`unknown_reasons`。
 - `csv`：扁平表，列为 `section,key,pkts_exact,sampled_events,share,extra`。
 - `html`：独立页面，内联 CSS，无脚本、无外部资源，可离线打开或作为附件分享。
@@ -527,8 +740,8 @@ go run ./xdplog-report site \
 ```
 
 `state.json` 旁边（即 `-state` 指向的目录下，demo 部署中永远不在 `-out` 里）还会为每天
-保存一个私有文件 `facts/<source>/<day>.facts`：当天去重后的来源地址与国家，存的是哈希。
-全站的来源总数和国家总数就是这些集合的并集，原因见下面的 `totalnumber.js`。
+保存一个私有文件 `facts/<source>/<day>.facts`：当天去重后的来源地址与地区，存的是哈希。
+全站的来源总数和地区总数就是这些集合的并集，原因见下面的 `totalnumber.js`。
 
 首页的 `<h1>` 是 **Invisible Server, Visible Attacks**，标题下方先给出一个 hero 大数字：
 **累计被拦截的攻击数据包数**，等于 `index.json` 所有行的 `drop_pkts` 之和；下方说明文字以
@@ -536,10 +749,18 @@ go run ./xdplog-report site \
 读者对 `drop_pkts` 求和就能复现这个数字。某天的原始日志即使已经过期滚出采集缓存，只要
 `d/<source>/<day>.json` 还在磁盘上就仍然计入。
 
-包数总数旁边还并排显示 **Source IPs** 和 **Countries** 两个数字，即 `totalnumber.js` 导出的
-`NHP_TOTAL_ATTACK_SOURCE_IPS` 与 `NHP_TOTAL_ATTACK_COUNTRIES`（跨天并集）。三个数字一起
-递增动画。值为 0 的数字不显示：没有 geo 数据库时就没有国家，显示"0 Countries"会被理解成
-"没有任何国家的攻击"。
+包数总数旁边还并排显示 **Source IPs** 和 **Regions** 两个数字，即 `totalnumber.js` 导出的
+`NHP_TOTAL_ATTACK_SOURCE_IPS` 与 `NHP_TOTAL_ATTACK_REGIONS`（跨天并集）。三个数字一起
+递增动画。值为 0 的数字不显示：没有 geo 数据库时就没有地区，显示"0 Regions"会被理解成
+"没有来自任何地区的攻击"。
+
+**地区（Region）** 是国际标准 ISO 3166-1 alpha-2 分配给它列出的每一个国家和地区的两位字母码，
+GeoIP 数据库就是把一个地址归属到其中一个。这个数字计的是攻击地址被归属到的地区数 —— 不是
+攻击者数，也不是地址数。`totalnumber.js` 用一个名字导出它：`NHP_TOTAL_ATTACK_REGIONS` ——
+与它实际统计的东西相符的名字。它过去叫 `NHP_TOTAL_ATTACK_COUNTRIES`，那个名字已经没有了：
+ISO 3166-1 列的不只是国家，还有属地、争议地区与特别政治区，所以一个叫"国家数"的公开数字
+是对这些代码站不住脚的主张。用 `<script src>` 嵌这个文件的站点需要跟着改名；部署流水线的闸门
+现在 grep 的是新名字。
 
 `<title>` 用的则是另一句 —— **Zero Trust in Action: Live Attacks on OpenNHP
 Servers**。浏览器标签页、搜索结果和聊天预览有空间说清这个站"是关于什么的"，而首屏大标题
@@ -566,6 +787,114 @@ dirty，因此该行会在同一次运行里从 `index.json` 和首页总数中�
 的删除行为：原始日志和采集缓存一律不动。某个页面删不掉时，索引和状态照常写完，但整次运行
 仍然返回失败 —— 残留页面必须是有声音的，而不是悄无声息。
 
+### 历史基线：`-history`
+
+floor 是有代价的：它之前那几天的累计值根本不在站点上，别的任何地方也没有留存。
+`-history <history.json>` 让站点读一份**历史快照** —— 一份保存下来的首页快照，冻结成文件 ——
+并把它作为计数起点发布出去。
+
+```bash
+go run ./xdplog-report site \
+  -logs   /home/ec2-user/xdpstats/raw \
+  -out    /var/www/stats \
+  -state  /home/ec2-user/xdpstats/state.json \
+  -history /home/ec2-user/xdpstats/history.json
+```
+
+快照长这样：
+
+```json
+{
+  "schema": 1,
+  "since": "2026-10-16",
+  "totals": { "blocked": 3501020, "source_ips": 25136, "regions": 0 },
+  "days": [
+    {
+      "source": "server",
+      "day": "2026-10-16",
+      "partial": false,
+      "drop_pkts": 89910,
+      "pass_pkts": 0,
+      "drop_share": 0.6661,
+      "unique_attack_ips": 7336,
+      "peak_hour": "2026-10-16 18:00",
+      "restarts_detected": 1,
+      "budget_exhausted": false,
+      "unknown_reasons": false,
+      "top_category": "TCP SYN scan"
+    }
+  ]
+}
+```
+
+**实时那天说了算。** 采集端还留有日志的日子照常从日志分析、照常发布 —— 有详情页，那一天的
+攻击者也进入全局并集 —— 快照里同一天的那行被丢掉。快照里的日子和采集端的日子完全重叠，两边
+都算就会读成 `7,002,040` 而不是 `3,501,020`。把某天从快照里删掉，下一次运行它就重新变回
+实时行。
+
+**被冻结的那天是兜底。** 快照列出、而实时站点**造不出来**的那天（采集端的缓存里已经没有它的
+日志了）从快照发布。快照只带当天的汇总，不带逐条 DROP 事件，所以首页把日期渲染成纯文本并给
+该行打上 `history` 标签；`index.json` 里对应标记 `"history": true`。站点在装上快照之前为这些
+天发布过的页面**不会删除** —— 不再被链接不等于已下线 —— 只是不再有入口。
+
+**下限线同样管着快照。** 早于 `-since` 的日子既不进索引也不进 hero 总数，日志来的和快照来的
+都一样；快照的 `since` 也不能把站点拉到下限线之前：站点的统计起点是它发布的最早那天。
+
+**包数仍然可复现。** 快照的 `totals.blocked` 必须等于它自己各行 `drop_pkts` 之和，不等就直接
+拒绝加载。于是 hero 包数依旧是 `index.json` 全部行 `drop_pkts` 之和，历史行也在内。
+
+**来源数和地区数是同一个并集，不是两期相加。** 每一个发布出去的日子 —— 无论是从日志分析出来
+的还是从快照发布出来的 —— 都贡献自己那份攻击者集合和地区集合，站点把这些集合取并集。一天里
+出现十次的来源算一个攻击者，在快照那一期和实时这一期都活跃的来源也算一个。
+
+因此快照自己的 `source_ips` 与 `regions` **不会**再叠加到这个并集上。两个并集只有在两边的
+集合都在手头时才能合并；退而求其次把两边的**大小**相加，会把两期都出现过的来源（或地区）算
+两次 —— 两个集合大小之和恒定不小于它们的并集，绝不会小于。站点过去公布的就是这个和，却把它
+称作下界，恰恰说反了。
+
+真正被加进来的，是快照基线里**只**覆盖那些逐日记录已经不在的快照日子的那部分 —— 实时站点
+根本造不出来的那些日子。除此之外没有别的东西携带那些天的攻击者，此时公布的数字是**上界**而
+不是精确值；发生这种情况时首页会写明。
+
+**地区数则完全不采用快照的。** 公布的地区数就是已发布各天地区集合的并集，别无其他来源。地区是
+一个封闭集（ISO 3166-1 alpha-2，约 250 个码），两期几乎完全重合：把快照的计数加上就会把绝大多数
+地区数两遍（一份 130 地区的快照曾把站点顶到 162），已经越过了世界上地区代码的总数；取两者较大值
+虽然不会重复计数，却只能是个下界，总会漏掉只在一期出现过的地区。所以生成器写 `regions: 0`，站点
+也完全不读这个字段 —— 快照里还留着旧值的，照读不误，只在 stdout 上提示一句，然后忽略。
+
+一句话概括这条不变式：**快照只贡献开放集统计量（来源 IP），绝不贡献封闭集统计量（地区）。**
+因此公布的地区数上界就是 geo 源能产出的不同地区标签数，部署流水线上的闸门也因此是 250 而不是
+400。
+
+**读不到的快照会让运行直接失败。** `-history` 指向不存在或非法的文件是错误，绝不会静默退化成
+"只统计自己的数据" —— 那会让公布的累计值凭空少掉一块且没人能复核。文件内容的指纹写进
+`state.json`，所以即使日志一个没变，改了快照也会重写首页。
+
+`history.json` 是私有文件：放在 `state.json` 旁边，不要放进 web root。
+
+### `history` 子命令：把保存的首页冻结成快照
+
+```bash
+xdplog-report history -html <保存的首页.html> -out <history.json>
+xdplog-report history -index <已发布的 index.json> -totals <totalnumber.js> -out <history.json>
+```
+
+第一种读保存下来的首页，第二种读站点自己发布的东西（`index.json` 加上旁边的
+`totalnumber.js`）；两者产出同一个文件。
+
+生成器拒绝写出一份对不上的快照：解析出的各行之和必须等于页面自己的累计总数，页面自称的统计
+起点必须等于它最早的那一行。否则一次解析失误就会把错误的基线永久写进站点历史。
+
+页面自己的地区数会被读出来（读不出就说明这不是一张统计页），但**不会**被写进快照：快照里的
+`regions` 恒为 `0`，站点也完全不采用它。生成器会在 stdout 上把读到的那个数字报出来，供人工
+核对。
+
+入库的种子文件是 `deploy/config-templates/xdpstats/history.json`，由
+`testdata/history-page-2026-10-26.html` 生成 —— 那是一份公开首页的存档，也是 `testdata/`
+里唯一一个不是手写合成数据的 fixture。`TestHistorySeedSnapshotIsShipped` 把入库文件钉死在
+生成结果上，两者不会各走各的；`TestHistorySeedSnapshotCarriesNoRegionCount` 另外钉住它的
+`regions` 是 0 —— 手改数据不能把地区数塞回去。
+
 ### 模板改动会覆盖已发布的页面
 
 `state.json` 会为每一天记录生成该页面的 `siteRenderVersion`。在 `site.go` 里把这个常量 +1，
@@ -581,6 +910,24 @@ dirty，因此该行会在同一次运行里从 `index.json` 和首页总数中�
 泛称。`index.json` 的 `source` 字段保持目录原名 —— 它属于已发布的契约，已有解析代码依赖
 这个值。
 
+### 首页只在有东西变动时才重写
+
+`siteRenderVersion` 管的是**每日详情页**。首页自己没有版本号：`renderIndex` 只在本次运行
+"脏"的时候才执行，而"脏"指的是某天的原始日志变了、某天被下架、或者 history 快照的字节变了。
+地区和来源数每次运行都会重新计算，但**是否发布**由这个"脏"标志决定。
+
+所以，改动首页要说的内容（发布出来的数字、hero 区块、页面标记）本身到不了访客那里。这就是
+部署会重建站点的原因：`deploy-xdpstats` 会带 `XDPSTATS_SITE_FORCE=1` 跑一次采集脚本，
+它会传 `-force`，把缓存里的每一天重新分析一遍，于是首页由这次部署的二进制自己的输出来重写。
+每日的定时采集不加这个开关 —— 那里增量路径才是本意。
+
+部署不拿采集脚本的退出码当结论：抢不到锁的运行会以 0 退出却没有碰过站点，而某个源列不出来
+的运行会以非 0 退出、站点却重建得好好的 —— 退出码两件事都说明不了。所以部署检查的是**它
+自己发起的这次运行**的两件事：这次运行写进采集日志的行里必须有"强制重建"那一行；发布出去
+的 `index.html` 必须比运行前留下的标记文件新。前者说明开关到了采集脚本手里，后者说明 nginx
+对外提供的那个文件确实被重写了。某个源列不出来只记为警告 —— 站点是重建了，但已发布的日子
+可能是旧的。
+
 `totalnumber.js` 把三个累计数字导出成 JavaScript 常量，供别的站点直接引用：
 
 ```html
@@ -588,7 +935,7 @@ dirty，因此该行会在同一次运行里从 `index.json` 和首页总数中�
 <script>
   console.log(NHP_TOTAL_ATTACK_BLOCKED);    // 被拦截的攻击包数（精确）
   console.log(NHP_TOTAL_ATTACK_SOURCE_IPS); // 去重后的来源 IP 总数
-  console.log(NHP_TOTAL_ATTACK_COUNTRIES);  // 去重后的来源国家总数
+  console.log(NHP_TOTAL_ATTACK_REGIONS);  // 去重后的地区总数（ISO 3166-1 alpha-2 码）
 </script>
 ```
 
@@ -597,31 +944,36 @@ dirty，因此该行会在同一次运行里从 `index.json` 和首页总数中�
 三个常量都是 `0` 且不带统计起点注释，引用方不会拿到 404 然后留下一个悬空引用。它是普通
 classic script，跨站引用不需要 CORS 头 —— 受引用方自己的 CSP 约束。
 
+地区数只用一个名字导出：`NHP_TOTAL_ATTACK_REGIONS` —— 与它实际统计的东西相符的名字。
+旧名 `NHP_TOTAL_ATTACK_COUNTRIES` 已经没有了：ISO 3166-1 列的不只是国家，还有属地、争议地区
+与特别政治区，所以一个叫"国家数"的公开数字是对这些代码站不住脚的主张。用 `<script src>` 嵌这个
+文件的站点需要跟着改名。
+
 **后两个数字是并集，不是求和，也无法从 `index.json` 复现。**
 `unique_attack_ips` 是"某一天有多少个不同的来源"：一个每天扫一遍主机的 IP 只有一个身份，
 把各天的数字加起来却会把它算成好几天。因此全站数字取的是各天地址集合的并集 —— 每天的集合
 在原始日志还在的时候就抓下来，存进 `state.json` 旁边的 `facts/<source>/<day>.facts`
-（见下）。国家数同理。私有/保留地址两个口径都排除，与索引里每天那一列一致；GeoLite2 数据库
-定位不到的来源不属于任何国家，只抬升来源数。
+（见下）。地区数同理。私有/保留地址两个口径都排除，与索引里每天那一列一致；GeoLite2 数据库
+定位不到的来源不属于任何地区，只抬升来源数。
 
 ### GeoIP：`-geo-mmdb` / `-geo-csv` 对站点的影响
 
-给了 geo 数据库之后，每个已发布的日子都会多出一张地区表，站点的国家总数也开始有值。
+给了 geo 数据库之后，每个已发布的日子都会多出一张地区表，站点的地区总数也开始有值。
 `state.json` 会为每一天记录它是**用哪个** geo 源分析的，所以**装上数据库会自动重算已经发布的
-那些天** —— 它们原始日志没有任何变化，没有这个指纹的话国家总数会一直停在"装库之后那几天"
+那些天** —— 它们原始日志没有任何变化，没有这个指纹的话地区总数会一直停在"装库之后那几天"
 的水平。反方向是刻意不触发的：某天的原始日志可能已经被采集脚本清掉了，再不带 geo 重算一遍
 等于抹掉再也找不回来的归属信息。换了新版 GeoLite2 数据库想重算，用 `-force`。
 
-原始日志已被清掉、又恰好没有 facts 文件的那一天，它的来源和国家不参与统计，运行时会明说：
+原始日志已被清掉、又恰好没有 facts 文件的那一天，它的来源和地区不参与统计，运行时会明说：
 
 ```
-site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the all-time totals are a lower bound
+site: 1 day(s) contribute no source/region data (server/2026-10-17 (…)); the all-time totals are a lower bound
 ```
 
 这次运行不会失败：包数总数是精确的，照常发布。之所以要打这一行，是因为悄悄偏小的"来源数"
 正是这个站点一直在防的那类事。
 
-`state.json` 和它旁边的 `facts/` 目录（增量状态与每天的来源/国家集合）写到 `-state` 指定
+`state.json` 和它旁边的 `facts/` 目录（增量状态与每天的来源/地区集合）写到 `-state` 指定
 的位置。demo 部署把它们放在 `-out` 之外：`state.json` 记录了每个输入文件的绝对路径，
 属于主机布局；facts 文件是由未脱敏的来源地址派生出来的。部署脚本传入私有路径，nginx vhost
 另外再用 `location = /state.json { return 404; }` 和 `location ^~ /facts/ { return 404; }`
@@ -648,7 +1000,7 @@ site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the 
 ]
 ```
 
-每天的 JSON 文件复用了单文件 `Report`（`schema: 1`），因此已有的
+每天的 JSON 文件复用了单文件 `Report`（`schema: 2`），因此已有的
 `xdplog-report -in <某天>.json -format html` 路径可以从任何归档的日期重新生成页面。
 
 日期是 UTC（server 日志轮转默认用 `time.Now()` UTC）。当天还在写的日志在首页标记为
@@ -672,10 +1024,11 @@ site: 1 day(s) contribute no source/country data (server/2026-10-17 (…)); the 
 | `-out` | 必填 | 站点根目录，不存在则创建；未被重写的文件保留不动，只有被 `-since` 排除的那些天的详情页会被删除（见上文）。 |
 | `-state` | `<out>/state.json` | 增量构建状态。公开站点请把它指到 web root 之外：它记录了每个输入文件的绝对路径。 |
 | `-top` | `20` | 每天详情页 TOP 表的行数。 |
-| `-geo-csv` | 空 | 可选的 `cidr,country[,city]` CSV。与 `-geo-mmdb` 互斥。 |
+| `-geo-csv` | 空 | 可选的 `cidr,region[,city]` CSV。与 `-geo-mmdb` 互斥。 |
 | `-geo-mmdb` | 空 | 可选的 MaxMind GeoLite2-City `.mmdb`。 |
 | `-mask-ip` | **`true`** | 对外站点做 IP 截断；默认值与单文件 CLI 不同。 |
 | `-since` | `2026-10-16` | 最早发布的 `YYYY-MM-DD` 日期。更早的天既不渲染也不计入总数，已经为这些天发布过的详情页会被删除；传空则全部发布。 |
+| `-history` | 空 | 可选的 `history.json` 历史快照：采集端缓存已经够不到的那几天的兜底，以及站点计数起始的基线。读不到就直接报错，不会退回只统计自身数据。见上文「历史基线」。 |
 | `-force` | `false` | 即便输入未变化也强制重算每一天。推送模板改动不需要它：`siteRenderVersion` +1 即可。 |
 
 ### 测试
@@ -686,7 +1039,9 @@ go test ./xdplog-report/
 ```
 
 `testdata/` 下的 fixture 是手写的合成日志，不是从线上主机抓取的。它们从仓库根目录
-的 `*.log` 忽略规则中豁免，保证全新 checkout 也能跑测试。
+的 `*.log` 忽略规则中豁免，保证全新 checkout 也能跑测试。唯一的例外是
+`testdata/history-page-2026-10-26.html`：一份公开首页的存档 —— 历史生成器要读的正是这种
+页面。
 
 ### 新增 DROP reason
 

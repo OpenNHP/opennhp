@@ -37,8 +37,8 @@ TimeoutStopSec=60
 # The collector reads the stats-collector SSH key (installed at
 # /home/ec2-user/.ssh/stats_collector_key by deploy-xdpstats) and writes
 # into /home/ec2-user/xdpstats/{raw,state.json,facts} and /var/www/stats.
-# facts/ holds the per-day hashed source and country sets the all-time
-# attacker and country totals are unioned from; it lives under the same
+# facts/ holds the per-day hashed source and region sets the all-time
+# attacker and region totals are unioned from; it lives under the same
 # ReadWritePath because it hangs off -state.
 # systemd's ProtectSystem=full leaves /home and /var writable, and
 # ReadWritePaths narrows that to exactly those three places. /var/www/stats

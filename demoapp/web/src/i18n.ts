@@ -43,6 +43,7 @@ const EN: Dict = {
   // Footer
   'footer.detectingIp': 'Detecting IP…',
   'footer.ipUnavailable': 'IP detection unavailable',
+  'footer.sdkVersion': 'SDK v{version}',
   'footer.poweredBy': 'Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; Network-infrastructure Hiding Protocol',
   'footer.sponsoredBy': 'Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
   'footer.viewSource': "View this demo app's source on GitHub",
@@ -146,6 +147,7 @@ const ZH: Dict = {
 
   'footer.detectingIp': '正在检测 IP…',
   'footer.ipUnavailable': '无法检测 IP',
+  'footer.sdkVersion': 'SDK 版本：v{version}',
   'footer.poweredBy': '驱动技术：<a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; 网络基础设施隐藏协议',
   'footer.sponsoredBy': '赞助方：<a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
   'footer.viewSource': '在 GitHub 上查看此演示应用的源代码',

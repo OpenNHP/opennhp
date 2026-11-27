@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -354,15 +355,49 @@ type UdpAgent struct {
 	checkResults   map[string]any
 
 	// dhp
-	smartPolicyEngine          map[string]*wasmEngine.Engine // index by smart data policy identifier
-	decryptedZtdoRecord        map[string]string             // index by data object id
-	smartPolicyIdentifier      map[string]string             // index by data object id
-	smartDataPolicyRefreshTime map[string]int64              // indexed by data object id, use to record the refresh time of smart data policy, the unit of time is UnixNano
-	dataAccessRefreshMutex     sync.Mutex
+	//
+	// dataAccess holds the per-data-object caches (policy refresh times,
+	// decrypted paths, policy ids, policy engines) behind its own lock;
+	// nothing outside its accessors may touch them. See dataaccess.go for
+	// why these cannot be bare maps on the agent.
+	dataAccess dataAccessCache
+	// dataAccessRefreshMutex serializes the refresh itself, so two
+	// overlapping console requests for the same data object do not both
+	// fetch and decrypt it. It protects no shared map.
+	dataAccessRefreshMutex sync.Mutex
 
 	safeTee            atomic.Bool
 	trustedByNHPServer atomic.Bool
 	trustedByNHPDB     atomic.Bool
+
+	// DHP web console state, set once by PrepareDHPWebConsole before the
+	// console starts serving and read-only afterwards.
+	consoleConf     *ConsoleConfig
+	consoleNotices  []consoleNotice
+	consoleListener net.Listener
+	consoleServer   *http.Server
+	// consoleFailed receives the error if the console server stops on its
+	// own after ServeDHPWebConsole (anything but a shutdown).
+	consoleFailed chan error
+
+	// consoleLifecycleMu serializes console-triggered restarts and key
+	// rotations with each other and with StopDHP (write lock);
+	// consoleStopping (guarded by it) refuses new ones once shutdown has
+	// begun. Console handlers that read the loaded agent config take the
+	// read lock, so a restart cannot clear a.config under them.
+	consoleLifecycleMu sync.RWMutex
+	consoleStopping    bool
+
+	// serverConfigWriteMu serializes POST /config/server so two overlapping
+	// in-place writes of server.toml cannot interleave (A truncate, B
+	// truncate, A write, B write would leave B's content followed by A's
+	// tail, which can still parse and be hot-reloaded). It is separate from
+	// consoleLifecycleMu so a config write never waits on a long restart.
+	serverConfigWriteMu sync.Mutex
+	// taRegisterMu makes the TA dedup lookup and the index write in
+	// POST /ta/register one step, so two concurrent uploads of the same
+	// binary cannot both miss the index and each store their own copy.
+	taRegisterMu sync.Mutex
 }
 
 type UdpConn struct {
@@ -380,6 +415,26 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
+	// If Start fails it returns before the agent is marked running, so a
+	// later Stop() is a no-op (see Stop). Release the config watchers that
+	// loadBaseConfig/loadDHPConfig may already have installed, or they keep
+	// firing and are orphaned when the next Start replaces the handles.
+	// StopConfigWatch closes every handle; closing an already closed
+	// watcher is a no-op.
+	//
+	// Everything else a failed Start may leave allocated: only the logger.
+	// Every error return comes before core.NewDevice (which allocates
+	// nothing when it returns nil), and nothing after device.Start() can
+	// fail, so no device or packet goroutines are left behind. The logger is
+	// the process-wide global one and is deliberately kept open: the process
+	// keeps running and logging (e.g. the console after a failed restart),
+	// and the next Start's SetGlobalLogger closes it.
+	defer func() {
+		if err != nil {
+			a.StopConfigWatch()
+		}
+	}()
+
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -499,10 +554,7 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 
 	// initialize dhp related stuff
-	a.smartPolicyEngine = make(map[string]*wasmEngine.Engine)
-	a.decryptedZtdoRecord = make(map[string]string)
-	a.smartDataPolicyRefreshTime = make(map[string]int64)
-	a.smartPolicyIdentifier = make(map[string]string)
+	a.dataAccess.reset()
 	a.trustedByNHPServer.Store(false)
 	a.trustedByNHPDB.Store(false)
 
@@ -676,10 +728,15 @@ func (a *UdpAgent) SetCheckResults(results map[string]any) {
 }
 
 // export Stop
+//
+// Stop is a no-op unless the agent is running. running only becomes true
+// at the very end of a successful Start, after every channel Stop closes
+// has been created, so this makes Stop safe after a failed Start (e.g. a
+// RestartAgent whose Start rejected the config) and against concurrent or
+// repeated calls — any of which would otherwise close the same channels
+// twice and panic.
 func (a *UdpAgent) Stop() {
-	// No-op unless running: a failed restart leaves the agent already stopped,
-	// and a second teardown would close closed channels and panic.
-	if !a.running.Swap(false) {
+	if !a.running.CompareAndSwap(true, false) {
 		return
 	}
 	a.stopKnockLoop()
@@ -1467,31 +1524,21 @@ func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *core.UdpPeer 
 }
 
 func (a *UdpAgent) StartConfidentialComputing(ztdoId string, taId string, function string, params map[string]any) (any, error) {
-	var err error
-	var policyId string
-
-	output, refreshSdp, decrypted := a.PreCheckDataAccess(ztdoId)
+	output, refreshSdp, _ := a.PreCheckDataAccess(ztdoId)
 
 	if refreshSdp {
-		a.dataAccessRefreshMutex.Lock()
-		defer a.dataAccessRefreshMutex.Unlock()
-
-		// secondly check again
-		output, refreshSdp, decrypted = a.PreCheckDataAccess(ztdoId)
-
-		if refreshSdp {
-			output, err = a.RefreshDataAccess(ztdoId, decrypted, output)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to refresh SDP: %s", err.Error())
-			}
+		var err error
+		output, err = a.refreshDataAccessOnce(ztdoId)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to refresh SDP: %s", err.Error())
 		}
 	}
 
 	// inject data path to params
 	params["path"] = output
 
-	var exist bool
-	if policyId, exist = a.smartPolicyIdentifier[ztdoId]; !exist {
+	policyId, exist := a.dataAccess.policyFor(ztdoId)
+	if !exist {
 		return nil, fmt.Errorf("Error: fail to find policyId for ztdoId %s.\n", ztdoId)
 	}
 
@@ -1510,28 +1557,32 @@ func (a *UdpAgent) StartConfidentialComputing(ztdoId string, taId string, functi
 	}
 }
 
+// PreCheckDataAccess reports whether a data object's smart data policy
+// is stale and whether its plaintext is already on disk. Kept as an
+// exported SDK entry point; the state itself lives in a.dataAccess.
 func (a *UdpAgent) PreCheckDataAccess(ztdoId string) (output string, refreshSdp bool, decrypted bool) {
-	output = ""
+	return a.dataAccess.preCheck(ztdoId)
+}
 
-	// Check whether the smart data policy needs to be refreshed
-	if sdpRefreshTime, exist := a.smartDataPolicyRefreshTime[ztdoId]; exist {
-		if time.Now().UnixNano()-sdpRefreshTime > SmartDataPolicyRefreshTime {
-			refreshSdp = true
-		}
-	} else {
-		refreshSdp = true
+// refreshDataAccessOnce refreshes one data object's smart data policy
+// with dataAccessRefreshMutex held, re-checking under the lock so that
+// requests queued behind a refresh that already did the work do not
+// repeat the round trip, the download and the decryption.
+//
+// The lock is released before the trusted application is called: it
+// exists to make a refresh happen once, not to serialize TA calls, and a
+// TA call has no timeout — holding it across one would let a single stuck
+// call block every other data object's refresh.
+func (a *UdpAgent) refreshDataAccessOnce(ztdoId string) (string, error) {
+	a.dataAccessRefreshMutex.Lock()
+	defer a.dataAccessRefreshMutex.Unlock()
+
+	output, refreshSdp, decrypted := a.dataAccess.preCheck(ztdoId)
+	if !refreshSdp {
+		return output, nil
 	}
 
-	// Check whether the ZTDO has been decrypted
-	if plaintextPath, exist := a.decryptedZtdoRecord[ztdoId]; exist {
-		output = plaintextPath
-		decrypted = true
-	} else {
-		decrypted = false
-		refreshSdp = true
-	}
-
-	return output, refreshSdp, decrypted
+	return a.RefreshDataAccess(ztdoId, decrypted, output)
 }
 
 func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOutput string) (output string, err error) {
@@ -1559,7 +1610,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 		a.trustedByNHPDB.Store(true) // agent has been trusted by NHP DB
 
 		// update smart data policy refresh time
-		a.smartDataPolicyRefreshTime[ztdoId] = time.Now().UnixNano()
+		a.dataAccess.markRefreshed(ztdoId)
 
 		log.Info("[StartConfidentialComputing] Refresh smart data policy for data object which id is %q", common.TruncateDoIDForLog(ztdoId))
 
@@ -1584,6 +1635,10 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 			}
 
 			var err error
+			// AccessUrl comes from the server's DAG reply, so the
+			// address it names is not ours to trust. DownloadFileToTemp
+			// bounds the fetch (size, time, redirects, scheme, and which
+			// addresses it may be pointed at) — see nhp/utils/download.go.
 			ztdoPath, err := utils.DownloadFileToTemp(dagMsg.AccessUrl, "ztdo-")
 			if err != nil {
 				log.Error("failed to download ztdo: %v\n", err)
@@ -1641,7 +1696,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 			if err := ztdo.DecryptZtdoFile(ztdoPath, output, gcmKey[:], ad); err != nil {
 				return "", fmt.Errorf("Failed to decrypt ztdo file: %v", err)
 			} else {
-				a.decryptedZtdoRecord[ztdoId] = output
+				a.dataAccess.setDecrypted(ztdoId, output)
 			}
 		} else {
 			output = decryptedOutput
@@ -1763,14 +1818,7 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 
 	if result {
 		// clear related resources when load new smart data policy
-		if spoId, exist := a.smartPolicyIdentifier[dsaMsg.DoId]; exist {
-			if _, exist := a.smartPolicyEngine[spoId]; exist {
-				a.smartPolicyEngine[spoId].Close()
-				delete(a.smartPolicyEngine, spoId)
-			}
-			delete(a.smartPolicyIdentifier, dsaMsg.DoId)
-		}
-		a.smartPolicyIdentifier[dsaMsg.DoId] = dsaMsg.Spo.PolicyId
+		a.dataAccess.setPolicy(dsaMsg.DoId, dsaMsg.Spo.PolicyId)
 
 		// Collect attestation proofs with smart policy
 		evidence, err := a.onAttestationCollect(dsaMsg.Spo)
@@ -1887,9 +1935,20 @@ func (s *UdpAgent) onAttestationCollect(spo *common.SmartPolicy) (string, error)
 		return "", err
 	}
 
-	s.smartPolicyEngine[spo.PolicyId] = engine
+	s.dataAccess.putEngine(spo.PolicyId, engine)
 
-	attestation := engine.OnAttestationCollect()
+	// Take a reference for the call itself: between the line above and
+	// this one, a refresh for another data object bound to this policy
+	// (or a restart's cache reset) can retire the engine, and the engine
+	// is only guaranteed not to be closed under a call while a reference
+	// is held.
+	ce, exist := s.dataAccess.acquireEngine(spo.PolicyId)
+	if !exist {
+		return "", fmt.Errorf("smart policy %s was replaced before its attestation could be collected", spo.PolicyId)
+	}
+	defer s.dataAccess.releaseEngine(ce)
+
+	attestation := ce.engine.OnAttestationCollect()
 
 	return attestation, nil
 }
@@ -1904,8 +1963,9 @@ func (a *UdpAgent) CallTrustedApplication(taId string, function string, params m
 	if err != nil {
 		return "", err
 	} else {
-		if spEngine, exist := a.smartPolicyEngine[spoId]; exist {
-			resultWithPostProcess := spEngine.OnDataPostprocess(taRes)
+		if ce, exist := a.dataAccess.acquireEngine(spoId); exist {
+			defer a.dataAccess.releaseEngine(ce)
+			resultWithPostProcess := ce.engine.OnDataPostprocess(taRes)
 			return resultWithPostProcess, nil
 		} else {
 			return taRes, nil

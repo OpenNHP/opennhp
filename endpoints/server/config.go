@@ -116,8 +116,7 @@ type Config struct {
 	AllowPrivateRelaySource bool `json:"allowPrivateRelaySource"`
 
 	// CookieSigningKeyBase64 is a base64-encoded 32-byte HMAC key used to
-	// derive overload-mode cookies statelessly from (remoteAddr || time
-	// window). When multiple nhp-server instances sit behind a load
+	// derive stateless cookies from the source IP, peer key and time window. When multiple nhp-server instances sit behind a load
 	// balancer / round-robin DNS, an agent's KNK and its follow-up RKN may
 	// land on different instances; with per-instance random cookie state
 	// (the legacy CookieStore), the second instance can't validate the
@@ -237,6 +236,28 @@ type XdpTomlConfig struct {
 	// filter still attaches and enforces. Read once at startup, like
 	// NhpMinFrameBytes.
 	EventLogEnabled *bool
+	// DhcpServerIP and NtpServerIP narrow the two client-protocol pairs the
+	// filter admits: the DHCP answer (67 -> 68) and the NTP answer (123 ->
+	// 123). Each is an IPv4 address ("169.254.169.253") or a CIDR prefix
+	// ("169.254.169.0/24"); empty means the pair is not narrowed, which is
+	// what the filter did before these settings existed.
+	//
+	// The port pair says what the answer looks like, not who sent it, so
+	// without a range the filter admits any packet wearing the right ports.
+	// Nothing downstream trusts those packets -- a DHCP reply is matched
+	// against the lease it answers, and chrony checks the server it asked --
+	// but on a host whose group is open to the whole internet that is the
+	// last exposure the pair rules leave, and only the operator knows which
+	// addresses their own servers answer from.
+	//
+	// A value that cannot be parsed refuses the attach (see startXdpFilter):
+	// an unreadable narrowing that was quietly ignored would leave the pair
+	// open while the file said it was closed, and a narrowing that was
+	// applied wrongly costs the host its DHCP lease -- and with it its
+	// address, and with that its reachability. Read once at startup, like
+	// NhpMinFrameBytes: the values are constants in the program's .rodata.
+	DhcpServerIP string
+	NtpServerIP  string
 }
 
 // DefaultNhpMinFrameBytes mirrors the nhp_min_udp_len default in
@@ -245,13 +266,19 @@ type XdpTomlConfig struct {
 const DefaultNhpMinFrameBytes = 240
 
 // Defaults and accepted ranges for the [NHP-SCAN] knobs.
+//
+// The values live in nhp/utils/ebpf, the package the nhp-ac loads its filter
+// through, because the two daemons report the same log shape and a summary
+// window that differs between them would make the published site's
+// per-window numbers incomparable. These names are aliases, so the server's
+// own callers (and its tests) are unaffected.
 const (
-	DefaultScanReportIntervalSeconds = 300
-	DefaultScanReportTopN            = 20
-	minScanReportIntervalSeconds     = 10
-	maxScanReportIntervalSeconds     = 3600
-	minScanReportTopN                = 1
-	maxScanReportTopN                = 200
+	DefaultScanReportIntervalSeconds = utilsebpf.DefaultScanReportIntervalSeconds
+	DefaultScanReportTopN            = utilsebpf.DefaultScanReportTopN
+	minScanReportIntervalSeconds     = utilsebpf.MinScanReportIntervalSeconds
+	maxScanReportIntervalSeconds     = utilsebpf.MaxScanReportIntervalSeconds
+	minScanReportTopN                = utilsebpf.MinScanReportTopN
+	maxScanReportTopN                = utilsebpf.MaxScanReportTopN
 )
 
 // MetricsConfig configures the observability endpoint exposed by nhp-server.
@@ -423,6 +450,15 @@ type RemoteConfig struct {
 	Endpoints []string
 	Username  string
 	Password  string
+
+	// Optional TLS for the etcd connection. Unset means plaintext, which
+	// is what every deployment has today. See nhp/etcd.EtcdConfig for why
+	// turning it on matters: the value under Key is the trusted-peer
+	// configuration, so whoever can rewrite it on the wire can install
+	// their own nhp-server public key as trusted.
+	CAFile   string
+	CertFile string
+	KeyFile  string
 }
 
 type HttpConfig struct {
@@ -435,6 +471,24 @@ type HttpConfig struct {
 	ReadTimeoutMs  int
 	WriteTimeoutMs int
 	IdleTimeoutMs  int
+	// TrustedProxies lists the network origins (IPv4/IPv6 addresses or CIDR
+	// prefixes) whose X-Forwarded-For / X-Real-IP headers the HTTP knock
+	// module believes. Absent or empty means none, which is the right answer
+	// for every deployment that is not actually behind a reverse proxy: the
+	// knock source then comes from the TCP peer and cannot be chosen by the
+	// caller. Listing a proxy here only makes sense when that proxy
+	// *overwrites* the forwarding headers and the listener is bound where
+	// nothing else can reach it. See applyTrustedProxies in httpserver.go.
+	TrustedProxies []string
+
+	// /storage API (ZTDO upload by nhp-db, download by agents). Read when
+	// the HTTP server starts. Uploads and metadata require a request
+	// signed with an nhp-db key listed in db.toml; downloads stay anonymous
+	// (the object URL carries a random UUID and a ZTDO is encrypted).
+	EnableStorage               *bool // default true
+	StorageMaxUploadMB          int   // largest accepted upload; default 20480
+	StorageMinFreeMB            int   // free space an upload must leave on the upload volume; default 1024
+	StorageMaxConcurrentUploads int   // uploads in progress at once; default 4
 }
 
 type Peers struct {
@@ -504,21 +558,45 @@ func (s *UdpServer) loadHttpConfig() error {
 	}
 	var httpConf HttpConfig
 	if unmarshalErr := toml.Unmarshal(content, &httpConf); unmarshalErr != nil {
-		log.Error("failed to unmarshal http config: %v", unmarshalErr)
-	}
-	if err = s.updateHttpConfig(httpConf); err != nil {
-		// ignore error
-		_ = err
+		// Do not apply a half-decoded struct. go-toml v2 stops at the first
+		// error with the fields ahead of it already populated, so what is left
+		// is a configuration nobody wrote -- and TrustedProxies is now one of
+		// the fields that could be in it. Leaving the HTTP listener down until
+		// the file is fixed is the lesser outcome; the UDP knock service is
+		// driven by config.toml and is unaffected. The watcher is still
+		// installed below, so repairing the file recovers without a restart.
+		log.Error("failed to unmarshal http config, the HTTP server will not start: %v", unmarshalErr)
+	} else if err = s.updateHttpConfig(httpConf); err != nil {
+		// updateHttpConfig has already logged why (a TrustedProxies list that
+		// does not parse, or a listener the attached XDP filter would
+		// black-hole). Carry on without the HTTP surface rather than failing
+		// the daemon.
+		log.Error("http config was not applied: %v", err)
 	}
 
 	httpConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("http config: %s has been updated", fileName)
-		if content, err = s.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &httpConf); err == nil {
-				_ = s.updateHttpConfig(httpConf)
-			}
+		newContent, loadErr := s.loadConfigFile(fileName)
+		if loadErr != nil {
+			return
 		}
-
+		// Decode into a fresh HttpConfig on every reload. go-toml v2 does not
+		// zero fields the new document omits, so reusing one struct across
+		// reloads lets a deleted key keep the value it had two files ago --
+		// for TrustedProxies, a proxy the operator just removed would be read
+		// back as still configured, and would then be handed to the next
+		// listener that starts. Same reasoning as loadBaseConfig above.
+		//
+		// This fixes what the daemon *reads*. It does not revoke trust from a
+		// listener that is already running: updateHttpConfig does not restart
+		// one, so the live engine keeps its list until EnableHttp is cycled.
+		// That gap is logged rather than silent -- see trustedProxiesPending.
+		var newConf HttpConfig
+		if unmarshalErr := toml.Unmarshal(newContent, &newConf); unmarshalErr != nil {
+			log.Error("failed to unmarshal http config on reload, keeping the running config: %v", unmarshalErr)
+			return
+		}
+		_ = s.updateHttpConfig(newConf)
 	})
 	return nil
 }
@@ -790,6 +868,14 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		return false
 	}
 
+	// The two source ranges narrow the DHCP and NTP pairs to the addresses
+	// this host's own servers answer from. A value that cannot be parsed is
+	// logged and the pair is left at its default, not a refusal to attach:
+	// these settings are defense in depth, and with the security group open
+	// to every port the filter is the only inbound control on all of them --
+	// so a typo here must not trade a closed pair for an open host.
+	dhcpSource, ntpSource := xdpSourceNets(conf, fileName)
+
 	scanSeconds, scanTopN := resolveScanReport(conf)
 
 	listenPort := s.GetListenPort()
@@ -836,6 +922,13 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		ScanReportInterval: time.Duration(scanSeconds) * time.Second,
 		ScanReportTopN:     scanTopN,
 
+		// The source ranges travel with the load rather than being written
+		// afterwards: the loader puts them in the program's .rodata before it
+		// attaches anything, so the filter is never live with a pair it was
+		// not configured with.
+		DhcpSource: dhcpSource,
+		NtpSource:  ntpSource,
+
 		DisableEventLog: conf.EventLogEnabled != nil && !*conf.EventLogEnabled,
 	}); err != nil {
 		log.Warning("server eBPF engine load failed, fail-open (no XDP ingress filter): %v", err)
@@ -854,10 +947,14 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 // Loopback binds are not a conflict: the program is attached to the host's
 // default-route interface, so traffic to 127.0.0.1 never reaches it.
 func (s *UdpServer) xdpServiceConflict() string {
-	if port, enabled := s.GetHttpPort(); enabled {
-		if !isLoopbackListenAddr(s.httpConfig.HttpListenIp) {
+	// One Load for both the port and the address: dereferencing s.httpConfig
+	// again after GetHttpPort could read a newer config and report a listener
+	// nobody ever bound.
+	conf := s.httpConfig.Load()
+	if port, enabled := s.GetHttpPort(); enabled && conf != nil {
+		if !isLoopbackListenAddr(conf.HttpListenIp) {
 			return fmt.Sprintf("the HTTP knock listener is enabled on %s:%d",
-				listenAddrForLog(s.httpConfig.HttpListenIp), port)
+				listenAddrForLog(conf.HttpListenIp), port)
 		}
 	}
 	if s.config != nil && s.config.Metrics.Enabled && !isLoopbackListenAddr(s.config.Metrics.ListenIp) {
@@ -937,6 +1034,46 @@ func xdpRelayPrefixes(conf *XdpTomlConfig, fileName string, refusalWhat string) 
 		return nil, false
 	}
 	return prefixes, true
+}
+
+// xdpSourceNets parses the two source ranges the DHCP and NTP pairs are
+// narrowed to.
+//
+// An empty value is not an error: it means the pair is not narrowed, which is
+// what the filter did before the settings existed.
+//
+// A value that is present but unusable is *not* a refusal to attach, and the
+// difference matters. These two settings are defense in depth: nothing
+// downstream trusts a DHCP or NTP packet (the lease is matched against the
+// request, chrony checks the server it asked), so the narrowing is one more
+// layer on a pair the filter admits only so the host keeps its address and
+// its clock. With server_open_all_ports = true the filter is the only
+// inbound control on every port but tcp/22, and the invariant this file's
+// other refusals exist to protect says the reasons to refuse attaching stay
+// limited to the ones that protect SSH reachability. A typo in a
+// defense-in-depth narrowing must not trade a closed pair for an open host.
+//
+// So an unusable value is logged at Critical, that pair keeps the object's
+// own default (any source), and the filter attaches -- exactly what
+// resolveScanReport does with an out-of-range telemetry setting. The two
+// settings are independent: one unusable value does not cost the other its
+// narrowing.
+func xdpSourceNets(conf *XdpTomlConfig, fileName string) (utilsebpf.SourceNet, utilsebpf.SourceNet) {
+	dhcp, err := utilsebpf.ParseSourceNet(conf.DhcpServerIP)
+	if err != nil {
+		log.Critical("xdp config: %s has an unusable DhcpServerIP (%q): %v — the DHCP pair is not narrowed and the XDP ingress filter still attaches. It must be an IPv4 address or a CIDR prefix",
+			fileName, conf.DhcpServerIP, err)
+		dhcp = utilsebpf.SourceNet{}
+	}
+
+	ntp, err := utilsebpf.ParseSourceNet(conf.NtpServerIP)
+	if err != nil {
+		log.Critical("xdp config: %s has an unusable NtpServerIP (%q): %v — the NTP pair is not narrowed and the XDP ingress filter still attaches. It must be an IPv4 address or a CIDR prefix",
+			fileName, conf.NtpServerIP, err)
+		ntp = utilsebpf.SourceNet{}
+	}
+
+	return dhcp, ntp
 }
 
 // applyXdpConfig mirrors a parsed xdp.toml's whitelist into the kernel-side map.
@@ -1100,6 +1237,21 @@ func (s *UdpServer) loadSourceIps() error {
 	return nil
 }
 
+// resolveRemoteConfigPath makes a relative TLS file path relative to the
+// install directory, the way xdpConfigFileName and the audit ledger do.
+//
+// remote.toml is read from ExeDirPath/etc, so an operator who writes
+// "etc/etcd-ca.pem" there means the file next to it. Passed through
+// unchanged it would resolve against the process's working directory
+// instead, and a daemon started by systemd without WorkingDirectory=, or
+// in a container, would refuse to start on a path that looks right.
+func resolveRemoteConfigPath(p string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(ExeDirPath, p)
+}
+
 func (s *UdpServer) initRemoteConn() error {
 	// remote.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "remote.toml")
@@ -1138,6 +1290,9 @@ func (s *UdpServer) initRemoteConn() error {
 			Username:  conf.Username,
 			Password:  conf.Password,
 			Key:       conf.Key,
+			CAFile:    resolveRemoteConfigPath(conf.CAFile),
+			CertFile:  resolveRemoteConfigPath(conf.CertFile),
+			KeyFile:   resolveRemoteConfigPath(conf.KeyFile),
 		}
 
 		err = s.etcdConn.InitClient()
@@ -1451,6 +1606,14 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 			if err != nil {
 				return err
 			}
+		} else if s.httpServer.trustedProxiesPending(httpConf.TrustedProxies) {
+			// The listener is already up and this call does not restart it, so
+			// the engine keeps the proxy list it started with. Say so: for
+			// every other field the lag is cosmetic, but this one decides
+			// whether a caller can choose the source IP the AC opens a rule
+			// for, and an operator who just removed a proxy has every reason
+			// to believe the removal took effect.
+			log.Critical("TrustedProxies changed in the HTTP config but the running listener still enforces the list it started with. The new list takes effect only after the HTTP server restarts: set EnableHttp = false, then back to true. Until then X-Forwarded-For / X-Real-IP are still believed from the previous origins.")
 		}
 	} else {
 		// stop http server
@@ -1460,7 +1623,7 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 		}
 	}
 
-	s.httpConfig = &httpConf
+	s.httpConfig.Store(&httpConf)
 	return err
 }
 

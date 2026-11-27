@@ -1,15 +1,15 @@
 # Cloudflare DNS records for opennhp.org
 # proxied = false because NHP uses UDP which Cloudflare proxy doesn't support
 
-resource "cloudflare_record" "auth_plugin" {
-  zone_id = var.cloudflare_zone_id
-  name    = "auth-plugin"
-  content = aws_eip.server.public_ip
-  type    = "A"
-  proxied = false
-  ttl     = 300
-  comment = "NHP Server (auth plugin) - managed by Terraform"
-}
+# The "auth-plugin" A record was removed deliberately. It was the cluster 1
+# nhp-server's original name (the demo login page it once served is gone --
+# see security-groups.tf and deploy/config-templates/server/http.toml), and it
+# still appears in certificate transparency logs from before the wildcard
+# certificate replaced the per-host ones. CT cannot be withdrawn, so leaving
+# the name resolving would keep handing the nhp-server's public IP to anyone
+# who reads those logs. The A record moved to "server" below, which is the
+# only public name of that host now; "server" never appeared in a per-host
+# certificate, because it was a CNAME alias and CT records SANs.
 
 resource "cloudflare_record" "ac" {
   zone_id = var.cloudflare_zone_id
@@ -21,17 +21,20 @@ resource "cloudflare_record" "ac" {
   comment = "NHP AC - managed by Terraform"
 }
 
-# Canonical alias for the cluster 1 nhp-server. Points at auth-plugin so the
-# two names resolve to the same host; lets the demo refer to the cluster
-# as server.opennhp.org.
+# The cluster 1 nhp-server. This is an A record of its own, not an alias to
+# another name: "auth-plugin.opennhp.org" used to hold the A record and this
+# name was a CNAME to it, which meant the retired name could not be dropped
+# without taking the live one with it. Retiring a hostname therefore means
+# moving the address onto the surviving name first -- see "Retired hostnames
+# (DNS)" in terraform/demo/RUNBOOK.md.
 resource "cloudflare_record" "server" {
   zone_id = var.cloudflare_zone_id
   name    = "server"
-  content = "auth-plugin.opennhp.org"
-  type    = "CNAME"
+  content = aws_eip.server.public_ip
+  type    = "A"
   proxied = false
   ttl     = 300
-  comment = "Alias for auth-plugin.opennhp.org (cluster 1 nhp-server) - managed by Terraform"
+  comment = "NHP Server (cluster 1) - managed by Terraform"
 }
 
 # Legacy aliases. Kept as CNAMEs to the new primary names so existing
@@ -44,6 +47,11 @@ resource "cloudflare_record" "server" {
 # surface (see security-groups.tf). Removing the record here stops the
 # hostname resolving at all. Re-adding it would only produce a dead name
 # unless the nginx vhost and the tcp/443 SG rule are restored too.
+#
+# The "auth-plugin" record was removed for the same reason, and with the
+# rule the block above states: the A record was moved to "server" first, so
+# "auth-plugin.opennhp.org" no longer resolves at all while
+# "server.opennhp.org" resolves exactly as before.
 
 resource "cloudflare_record" "acdemo" {
   zone_id = var.cloudflare_zone_id

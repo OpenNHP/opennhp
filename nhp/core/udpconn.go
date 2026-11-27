@@ -11,10 +11,11 @@ import (
 
 type ConnectionData struct {
 	// atomic data, keep 64bit(8-bytes) alignment for 32-bit system compatibility
-	InitTime           int64 // local connection setup time. immutable after created
-	LastRemoteSendTime int64
-	LastLocalSendTime  int64
-	LastLocalRecvTime  int64
+	InitTime                 int64 // local connection setup time. immutable after created
+	LastRemoteSendTime       int64
+	LastRemoteCookieSendTime int64
+	LastLocalSendTime        int64
+	LastLocalRecvTime        int64
 
 	sync.Mutex
 	sync.WaitGroup
@@ -26,17 +27,18 @@ type ConnectionData struct {
 	channelSendWg sync.WaitGroup
 
 	// common
-	Device           *Device
-	LocalAddr        *net.UDPAddr
-	RemoteAddr       *net.UDPAddr
-	RealRemoteAddr   *net.UDPAddr // set for relay-forwarded connections: the real client address behind the relay
-	CookieStore      *CookieStore
-	TimeoutMs        int
-	SendQueue        chan *Packet
-	RecvQueue        chan *Packet
-	BlockSignal      chan struct{}
-	SetTimeoutSignal chan struct{}
-	StopSignal       chan struct{}
+	Device             *Device
+	LocalAddr          *net.UDPAddr
+	RemoteAddr         *net.UDPAddr
+	RealRemoteAddr     *net.UDPAddr // set for relay-forwarded connections: the real client address behind the relay
+	RequireKnockCookie bool         // Set on direct and relay-forwarded access connections.
+	CookieStore        *CookieStore
+	TimeoutMs          int
+	SendQueue          chan *Packet
+	RecvQueue          chan *Packet
+	BlockSignal        chan struct{}
+	SetTimeoutSignal   chan struct{}
+	StopSignal         chan struct{}
 
 	closed atomic.Bool
 

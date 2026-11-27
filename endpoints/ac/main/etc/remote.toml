@@ -11,3 +11,16 @@
 Provider = "etcd"
 Endpoints = ["172.16.3.53:2379"]
 Key = "openac-1"
+
+# CAFile / CertFile / KeyFile: optional TLS for the etcd connection.
+# Unset (the default) means a plaintext connection, unchanged from before
+# these settings existed. Turning it on matters: the value under Key is the
+# trusted-peer configuration, so whoever can rewrite it on the wire can
+# install their own nhp-server public key as trusted -- a full bypass of the
+# access control. Username and Password also travel in the clear without it.
+#   CAFile alone  -> the server is authenticated and the connection encrypted.
+#   CertFile+KeyFile -> client certificate authentication as well; both are
+#   required together, and CAFile is required with them.
+# CAFile = "etc/etcd-ca.pem"
+# CertFile = "etc/etcd-client.pem"
+# KeyFile = "etc/etcd-client-key.pem"

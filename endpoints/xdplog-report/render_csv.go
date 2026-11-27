@@ -19,11 +19,11 @@ func renderCSV(w io.Writer, r *Report) error {
 		_ = cw.Write([]string{"category", x.Category, fmt.Sprint(x.Pkts), fmt.Sprint(x.Events), pct(x.Share), ""})
 	}
 	for _, x := range r.TopIPs {
-		extra := fmt.Sprintf("%s %s; categories=%d; ports=%v", x.Country, x.City, x.Categories, x.TopPorts)
+		extra := fmt.Sprintf("%s %s; categories=%d; ports=%v", x.Region, x.City, x.Categories, x.TopPorts)
 		_ = cw.Write([]string{"top_ip", x.IP, "", fmt.Sprint(x.Events), pct(x.Share), strings.TrimSpace(extra)})
 	}
 	for _, x := range r.TopGeo {
-		_ = cw.Write([]string{"top_geo", x.Country, "", fmt.Sprint(x.Events), pct(x.Share), fmt.Sprintf("unique_ips=%d", x.IPs)})
+		_ = cw.Write([]string{"top_geo", x.Region, "", fmt.Sprint(x.Events), pct(x.Share), fmt.Sprintf("unique_ips=%d", x.IPs)})
 	}
 	for _, x := range r.TopPorts {
 		_ = cw.Write([]string{"top_port", x.Key, "", fmt.Sprint(x.Count), pct(x.Share), ""})

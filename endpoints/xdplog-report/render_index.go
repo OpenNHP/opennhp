@@ -59,15 +59,54 @@ type indexPageData struct {
 	// SinceDay is the earliest published day, already in YYYY-MM-DD. Empty
 	// when there is nothing to publish, which suppresses the hero block.
 	SinceDay string
-	// TotalSources and TotalCountries are the all-time distinct source IPs
-	// and countries — the same unions totalnumber.js exports as
-	// NHP_TOTAL_ATTACK_SOURCE_IPS and NHP_TOTAL_ATTACK_COUNTRIES. Unlike the
+	// TotalSources and TotalRegions are the all-time distinct source IPs
+	// and regions — the same unions totalnumber.js exports as
+	// NHP_TOTAL_ATTACK_SOURCE_IPS and NHP_TOTAL_ATTACK_REGIONS. Unlike the
 	// packet total they cannot be reproduced from index.json (the per-day sets
 	// behind them stay private, see facts.go), so the page's note says they
-	// are unions. Zero hides the figure: no geo source means no countries, and
-	// showing "0 countries" would read as "no attacks from anywhere".
-	TotalSources   int
-	TotalCountries int
+	// are unions. Zero hides the figure: no geo source means no regions, and
+	// showing "0 regions" would read as "no attacks from anywhere".
+	//
+	// They are the union over every published day's own sets, plus whatever
+	// the history snapshot stands in for (baseline): an address seen on ten
+	// days is one attacker, and one seen in the snapshot's period and in the
+	// live one is one attacker too.
+	//
+	// The region total is the union and nothing else. The snapshot's own
+	// region count is never applied: regions are a closed set of ~250
+	// codes both periods share almost entirely, so any arithmetic that
+	// combines the two can only be wrong. See historyBaseline.
+	//
+	// A region is the ISO 3166-1 alpha-2 code the GeoIP database attributes
+	// an address to: the two-letter codes the international standard assigns
+	// to every country and area it lists. The exported constant is named for
+	// that set too (NHP_TOTAL_ATTACK_REGIONS): the standard's list covers
+	// dependencies and disputed areas as well, and a published figure called
+	// a country count is a claim about them.
+	TotalSources int
+	TotalRegions int
+	// HasHistory is true when the index carries rows published from the
+	// history snapshot: the days the live site cannot produce. Those rows
+	// have no detail page, and the page says so, because a reader who cannot
+	// click a date deserves to know why.
+	HasHistory bool
+	// BaselineFromSnapshot is true when the snapshot's own source count
+	// stands in for days whose per-day records are gone: it is added to the
+	// union (an upper bound). The snapshot's region count is never applied.
+	// See historyBaseline.
+	BaselineFromSnapshot bool
+	// SnapshotBelowFloor is true when the history snapshot lists days the
+	// site does not publish, so its own count could not be applied: a
+	// snapshot-level total cannot be split by day. Those days contribute
+	// nothing to the two figures.
+	SnapshotBelowFloor bool
+	// NothingStandsIn is true when a published day contributed no source or
+	// region data and the snapshot did not stand in for it.
+	NothingStandsIn bool
+	// BoundNote says which of the two figures is exact, an upper bound or a
+	// lower bound. Empty when both are exact. totalnumber.js prints the same
+	// sentence.
+	BoundNote string
 }
 
 // renderIndex writes index.html, index.json, countup.js and totalnumber.js
@@ -78,11 +117,19 @@ type indexPageData struct {
 // Rows are sorted by day descending (most recent first), then by source name
 // for ties.
 //
-// union carries the all-time source and country counts, computed by the
+// union carries the all-time source and region counts, computed by the
 // caller from the per-day facts. They are passed in rather than recomputed
 // here so the run can report the days that could not contribute.
-func renderIndex(opts *SiteOptions, summaries []SiteDaySummary, union factsUnion) error {
-	ordered := append([]SiteDaySummary(nil), summaries...)
+//
+// baseline is what the history snapshot adds on top of that union: the part
+// of its own counts that covers the days whose per-day records are gone.
+//
+// hist is the history snapshot the caller loaded, if any. Its rows are
+// already among the rows passed in; it is passed separately for the two
+// things a row cannot carry: the counting start it names, and the baseline
+// its period contributes to the source count.
+func renderIndex(opts *SiteOptions, rows []SiteDaySummary, union factsUnion, baseline historyBaseline, hist *SiteHistory) error {
+	ordered := append([]SiteDaySummary(nil), rows...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].Day != ordered[j].Day {
 			return ordered[i].Day > ordered[j].Day
@@ -100,18 +147,56 @@ func renderIndex(opts *SiteOptions, summaries []SiteDaySummary, union factsUnion
 	// count, so days whose raw log has already aged out of the collector's
 	// cache keep counting as long as their detail page is still published.
 	// Days below the -since floor never reach here, so they cannot inflate
-	// the number either.
+	// the number either. A frozen day's row carries the snapshot's own
+	// count, which is what keeps the total equal to the sum of index.json's
+	// drop_pkts even with the snapshot's days in it.
 	var total uint64
 	for _, s := range ordered {
 		total += s.DropPkts
 	}
+	// The counting start is the earliest day the site publishes, which is
+	// what the rows say. The snapshot's own "since" is used when it names an
+	// earlier day the site does count — a snapshot records what the page said,
+	// which can be a day the site never published — but not when it names a
+	// day below the publishing floor: that day is not published, so the site
+	// does not count from it.
 	var since string
-	if n := len(ordered); n > 0 {
+	if len(ordered) > 0 {
 		// Sorted newest-first, so the last row holds the earliest day. It is
 		// already YYYY-MM-DD, which is the format the whole site uses.
-		since = ordered[n-1].Day
+		since = ordered[len(ordered)-1].Day
 	}
-	if err := writeTotalNumberJS(opts.OutDir, total, union, since); err != nil {
+	if hist != nil && hist.Since != "" && opts.publishesDay(hist.Since) {
+		if since == "" || hist.Since < since {
+			since = hist.Since
+		}
+	}
+	// The source and region totals are the union over every published day's
+	// own sets, plus what the snapshot stands in for the days whose records
+	// are gone. The snapshot's own all-time counts are never added on top of
+	// the union: the sum of two set sizes is at least their union, never at
+	// most it, so that would count an address seen in both periods twice.
+	//
+	// The region total is the union and nothing else. The snapshot's own
+	// region count is never applied -- regions are a closed set of ~250
+	// codes that both periods share almost entirely, so the site's published
+	// figure has to be the number of distinct region labels the geo source
+	// produced over the published days, and nothing else can be merged into
+	// it. See historyBaseline.
+	totalSources := union.Sources + baseline.Sources
+	totalRegions := union.Regions
+	// The page explains the snapshot's rows only when there are any: a
+	// snapshot whose days the live site produced has nothing of its own to
+	// show, and the site's figures are then simply the union over the
+	// published days.
+	hasHistory := false
+	for _, r := range ordered {
+		if r.History {
+			hasHistory = true
+			break
+		}
+	}
+	if err := writeTotalNumberJS(opts.OutDir, total, totalSources, totalRegions, since, baseline, hist); err != nil {
 		return err
 	}
 	return writeIndexHTML(opts.OutDir, indexPageData{
@@ -127,8 +212,13 @@ func renderIndex(opts *SiteOptions, summaries []SiteDaySummary, union factsUnion
 		TotalDropPkts: groupThousands(total),
 		SinceDay:      since,
 
-		TotalSources:   union.Sources,
-		TotalCountries: union.Countries,
+		TotalSources:         totalSources,
+		TotalRegions:         totalRegions,
+		HasHistory:           hasHistory,
+		BaselineFromSnapshot: baseline.Applied,
+		SnapshotBelowFloor:   baseline.Unavailable,
+		NothingStandsIn:      baseline.Missing && !baseline.Applied,
+		BoundNote:            baseline.boundNote(),
 	})
 }
 
@@ -183,10 +273,11 @@ func group(v any) string {
 // break anyone already parsing it.
 var sourceLabels = map[string]string{
 	"server": "nhp-server",
+	"ac":     "nhp-ac",
 }
 
 // sourceLabel renders a source name for display, falling back to the raw
-// name for any source added later (the AC, when it gets a parser).
+// name for any source added later.
 func sourceLabel(name string) string {
 	if label, ok := sourceLabels[name]; ok {
 		return label
@@ -195,7 +286,7 @@ func sourceLabel(name string) string {
 }
 
 // writeTotalNumberJS writes totalnumber.js: the all-time DROP packet total
-// plus the all-time distinct source-IP and country counts, as plain
+// plus the all-time distinct source-IP and region counts, as plain
 // JavaScript constants, so another site can show the same numbers with a
 // <script src> tag and no JSON parsing.
 //
@@ -209,31 +300,74 @@ func sourceLabel(name string) string {
 // Contents are a pure function of the summaries and the facts, so re-running
 // the site build rewrites a byte-identical file and the daily cron stays a
 // no-op.
-func writeTotalNumberJS(outDir string, total uint64, union factsUnion, since string) error {
-	body := totalNumberJS(total, union, since)
+func writeTotalNumberJS(outDir string, total uint64, sources, regions int, since string, baseline historyBaseline, hist *SiteHistory) error {
+	body := totalNumberJS(total, sources, regions, since, baseline, hist)
 	return writeFileAtomic(outDir+"/totalnumber.js", []byte(body), 0o644)
 }
 
 // totalNumberJS renders the export. since is empty when nothing is published;
 // the constants are still emitted (as 0) so a consumer's <script src> never
 // 404s and leave a dangling reference.
-func totalNumberJS(total uint64, union factsUnion, since string) string {
+//
+// The third constant is the number of regions: distinct ISO 3166-1 alpha-2
+// codes, which are not all countries.
+//
+// hist is the history snapshot, when there is one, and baseline is what it
+// contributes on top of the union the site computed from the per-day facts.
+// They do not change the numbers — the caller has already added them — but
+// they change what the numbers mean, and a consumer reading this file has to
+// be told.
+func totalNumberJS(total uint64, sources, regions int, since string, baseline historyBaseline, hist *SiteHistory) string {
 	var b strings.Builder
 	b.WriteString("// Generated by endpoints/xdplog-report site. Do not edit by hand.\n")
 	b.WriteString("// Attack (DROP) packets silently dropped by the nhp-server XDP ingress\n")
 	b.WriteString("// filter, summed over every day this site publishes. Same number the\n")
 	b.WriteString("// homepage hero shows; index.json is the row-level source of truth.\n")
 	b.WriteString("//\n")
-	b.WriteString("// The next two are unions, not sums: an address or country seen on\n")
+	if hist != nil {
+		b.WriteString("// The total spans two periods: the days a saved history snapshot\n")
+		b.WriteString("// froze contribute their own counts, and the days published since\n")
+		b.WriteString("// add theirs on top.\n")
+		b.WriteString("//\n")
+	}
+	b.WriteString("// The next two are unions, not sums: an address or region seen on\n")
 	b.WriteString("// ten days is counted once. Private/reserved sources are excluded,\n")
 	b.WriteString("// and a source the GeoLite2 database cannot place belongs to no\n")
-	b.WriteString("// country, so it raises the source count only.\n")
+	b.WriteString("// region, so it raises the source count only.\n")
+	if hist != nil {
+		b.WriteString("// The union covers every published day, the snapshot's days included:\n")
+		b.WriteString("// an address seen in the snapshot's period and in the live one is\n")
+		b.WriteString("// one attacker, counted once.\n")
+	}
+	if baseline.Applied {
+		b.WriteString("// Days whose per-day records are gone are covered by the snapshot's\n")
+		b.WriteString("// own source count instead. It is added to the union, which can\n")
+		b.WriteString("// count an address seen in both periods twice. The snapshot's region\n")
+		b.WriteString("// count is not used: the region total is the union over the\n")
+		b.WriteString("// published days and nothing else.\n")
+	}
+	if baseline.Unavailable {
+		b.WriteString("// The history snapshot lists days before the publishing floor, so\n")
+		b.WriteString("// its own count could not be applied: a snapshot-level total cannot\n")
+		b.WriteString("// be split by day. Those days contribute nothing to the two figures\n")
+		b.WriteString("// above.\n")
+	}
+	if baseline.Missing && !baseline.Applied {
+		b.WriteString("// A published day whose per-day records are gone contributes no\n")
+		b.WriteString("// source or region data and nothing stands in for it.\n")
+	}
+	if note := baseline.boundNote(); note != "" {
+		b.WriteString("// " + note + "\n")
+	}
 	if since != "" {
 		fmt.Fprintf(&b, "// Counting starts: %s (UTC).\n", since)
 	}
+	// The comment never spells a constant out in full: the deploy gate greps
+	// each one by name, and a second match would hand it two lines.
+	b.WriteString("// The last constant counts regions: distinct ISO 3166-1 alpha-2 codes.\n")
 	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_BLOCKED = %d;\n", total)
-	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_SOURCE_IPS = %d;\n", union.Sources)
-	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_COUNTRIES = %d;\n", union.Countries)
+	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_SOURCE_IPS = %d;\n", sources)
+	fmt.Fprintf(&b, "const NHP_TOTAL_ATTACK_REGIONS = %d;\n", regions)
 	return b.String()
 }
 
@@ -247,7 +381,7 @@ func writeCountUpJS(outDir string) error {
 // countUpJS is the homepage counter animation, served same-origin from the
 // site root and allowed by the nginx vhost's `script-src 'self'`. It animates
 // every element carrying data-total: the packet total, source IPs and
-// countries.
+// regions.
 //
 // Progressive enhancement: the hero span in index.html already contains the
 // real formatted total, so with JavaScript disabled, blocked by an older CSP,
@@ -345,8 +479,14 @@ type siteFlag struct {
 
 // flagsFor returns the chips for one day's summary, in display order. An empty
 // result renders as an em dash placeholder in the template.
+//
+// The history chip comes first: it is the one that changes how the row is
+// read, because a frozen day has no detail page to click.
 func flagsFor(s SiteDaySummary) []siteFlag {
 	var out []siteFlag
+	if s.History {
+		out = append(out, siteFlag{Label: "history", Class: "tag-info"})
+	}
 	if s.Partial {
 		out = append(out, siteFlag{Label: "partial", Class: "tag-warn"})
 	}
@@ -426,7 +566,7 @@ a:hover{text-decoration:underline}
    counts — the daily table calls the same number "DROP packets (exact)" and
    the detail pages "Attack (DROP) packets"; calling it attacks would
    overstate what a dropped packet is. The three figures (packets, source IPs,
-   countries) sit side by side with the label under each. They are green
+   regions) sit side by side with the label under each. They are green
    rather than the red accent so they read as attacks stopped, not as a
    current alert, and deliberately do not use tabular-nums: the digits change
    width while counting and a fixed advance makes them jitter. */
@@ -460,9 +600,9 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 <div><span class="hero-num" id="total-sources" data-total="{{.TotalSources}}">{{group .TotalSources}}</span></div>
 <div class="hero-label">Source IPs</div>
 </div>{{end}}
-{{if .TotalCountries}}<div class="hero-stat">
-<div><span class="hero-num" id="total-countries" data-total="{{.TotalCountries}}">{{group .TotalCountries}}</span></div>
-<div class="hero-label">Countries</div>
+{{if .TotalRegions}}<div class="hero-stat">
+<div><span class="hero-num" id="total-regions" data-total="{{.TotalRegions}}">{{group .TotalRegions}}</span></div>
+<div class="hero-label">Regions</div>
 </div>{{end}}
 </div>
 </section>
@@ -474,6 +614,9 @@ footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);color:v
 Source IPs on the detail pages are <strong>not</strong> masked.
 {{end}}
 tcp/22 scans never reach the host's NIC and are not counted. During deploys or restarts the XDP filter is detached and the gap shows as missing minutes, not as zero attacks.
+Regions follow the international standard ISO 3166-1: the two-letter codes it assigns to every country and area it lists, which is what the GeoIP database attributes an address to. The figure counts the regions the attacking addresses were attributed to &mdash; not the attackers, and not the addresses.
+{{if .HasHistory}}Rows tagged <span class="tag tag-info">history</span> come from a saved snapshot of this page: the days the collector no longer has a log for. They have no detail page. The source IP and region totals are unions over the published days, so an address seen on ten days &mdash; or in the snapshot's period and in the one since &mdash; is counted once. {{if .SnapshotBelowFloor}}The snapshot also lists days before the publishing floor, so its own count cannot be applied &mdash; a snapshot-level total cannot be split by day &mdash; and those days contribute nothing to the two figures. {{end}}{{end}}
+{{if .BaselineFromSnapshot}}For the days whose per-day records are gone the snapshot's own source count stands in: it is added to the union, which can count an address seen in both periods twice. Its region count is not used &mdash; the region total is the union over the published days. {{end}}{{if .NothingStandsIn}}A published day whose per-day records are gone contributes no source or region data and nothing stands in for it. {{end}}{{.BoundNote}}
 </p>
 
 <h2>Daily index</h2>
@@ -482,7 +625,7 @@ tcp/22 scans never reach the host's NIC and are not counted. During deploys or r
 <thead><tr><th>Day (UTC)</th><th>Source</th><th class="num">DROP packets (exact)</th><th class="num">Share</th><th class="num">Unique sources</th><th>Top category</th><th>Peak hour</th><th>Flags</th></tr></thead>
 <tbody>
 {{range $s := .Summaries}}<tr>
-<td class="nowrap"><a href="{{dayLink $s}}">{{$s.Day}}</a></td>
+<td class="nowrap">{{if $s.History}}{{$s.Day}}{{else}}<a href="{{dayLink $s}}">{{$s.Day}}</a>{{end}}</td>
 <td>{{sourceLabel $s.Source}}</td>
 <td class="num">{{$s.DropPkts}}</td>
 <td class="num">{{pct $s.DropShare}}</td>
@@ -497,6 +640,7 @@ tcp/22 scans never reach the host's NIC and are not counted. During deploys or r
 
 <footer>
 Generated offline by <code>endpoints/xdplog-report site</code>. Each row links to a per-day report built from the day's <code>nhp_server_xdp-YYYY-MM-DD.log</code> file pulled from the relay cron.
+{{if .HasHistory}}Rows marked <span class="tag tag-info">history</span> come from a <code>history.json</code> snapshot generated by <code>xdplog-report history</code>; they have no detail page. {{end}}
 </footer>
 </main>
 </body>

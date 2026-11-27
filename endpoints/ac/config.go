@@ -17,6 +17,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
+	"github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 )
 
 var (
@@ -57,6 +58,86 @@ type Config struct {
 	DefaultCipherScheme     int             `json:"defaultCipherScheme"`
 	FilterMode              int             `json:"filterMode"`
 	Metrics                 metrics.Config  `json:"metrics"`
+
+	// FailCloseOnServerLoss decides what the AC does when it considers
+	// every configured nhp-server unreachable. Restart-only; the zero
+	// value keeps the behavior the AC has always had.
+	//
+	// false (default) — fail open. The AC installs unconditional ACCEPT
+	// rules on INPUT and FORWARD for 0.0.0.0/0, so the host and everything
+	// it forwards to become reachable from any address until a server
+	// answers again. The reasoning is availability: losing the control
+	// plane should not lock the protected services away. The cost is that
+	// the component whose job is "nothing is visible until you knock"
+	// becomes fully transparent exactly when it cannot authorize a knock,
+	// and reaching that state only takes making the AC unable to talk to
+	// its servers.
+	//
+	// true — fail closed. The AC leaves its rules as they are: whatever
+	// live knocks admitted stays admitted until it expires, and nothing
+	// new opens, because nothing can authorize a knock without a server.
+	// Existing sessions are not cut.
+	//
+	// Only consulted in FilterMode 0 (iptables). FilterMode 1 (eBPF/XDP)
+	// has never had this fallback and is unaffected either way.
+	FailCloseOnServerLoss bool `json:"failCloseOnServerLoss"`
+
+	// DisableIPv6Filter turns the XDP filter's IPv6 tree off: every IPv6
+	// packet is passed to the host, the way it was before the tree existed.
+	// Restart-only; the zero value keeps the tree on.
+	//
+	// The tree drops every IPv6 listener the AC was never meant to gate, and
+	// it has to: the AC's whitelists are IPv4 tables, so "the peer that
+	// knocked may reach this port" is a policy the filter cannot express
+	// over IPv6. An operator whose host runs an IPv6 service has to be able
+	// to say so -- and saying so is a decision with a cost, because every
+	// IPv6 listener on the host then depends on the security group alone.
+	// SSH is the exception: tcp/22 is passed on both families, because the
+	// security group is what restricts it.
+	DisableIPv6Filter bool `json:"disableIPv6Filter"`
+
+	// AuditLogRetentionDays, AuditLogRetentionBytes and
+	// AuditLogDailyEventBytes bound the AC's legacy audit logs --
+	// nhp_deny-*.log and nhp_accept-*.log. Restart-only.
+	//
+	// Zero means unbounded for all three: the files are kept for as long as
+	// the host lives, and the day's lines are never suppressed. That is what
+	// those logs were before the bounds existed, and it is what a deployment
+	// that reads them as a compliance or audit trail has to keep.
+	//
+	// The kernel-side rate limit is not one of these knobs and does not
+	// depend on them: the audit ring is fed behind a budget whatever the
+	// files are allowed to grow to, so the log is a rate-bounded sample
+	// either way. What these three bound is how much of that sample is kept
+	// and how much of it is written.
+	AuditLogRetentionDays   int   `json:"auditLogRetentionDays"`
+	AuditLogRetentionBytes  int64 `json:"auditLogRetentionBytes"`
+	AuditLogDailyEventBytes int64 `json:"auditLogDailyEventBytes"`
+
+	// DhcpServerIP and NtpServerIP narrow the two client-protocol pairs the
+	// XDP filter admits: the DHCP answer (67 -> 68) and the NTP answer
+	// (123 -> 123). Restart-only.
+	//
+	// A value is an IPv4 address ("169.254.169.253") or a CIDR prefix
+	// ("169.254.169.0/24"); empty means the pair is not narrowed, which is
+	// what the filter did before these settings existed and what it does on
+	// a host whose security group is not open to the internet.
+	//
+	// The port pair says what the answer looks like, not who sent it, so
+	// without a range the filter admits any packet wearing the right ports.
+	// Nothing downstream trusts those packets -- a DHCP reply is matched
+	// against the lease it answers, and chrony checks the server it asked --
+	// but on a host whose group is open to the whole internet that is the
+	// last exposure the pair rules leave, and only the operator knows which
+	// addresses their own servers answer from.
+	//
+	// A value that cannot be parsed is an error, and the AC refuses to start
+	// on it: an unreadable narrowing that was quietly ignored would leave the
+	// pair open while the configuration said it was closed, and a narrowing
+	// that was applied wrongly costs the host its DHCP lease -- and with it
+	// its address, and with that its reachability.
+	DhcpServerIP string `json:"dhcpServerIP"`
+	NtpServerIP  string `json:"ntpServerIP"`
 }
 
 type RemoteConfig struct {
@@ -65,6 +146,44 @@ type RemoteConfig struct {
 	Endpoints []string
 	Username  string
 	Password  string
+
+	// Optional TLS for the etcd connection. Unset means plaintext, which
+	// is what every deployment has today. See nhp/etcd.EtcdConfig for why
+	// turning it on matters: the value under Key is the trusted-peer
+	// configuration, so whoever can rewrite it on the wire can install
+	// their own nhp-server public key as trusted.
+	CAFile   string
+	CertFile string
+	KeyFile  string
+}
+
+// acSourceNets parses the two source ranges the XDP filter's client-protocol
+// pairs are narrowed to.
+//
+// An empty value is not an error: it means the pair is not narrowed, which is
+// what the filter did before the settings existed. A value that is present
+// but unusable is an error, and the caller stops the daemon on it: an
+// unreadable narrowing that was quietly ignored would leave the pair open
+// while the configuration said it was closed, and a narrowing that was
+// applied wrongly costs the host its DHCP lease -- and with it its address,
+// and with that its reachability.
+//
+// The AC stops rather than running unfiltered, which is the direction its
+// failures run in: a daemon that is not enforcing is a protected resource
+// that is open, and the backstop keeps the port shut until the daemon is
+// back.
+func acSourceNets(conf *Config) (ebpf.SourceNet, ebpf.SourceNet, error) {
+	dhcp, err := ebpf.ParseSourceNet(conf.DhcpServerIP)
+	if err != nil {
+		return ebpf.SourceNet{}, ebpf.SourceNet{}, fmt.Errorf("invalid DhcpServerIP %q: %w", conf.DhcpServerIP, err)
+	}
+
+	ntp, err := ebpf.ParseSourceNet(conf.NtpServerIP)
+	if err != nil {
+		return ebpf.SourceNet{}, ebpf.SourceNet{}, fmt.Errorf("invalid NtpServerIP %q: %w", conf.NtpServerIP, err)
+	}
+
+	return dhcp, ntp, nil
 }
 
 type HttpConfig struct {
@@ -383,6 +502,22 @@ func (a *UdpAC) loadConfigFile(file string) (content []byte, err error) {
 	}
 	return
 }
+
+// resolveRemoteConfigPath makes a relative TLS file path relative to the
+// install directory, the way xdpConfigFileName and the audit ledger do.
+//
+// remote.toml is read from ExeDirPath/etc, so an operator who writes
+// "etc/etcd-ca.pem" there means the file next to it. Passed through
+// unchanged it would resolve against the process's working directory
+// instead, and a daemon started by systemd without WorkingDirectory=, or
+// in a container, would refuse to start on a path that looks right.
+func resolveRemoteConfigPath(p string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(ExeDirPath, p)
+}
+
 func (a *UdpAC) initRemoteConn() error {
 	// remote.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "remote.toml")
@@ -421,6 +556,9 @@ func (a *UdpAC) initRemoteConn() error {
 			Username:  conf.Username,
 			Password:  conf.Password,
 			Key:       conf.Key,
+			CAFile:    resolveRemoteConfigPath(conf.CAFile),
+			CertFile:  resolveRemoteConfigPath(conf.CertFile),
+			KeyFile:   resolveRemoteConfigPath(conf.KeyFile),
 		}
 
 		err = a.etcdConn.InitClient()

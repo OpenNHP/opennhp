@@ -9,12 +9,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -22,7 +24,6 @@ import (
 type QRCodeSession struct {
 	SessionID     string    `json:"sessionId"`
 	Token         string    `json:"token"`
-	OTPSecret     string    `json:"otpSecret"`
 	AuthServiceId string    `json:"aspId"`
 	ResourceId    string    `json:"resId"`
 	SrcIp         string    `json:"srcIp"`
@@ -33,7 +34,40 @@ type QRCodeSession struct {
 	MobileIP      string    `json:"mobileIp,omitempty"`
 	MobileDevice  string    `json:"mobileDevice,omitempty"`
 	ErrMsg        string    `json:"errMsg,omitempty"`
+
+	otpFailures int  // wrong codes entered for this session
+	otpPending  int  // codes being checked right now (see VerifySession)
+	knocked     bool // qrvalid already ran for this session
 }
+
+// action=generate is unauthenticated, so the session table is bounded:
+// sessions stay in it until cleanupExpiredSessions drops them, about ten
+// minutes after generate, and neither one client, nor one IPv6 /48, nor all
+// of them together may hold more than these many. The /48 cap exists for
+// the same reason as otpMaxPrefixFailures: without it one allocation's
+// /64s could fill the table and deny QR login to everyone.
+const (
+	qrMaxSessions          = 10000
+	qrMaxSessionsPerClient = 20
+	qrMaxSessionsPerPrefix = 100
+)
+
+// qrSessionCap is the session cap for a key from otpLimitKeys.
+func qrSessionCap(key string) int {
+	if otpKeyLimit(key) == otpMaxPrefixFailures { // an IPv6 /48
+		return qrMaxSessionsPerPrefix
+	}
+	return qrMaxSessionsPerClient
+}
+
+var errQRSessionLimit = errors.New("too many QR codes generated, try again later")
+
+// qrMaxOTPFailures is how many wrong codes a session accepts before it is
+// dead. Codes are checked against the shared OTPSecretKey under otpLimiter;
+// this cap is on top of that, so one session cannot be used for unlimited
+// guesses. It does not imply a per-session secret, and none should be added:
+// whoever displays the QR code would hold it.
+const qrMaxOTPFailures = 5
 
 // QRCodeStatus constants
 const (
@@ -47,6 +81,7 @@ const (
 // QRAuthService manages QR code authentication sessions
 type QRAuthService struct {
 	sessions   map[string]*QRCodeSession
+	perClient  map[string]int // live sessions per otpLimitKeys(otpLimitKey(SrcIp)) key; see qrSessionCap
 	mutex      sync.RWMutex
 	encryptKey []byte
 	hmacKey    []byte
@@ -78,8 +113,6 @@ type QRGenerateResponse struct {
 	Success   bool   `json:"success"`
 	SessionID string `json:"sessionId,omitempty"`
 	QRData    string `json:"qrData,omitempty"`
-	OTPSecret string `json:"otpSecret,omitempty"`
-	OTPUri    string `json:"otpUri,omitempty"` // otpauth:// URI for Google Authenticator
 	ServerUrl string `json:"serverUrl,omitempty"`
 	AspId     string `json:"aspId,omitempty"`
 	ResId     string `json:"resId,omitempty"`
@@ -113,15 +146,20 @@ func InitQRAuthService() {
 		rand.Read(encKey)
 		rand.Read(hmacKey)
 
-		qrAuthService = &QRAuthService{
-			sessions:   make(map[string]*QRCodeSession),
-			encryptKey: encKey,
-			hmacKey:    hmacKey,
-			expiry:     5 * time.Minute,
-		}
+		qrAuthService = newQRAuthService(encKey, hmacKey)
 
 		go qrAuthService.cleanupExpiredSessions()
 	})
+}
+
+func newQRAuthService(encKey, hmacKey []byte) *QRAuthService {
+	return &QRAuthService{
+		sessions:   make(map[string]*QRCodeSession),
+		perClient:  make(map[string]int),
+		encryptKey: encKey,
+		hmacKey:    hmacKey,
+		expiry:     5 * time.Minute,
+	}
 }
 
 // GetQRAuthService returns the singleton QR auth service
@@ -133,7 +171,11 @@ func GetQRAuthService() *QRAuthService {
 }
 
 // GenerateSession creates a new QR code session
-func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (*QRCodeSession, *QRCodeData, string, error) {
+//
+// The session has no OTP secret of its own: whoever displays the QR code
+// would hold it and could confirm the session themselves. The phone proves
+// itself with a code from the configured OTPSecretKey instead.
+func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (*QRCodeSession, *QRCodeData, error) {
 	// Generate session ID
 	sessionBytes := make([]byte, 16)
 	rand.Read(sessionBytes)
@@ -144,22 +186,10 @@ func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (
 	rand.Read(tokenBytes)
 	token := base64.URLEncoding.EncodeToString(tokenBytes)
 
-	// Generate TOTP secret
-	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "OpenNHP Authenticator",
-		AccountName: sessionID[:8],
-		Period:      30,
-		SecretSize:  20,
-	})
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("failed to generate OTP secret: %v", err)
-	}
-
 	now := time.Now()
 	session := &QRCodeSession{
 		SessionID:     sessionID,
 		Token:         token,
-		OTPSecret:     key.Secret(),
 		AuthServiceId: aspId,
 		ResourceId:    resId,
 		SrcIp:         srcIp,
@@ -168,9 +198,21 @@ func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (
 		ExpiresAt:     now.Add(s.expiry),
 	}
 
-	// Store session
+	// Store session, within the table's bounds.
+	keys := otpLimitKeys(otpLimitKey(srcIp))
 	s.mutex.Lock()
+	full := len(s.sessions) >= qrMaxSessions
+	for _, k := range keys {
+		full = full || s.perClient[k] >= qrSessionCap(k)
+	}
+	if full {
+		s.mutex.Unlock()
+		return nil, nil, errQRSessionLimit
+	}
 	s.sessions[sessionID] = session
+	for _, k := range keys {
+		s.perClient[k]++
+	}
 	s.mutex.Unlock()
 
 	// Create QR code data
@@ -186,11 +228,8 @@ func (s *QRAuthService) GenerateSession(aspId, resId, srcIp, serverUrl string) (
 	// Sign the QR data
 	qrData.Signature = s.signQRData(qrData)
 
-	// Generate OTP URI for Google Authenticator
-	otpUri := key.URL()
-
 	log.Info("Authenticator session created: sessionId=%s, aspId=%s, resId=%s", sessionID, aspId, resId)
-	return session, qrData, otpUri, nil
+	return session, qrData, nil
 }
 
 // signQRData creates HMAC signature for QR data
@@ -263,10 +302,11 @@ func (s *QRAuthService) DecryptQRData(encrypted string) (*QRCodeData, error) {
 	return &data, nil
 }
 
-// GetSession retrieves a session by ID
+// GetSession returns a copy of the session, taken under the lock, or nil.
+// A copy because other handlers write the session concurrently.
 func (s *QRAuthService) GetSession(sessionID string) *QRCodeSession {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mutex.Lock() // may mark the session expired
+	defer s.mutex.Unlock()
 
 	session, exists := s.sessions[sessionID]
 	if !exists {
@@ -277,72 +317,112 @@ func (s *QRAuthService) GetSession(sessionID string) *QRCodeSession {
 		session.Status = QRStatusExpired
 	}
 
-	return session
+	snapshot := *session
+	return &snapshot
 }
 
-// VerifyOTPOnly verifies OTP code without mobile scan
-func (s *QRAuthService) VerifyOTPOnly(sessionID, otpCode string) error {
+// ValidateConfiguredOTP validates a 6-digit SHA1 TOTP code against the
+// configured secret key with the configured period, accepting
+// otpValidationSkew steps either side of the current one.
+func (s *QRAuthService) ValidateConfiguredOTP(secretKey, otpCode string, periodSeconds int) bool {
+	ok, err := totp.ValidateCustom(otpCode, secretKey, time.Now().UTC(), totp.ValidateOpts{
+		Period:    uint(periodSeconds),
+		Skew:      otpValidationSkew,
+		Digits:    otp.DigitsSix,
+		Algorithm: otp.AlgorithmSHA1,
+	})
+	return ok && err == nil
+}
+
+// ConsumeConfirmedSession authorizes the one knock a QR session is good
+// for: the session must exist, be unexpired, have had its OTP verified by
+// VerifySession, belong to resId, be requested from the client that
+// generated it (same otpLimitKey as SrcIp), and not have been used before.
+// The session ID is in the QR payload, so without the client check anyone
+// who sees the QR code could race the browser for the knock.
+//
+// It returns the address that generated the session, which is what the
+// knock must open access for: requesterKey is an IPv6 /64, so another host
+// in that /64 that saw the session ID could otherwise win the knock for
+// itself. Comparing keys rather than exact addresses keeps IPv6 privacy
+// address rotation from breaking a legitimate login.
+func (s *QRAuthService) ConsumeConfirmedSession(sessionID, resId, requesterKey string) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	session, exists := s.sessions[sessionID]
 	if !exists {
-		return fmt.Errorf("session not found")
+		return "", fmt.Errorf("session not found")
 	}
-
 	if time.Now().After(session.ExpiresAt) {
 		session.Status = QRStatusExpired
-		return fmt.Errorf("session expired")
+		return "", fmt.Errorf("session expired")
 	}
-
-	// Verify OTP
-	if !totp.Validate(otpCode, session.OTPSecret) {
-		session.Status = QRStatusFailed
-		session.ErrMsg = "invalid OTP code"
-		return fmt.Errorf("invalid OTP code")
+	if session.Status != QRStatusConfirmed {
+		return "", fmt.Errorf("session not confirmed")
 	}
-
-	session.Status = QRStatusConfirmed
-	session.ConfirmedAt = time.Now()
-	return nil
+	if session.ResourceId != resId {
+		return "", fmt.Errorf("session is for a different resource")
+	}
+	if otpLimitKey(session.SrcIp) != requesterKey {
+		// Also what a dual-stack browser sees if it switched address family
+		// between generate and qrvalid; a new QR code fixes both.
+		return "", fmt.Errorf("this QR code was generated from a different network address; refresh the QR code and try again")
+	}
+	if session.knocked {
+		return "", fmt.Errorf("session already used")
+	}
+	session.knocked = true
+	return session.SrcIp, nil
 }
 
-// ValidateConfiguredOTP validates an OTP code against the configured secret key
-func (s *QRAuthService) ValidateConfiguredOTP(secretKey, otpCode string) bool {
-	return totp.Validate(otpCode, secretKey)
-}
+// VerifySession confirms a session. checkOTP verifies the phone's code
+// (checkConfiguredOTP in production) and runs only once the session and its
+// token are known to be good; an errOTPInvalid from it counts against the
+// session's qrMaxOTPFailures.
+//
+// checkOTP runs without the service lock, so status polls and generate do
+// not wait on it. The attempt is reserved against the session's cap before
+// the lock is released, so parallel verifies cannot exceed the cap, and the
+// session is re-checked before it is confirmed.
+//
+// Known, accepted race: with OTPAllowReuse off, checkOTP marks a correct
+// code as used. If the session expires or another verify confirms it while
+// the code is being checked, the re-check fails and that code is spent, so
+// the phone has to wait for the next TOTP step. The window is one TOTP
+// validation long and costs availability only. Closing it would mean
+// moving consume out of checkConfiguredOTP and behind the re-check, which
+// is not worth the extra coupling.
+func (s *QRAuthService) VerifySession(sessionID, token, mobileIP, deviceInfo string, checkOTP func() error) error {
+	s.mutex.Lock()
+	session, err := s.verifiableSessionLocked(sessionID, token)
+	if err == nil && session.otpFailures+session.otpPending >= qrMaxOTPFailures {
+		err = fmt.Errorf("too many failed attempts, generate a new QR code")
+	}
+	if err != nil {
+		s.mutex.Unlock()
+		return err
+	}
+	session.otpPending++
+	s.mutex.Unlock()
 
-// VerifySession verifies a session with OTP
-func (s *QRAuthService) VerifySession(sessionID, token, otpCode, mobileIP, deviceInfo string) error {
+	otpErr := checkOTP()
+
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
-	session, exists := s.sessions[sessionID]
-	if !exists {
-		return fmt.Errorf("session not found")
+	session.otpPending--
+	if otpErr != nil {
+		if errors.Is(otpErr, errOTPInvalid) {
+			session.otpFailures++
+			session.Status = QRStatusFailed
+			session.ErrMsg = otpErr.Error()
+		}
+		return otpErr
 	}
-
-	if time.Now().After(session.ExpiresAt) {
-		session.Status = QRStatusExpired
-		return fmt.Errorf("session expired")
-	}
-
-	if session.Status == QRStatusConfirmed {
-		return fmt.Errorf("session already confirmed")
-	}
-
-	// Verify token
-	if session.Token != token {
-		session.Status = QRStatusFailed
-		session.ErrMsg = "invalid token"
-		return fmt.Errorf("invalid token")
-	}
-
-	// Verify OTP
-	if !totp.Validate(otpCode, session.OTPSecret) {
-		session.Status = QRStatusFailed
-		session.ErrMsg = "invalid OTP code"
-		return fmt.Errorf("invalid OTP code")
+	// The session may have expired, been confirmed or been cleaned up while
+	// the code was checked.
+	if _, err := s.verifiableSessionLocked(sessionID, token); err != nil {
+		return err
 	}
 
 	session.Status = QRStatusConfirmed
@@ -353,8 +433,35 @@ func (s *QRAuthService) VerifySession(sessionID, token, otpCode, mobileIP, devic
 	return nil
 }
 
-// UpdateSessionStatus updates session status
-func (s *QRAuthService) UpdateSessionStatus(sessionID string, status int) error {
+// verifiableSessionLocked returns the session if it exists, is unexpired,
+// is not yet confirmed and token matches. s.mutex must be held.
+func (s *QRAuthService) verifiableSessionLocked(sessionID, token string) (*QRCodeSession, error) {
+	session, exists := s.sessions[sessionID]
+	if !exists {
+		return nil, fmt.Errorf("session not found")
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		session.Status = QRStatusExpired
+		return nil, fmt.Errorf("session expired")
+	}
+
+	if session.Status == QRStatusConfirmed {
+		return nil, fmt.Errorf("session already confirmed")
+	}
+
+	if !hmac.Equal([]byte(session.Token), []byte(token)) {
+		session.Status = QRStatusFailed
+		session.ErrMsg = "invalid token"
+		return nil, fmt.Errorf("invalid token")
+	}
+	return session, nil
+}
+
+// MarkSessionScanned records that a phone scanned the QR code. The request
+// is unauthenticated, so it only moves a pending session forward and never
+// overwrites a confirmed, failed or expired one.
+func (s *QRAuthService) MarkSessionScanned(sessionID string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -362,8 +469,13 @@ func (s *QRAuthService) UpdateSessionStatus(sessionID string, status int) error 
 	if !exists {
 		return fmt.Errorf("session not found")
 	}
-
-	session.Status = status
+	if time.Now().After(session.ExpiresAt) {
+		session.Status = QRStatusExpired
+		return fmt.Errorf("session expired")
+	}
+	if session.Status == QRStatusPending {
+		session.Status = QRStatusScanned
+	}
 	return nil
 }
 
@@ -375,12 +487,23 @@ func (s *QRAuthService) cleanupExpiredSessions() {
 	for range ticker.C {
 		s.mutex.Lock()
 		now := time.Now()
-		for id, session := range s.sessions {
-			if now.After(session.ExpiresAt.Add(5 * time.Minute)) {
-				delete(s.sessions, id)
+		s.removeExpiredLocked(now)
+		s.mutex.Unlock()
+	}
+}
+
+// removeExpiredLocked drops sessions expired more than five minutes ago (kept
+// that long so a polling browser sees "expired"). s.mutex must be held.
+func (s *QRAuthService) removeExpiredLocked(now time.Time) {
+	for id, session := range s.sessions {
+		if now.After(session.ExpiresAt.Add(5 * time.Minute)) {
+			delete(s.sessions, id)
+			for _, k := range otpLimitKeys(otpLimitKey(session.SrcIp)) {
+				if s.perClient[k]--; s.perClient[k] <= 0 {
+					delete(s.perClient, k)
+				}
 			}
 		}
-		s.mutex.Unlock()
 	}
 }
 
@@ -389,7 +512,15 @@ func HandleQRGenerate(ctx *gin.Context, resId string) {
 	service := GetQRAuthService()
 
 	aspId := "authenticator"
-	srcIp := ctx.ClientIP()
+	srcIp := otpClientAddr(ctx, requestTrustedProxies())
+	if srcIp == "" {
+		// A session bound to no address could never knock; say why now.
+		ctx.JSON(http.StatusBadRequest, QRGenerateResponse{
+			Success: false,
+			ErrMsg:  errNoClientAddr.Error(),
+		})
+		return
+	}
 
 	// Build server URL
 	scheme := "https"
@@ -398,9 +529,13 @@ func HandleQRGenerate(ctx *gin.Context, resId string) {
 	}
 	serverUrl := fmt.Sprintf("%s://%s", scheme, ctx.Request.Host)
 
-	session, qrData, otpUri, err := service.GenerateSession(aspId, resId, srcIp, serverUrl)
+	session, qrData, err := service.GenerateSession(aspId, resId, srcIp, serverUrl)
 	if err != nil {
-		ctx.JSON(http.StatusOK, QRGenerateResponse{
+		status := http.StatusOK
+		if errors.Is(err, errQRSessionLimit) {
+			status = http.StatusTooManyRequests
+		}
+		ctx.JSON(status, QRGenerateResponse{
 			Success: false,
 			ErrMsg:  err.Error(),
 		})
@@ -421,8 +556,6 @@ func HandleQRGenerate(ctx *gin.Context, resId string) {
 		Success:   true,
 		SessionID: session.SessionID,
 		QRData:    encryptedData,
-		OTPSecret: session.OTPSecret,
-		OTPUri:    otpUri,
 		ServerUrl: serverUrl,
 		AspId:     aspId,
 		ResId:     resId,
@@ -489,7 +622,7 @@ func HandleQRScan(ctx *gin.Context) {
 	}
 
 	service := GetQRAuthService()
-	err := service.UpdateSessionStatus(sessionId, QRStatusScanned)
+	err := service.MarkSessionScanned(sessionId)
 	if err != nil {
 		ctx.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -542,10 +675,34 @@ func HandleQRVerify(ctx *gin.Context) {
 		return
 	}
 
-	// Verify session
-	err = service.VerifySession(qrData.SessionID, qrData.Token, req.OTPCode, ctx.ClientIP(), req.DeviceInfo)
-	if err != nil {
+	conf := baseConf
+	if conf == nil || conf.OTPSecretKey == "" {
 		ctx.JSON(http.StatusOK, QRVerifyResponse{
+			Success: false,
+			ErrMsg:  "OTP secret key not configured",
+		})
+		return
+	}
+
+	// The phone's code is checked against the configured secret under the
+	// same limiter as otpvalid, keyed by the phone's address.
+	clientIP := otpClientIP(ctx, conf.trustedProxies)
+	if clientIP == "" {
+		ctx.JSON(http.StatusBadRequest, QRVerifyResponse{
+			Success: false,
+			ErrMsg:  errNoClientAddr.Error(),
+		})
+		return
+	}
+	err = service.VerifySession(qrData.SessionID, qrData.Token, otpClientAddr(ctx, conf.trustedProxies), req.DeviceInfo, func() error {
+		return otpCheck(conf, clientIP, req.OTPCode)
+	})
+	if err != nil {
+		status := http.StatusOK
+		if errors.Is(err, errOTPRateLimited) {
+			status = http.StatusTooManyRequests
+		}
+		ctx.JSON(status, QRVerifyResponse{
 			Success: false,
 			ErrMsg:  err.Error(),
 		})

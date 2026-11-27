@@ -223,6 +223,26 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > the rest (see *All-ports exposure* below); `deploy/nginx/server.conf.template` is kept for
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
+> Its DNS names are retired with it: `auth-plugin.opennhp.org` and the legacy
+> alias `demologin.opennhp.org` no longer resolve at all — the A record moved to
+> `server.opennhp.org` first, because `server` was a CNAME to `auth-plugin` and
+> dropping the target alone would have taken the live name with it.
+> `auth-plugin` appears in older certificate transparency logs, which cannot be
+> withdrawn, so leaving it resolving would keep handing out the nhp-server's
+> public IP to anyone reading them; `server.opennhp.org` never appeared in a
+> per-host certificate (it was a CNAME alias, and CT records SANs).
+> A record's type cannot be changed in place — the Cloudflare provider has to
+> delete the record and create it again, and it refuses to create a record
+> whose name is taken — so moving a name from one record type to another takes
+> two applies, and the name stops resolving in between. An apply that dies in
+> that window leaves the record in Cloudflare and out of the state; a
+> *confirmed* `infra-demo` apply adopts such records back into the state
+> before it plans, while a plan run only reports what it would adopt (a plan
+> run must stay read-only — it is unattended and needs no confirmation). The
+> adoption stops for a human when the live record's type is not the one the
+> configuration declares, when a name holds more than one record of that type,
+> or when the state cannot be read (see *Retired hostnames (DNS)* in
+> `terraform/demo/RUNBOOK.md`).
 
 **NHP knock port.** The UDP port `nhp-serverd` listens on for knocks is the
 single source of truth `var.nhp_listen_port` in `terraform/demo/variables.tf`.
@@ -261,9 +281,41 @@ and confirm `Verify the XDP ingress filter attached` is green, then
 `infra-demo apply`, which returns the security group exactly to udp/knock-port +
 tcp/22 from the relay SG; recovery of an unfiltered host is still
 `aws ec2 reboot-instances`. `aws_instance.{server,ac,relay}` carry
-`ignore_changes = [ami]` so a new al2023 release never plans a replace; change
+`ignore_changes = [ami]` so a later image-pin change does not replace a live host; change
 an AMI deliberately with `terraform apply -replace=aws_instance.<x>`, one host
 at a time (see `terraform/demo/RUNBOOK.md`).
+
+**All-ports exposure on the AC (deliberate).** `aws_security_group.ac` is opened
+the same way, under `var.ac_open_all_ports` (the `infra-demo` `open_ac_all_ports`
+input, **opt-in, default `false`** like the server's), and for the same reason —
+only harder: a packet the security group drops never reaches the NIC, so the
+AC's XDP filter never sees it, never counts it, and the AC's column on
+stats.opennhp.org undercounts the attacks (in the narrow posture only tcp/443
+and the knock port are reachable, so most scans are gone before the filter can
+see them). The AC's filter (`nhp_ac_xdp.c`, attached by `nhp-acd` in
+`FilterMode = 1`) is then the only inbound control on everything but tcp/22;
+tcp/22 stays restricted to the relay SG.
+
+The filter has to be as narrow as the server's for that to hold, and it now
+is. UDP is admitted only by the 67→68 (DHCP) and 123→123 (NTP) port pairs and
+by the answers to the host's own queries (the AC's conn_track, plus the
+kernel's socket table for a socket bound below the ephemeral range). IPv6 is
+filtered rather than passed, a non-first IPv4 fragment is not judged by bytes
+that are not a header, and an ICMP echo reply needs the same whitelist entry
+the echo request does. `nhp/utils/ebpf/xdpfilter_test.go` pins each of those.
+
+What the AC has that the server does not is the fail-closed netfilter backstop
+(`deploy/scripts/nhp-ac-backstop.sh`, `BACKSTOP_PORTS="443"`), which keeps the
+protected resource shut while the XDP link is detached — i.e. it covers the
+fail-open windows the link has whenever `nhp-acd` is restarting. **It covers
+tcp/443 and nothing else**: in every one of those windows every other port on
+the AC is unfiltered, exactly as on the server.
+`deploy-demo-v2` establishes that the filter is attached (`Verify the AC's XDP
+ingress filter attached`) and reports whether the group is actually wide open
+(`Check the AC's security group is open to the internet`); `infra-demo` refuses
+to widen a group whose host has no XDP program attached. Neither group is open
+by default in the pipeline — tick the input to open one, untick it to go back
+to the narrow posture.
 
 **Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
 unprivileged on the demo host and `443 < 1024`, the unit does not rely on
@@ -367,6 +419,62 @@ as `nhp-server`** (`sourceLabel` in `render_index.go`) while `index.json` keeps
 the raw directory name — `source` is a published field and renaming it breaks
 existing parsers.
 
+**History baseline.** `xdplog-report site -history <path>` reads a
+`history.json` snapshot: the site's own numbers for the days before the
+publishing floor, which the collector's cache does not reach back to.
+`xdplog-report history` generates that file from a saved copy of the homepage
+(`-html`) or from what the site published (`-index` + `-totals`), and refuses
+to write one whose rows do not sum to the page's own all-time total — a
+parsing slip must not freeze a wrong baseline into the site's history. The
+A day the live site can produce is **not** frozen: it is analyzed from the log,
+published with a real detail page, and the snapshot's row for it is dropped, so
+the overlapping days are not counted twice (they would read `7,002,040` instead
+of `3,501,020`). The snapshot's rows are the fallback for the days the
+collector's cache no longer reaches; those carry `"history": true` in
+`index.json` plus a `history` chip on the homepage, and a frozen day has no
+detail page — the snapshot carries the day's summary, not its events — so its
+date renders as plain text. The pages the site published for those days earlier
+are left in place, unlinked (unlinked is not unpublished). `totals.blocked`
+must equal the sum of the snapshot's own days, so the hero total stays the sum
+of every row of `index.json`.
+
+The all-time source and region totals are the **union over every published
+day**, the snapshot's days included: each day's own set of attackers and of
+regions is unioned with the others', so an address seen on ten days — or in
+the snapshot's period and in the live one — is counted once. The snapshot's own
+`source_ips` and `regions` are therefore **not** added on top of that union:
+two unions can only be merged when both sets are present, and adding their
+sizes instead counts an address (or a region) seen in both periods twice,
+because the sum of two set sizes is at least their union, never at most it.
+The snapshot is used only for its own days whose per-day records are gone —
+the days the live site cannot produce at all — because nothing else carries
+those days' attackers, and the two figures use it differently. The part of its
+`source_ips` those days alone can have contributed is **added** (an upper
+bound: an address seen in both periods counts twice). Its `regions` is
+**never applied at all**: regions are a closed set of ~250 that both periods
+share almost entirely, so adding counts most of them twice (a 130-region
+snapshot once pushed the site to 162) and can push the total past the number
+of regions there are, while the larger of the two can only ever be a lower
+bound that misses a region seen in one period alone. **The published region
+total is the union over the published days and nothing else**, so it is bounded
+by the number of distinct region labels the geo source can produce — which is
+why the deploy gate on it is 250, not 400. The generator records
+`regions: 0` and the site ignores the field entirely (an old snapshot that
+still carries one is read, warned about on stdout, and has no effect). The
+homepage and `totalnumber.js` label each figure separately from one sentence
+(`historyBaseline.boundNote`). The
+publishing floor applies to the snapshot's days as well: a day below it is
+neither in the index nor in the hero total, and the snapshot's `since` cannot
+put the site below the floor either.
+A `-history` path that cannot be read
+fails the run — silently counting only the site's own days would shrink the
+published totals by an unquantifiable amount — and the file's fingerprint
+lives in `state.json`, so editing it rewrites the index. The snapshot is
+private: `/home/ec2-user/xdpstats/history.json` beside the state, never in the
+web root; `deploy-xdpstats` installs it from
+`deploy/config-templates/xdpstats/history.json` and `xdpstats-collect.sh`
+passes `-history` only when the file is readable.
+
 **Template versioning.** `SiteDayState.Render` records the `siteRenderVersion`
 that produced each day page, so bumping that constant in `site.go` re-renders
 every published day on the next run instead of only the days whose raw log
@@ -385,7 +493,7 @@ transient EACCES or ENOSPC on the web root would silently shrink
 for another site to embed with
 `<script src="https://stats.opennhp.org/totalnumber.js">`:
 `NHP_TOTAL_ATTACK_BLOCKED` (exact packets, the same number the hero shows),
-`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_COUNTRIES`. It is
+`NHP_TOTAL_ATTACK_SOURCE_IPS` and `NHP_TOTAL_ATTACK_REGIONS`. It is
 generated into the web root beside `index.html` and served from its own nginx
 location (short `Cache-Control`, no CORS header — a classic script needs
 none, and the *importing* page's CSP governs it). All three are written even
@@ -394,10 +502,20 @@ reference. Only the packet total is a sibling of `index.json` in the sense
 that index.json stays authoritative and the total stays reproducible by
 summing `drop_pkts`.
 
+The third constant counts **regions**: the ISO 3166-1 alpha-2 codes the
+international standard assigns to every country and area it lists, which is
+what the GeoIP database attributes an address to. The constant is named for
+that set — `NHP_TOTAL_ATTACK_REGIONS`. It used to be called
+`NHP_TOTAL_ATTACK_COUNTRIES`, and that name is gone: the standard's list
+covers dependencies, disputed areas and special political areas as well as
+states, so a published figure called a country count is a claim about those
+codes that the standard does not support. A site that embeds this file has to
+switch; the deploy pipeline's gate greps the new name.
+
 **The other two are unions, not sums, and they are not reproducible from
 `index.json`.** `unique_attack_ips` is a per-day *count*: an address that
 scans the host daily is one attacker, and adding the days counts it once per
-day. So each day's set of sources and countries is captured while its raw log
+day. So each day's set of sources and regions is captured while its raw log
 still exists and written to `facts/<source>/<day>.facts` beside `state.json`
 (`facts.go`) — outside the web root on the relay, refused by `/facts/` in the
 nginx vhost, and never published because a 64-bit hash of an IPv4 address is
@@ -410,7 +528,7 @@ this site is written against.
 **GeoIP is part of the state's fingerprint.** `SiteDayState.Geo` records the
 geo source a day was analyzed with, and a day analyzed without one is stale
 the moment a database appears — so dropping GeoLite2-City on the relay
-re-analyzes the days already published instead of leaving the country total
+re-analyzes the days already published instead of leaving the region total
 at whatever the days after the install saw. The reverse is deliberately not a
 trigger: a day whose raw log has aged out can never get its attribution back,
 so taking a database away must not wipe what a published day already has.
@@ -443,6 +561,30 @@ by the deploy) and says so in the collect log either way.
   under `/var/www/stats/`. nginx serves that directory at
   `https://stats.opennhp.org/` using the same Let's Encrypt cert lineage as
   `relay.*` / `agent.*` / `reg.*` / `demo.*`.
+- **A deploy republishes the site.** `deploy-demo-v2`'s `deploy-xdpstats`
+  job runs the collector once with `XDPSTATS_SITE_FORCE=1` — the systemd
+  manager's environment, so the run still happens inside the unit's sandbox
+  (`ProtectSystem=full`, `ReadWritePaths`) rather than as a bare ssh
+  command — which makes the collector pass `-force` to `xdplog-report
+  site`: every cached day is re-analyzed and every page and the index are
+  rewritten. The forced rebuild is what makes a deploy that changes the
+  published figures, the hero or the markup reach the visitors at all:
+  `xdplog-report site` only rewrites the index when an input moved (a day's
+  log changed, a day was unpublished, the history snapshot's bytes
+  changed), so without it the site would keep serving the previous build.
+  The job then checks two things about the run it started, because the
+  collector's exit code cannot answer either question: a run that lost the
+  collector's lock exits zero without touching the site, and a run that
+  could not list a source exits non-zero with the site perfectly rebuilt.
+  The collect log lines *that run* wrote must contain the forced-rebuild
+  line, and the published `index.html` must be newer than a marker created
+  before the run — the flag reached the collector, and the file nginx serves
+  was rewritten. A source that could not be listed is a warning, not a
+  failure. The job also fails if the published region figure is
+  implausible (there are only ~250 ISO 3166-1 alpha-2 codes), and a step
+  after it guarantees the force flag did not outlive the deploy and that
+  the daily timer is running. The daily timer run is not forced — the
+  incremental path is the point there.
 
 **Three directories, three permission stories.** The web root is
 `/var/www/stats` (0755), not under `$HOME`: `/home/ec2-user` is 0700 on

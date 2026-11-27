@@ -224,6 +224,42 @@ For high-availability deployments, consider:
    - Consider eBPF/XDP mode (`FilterMode = 1`) for high-performance packet filtering
    - Restrict management interfaces to internal networks only
 
+4. **Reverse Proxy and the Knock Source IP**
+
+   The source address NHP-Server derives from an HTTP knock is what it asks
+   NHP-AC to open a firewall rule for, so it must not be something the caller
+   can choose. `TrustedProxies` in `http.toml` controls this and defaults to
+   empty, meaning the `X-Forwarded-For` / `X-Real-IP` headers are ignored and
+   the TCP peer address is used.
+
+   - **No reverse proxy**: leave `TrustedProxies = []`. Nothing else to do.
+   - **Behind a reverse proxy**: all three of the following, or none of them.
+     1. List the proxy in `TrustedProxies` (addresses or CIDR prefixes, e.g.
+        `TrustedProxies = ["127.0.0.1"]`).
+     2. Make the proxy **overwrite** the forwarding header rather than append
+        to it — nginx: `proxy_set_header X-Forwarded-For $remote_addr;`, *not*
+        `$proxy_add_x_forwarded_for`, which passes the client's own value
+        through to the left of yours and hands the choice back.
+     3. Bind the listener where only the proxy can reach it
+        (`HttpListenIp = "127.0.0.1"` for a same-host proxy). Trusting a proxy
+        while the listener also answers on a public address means a caller can
+        simply connect to the listener directly and set the header themselves.
+
+   An entry that does not parse refuses the whole list and the HTTP server
+   does not start, rather than leaving a trust list nobody wrote. The same
+   applies to an `http.toml` that fails to decode at all: the HTTP listener
+   stays down instead of starting from a half-decoded config. The UDP knock
+   service is driven by `config.toml` and is unaffected, and the file is still
+   watched, so fixing it recovers without a restart.
+
+   **Changing `TrustedProxies` needs an HTTP server restart.** Editing the
+   file updates what the daemon reads, but it does not restart a listener
+   that is already running, so the live engine keeps the list it started
+   with — a removed proxy keeps being trusted until then. Cycle
+   `EnableHttp = false`, then back to `true`, the same way the other fields in
+   `http.toml` are applied. The daemon logs a `[Critical]` line when it sees
+   the two disagree, so the gap is visible rather than silent.
+
 ### 4.3 Deployment Checklist
 
 **Pre-deployment:**
@@ -361,6 +397,21 @@ not /64 networks. Static IPs in configured AC, DB and relay peers bypass only
 this per-source admission check so infrastructure can reconnect under pressure.
 Spoofed traffic can claim those addresses too; authentication and the global
 cap still apply. Peers configured only by key or hostname have no IP exemption.
+### Access cookie upgrade
+
+Before upgrading a multi-instance server, set the same private
+`CookieSigningKeyBase64` on every replica behind the endpoint. Use a
+base64-encoded 32-byte random key. A generated process-local key works for a
+single replica. Do not use the key from the Docker demo in a public deployment.
+
+Direct and relay-forwarded access now take one additional round trip. Upgrade native Go agents and applications that embed the nhpdevice library to
+a build containing the fast cookie-reply fix before upgrading the server.
+Older native builds can retry the knock but still drop an ACK that follows
+the challenge within 20 ms. Other clients must support the existing cookie
+retry exchange. The server permits 20
+re-knocks per second from one IP, with a burst of 40. Account for clients
+that share an egress IP before the upgrade.
+
 ### AOP clock tolerance
 
 AOP requests now default to a 120-second maximum age, down from 600 seconds.

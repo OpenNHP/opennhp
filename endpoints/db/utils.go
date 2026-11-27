@@ -2,6 +2,7 @@ package db
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/common/storageauth"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -225,14 +227,22 @@ func (a *AppParams) LoadMetadataAsStruct() (map[string]any, error) {
 }
 
 func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
-	httpHost := fmt.Sprintf("http://%s/", a.GetServerPeer().Host())
+	// Pick the nhp-server once: GetServerPeer ranges over a map, so with
+	// several servers in server.toml separate calls can return different
+	// ones, and the upload must be signed for the server it is sent to.
+	serverPeer := a.GetServerPeer()
+	if serverPeer == nil {
+		return "", fmt.Errorf("no nhp-server configured")
+	}
+	httpHost := fmt.Sprintf("http://%s/", serverPeer.Host())
 	testReq, err := http.Get(httpHost) //nolint:gosec // G107: URL constructed from configured server peer
 	if err != nil {
 		return "", err
 	}
+	_ = testReq.Body.Close()
 
 	if testReq.StatusCode == http.StatusBadRequest {
-		httpHost = fmt.Sprintf("https://%s/", a.GetServerPeer().Host())
+		httpHost = fmt.Sprintf("https://%s/", serverPeer.Host())
 	}
 
 	file, err := os.Open(filePath)
@@ -284,6 +294,10 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	signedAs, signErr := a.signStorageRequest(req, body.Bytes(), serverPeer)
+	if signErr != nil {
+		return "", fmt.Errorf("could not sign upload request: %v", signErr)
+	}
 
 	client := &http.Client{
 		Timeout: 120 * time.Minute,
@@ -295,6 +309,14 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return "", fmt.Errorf("nhp-server is temporarily refusing signed storage requests (503); retry later")
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", fmt.Errorf("nhp-server refused the upload signature (401): its db.toml must list this nhp-db's public key %s, "+
+			"of the same scheme (curve25519 or SM2) as the nhp-server key in this nhp-db's server.toml, and the clocks must agree within %s",
+			signedAs, storageauth.MaxClockSkew)
+	}
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 
@@ -383,4 +405,46 @@ func (pr *ProgressReader) displayProgress(percent int) {
 
 	fmt.Printf("\r[%s] %3d%%  %.2f/%.2f MB",
 		string(bar), percent, uploadedMB, totalMB)
+}
+
+// signStorageRequest authenticates a request to the nhp-server /storage
+// API with this nhp-db's NHP key (see package storageauth), covering body,
+// which must be the request's whole body. serverPeer must be the server the
+// request is sent to: the signature is bound to its key. The scheme follows
+// that key: a 32-byte key means curve25519, a 64-byte key SM2; the server
+// must list this nhp-db's key of the same scheme in its db.toml. It returns
+// the public key it signed as.
+func (a *UdpDevice) signStorageRequest(req *http.Request, body []byte, serverPeer *core.UdpPeer) (string, error) {
+	if serverPeer == nil {
+		return "", fmt.Errorf("no nhp-server configured")
+	}
+	serverPub := serverPeer.PublicKey()
+
+	var scheme int
+	var selfPub string
+	switch len(serverPub) {
+	case core.PublicKeySize:
+		scheme, selfPub = common.CIPHER_SCHEME_CURVE, a.device.PublicKeyBase64()
+	case core.PublicKeySizeEx:
+		scheme, selfPub = common.CIPHER_SCHEME_GMSM, a.device.PublicKeyExBase64()
+	default:
+		return "", fmt.Errorf("unexpected nhp-server public key size %d", len(serverPub))
+	}
+	ecdh := a.device.GetEcdhByCipherScheme(scheme)
+	if ecdh == nil {
+		return "", fmt.Errorf("no local key for the server's scheme")
+	}
+	secret := ecdh.SharedSecret(serverPub)
+	if secret == nil {
+		return "", fmt.Errorf("ECDH with the nhp-server key failed")
+	}
+
+	// Sign the server key in its canonical encoding (the server encodes its
+	// own key the same way), not as written in server.toml.
+	sr, err := storageauth.NewRequest(req.Method, req.URL.Path, body, selfPub, base64.StdEncoding.EncodeToString(serverPub))
+	if err != nil {
+		return "", err
+	}
+	sr.SetHeaders(req.Header, storageauth.Sign(secret, sr))
+	return selfPub, nil
 }

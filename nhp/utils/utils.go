@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -62,48 +60,6 @@ func GetCurrentDate() (date string) {
 	now := time.Now()
 	date = now.Format("20060102")
 	return date
-}
-
-// DownloadFileToTemp removes partial downloads on error. On success, the caller
-// owns the returned file and its parent temporary directory.
-func DownloadFileToTemp(fileUrl string, pattern string) (tempFilePath string, err error) {
-	tempDir, err := os.MkdirTemp("", pattern)
-	if err != nil {
-		return "", err
-	}
-	keepTempDir := false
-	defer func() {
-		if !keepTempDir {
-			_ = os.RemoveAll(tempDir)
-		}
-	}()
-
-	fileName := filepath.Base(fileUrl)
-	tempFilePath = filepath.Join(tempDir, fileName)
-
-	outFile, err := os.Create(tempFilePath)
-	if err != nil {
-		return "", err
-	}
-	defer outFile.Close()
-
-	resp, err := http.Get(fileUrl) //nolint:gosec // G107: URL comes from trusted configuration
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download file (%s): status code %s", fileUrl, resp.Status)
-	}
-
-	_, err = io.Copy(outFile, resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	keepTempDir = true
-	return tempFilePath, nil
 }
 
 func GenerateTempFilePath(pattern string) (string, error) {

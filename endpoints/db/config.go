@@ -181,7 +181,11 @@ func (a *UdpDevice) updateServerPeers(file string) (err error) {
 				Ip:           inst.Ip,
 				Port:         inst.Port,
 				ExpireTime:   c.ExpireTime,
-				Type:         core.NHP_DB,
+				// These are nhp-server peers. validatePeer checks a pool
+				// peer's type against the role its messages imply, so a
+				// server registered as NHP_DB would have every reply
+				// (NHP_DAK, NHP_DBA, ...) refused.
+				Type: core.NHP_SERVER,
 			}
 			a.device.AddPeer(p)
 			serverPeerMap[p.PublicKeyBase64()] = p

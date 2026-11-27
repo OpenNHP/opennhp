@@ -1,12 +1,22 @@
 package utils
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+// httptest serves on loopback, which the default limits refuse. These two
+// tests are about the temp-directory bookkeeping, not about the address
+// guard, so they opt loopback back in the same way a deployment would.
+func loopbackLimits() DownloadLimits {
+	lim := DefaultDownloadLimits()
+	lim.AllowLoopback = true
+	return lim
+}
 
 func TestDownloadFileToTempCleansPartialDownloadOnError(t *testing.T) {
 	tempRoot := t.TempDir()
@@ -19,7 +29,7 @@ func TestDownloadFileToTempCleansPartialDownloadOnError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if _, err := DownloadFileToTemp(server.URL+"/policy.wasm", "wasm-test-"); err == nil {
+	if _, err := DownloadFileToTempWithLimits(context.Background(), server.URL+"/policy.wasm", "wasm-test-", loopbackLimits()); err == nil {
 		t.Fatal("DownloadFileToTemp() error = nil, want non-200 response error")
 	}
 
@@ -44,9 +54,9 @@ func TestDownloadFileToTempKeepsSuccessfulDownload(t *testing.T) {
 	}))
 	defer server.Close()
 
-	path, err := DownloadFileToTemp(server.URL+"/policy.wasm", "wasm-test-")
+	path, err := DownloadFileToTempWithLimits(context.Background(), server.URL+"/policy.wasm", "wasm-test-", loopbackLimits())
 	if err != nil {
-		t.Fatalf("DownloadFileToTemp(): %v", err)
+		t.Fatalf("DownloadFileToTempWithLimits(): %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(path)) })
 

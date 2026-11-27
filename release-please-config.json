@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "version-file": "nhp/version/VERSION",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "endpoints/js-agent/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "endpoints/js-agent/package-lock.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "endpoints/js-agent/package-lock.json",
+          "jsonpath": "$['packages']['']['version']"
+        }
+      ]
+    }
+  }
+}

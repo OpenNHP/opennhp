@@ -92,18 +92,18 @@ func TestRankingGeoAndReserved(t *testing.T) {
 	if r.TopIPs[0].IP != "203.0.113.5" || r.TopIPs[0].Events != 3 || r.TopIPs[0].Categories != 2 {
 		t.Errorf("top ip = %+v", r.TopIPs[0])
 	}
-	if r.TopIPs[0].Country != "AU" || r.TopIPs[0].City != "Sydney" {
+	if r.TopIPs[0].Region != "AU" || r.TopIPs[0].City != "Sydney" {
 		t.Errorf("geo = %+v", r.TopIPs[0])
 	}
 	if r.ReservedIPs != 1 {
 		t.Errorf("reserved = %d", r.ReservedIPs)
 	}
 	for _, x := range r.TopGeo {
-		if strings.Contains(x.Country, "Private") {
+		if strings.Contains(x.Region, "Private") {
 			t.Error("private source leaked into geo ranking")
 		}
 	}
-	if r.TopGeo[0].Country != "AU" {
+	if r.TopGeo[0].Region != "AU" {
 		t.Errorf("top geo = %+v", r.TopGeo)
 	}
 	if _, ok := g.Lookup(netip.MustParseAddr("2001:db8::1")); !ok {
@@ -132,7 +132,7 @@ func TestCLIFormatsAndMask(t *testing.T) {
 	if !strings.Contains(md, "WARNING") || !strings.Contains(md, "Not enabled") {
 		t.Error("missing budget warning or geo-disabled note")
 	}
-	if js := runReport(t, append(args, "-format", "json")...); !strings.Contains(js, `"schema": 1`) {
+	if js := runReport(t, append(args, "-format", "json")...); !strings.Contains(js, `"schema": 2`) {
 		t.Error("json schema missing")
 	}
 	if csv := runReport(t, append(args, "-format", "csv")...); !strings.HasPrefix(csv, "section,key") {
@@ -182,6 +182,92 @@ func TestClassifierMatchesEngine(t *testing.T) {
 	for _, r := range []string{"TCP_SYN_SCAN", "TCP_STEALTH_SCAN"} {
 		if _, ok := dropCategories[r]; !ok {
 			t.Errorf("%s missing from dropCategories", r)
+		}
+	}
+}
+
+// An expired knock is not an attack.
+//
+// The nhp-ac drops a peer whose knock window closed before it spoke again.
+// That peer knocked: it is a legitimate user whose session outlived the
+// window, not a scanner. The class is dropped either way, but counting it
+// would publish an authorized user's address as an attacker -- masked to a
+// /24, and counted, and counted as a region too.
+func TestExpiredKnocksAreNotAttacks(t *testing.T) {
+	const day = "2026-10-03"
+	const expiredSrc = "198.51.100.7"
+	const scannerSrc = "203.0.113.9"
+
+	text := "10:00:00 ac1 [NHP-STAT] VERDICT=DROP REASON=KNOCK_EXPIRED WINDOW=60s PKTS=40 LOGGED=4 TOTAL=40\n" +
+		"10:00:01 ac1 [NHP-DROP] REASON=KNOCK_EXPIRED SRC=" + expiredSrc + " DST=10.0.0.1 LEN=64 PROTO=UDP SPT=40000 DPT=443 RELAY=0\n" +
+		"10:00:02 ac1 [NHP-STAT] VERDICT=DROP REASON=TCP_SYN_SCAN WINDOW=60s PKTS=10 LOGGED=1 TOTAL=10\n" +
+		"10:00:03 ac1 [NHP-DROP] REASON=TCP_SYN_SCAN SRC=" + scannerSrc + " DST=10.0.0.1 LEN=64 PROTO=TCP SPT=1234 DPT=443 RELAY=0\n"
+
+	an := NewAnalyzer(day, day)
+	if err := an.Consume(strings.NewReader(text), day); err != nil {
+		t.Fatal(err)
+	}
+	rep := an.Build(10, nil, false)
+
+	if rep.DropPkts != 10 {
+		t.Errorf("drop packets = %d, want 10 (the expired knock is not an attack)", rep.DropPkts)
+	}
+	if rep.NonAttackPkts != 40 {
+		t.Errorf("non-attack packets = %d, want 40", rep.NonAttackPkts)
+	}
+	if rep.TotalPkts != 50 {
+		t.Errorf("total packets = %d, want 50 (the expired knock was still seen)", rep.TotalPkts)
+	}
+	if rep.UniqueIPs != 1 {
+		t.Errorf("unique attack sources = %d, want 1", rep.UniqueIPs)
+	}
+	for _, row := range rep.TopIPs {
+		if row.IP == expiredSrc {
+			t.Errorf("the expired-knock peer %s is listed as an attack source", expiredSrc)
+		}
+	}
+	for _, row := range rep.Reasons {
+		if row.Reason == "KNOCK_EXPIRED" {
+			t.Error("KNOCK_EXPIRED is listed as an attack reason")
+		}
+	}
+	for _, c := range rep.Categories {
+		if c.Category == string(CatKnockExpired) {
+			t.Error("the expired-knock category is listed as an attack type")
+		}
+	}
+	// The trend carries the attacks only.
+	for _, h := range rep.Hourly {
+		if h.Count != 10 {
+			t.Errorf("hourly drop packets = %d, want 10", h.Count)
+		}
+	}
+	for _, d := range rep.Daily {
+		if d.Count != 10 {
+			t.Errorf("daily drop packets = %d, want 10", d.Count)
+		}
+	}
+	// The day's facts are the source set the site's all-time totals are
+	// unioned from, so the expired-knock peer must not be in it.
+	for _, addr := range an.SourceAddrs() {
+		if addr.String() == expiredSrc {
+			t.Errorf("the expired-knock peer %s is in the day's source set", expiredSrc)
+		}
+	}
+	if len(an.Regions()) != 0 {
+		t.Errorf("regions = %v, want none (no geo source in this test)", an.Regions())
+	}
+}
+
+// An unknown reason counts as an attack: the classifier is a closed list, and
+// under-reporting attacks is the worse mistake.
+func TestUnknownReasonsCountAsAttacks(t *testing.T) {
+	if isAttackReason("KNOCK_EXPIRED") {
+		t.Error("KNOCK_EXPIRED is not an attack")
+	}
+	for _, reason := range []string{"TCP_SYN_SCAN", "UDP_OTHER", "NON_TCP_UDP", "UNKNOWN-99", "SOMETHING_NEW"} {
+		if !isAttackReason(reason) {
+			t.Errorf("%s does not count as an attack", reason)
 		}
 	}
 }

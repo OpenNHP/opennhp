@@ -40,8 +40,14 @@ type UdpServer struct {
 		totalSendBytes uint64
 	}
 
-	config        *Config
-	httpConfig    *HttpConfig
+	config *Config
+	// httpConfig is replaced wholesale by updateHttpConfig, which runs on
+	// the http.toml watcher goroutine and on the etcd watcher goroutine,
+	// while GetHttpPort / GetHttpTLSStatus / xdpServiceConflict read it from
+	// the main goroutine. An atomic pointer keeps that swap from being a data
+	// race; readers must Load once and use the local, never dereference the
+	// field twice and assume they saw the same config.
+	httpConfig    atomic.Pointer[HttpConfig]
 	log           *log.Logger
 	listenAddr    *net.UDPAddr
 	listenAddrStr string
@@ -125,7 +131,7 @@ type UdpServer struct {
 	relayPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	dbConnectionMapMutex sync.Mutex
-	dbConnectionMap      map[string]*DBConn // ac connection is indexed by remote IP address
+	dbConnectionMap      map[string]*DBConn // indexed by dbId; access only through dbconn.go
 
 	tokenStore *common.TokenStore[*ACTokenEntry]
 
@@ -182,13 +188,13 @@ type UdpServer struct {
 	relayForwardBlockMapMutex sync.Mutex
 	relayForwardBlockMap      map[string]time.Time // indexed by relay-forward mapKey, value is expiry
 
-	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
+	// rknLimiter gates the cookie-verify ECDH for RKN per
 	// source IP. Shared (internally locked) between the direct-UDP receive
 	// loop and the relay-forward handlers. See rknRateLimiter.
 	rknLimiter *rknRateLimiter
 
 	// packetLimiter is the general valid-packet gate. It deliberately lives
-	// alongside (and does not replace) rknLimiter: overload RKNs still need the
+	// alongside (and does not replace) rknLimiter: RKNs still need the
 	// tighter pre-ECDH budget enforced by the existing limiter.
 	packetLimiter        *ipRateLimiter
 	packetRateLimitDrops atomic.Int64
@@ -242,6 +248,12 @@ type UdpServer struct {
 	dbPeerMapMutex sync.Mutex
 	dbPeerIPs      map[string]struct{}      // configured static IPs, protected by dbPeerMapMutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
+
+	// storageNonces is the /storage replay cache. It lives here rather than
+	// on the HttpServer, which an http.toml change rebuilds, so that a
+	// restart does not reopen the replay window.
+	storageNonces     *nonceCache
+	storageNoncesOnce sync.Once
 
 	teeMapMutex sync.Mutex
 	teeMap      map[string]*TeeAttestationReport // indexed by tee's measure
@@ -343,7 +355,16 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	// load remote config,init etcd client
 	err = s.initRemoteConn()
-	if err == nil && s.etcdConn == nil {
+	if err != nil {
+		return fmt.Errorf("initialize remote configuration: %w", err)
+	}
+	// A failed Start has no normal Stop; release the persistent etcd client.
+	defer func() {
+		if err != nil && s.etcdConn != nil {
+			s.etcdConn.Close()
+		}
+	}()
+	if s.etcdConn == nil {
 		// init config
 		err = s.loadBaseConfig()
 	} else {
@@ -520,7 +541,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 			log.Critical("failed to generate random cookie signing key: %v", readErr)
 			return fmt.Errorf("failed to generate random cookie signing key: %v", readErr)
 		}
-		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
+		log.Warning("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
 	} else {
 		log.Info("CookieSigningKeyBase64 configured; cookies are stateless and shared across the cluster")
 		// Catch operators who copy the docker-compose demo config and
@@ -583,6 +604,22 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.localMac = utils.GetMacAddress(s.localIp)
 	// load asp resources and plugins
 	s.pluginHandlerMap = make(map[string]plugins.PluginHandler)
+	// relayPeerMap indexes the configured relay peers by public key and is
+	// owned by updateRelayPeers (config.go): the load path installs the
+	// peers read from relay.toml and the reload path swaps the map
+	// wholesale. It must therefore be created BEFORE the peer configs are
+	// loaded, never after.
+	//
+	// It used to be created in the runtime-state block further down, which
+	// silently discarded the relay peers loadPeers() had just installed:
+	// every NHP_RLY envelope was then refused by dedupeRecvRLY with
+	// ErrServerMissingPeerPubkey (it fails closed when the sender is not
+	// in this map), so the relay path stayed broken until the operator
+	// touched relay.toml and the fsnotify callback re-ran
+	// updateRelayPeers. Creating the map here keeps it non-nil for the
+	// load path (no nil-map panic when relay.toml is absent) and leaves
+	// the peers loaded from relay.toml intact.
+	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	if s.etcdConn != nil {
 		// load nhp server
 		_ = s.loadRemoteConfig()
@@ -622,7 +659,6 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
-	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.relayForwardBlockMap = make(map[string]time.Time)
@@ -662,7 +698,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// are not in the static agent.toml peer pool.
 	if s.keyStore != nil {
 		opt := s.device.GetOption()
-		opt.PeerLookupFallback = func(pubKey []byte, headerType int) bool {
+		opt.PeerLookupFallback = func(pkBase64 string, headerType int) bool {
 			// Agent-initiated packet types a dynamically-registered
 			// agent (not in agent.toml) can legitimately send after a
 			// successful NHP-REG. NHP_OTP / NHP_REG skip peer
@@ -674,9 +710,18 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 				headerType != core.NHP_RKN && headerType != core.NHP_EXT {
 				return false
 			}
-			pk := base64.StdEncoding.EncodeToString(pubKey)
-			found, _ := s.keyStore.FindAgentByPublicKey(pk)
-			return found
+			found, expire, _ := s.keyStore.FindAgentByPublicKey(pkBase64)
+			if found {
+				// create a persistent agent peer object
+				peer := &core.UdpPeer{
+					PubKeyBase64: strings.Clone(pkBase64),
+					Type:         core.NHP_AGENT,
+					ExpireTime:   expire,
+				}
+				s.AddAgentPeer(peer)
+				return true
+			}
+			return false
 		}
 		s.device.SetOption(opt)
 	}
@@ -735,15 +780,16 @@ func (s *UdpServer) Stop() {
 	}
 	s.running.Store(false)
 	s.healthy.Store(false)
+	// Drain remote updates before stopping resources they can replace.
+	if s.etcdConn != nil {
+		s.etcdConn.Close()
+	}
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
 	}
 	if s.metricsServer != nil {
 		s.metricsServer.stop()
-	}
-	if s.etcdConn != nil {
-		s.etcdConn.Close()
 	}
 	close(s.signals.stop)
 	s.listenConn.Close()
@@ -783,10 +829,11 @@ func (s *UdpServer) GetListenPort() int {
 
 // GetHttpPort returns the HTTP listening port and whether HTTP is enabled
 func (s *UdpServer) GetHttpPort() (int, bool) {
-	if s.httpConfig == nil || !s.httpConfig.EnableHttp {
+	conf := s.httpConfig.Load()
+	if conf == nil || !conf.EnableHttp {
 		return 0, false
 	}
-	port := s.httpConfig.HttpListenPort
+	port := conf.HttpListenPort
 	if port == 0 {
 		port = s.GetListenPort() // falls back to UDP port
 	}
@@ -795,7 +842,7 @@ func (s *UdpServer) GetHttpPort() (int, bool) {
 
 // GetHttpTLSStatus returns TLS status as a string
 func (s *UdpServer) GetHttpTLSStatus() string {
-	if s.httpConfig != nil && s.httpConfig.EnableTLS {
+	if conf := s.httpConfig.Load(); conf != nil && conf.EnableTLS {
 		return "enabled"
 	}
 	return "disabled"
@@ -904,7 +951,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 
-		// Rate-limit RKN-under-overload per source IP BEFORE the packet
+		// Rate-limit direct RKN per source IP BEFORE the packet
 		// reaches the connection routine (and thus before the cookie-
 		// verify ECDH in responder.checkHMAC). This is the only path that
 		// pays a Noise IK floor per packet ahead of authentication and
@@ -914,11 +961,11 @@ func (s *UdpServer) recvPacketRoutine() {
 		// threats, not block-listed — so honest agents and shared-NAT
 		// egress IPs degrade to dropped-RKN (which agents retry) rather
 		// than a hard block. recvTime is reused as the monotonic-ish now.
-		if pkt.HeaderType == core.NHP_RKN && s.device.IsOverload() {
+		if pkt.HeaderType == core.NHP_RKN {
 			if !s.rknLimiter.allow(remoteAddr, recvTime) {
 				s.device.ReleasePoolPacket(pkt)
 				s.metrics.recordDroppedPacket("rate_limited")
-				log.Warning("RKN from %s dropped: per-IP rate limit exceeded under overload", addrStr)
+				log.Warning("RKN from %s dropped: per-IP rate limit exceeded", addrStr)
 				continue
 			}
 		}
@@ -952,11 +999,12 @@ func (s *UdpServer) recvPacketRoutine() {
 			conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
-				InitTime:          recvTime,
-				LastLocalRecvTime: recvTime, // not in multithreaded yet, directly assign value
-				Device:            s.device,
-				LocalAddr:         s.listenAddr,
-				RemoteAddr:        remoteAddr,
+				InitTime:           recvTime,
+				LastLocalRecvTime:  recvTime, // not in multithreaded yet, directly assign value
+				Device:             s.device,
+				LocalAddr:          s.listenAddr,
+				RemoteAddr:         remoteAddr,
+				RequireKnockCookie: true,
 				// CookieStore omitted: server cookies are now stateless
 				// (HMAC of remote ip:port + time window). The legacy
 				// per-conn store is dead state on the server side.
@@ -1170,16 +1218,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		}
 
 		if conn.isDBConnection.Load() {
-			var dbToDelete string
-			s.dbConnectionMapMutex.Lock()
-			for dbId, dbConn := range s.dbConnectionMap {
-				if dbConn.ConnData.Equal(conn.ConnData) {
-					dbToDelete = dbId
-					break
-				}
-			}
-			delete(s.dbConnectionMap, dbToDelete)
-			s.dbConnectionMapMutex.Unlock()
+			s.unbindDBConn(conn.ConnData)
 		}
 
 		// remove the udp conn from remoteConnectionMap using the same key
@@ -2179,11 +2218,11 @@ func (us *UdpServer) FindPluginHandler(aspId string) plugins.PluginHandler {
 }
 
 // DHP
-func (s *UdpServer) AddDEPeer(device *core.UdpPeer) {
-	if device.DeviceType() == core.NHP_DB {
-		s.device.AddPeer(device)
+func (s *UdpServer) AddDBPeer(peer *core.UdpPeer) {
+	if peer.DeviceType() == core.NHP_DB {
+		s.device.AddPeer(peer)
 		s.dbPeerMapMutex.Lock()
-		s.dbPeerMap[device.PublicKeyBase64()] = device
+		s.dbPeerMap[peer.PublicKeyBase64()] = peer
 		s.dbPeerMapMutex.Unlock()
 	}
 }

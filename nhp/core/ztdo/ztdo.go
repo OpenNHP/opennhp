@@ -35,8 +35,6 @@ const (
 	DATACHUNKSIZE        = 16777187 // this is calculated by 2 ** 24 - 1 - IVSize (12 bytes) - MaxTagSize (16 bytes)
 )
 
-var lengthMap map[string]uint32 // map to store result after parsing the lengthFor tag
-var lengthContinueIndicator bool = false
 var littleEndian bool = true
 
 // Endianness hides the endianness handling to make it easier to change the endianness of ztdo
@@ -279,7 +277,7 @@ func (signature *ZtdoSignature) sign(key []byte) {
 }
 
 func (signature *ZtdoSignature) verify(in *ZtdoSignature) bool {
-	return bytes.Equal(signature.Signature[:], in.Signature[:])
+	return hmac.Equal(signature.Signature[:], in.Signature[:]) // constant time
 }
 
 func NewZtdo() *Ztdo {
@@ -387,18 +385,23 @@ func (ztdo *Ztdo) ParseHeader(ciphertextPath string) error {
 	}
 	defer ciphertextFile.Close()
 
+	ciphertextFileInfo, err := ciphertextFile.Stat()
+	if err != nil {
+		return err
+	}
+
 	// always initialize header
 	ztdo.header = *NewZtdoHeader()
 
 	// read header
-	if err := toStructure(ciphertextFile, &ztdo.header); err != nil {
+	if err := toStructure(ciphertextFile, ciphertextFileInfo.Size(), &ztdo.header); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey []byte, ad []byte) error {
+func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey []byte, ad []byte) (err error) {
 	ciphertextFile, err := os.OpenFile(ciphertextPath, os.O_RDONLY, 0666)
 	if err != nil {
 		return err
@@ -416,7 +419,18 @@ func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey [
 	if err != nil {
 		return err
 	}
-	defer plaintextFile.Close()
+	// Chunks are written as they decrypt, before the signature over the
+	// whole file is checked; never leave that unverified (possibly truncated
+	// or reordered) plaintext behind on failure. On success the close error
+	// is returned too, so a failed write-back is not reported as success.
+	defer func() {
+		if closeErr := plaintextFile.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			_ = os.Remove(plaintextPath)
+		}
+	}()
 
 	recalcSig := NewZtdoSignature()
 
@@ -424,17 +438,34 @@ func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey [
 	ztdo.header = *NewZtdoHeader()
 
 	// read header
-	if err := toStructure(ciphertextFile, &ztdo.header); err != nil {
+	if err := toStructure(ciphertextFile, remainingCiphertextFileSize, &ztdo.header); err != nil {
 		return err
 	}
 	headerBuf := toBuffer(ztdo.header)
 	recalcSig.mixHash(headerBuf)
 	remainingCiphertextFileSize -= int64(headerBuf.Len())
 
-	// read payload
-	for {
+	// Refuse files whose header says unsigned. The flag is in the header,
+	// which only the signature authenticates, so whoever serves the file
+	// could clear it and drop the signature to skip the whole-file check
+	// (dropping or reordering chunks, changing metadata). Nothing is lost:
+	// EncryptZtdoFile always appends the signature, so an unsigned file has
+	// never decrypted.
+	if !ztdo.header.HasSignature() {
+		return fmt.Errorf("ztdo: unsigned files are not supported")
+	}
+
+	// The trailing signature is not payload: keep payload parsing out of it.
+	const signatureSize = SIGNATURELenSize
+
+	// read payloads until only the signature is left. Checking before each
+	// payload, not after, lets a file with no payloads, which
+	// EncryptZtdoFile writes for an empty plaintext, decrypt to nothing; its
+	// signature still covers the header. Payloads are bounded away from the
+	// signature, so the count can only land on signatureSize, never below.
+	for remainingCiphertextFileSize > signatureSize {
 		payload := NewZtdoPayload()
-		if err := toStructure(ciphertextFile, payload); err != nil {
+		if err := toStructure(ciphertextFile, remainingCiphertextFileSize-signatureSize, payload); err != nil {
 			return err
 		}
 
@@ -449,32 +480,17 @@ func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey [
 		if _, err := plaintextFile.Write(plaintext); err != nil {
 			return err
 		}
-
-		if ztdo.header.HasSignature() {
-			if remainingCiphertextFileSize == SIGNATURELenSize {
-				break
-			}
-			if remainingCiphertextFileSize == 0 {
-				return fmt.Errorf("invalid ztdo file")
-			}
-		} else {
-			if remainingCiphertextFileSize == 0 {
-				break
-			}
-		}
 	}
 
 	// update recalculated signature
 	recalcSig.sign(gcmKey)
 
-	if ztdo.header.HasSignature() {
-		if err := toStructure(ciphertextFile, &ztdo.signature); err != nil {
-			return err
-		}
+	if err := toStructure(ciphertextFile, remainingCiphertextFileSize, &ztdo.signature); err != nil {
+		return err
+	}
 
-		if !ztdo.signature.verify(recalcSig) {
-			return fmt.Errorf("signature verification failed")
-		}
+	if !ztdo.signature.verify(recalcSig) {
+		return fmt.Errorf("signature verification failed")
 	}
 
 	return nil
@@ -527,8 +543,36 @@ func marshal(buf *bytes.Buffer, data any) error {
 	return nil
 }
 
-// unmarshal recursively deserializes binary data from a file into a Go struct
-func unmarshal(f *os.File, data any) error {
+// zparser holds the state of one toStructure call. Everything it reads is
+// unauthenticated (the header and payloads are parsed before any AEAD or
+// signature check), so every length taken from the input is checked before
+// it is used: against underflow, and against the bytes actually left, so a
+// forged length can neither wrap around nor make the parser allocate more
+// than the input holds. The state is per call, so concurrent parses do not
+// share it.
+type zparser struct {
+	r         io.Reader
+	remaining int64             // bytes of input this parse may still consume
+	lengths   map[string]uint32 // results of lengthFor tags, by target field name
+	continued bool              // last lengthContinue tag had its continuation bit set
+}
+
+// read returns exactly n bytes of input, refusing before allocating if the
+// input cannot hold them, and failing on a short read.
+func (p *zparser) read(n uint32, field string) ([]byte, error) {
+	if int64(n) > p.remaining {
+		return nil, fmt.Errorf("ztdo: %s needs %d bytes but only %d remain", field, n, p.remaining)
+	}
+	buf := make([]byte, n)
+	if _, err := io.ReadFull(p.r, buf); err != nil {
+		return nil, fmt.Errorf("ztdo: reading %s: %w", field, err)
+	}
+	p.remaining -= int64(n)
+	return buf, nil
+}
+
+// unmarshal recursively deserializes binary data into a Go struct
+func (p *zparser) unmarshal(data any) error {
 	rValues := reflect.ValueOf(data)
 	rTypes := reflect.TypeOf(data)
 	if rValues.Kind() == reflect.Pointer {
@@ -544,14 +588,13 @@ func unmarshal(f *os.File, data any) error {
 		field := rTypes.Field(i)
 		value := rValues.Field(i)
 		if field.Type.Kind() == reflect.Struct {
-			if err := unmarshal(f, value.Addr().Interface()); err != nil {
+			if err := p.unmarshal(value.Addr().Interface()); err != nil {
 				return err
 			}
 		} else {
 			if field.Type.Kind() == reflect.Array {
 				length := value.Len()
-				bytes := make([]byte, length)
-				_, err := f.Read(bytes)
+				bytes, err := p.read(uint32(length), field.Name)
 				if err != nil {
 					return err
 				}
@@ -566,18 +609,37 @@ func unmarshal(f *os.File, data any) error {
 				lengthContinue := field.Tag.Get(LENGTHCONTINUE)
 
 				if lengthContinue != "" {
-					lengthContinueIndicator = preprocessContinuation(bytes)
+					p.continued = preprocessContinuation(bytes)
 				}
 
 				if lengthFor != "" {
 					expandedBytes := [4]byte{}
 					copy(expandedBytes[:], bytes)
-					lengthMap[lengthFor] = endianness.Uint32(expandedBytes[:])
+					p.lengths[lengthFor] = endianness.Uint32(expandedBytes[:])
+
+					// A chunk with its continuation bit set must be full, as
+					// SetMetadata only ever writes it that way. Otherwise a
+					// run of empty continued chunks turns every 2 input bytes
+					// into a whole slice element, amplifying allocation far
+					// beyond the input size. lengthContinue is only used on
+					// MetadataLen, so full means MetadataChunkMaxSize.
+					if lengthContinue != "" && p.continued && p.lengths[lengthFor] != MetadataChunkMaxSize {
+						return fmt.Errorf("ztdo: continued %s chunk has length %d, want %d",
+							lengthFor, p.lengths[lengthFor], MetadataChunkMaxSize)
+					}
 				}
 
+				// subtractFrom: this field is counted in another field's
+				// declared length, so the rest of that length is what is
+				// left for the other field. A declared length shorter than
+				// this field would wrap around to about 4 GiB.
 				subtractFrom := field.Tag.Get(SUBTRACTFROM)
 				if subtractFrom != "" {
-					lengthMap[subtractFrom] -= uint32(length)
+					if p.lengths[subtractFrom] < uint32(length) {
+						return fmt.Errorf("ztdo: declared length %d of %s is smaller than its %d-byte %s",
+							p.lengths[subtractFrom], subtractFrom, length, field.Name)
+					}
+					p.lengths[subtractFrom] -= uint32(length)
 				}
 			} else if field.Type.Kind() == reflect.Slice {
 				if field.Type.Elem().Kind() == reflect.Struct {
@@ -585,18 +647,16 @@ func unmarshal(f *os.File, data any) error {
 						ins := reflect.New(field.Type.Elem()).Elem()
 						newValue := reflect.Append(value, ins)
 						value.Set(newValue)
-						err := unmarshal(f, value.Index(value.Len()-1).Addr().Interface())
+						err := p.unmarshal(value.Index(value.Len() - 1).Addr().Interface())
 						if err != nil {
 							return err
 						}
-						if !lengthContinueIndicator { // more data to be read to construct element in current slice
+						if !p.continued { // more data to be read to construct element in current slice
 							break
 						}
 					}
 				} else if field.Type.Elem().Kind() == reflect.Uint8 { // if the elment in slice is a byte, there MUST be lengthFor tag to be parsed before.
-					length := lengthMap[field.Name]
-					bytes := make([]byte, length)
-					_, err := f.Read(bytes)
+					bytes, err := p.read(p.lengths[field.Name], field.Name)
 					if err != nil {
 						return err
 					}
@@ -620,14 +680,15 @@ func toBuffer(data any) *bytes.Buffer {
 	return buf
 }
 
-// toStructure provides unified way to deserialize bytes from a file into a Go struct
-func toStructure(f *os.File, data any) error {
-	lengthMap = make(map[string]uint32)
+// toStructure provides unified way to deserialize bytes from r into a Go
+// struct, consuming at most remaining bytes.
+func toStructure(r io.Reader, remaining int64, data any) error {
 	rValues := reflect.ValueOf(data)
 	if rValues.Kind() != reflect.Pointer {
 		return fmt.Errorf("data must be a pointer")
 	}
-	return unmarshal(f, data)
+	p := &zparser{r: r, remaining: remaining, lengths: make(map[string]uint32)}
+	return p.unmarshal(data)
 }
 
 // setBytes provides unified way to set bytes to a slice or array

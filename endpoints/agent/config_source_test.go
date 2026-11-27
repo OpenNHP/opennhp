@@ -395,6 +395,7 @@ func TestRestartHandlerReportsFailureOnly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/restart", nil)
 	a.restartAgent(c) // no key installed, so the restart fails
 
 	if w.Code != http.StatusInternalServerError {

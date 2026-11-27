@@ -40,7 +40,7 @@ The `nhp` module contains the core NHP protocol implementation:
 | `plugins/` | Server plugin system interfaces |
 | `log/` | Async logging framework |
 | `etcd/` | etcd integration for distributed configuration |
-| `ebpf/` | eBPF programs for XDP and traffic control |
+| `ebpf/` | eBPF programs for XDP and traffic control — see [eBPF Internals](/ebpf/) |
 | `test/` | Unit tests |
 
 ### Key Files in `core/`
@@ -62,6 +62,22 @@ The `endpoints` module contains executable daemons:
 | `ac/` | `nhp-ac` | Access Controller managing firewall rules |
 | `db/` | `nhp-db` | Data Broker for DHP (Data-content Hiding Protocol) |
 | `kgc/` | `nhp-kgc` | Key Generation Center for IBC keys |
+| `xdplog-report/` | `xdplog-report` | Offline XDP event-log analyzer; publishes stats.opennhp.org — see [Attack Stats](/attack-stats/) |
+
+The analyzer is the reader half of a two-part pipeline: the XDP filter decides what may exist, and this tool turns the filter's daily log into the published summaries at <https://stats.opennhp.org/>. [Attack Stats](/attack-stats/) explains how the two fit together and what each published figure means.
+
+#### NHP-DB operational notes
+
+When `nhp-db encrypt` re-registers a legacy data object that has no recorded
+owner, the daemon must be online and acknowledged by `nhp-server` with the
+same public key and `dbId`; a one-shot encrypt invocation cannot claim it and
+will receive an unauthorized response. If an NHP-DB crashes, its `dbId` may
+remain held until the old connection's 300-second idle timeout expires, so a
+replacement using a different key can temporarily be refused with a
+"dbId is held by another nhp-db" warning.
+Objects stored with an empty or whitespace-padded `DbId` before an upgrade are
+frozen by the new validation; repair the `dbId` field manually in
+`etc/ztdo/data-<doId>.json` before registering them again.
 
 Each daemon follows a similar structure:
 

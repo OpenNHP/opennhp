@@ -786,6 +786,7 @@
             Add the secret key below to your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.
         </p>
 
+        {{if .otpSecretKey}}
         <div class="secret-section">
             <p class="secret-label" id="secretLabel">OTP Secret Key</p>
             <div class="secret-value">
@@ -798,6 +799,7 @@
                 </button>
             </div>
         </div>
+        {{end}}
 
         <div class="otp-input-section">
             <p class="otp-input-label" id="otpInputLabel">Enter 6-digit verification code</p>
@@ -862,6 +864,7 @@
             qrStatusExpired: "Expired",
             refreshText: "Refresh QR Code",
             otpDescription: "Add the secret key below to your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.",
+            otpDescriptionNoSecret: "Enter the 6-digit code from the authenticator app your administrator enrolled.",
             secretLabel: "OTP Secret Key",
             secretValidFor: "Valid for",
             secretExpired: "Expired",
@@ -897,6 +900,7 @@
             qrStatusExpired: "已过期",
             refreshText: "刷新二维码",
             otpDescription: "将下方密钥添加到您的认证器应用（Google Authenticator、Authy 等），然后输入 6 位验证码。",
+            otpDescriptionNoSecret: "请输入管理员为您配置的认证器应用中的 6 位验证码。",
             secretLabel: "OTP 密钥",
             secretValidFor: "有效期",
             secretExpired: "已过期",
@@ -919,7 +923,6 @@
     let currentLang = 'en';
     let currentSession = {
         sessionId: null,
-        otpSecret: null,
         expiresAt: null
     };
     let pollingInterval = null;
@@ -960,7 +963,7 @@
         setText('refreshText', t.refreshText);
 
         // OTP section - these are the elements that need translation
-        setText('otpDescription', t.otpDescription);
+        setText('otpDescription', config.otpSecretKey ? t.otpDescription : t.otpDescriptionNoSecret);
         setText('secretLabel', t.secretLabel);
         setText('otpInputLabel', t.otpInputLabel);
         setText('verifyBtnText', t.verifyBtnText);
@@ -1085,13 +1088,12 @@
 
             currentSession = {
                 sessionId: data.sessionId,
-                otpSecret: data.otpSecret,
                 expiresAt: data.expiresAt * 1000
             };
 
 
             // Build QR content
-            const qrContent = `nhp://scan?data=${encodeURIComponent(data.qrData)}&otp=${encodeURIComponent(data.otpSecret)}&server=${encodeURIComponent(data.serverUrl)}&asp=${encodeURIComponent(config.aspId)}&res=${encodeURIComponent(config.resId)}&sid=${encodeURIComponent(data.sessionId)}`;
+            const qrContent = `nhp://scan?data=${encodeURIComponent(data.qrData)}&server=${encodeURIComponent(data.serverUrl)}&asp=${encodeURIComponent(config.aspId)}&res=${encodeURIComponent(config.resId)}&sid=${encodeURIComponent(data.sessionId)}`;
 
             // Render QR code
             renderQRCode(qrContent);
@@ -1230,7 +1232,8 @@
                         qrStatusText.textContent = translations[currentLang].qrStatusConfirmed;
                         qrOverlay.classList.add('show', 'success');
                         qrOverlayText.textContent = translations[currentLang].qrStatusConfirmed;
-                        showMessage(translations[currentLang].loginSuccess, 'success');
+                        // "Login successful" waits for the knock: qrvalid can
+                        // still refuse (different address, session used).
                         await completeAuthentication('qrvalid');
                         break;
                     case 3: // expired
@@ -1396,6 +1399,7 @@
             const data = await response.json();
 
             if (data.errCode === "0" || data.errCode === "") {
+                showMessage(translations[currentLang].loginSuccess, 'success');
                 if (data.redirectUrl) {
                     setTimeout(() => {
                         window.location.href = data.redirectUrl;
@@ -1456,7 +1460,8 @@
         // Always call changeLanguage to initialize all translations
         changeLanguage();
 
-        // Display configured OTP secret key immediately
+        // The server only sends the OTP secret key (and the section showing
+        // it) when ShowOTPSecret is on; otherwise users already have it enrolled.
         if (config.otpSecretKey) {
             document.getElementById('otpSecret').textContent = config.otpSecretKey;
         }

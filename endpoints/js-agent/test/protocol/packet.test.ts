@@ -10,10 +10,24 @@ import {
   parseNHPPacket,
   clearServerCookie,
   resetGlobalCounter,
+  PacketContext,
 } from '../../src/protocol/packet.js';
-import { NHP_PACKET_TYPES } from '../../src/protocol/constants.js';
+import {
+  NHP_PACKET_TYPES,
+  INITIAL_HASH_STRING,
+  FIELD_SIZES,
+  HEADER_SIZE,
+  HEADER_EX_SIZE,
+} from '../../src/protocol/constants.js';
 import { generateX25519KeyPairBase64 } from '../../src/crypto/ecdh.js';
 import { generateSM2KeyPairBase64 } from '../../src/crypto/sm2.js';
+import { newBlake2sHash, updateBlake2s, sumBlake2s } from '../../src/crypto/noise.js';
+import { newSM3Hash } from '../../src/crypto/sm3.js';
+import {
+  base64ToBytes,
+  bytesToBase64,
+  stringToBytes,
+} from '../../src/crypto/utils.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -27,6 +41,72 @@ function makeGMKeyPairs() {
   const agent = generateSM2KeyPairBase64();
   const server = generateSM2KeyPairBase64();
   return { agent, server };
+}
+
+/**
+ * The body the Go server sends with an NHP-COK challenge: a
+ * common.ServerCookieMsg JSON object whose "cookie" field is the base64 of
+ * the 32 raw cookie bytes (nhp/core/responder.go sendCookie).
+ */
+function cookieChallengeBody(cookie: Uint8Array, transactionId = 7): string {
+  return JSON.stringify({ trxId: transactionId, cookie: bytesToBase64(cookie) });
+}
+
+/**
+ * Independently recompute the curve25519 HMAC of a packet the way the Go
+ * server does (nhp/core/responder.go checkHMAC):
+ *
+ *   Hash(InitialHashString || serverPubKey || header[0:size-32] || cookie)
+ *
+ * Deliberately does not reuse the code under test — a test that reuses it
+ * cannot catch a byte-order or payload mistake.
+ */
+function recomputeCurveHmac(
+  packet: Uint8Array,
+  serverPublicKey: string,
+  cookie: Uint8Array
+): Uint8Array {
+  const hasher = newBlake2sHash();
+  updateBlake2s(hasher, stringToBytes(INITIAL_HASH_STRING));
+  updateBlake2s(hasher, base64ToBytes(serverPublicKey));
+  updateBlake2s(hasher, packet.subarray(0, HEADER_SIZE - FIELD_SIZES.HMAC));
+  updateBlake2s(hasher, cookie);
+  return sumBlake2s(hasher);
+}
+
+/**
+ * The pre-fix byte order — cookie hashed BEFORE the header prefix. Kept as a
+ * negative assertion so the regression cannot come back unnoticed.
+ */
+function recomputeCurveHmacLegacyOrder(
+  packet: Uint8Array,
+  serverPublicKey: string,
+  cookie: Uint8Array
+): Uint8Array {
+  const hasher = newBlake2sHash();
+  updateBlake2s(hasher, stringToBytes(INITIAL_HASH_STRING));
+  updateBlake2s(hasher, base64ToBytes(serverPublicKey));
+  updateBlake2s(hasher, cookie);
+  updateBlake2s(hasher, packet.subarray(0, HEADER_SIZE - FIELD_SIZES.HMAC));
+  return sumBlake2s(hasher);
+}
+
+/**
+ * The GMSM equivalent of recomputeCurveHmac:
+ *
+ *   SM3(InitialHashString || serverPubKey || header[0:size-32] || cookie)
+ */
+function recomputeSM3Hmac(
+  packet: Uint8Array,
+  serverPublicKey: string,
+  cookie: Uint8Array
+): Uint8Array {
+  const hasher = newSM3Hash();
+  hasher.update(stringToBytes(INITIAL_HASH_STRING));
+  hasher.update(base64ToBytes(serverPublicKey));
+  hasher.update(packet.subarray(0, HEADER_EX_SIZE - FIELD_SIZES.HMAC));
+  hasher.update(cookie);
+  return hasher.sum();
 }
 
 // Reset counter before each test so tests are independent
@@ -140,36 +220,120 @@ describe('CURVE25519 ACK round-trip', () => {
 // ─── COK / RNK cookie flow ────────────────────────────────────────────────────
 
 describe('COK / RNK cookie flow', () => {
-  it('COK packet is stored and used in subsequent RNK', async () => {
+  it('stores the decoded 32-byte cookie from the server JSON challenge', async () => {
     const { agent, server } = makeKeyPairs();
+    const context = new PacketContext();
     const cookie = new Uint8Array(32).fill(0xc0);
 
-    // Server sends COK with cookie payload
+    // Server sends COK with the ServerCookieMsg JSON body
+    const challenge = cookieChallengeBody(cookie);
     const cookiePacket = await buildNHPPacket(
       NHP_PACKET_TYPES.COK,
       server.privateKey, server.publicKey,
       agent.publicKey,
-      String.fromCharCode(...cookie), false, 'curve25519'
+      challenge, false, 'curve25519'
     );
 
-    // Agent parses COK — cookie is stored internally keyed by server public key
+    // Agent parses COK — the cookie is stored internally keyed by server public key
     const parsedCok = await parseNHPPacket(
       cookiePacket,
       agent.privateKey, agent.publicKey,
-      server.publicKey
+      server.publicKey,
+      undefined, context
     );
     expect(parsedCok.type).toBe(NHP_PACKET_TYPES.COK);
+    expect(parsedCok.message).toBe(challenge);
+
+    // The stored value is the decoded 32 bytes, not the JSON body
+    expect(context.serverCookies.get(server.publicKey)).toEqual(cookie);
+  });
+
+  it('computes the RNK HMAC as Hash(INITIAL || serverPub || headerPrefix || cookie)', async () => {
+    const { agent, server } = makeKeyPairs();
+    const context = new PacketContext();
+    const cookie = new Uint8Array(32).fill(0xc0);
+
+    const cookiePacket = await buildNHPPacket(
+      NHP_PACKET_TYPES.COK,
+      server.privateKey, server.publicKey,
+      agent.publicKey,
+      cookieChallengeBody(cookie), false, 'curve25519'
+    );
+    await parseNHPPacket(
+      cookiePacket,
+      agent.privateKey, agent.publicKey,
+      server.publicKey,
+      undefined, context
+    );
 
     // Agent sends RNK using the stored cookie in HMAC
     const rnkPacket = await buildNHPPacket(
       NHP_PACKET_TYPES.RNK,
       agent.privateKey, agent.publicKey,
       server.publicKey,
-      're-knock payload', false, 'curve25519'
+      're-knock payload', false, 'curve25519', context
     );
 
-    // RNK packet should be built successfully
-    expect(rnkPacket.length).toBeGreaterThan(240);
+    // The HMAC the server recomputes must match — recomputed here independently
+    const wireHmac = rnkPacket.subarray(HEADER_SIZE - FIELD_SIZES.HMAC, HEADER_SIZE);
+    expect(wireHmac).toEqual(recomputeCurveHmac(rnkPacket, server.publicKey, cookie));
+
+    // ...and the pre-fix byte order must NOT match, or the regression is back
+    expect(wireHmac).not.toEqual(
+      recomputeCurveHmacLegacyOrder(rnkPacket, server.publicKey, cookie)
+    );
+  });
+
+  it('rejects a cookie challenge that is not a ServerCookieMsg JSON body', async () => {
+    const { agent, server } = makeKeyPairs();
+    const context = new PacketContext();
+
+    const cookiePacket = await buildNHPPacket(
+      NHP_PACKET_TYPES.COK,
+      server.privateKey, server.publicKey,
+      agent.publicKey,
+      'not-a-cookie-challenge', false, 'curve25519'
+    );
+
+    await expect(
+      parseNHPPacket(
+        cookiePacket,
+        agent.privateKey, agent.publicKey,
+        server.publicKey,
+        undefined, context
+      )
+    ).rejects.toThrow('Invalid cookie challenge');
+    expect(context.serverCookies.has(server.publicKey)).toBe(false);
+  });
+
+  it('computes the GMSM RNK HMAC as SM3(INITIAL || serverPub || headerPrefix || cookie)', async () => {
+    const { agent, server } = makeGMKeyPairs();
+    const context = new PacketContext();
+    const cookie = new Uint8Array(32).fill(0xc0);
+
+    const cookiePacket = await buildNHPPacket(
+      NHP_PACKET_TYPES.COK,
+      server.privateKey, server.publicKey,
+      agent.publicKey,
+      cookieChallengeBody(cookie), false, 'gmsm'
+    );
+    await parseNHPPacket(
+      cookiePacket,
+      agent.privateKey, agent.publicKey,
+      server.publicKey,
+      undefined, context
+    );
+    expect(context.serverCookies.get(server.publicKey)).toEqual(cookie);
+
+    const rnkPacket = await buildNHPPacket(
+      NHP_PACKET_TYPES.RNK,
+      agent.privateKey, agent.publicKey,
+      server.publicKey,
+      're-knock payload', false, 'gmsm', context
+    );
+
+    const wireHmac = rnkPacket.subarray(HEADER_EX_SIZE - FIELD_SIZES.HMAC, HEADER_EX_SIZE);
+    expect(wireHmac).toEqual(recomputeSM3Hmac(rnkPacket, server.publicKey, cookie));
   });
 });
 
@@ -291,7 +455,7 @@ describe('clearServerCookie', () => {
       NHP_PACKET_TYPES.COK,
       server.privateKey, server.publicKey,
       agent.publicKey,
-      'cookie-data', false, 'curve25519'
+      cookieChallengeBody(new Uint8Array(32).fill(0xc0)), false, 'curve25519'
     );
     await parseNHPPacket(
       cookiePacket,

@@ -26,16 +26,21 @@ func main() {
 	}
 }
 
-// run is the CLI entry. When args[0] is "site", it dispatches to runSite;
-// otherwise it parses the original single-file report flags.
+// run is the CLI entry. "site" dispatches to runSite and "history" to
+// runHistory; otherwise it parses the original single-file report flags.
 func run(args []string, stdout io.Writer) error {
-	if len(args) > 0 && args[0] == "site" {
-		return runSite(args[1:], stdout)
+	if len(args) > 0 {
+		switch args[0] {
+		case "site":
+			return runSite(args[1:], stdout)
+		case "history":
+			return runHistory(args[1:], stdout)
+		}
 	}
 	fs := flag.NewFlagSet("xdplog-report", flag.ContinueOnError)
 	var in multiFlag
 	fs.Var(&in, "in", "log file, glob or directory (repeatable; .gz supported)")
-	geoPath := fs.String("geo-csv", "", "optional CIDR->country CSV (cidr,country[,city]) for the region section")
+	geoPath := fs.String("geo-csv", "", "optional CIDR->region CSV (cidr,region[,city]) for the region section")
 	geoMMDB := fs.String("geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	top := fs.Int("top", 10, "rows in each TOP table")
 	format := fs.String("format", "md", "md | json | csv | html")

@@ -5,25 +5,9 @@ import (
 	"sync"
 )
 
-// rknRateLimiter is a per-source-IP token-bucket limiter for RKN packets
-// received while the server is in overload.
-//
-// WHY THIS EXISTS: under overload, an NHP_RKN's HMAC is verified against a
-// stateless cookie (responder.checkHMAC(sumCookie=true)). That path must
-// first recover the initiator's static public key via a full Noise IK
-// floor — one ECDH + one AEAD-Open + two hash chains — BEFORE the cheap
-// cookie-HMAC comparison can reject the packet. An unauthenticated
-// attacker who knows only the server's (public) static key can therefore
-// mint syntactically-valid RKN frames and force that per-packet ECDH at
-// will. The cookie was supposed to be the cheap rejector; without a gate
-// in front of it, it becomes the most expensive step under attack. This
-// limiter is that gate: it runs in recvPacketRoutine, before the packet
-// is ever queued to a connection routine, so flood traffic is dropped
-// ahead of the ECDH.
-//
-// SCOPE: deliberately narrow — applied only on the (overload && RKN) path
-// (see recvPacketRoutine). Normal KNK/handshake traffic and the
-// non-overloaded steady state are untouched.
+// rknRateLimiter limits direct and relay-forwarded RKNs.
+// It checks the source IP before the server spends work authenticating the
+// cookie and decrypting the agent's public key.
 //
 // DISPOSITION: over-limit packets are DROPPED only. They are not counted
 // as threats and never trigger AddBlockAddr, so a legitimate agent whose
@@ -35,8 +19,7 @@ import (
 // share one limiter: the single recvPacketRoutine goroutine (direct-UDP
 // RKN, keyed on the source IP) and the concurrent HandleRelayForward
 // handler goroutines (relay-forwarded inner RKN, keyed on the real client
-// IP). The mutex is only contended on the overload+RKN path, so it adds
-// no cost to the steady state.
+// IP).
 //
 // MEMORY: the entry map is capacity-bounded. An attacker rotating spoofed
 // source IPs cannot grow it without bound — once it exceeds maxEntries a
@@ -120,7 +103,16 @@ func keyForIP(ip net.IP) string {
 // dropped. nowNanos is passed in (not read from the clock here) so the
 // limiter is deterministic under test.
 func (r *rknRateLimiter) allow(addr *net.UDPAddr, nowNanos int64) bool {
-	key := keyForAddr(addr)
+	if addr == nil {
+		return r.allowIP(nil, nowNanos)
+	}
+	return r.allowIP(addr.IP, nowNanos)
+}
+
+// allowIP is allow keyed directly by a source IP (for callers that are not
+// UDP, e.g. the HTTP /storage API).
+func (r *rknRateLimiter) allowIP(ip net.IP, nowNanos int64) bool {
+	key := keyForIP(ip)
 	if key == "" {
 		// No usable source IP — fail closed (drop). A packet with no
 		// resolvable source can't be rate-accounted, and admitting it

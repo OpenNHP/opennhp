@@ -1,7 +1,7 @@
 /*
  * Shared eBPF map definitions for the NHP access controller.
  *
- * Both nhp_ebpf_xdp.c (XDP ingress) and tc_egress.c (TC egress) pin their maps
+ * Both nhp_ac_xdp.c (XDP ingress) and tc_egress.c (TC egress) pin their maps
  * with LIBBPF_PIN_BY_NAME, i.e. they share one kernel map per name. The loader
  * (cilium/ebpf, see endpoints/ac/ebpf/ebpfegine.go) validates map type, key
  * size, value size and max_entries when the second object reuses the pin, so
@@ -158,6 +158,18 @@ enum {
 #define NHP_EPHEMERAL_PORT_MIN 32768
 
 /*
+ * How long an echo request the AC sent may still be answered.
+ *
+ * An echo reply comes back in milliseconds; this is generous by three orders
+ * of magnitude and still short enough that an entry cannot outlive the
+ * identifier it was written for. The identifier is what makes the reply
+ * recognisable as ours, and the kernel hands the same identifier to the next
+ * process that pings -- so an entry that lived long enough would admit a
+ * stranger's ping.
+ */
+#define NHP_ICMP_ECHO_TTL_NS (30ULL * 1000000000ULL)
+
+/*
  * Connection-tracking key.
  *
  * NOTE: this struct is deliberately NOT packed. Its natural alignment makes it
@@ -211,15 +223,41 @@ struct whitelist_key {
     __u8 protocol;
 } __attribute__((packed));
 
+/*
+ * `src_port` and `port_list` carry the protocol, and they have to.
+ *
+ * A resource that names a protocol names the protocol the service speaks:
+ * tcp/443 is a TCP service and nothing else. The `ipset` mode expresses
+ * that in the set entry itself (`net,443` is TCP, `net,udp:443` is UDP), so
+ * a tcp-only resource opens tcp/443 and not udp/443.
+ *
+ * These two keys used to carry only the address and the port, and the
+ * programs looked them up with only the address and the port -- so an entry
+ * written for a tcp resource admitted the same port over every protocol. A
+ * knock for tcp/443 also opened udp/443, and a knock for "any port" opened
+ * every port of every protocol for all 128 addresses around the peer. The
+ * eBPF mode was therefore strictly wider than the `ipset` mode for the same
+ * resource.
+ *
+ * The protocol is the IP protocol number, the same value `iph->protocol`
+ * holds and the same one `whitelist_key` and `protocol_port_key` carry: 6 for
+ * TCP, 17 for UDP, 1 for ICMP. The programs fill it from the packet, so an
+ * entry is only hit by a packet of the protocol it was written for.
+ *
+ * The port fields stay `__be16` and the protocol is a plain byte, so the
+ * layout is: address, port, protocol.
+ */
 struct src_port_list_key {
     __be32 src_ip;
     __be16 dst_port;
+    __u8 protocol;
 } __attribute__((packed));
 
 struct port_list_key {
     __be32 src_ip;
     __be16 min_port;
     __be16 max_port;
+    __u8 protocol;
 } __attribute__((packed));
 
 struct protocol_port_key {
@@ -381,6 +419,42 @@ struct {
     __uint(max_entries, MAX_ENTRIES);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } knock_peers SEC(".maps");
+
+/*
+ * Echo requests the AC itself sent.
+ *
+ * The AC's filter admits an ICMP echo reply on one of two grounds: the peer
+ * knocked for ICMP access (the `icmpwhitelist` entry above), or the AC pinged
+ * that peer itself and the reply answers that ping. This map is the second
+ * ground, and it is what keeps the host's own diagnostics working now that the
+ * reply is no longer waved through from anywhere.
+ *
+ * Written by tc_egress.c on every echo request the host sends, read by
+ * xdp_white_prog() on the reply. The identifier is part of the key, so a
+ * packet that does not answer the request we sent is not admitted; the
+ * sequence number is not, because the peer address and the identifier
+ * together already tell our own reply apart from anybody else's.
+ *
+ * The entry is a record of what we asked for, not a permission: nothing is
+ * admitted because of it except the reply to that exact request, and it
+ * expires in NHP_ICMP_ECHO_TTL_NS.
+ */
+struct icmp_echo_key {
+    __be32 peer_ip; /* the address the AC pinged */
+    __be16 id;      /* the echo identifier, as it appears on the wire */
+} __attribute__((packed));
+
+struct icmp_echo_value {
+    __u64 expire_time;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __type(key, struct icmp_echo_key);
+    __type(value, struct icmp_echo_value);
+    __uint(max_entries, MAX_ENTRIES);
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+} icmp_echo SEC(".maps");
 
 /*
  * Has `peer_ip` been admitted to `service_port` on the AC by a knock?

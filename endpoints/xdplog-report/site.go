@@ -38,6 +38,14 @@ type SiteOptions struct {
 	// than this are neither rendered nor counted in the homepage total; see
 	// defaultSiteSince. Empty disables the floor.
 	Since string
+	// HistoryPath is an optional history snapshot (history.json) that seeds
+	// the site's counters and freezes the days it lists. The days it lists
+	// are published from the snapshot, not from the logs: the live copy of
+	// the same day is not analyzed, not counted and not published, so the
+	// day appears once and the totals do not double. The snapshot is the
+	// only carrier of the totals for the days before the -since floor, so a
+	// path that cannot be read is an error, never a silent fallback.
+	HistoryPath string
 }
 
 // defaultSiteSince is the first day the public site counts.
@@ -65,6 +73,13 @@ type SiteDaySummary struct {
 	BudgetExhausted  bool    `json:"budget_exhausted"`
 	UnknownReasons   bool    `json:"unknown_reasons"`
 	TopCategory      string  `json:"top_category,omitempty"`
+	// History marks a row that came from a history snapshot rather than from
+	// a log. Such a row has no detail page — the snapshot carries the day's
+	// summary, not its events — so the homepage renders its day as plain
+	// text, and pass_pkts on it means "not recorded" rather than "zero".
+	// The field is optional and omitted on live rows, so the bytes of a live
+	// row's JSON are unchanged.
+	History bool `json:"history,omitempty"`
 }
 
 // SiteDayState is the per-day fingerprint kept in state.json so unchanged
@@ -85,7 +100,7 @@ type SiteDayState struct {
 	Render int `json:"render"`
 	// Geo is the geo source whose lookups produced this day, empty for
 	// none. A day analyzed with no database has no region table and no
-	// countries, and nothing about its raw log changing would ever rebuild
+	// regions, and nothing about its raw log changing would ever rebuild
 	// it — so installing the database has to be what marks it stale. See
 	// geoKey.
 	Geo string `json:"geo,omitempty"`
@@ -113,8 +128,8 @@ func geoKey(opts *SiteOptions) string {
 // Only that direction triggers a rebuild. Taking a database away must not wipe
 // the attribution a published day already carries: its raw log may already
 // have aged out of the collector's cache, in which case the region table and
-// the day's countries are unrecoverable, and a site that quietly lost them
-// would report a smaller country total than it really saw.
+// the day's regions are unrecoverable, and a site that quietly lost them
+// would report a smaller region total than it really saw.
 func geoStale(prev string, want string) bool {
 	return want != "" && prev != want
 }
@@ -130,12 +145,20 @@ func geoStale(prev string, want string) bool {
 // pruned cannot be rebuilt from the log, but their HTML is a pure function of
 // the published d/<source>/<day>.json, so they are re-rendered from that — see
 // rerenderPageOnlyDay.
-const siteRenderVersion = 1
+const siteRenderVersion = 2
 
 // SiteState is the on-disk incremental state.
 type SiteState struct {
 	Schema int                                `json:"schema"`
 	Days   map[string]map[string]SiteDayState `json:"days"` // days[source][day]
+	// History is the fingerprint of the history snapshot the index was last
+	// rendered from, empty when there was none. It is part of the state
+	// because the snapshot feeds the homepage's counters: a changed
+	// snapshot has to rewrite the index, or the totals would keep the
+	// baseline they had when the snapshot was first read. A state file
+	// written before this field existed decodes to the empty string and
+	// therefore asks for one rebuild, which is the right thing to do.
+	History string `json:"history,omitempty"`
 }
 
 const siteStateSchema = 1
@@ -162,11 +185,12 @@ func runSite(args []string, stdout io.Writer) error {
 	fs.StringVar(&opts.OutDir, "out", "", "web root directory (created if missing)")
 	fs.StringVar(&opts.StatePath, "state", "", "incremental-build state file (default <out>/state.json; keep it out of the web root)")
 	fs.IntVar(&opts.TopN, "top", opts.TopN, "rows in each TOP table")
-	fs.StringVar(&opts.GeoCSV, "geo-csv", "", "optional CIDR->country CSV for the region section")
+	fs.StringVar(&opts.GeoCSV, "geo-csv", "", "optional CIDR->region CSV for the region section")
 	fs.StringVar(&opts.GeoMMDB, "geo-mmdb", "", "optional GeoLite2-City .mmdb file for the region section")
 	fs.BoolVar(&opts.MaskIP, "mask-ip", opts.MaskIP, "truncate source IPs in the public site (default true)")
 	fs.BoolVar(&opts.Force, "force", false, "rebuild every day even if inputs are unchanged")
 	fs.StringVar(&opts.Since, "since", opts.Since, "earliest YYYY-MM-DD day to publish (default "+defaultSiteSince+"; empty publishes all days)")
+	fs.StringVar(&opts.HistoryPath, "history", "", "optional history snapshot (JSON) seeding the site's counters and freezing the days it lists")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -186,6 +210,21 @@ func runSite(args []string, stdout io.Writer) error {
 	}
 	if opts.GeoCSV != "" && opts.GeoMMDB != "" {
 		return fmt.Errorf("-geo-csv and -geo-mmdb are mutually exclusive")
+	}
+
+	// The history snapshot is loaded before anything is written, and a
+	// snapshot that cannot be read stops the run. The snapshot is the only
+	// carrier of the totals for the days before the -since floor, so a
+	// silent fallback to counting only the site's own days would shrink the
+	// published all-time numbers by an amount nobody could audit — the
+	// exact failure this site is written against.
+	var hist *SiteHistory
+	if opts.HistoryPath != "" {
+		h, err := loadSiteHistory(opts.HistoryPath)
+		if err != nil {
+			return err
+		}
+		hist = h
 	}
 
 	if err := os.MkdirAll(opts.OutDir, 0o755); err != nil {
@@ -249,14 +288,27 @@ func runSite(args []string, stdout io.Writer) error {
 	// index would blank the public stats page, and unpublishing every day on
 	// the way there would leave a site of dead links instead. The daily cron
 	// turns this into a failed unit and a loud log line rather than either.
+	//
+	// A day the history snapshot carries counts as publishable: it is
+	// published from the snapshot when the live site cannot produce it, and
+	// from the live site when it can -- either way it is in the index, so
+	// the floor does not exclude it.
+	historyDays := 0
+	if hist != nil {
+		for _, d := range hist.Days {
+			if opts.publishesDay(d.Day) {
+				historyDays++
+			}
+		}
+	}
 	publishable := 0
 	for _, in := range inputs {
 		if opts.publishesDay(in.Day) {
 			publishable++
 		}
 	}
-	if publishable == 0 && len(inputs) > 0 {
-		return fmt.Errorf("no day on or after -since %s among %d discovered input(s); refusing to publish an empty index", opts.Since, len(inputs))
+	if publishable == 0 && historyDays == 0 && len(inputs) > 0 {
+		return fmt.Errorf("no day on or after -since %s among %d discovered input(s) or the history snapshot's days; refusing to publish an empty index", opts.Since, len(inputs))
 	}
 
 	var summaries []SiteDaySummary
@@ -271,11 +323,13 @@ func runSite(args []string, stdout io.Writer) error {
 	// index.
 	var preFloor []siteInput
 	for _, in := range inputs {
+		// The floor comes first, and it applies to every day the site can
+		// see — the snapshot's days included. A day below it is not analyzed,
+		// not written, and not in the index, so it cannot reach the homepage
+		// total either. A site that published the day before the floor existed
+		// still has to take it back down — see unpublishDay, and the ordering
+		// note on preFloor.
 		if !opts.publishesDay(in.Day) {
-			// Below the floor: not analyzed, not written, and not in the
-			// index, so it cannot reach the homepage total either. A site that
-			// published the day before the floor existed still has to take it
-			// back down — see unpublishDay, and the ordering note on preFloor.
 			preFloor = append(preFloor, in)
 			continue
 		}
@@ -313,7 +367,10 @@ func runSite(args []string, stdout io.Writer) error {
 	// publishes an empty index, as it always has. Like the -since refusal
 	// above, this sits above the unpublish pass: a run that is going to give
 	// up must not have taken any page down on its way out.
-	if len(summaries) == 0 && len(inputs) > 0 {
+	//
+	// A history snapshot's rows are content of their own: the index still
+	// lists them, so it is not empty and there is nothing to refuse.
+	if len(summaries) == 0 && historyDays == 0 && len(inputs) > 0 {
 		return fmt.Errorf("none of the %d discovered input(s) on or after -since %s could be read; refusing to publish an empty index", len(inputs), opts.Since)
 	}
 
@@ -344,14 +401,127 @@ func runSite(args []string, stdout io.Writer) error {
 		fmt.Fprintf(stdout, "site: %d day(s) before -since %s unpublished (%d detail page file(s) removed)\n", len(preFloor), opts.Since, removedPreSince)
 	}
 
-	// The all-time source and country counts come from each day's private
+	// The all-time source and region counts come from each day's private
 	// facts, unioned here. Computed on every run, not only a dirty one, so a
 	// day whose facts cannot be read is reported today rather than the day
 	// some unrelated input next goes stale.
-	union := unionDayFacts(opts.StatePath, summaries)
+	//
+	// Every published day is unioned: the days analyzed from the logs and
+	// the days published from the snapshot alike. That is what makes the two
+	// figures exact rather than a sum of two periods' counts — the snapshot's
+	// days contribute their own sets, so an address seen in the snapshot's
+	// period and in the live one is counted once.
+	//
+	// The snapshot's own all-time counts are NOT added on top of that union.
+	// Two unions can only be merged when both sets are present, and adding
+	// their sizes instead counts an address seen in both periods twice: the
+	// sum of two set sizes is at least their union, never at most it. The
+	// snapshot is used only for its days whose facts are gone — the days the
+	// live site cannot produce at all — because nothing else carries those
+	// days' attackers: the part of its source count those days alone can have
+	// contributed is added. Its region count is never applied at all: the
+	// published region total is the union over the published days. See
+	// historyBaseline for why the two figures differ.
+	var snapshotRows []SiteDaySummary
+	var frozenRows []SiteDaySummary
+	if hist != nil {
+		analyzed := make(map[string]struct{}, len(summaries))
+		for _, s := range summaries {
+			analyzed[s.Source+"/"+s.Day] = struct{}{}
+		}
+		for _, r := range hist.Rows() {
+			// The floor applies to the snapshot's days as well: a day
+			// below it is not published, so it is not in the index and it
+			// does not reach the hero total.
+			if !opts.publishesDay(r.Day) {
+				continue
+			}
+			snapshotRows = append(snapshotRows, r)
+			// A day the live site produced supersedes the snapshot's row
+			// for it: the live numbers, a real detail page to click, and the
+			// day's attackers in the union above. The snapshot's row is kept
+			// only for the days the live site cannot produce.
+			if _, dup := analyzed[r.Source+"/"+r.Day]; dup {
+				continue
+			}
+			frozenRows = append(frozenRows, r)
+		}
+	}
+	rows := make([]SiteDaySummary, 0, len(frozenRows)+len(summaries))
+	rows = append(rows, frozenRows...)
+	rows = append(rows, summaries...)
+
+	union := unionDayFacts(opts.StatePath, rows)
+
+	// What the snapshot adds on top of the union: the part of its baseline
+	// that covers its own days whose facts are not on disk.
+	//
+	// The baseline is dropped entirely when the snapshot lists days below the
+	// publishing floor. Its own counts are a union over *all* its days, and a
+	// snapshot-level total cannot be split by day, so the part of it that
+	// covers the unpublished days cannot be told apart from the part that
+	// covers the published ones: subtracting the published days' facts would
+	// leave the unpublished days' attackers in the remainder, and adding that
+	// would count days the site does not publish at all.
+	//
+	// What is published instead is the union over the published days and
+	// nothing else. A published day whose per-day records are gone then
+	// contributes nothing, so the two figures are a lower bound rather than an
+	// exact count.
+	baselineUnavailable := hist != nil && hist.BelowFloor(opts.publishesDay)
+	var baseline historyBaseline
+	if hist != nil && len(snapshotRows) > 0 && !baselineUnavailable {
+		snapUnion := unionDayFacts(opts.StatePath, snapshotRows)
+		baseline = hist.baselineFor(snapUnion, len(snapUnion.Missing))
+	}
+	if baselineUnavailable {
+		baseline = historyBaseline{Unavailable: true}
+	}
+	// Neither figure is exact when a published day contributed nothing. Which
+	// way each one is off depends on how the snapshot stood in for it, if it
+	// did: see historyBaseline.sourcesBound and regionsBound.
+	baseline.Missing = len(union.Missing) > 0
 	if len(union.Missing) > 0 {
-		fmt.Fprintf(stdout, "site: %d day(s) contribute no source/country data (%s); the all-time totals are a lower bound\n",
-			len(union.Missing), strings.Join(union.Missing, ", "))
+		switch {
+		case baseline.Applied:
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/region data (%s); the history snapshot's own source count stands in for them: it is added, so the all-time source total may count an address seen in both periods twice (upper bound); the all-time region total is the union over the published days and may miss a region (lower bound)\n",
+				len(union.Missing), strings.Join(union.Missing, ", "))
+		case baselineUnavailable:
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/region data (%s); the history snapshot's own counts cannot be applied (it lists day(s) below -since %s), so the all-time totals are a lower bound\n",
+				len(union.Missing), strings.Join(union.Missing, ", "), opts.Since)
+		default:
+			fmt.Fprintf(stdout, "site: %d day(s) contribute no source/region data (%s); the all-time totals are a lower bound\n",
+				len(union.Missing), strings.Join(union.Missing, ", "))
+		}
+	}
+
+	// The snapshot is part of the index's fingerprint: a changed snapshot
+	// has to rewrite the homepage, or the counters would keep the baseline
+	// they had when the snapshot was first read.
+	historyFP := hist.Fingerprint()
+	if historyFP != state.History {
+		dirty = true
+		state.History = historyFP
+	}
+	if len(frozenRows) > 0 {
+		fmt.Fprintf(stdout, "site: %d day(s) published from the history snapshot (the collector no longer has their logs)\n", len(frozenRows))
+	}
+	if hist != nil {
+		switch {
+		case baselineUnavailable:
+			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s) and lists day(s) below -since %s; its own source count (%d) is not applied, because a snapshot-level total cannot be split by day\n",
+				len(snapshotRows), opts.Since, hist.Totals.SourceIPs)
+		case len(snapshotRows) > 0:
+			fmt.Fprintf(stdout, "site: the history snapshot covers %d published day(s); its own source count (%d) is added, only for the days whose per-day records are gone\n",
+				len(snapshotRows), hist.Totals.SourceIPs)
+		}
+		// The snapshot's region count is recorded and never applied, so a
+		// snapshot that still carries one says so rather than leaving an
+		// operator to wonder why the published figure ignores it.
+		if hist.Totals.Regions != 0 {
+			fmt.Fprintf(stdout, "site: the history snapshot's region count (%d) is ignored: the all-time region total is the union over the published days\n",
+				hist.Totals.Regions)
+		}
 	}
 
 	if dirty {
@@ -360,7 +530,7 @@ func runSite(args []string, stdout io.Writer) error {
 		// must not record the removals either — the next run then rebuilds
 		// both, instead of inheriting a state that says the index is current
 		// while the site still serves links to deleted pages.
-		if err := renderIndex(opts, summaries, union); err != nil {
+		if err := renderIndex(opts, rows, union, baseline, hist); err != nil {
 			return fmt.Errorf("render index: %w", err)
 		}
 		if err := saveSiteState(opts.StatePath, state); err != nil {
@@ -474,7 +644,7 @@ type siteInput struct {
 	PageOnly bool
 }
 
-// collectSiteInputs walks <logs>/<source>/ and yields nhp_server_xdp-YYYY-MM-DD.log
+// collectSiteInputs walks <logs>/<source>/ and yields nhp_<source>_xdp-YYYY-MM-DD.log
 // and *.log.gz entries. evaluate/audit files (anything else matching nhp_server_xdp-)
 // and files with malformed dates are ignored. The input directory is expected to
 // be already filtered to whatever the collector chose to pull.
@@ -527,7 +697,7 @@ func collectSiteInputs(logsDir, outDir string) ([]siteInput, error) {
 	return out, nil
 }
 
-// collectRawInputs walks <logs>/<source>/ for raw nhp_server_xdp-*.log[.gz]
+// collectRawInputs walks <logs>/<source>/ for raw nhp_<source>_xdp-*.log[.gz]
 // files and writes them into dst keyed by "<source>/<day>".
 func collectRawInputs(logsDir string, dst map[string]siteInput) error {
 	st, err := os.Stat(logsDir)
@@ -541,7 +711,11 @@ func collectRawInputs(logsDir string, dst map[string]siteInput) error {
 	if err != nil {
 		return err
 	}
-	dateRe := regexp.MustCompile(`^nhp_server_xdp-(\d{4}-\d{2}-\d{2})\.log(?:\.gz)?$`)
+	// The prefix names the daemon that wrote the log and must agree with the
+	// directory the collector staged it under, so an AC log that lands in
+	// raw/server/ (or the reverse) is ignored instead of counted as the wrong
+	// source.
+	dateRe := regexp.MustCompile(`^nhp_(server|ac)_xdp-(\d{4}-\d{2}-\d{2})\.log(?:\.gz)?$`)
 	for _, s := range sources {
 		if !s.IsDir() {
 			continue
@@ -558,13 +732,13 @@ func collectRawInputs(logsDir string, dst map[string]siteInput) error {
 			}
 			name := e.Name()
 			m := dateRe.FindStringSubmatch(name)
-			if m == nil {
+			if m == nil || m[1] != sourceName {
 				continue
 			}
-			key := sourceName + "/" + m[1]
+			key := sourceName + "/" + m[2]
 			dst[key] = siteInput{
 				Source: sourceName,
-				Day:    m[1],
+				Day:    m[2],
 				Path:   filepath.Join(sourceDir, name),
 			}
 		}
@@ -683,7 +857,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	// without siteRenderVersion those pages would keep whatever title the
 	// deploy that first wrote them happened to use. The fourth is what makes
 	// installing the GeoLite2 database reach days published before it
-	// existed, instead of leaving the site's country total at whatever the
+	// existed, instead of leaving the site's region total at whatever the
 	// days after the install happened to see.
 	unchanged := !opts.Force &&
 		prev.Built &&
@@ -717,7 +891,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	rep.BackLink = "../../index.html"
 	rep.IsSiteDetail = true
 
-	// The day's source and country sets are captured here, while the raw log
+	// The day's source and region sets are captured here, while the raw log
 	// that produced them still exists. Once the collector prunes it, this is
 	// the last chance: the published JSON carries only counts and a top N,
 	// neither of which can be unioned across days.
@@ -728,7 +902,7 @@ func processSiteDay(opts *SiteOptions, geo GeoResolver, in siteInput, state *Sit
 	}
 	sort.Slice(srcs, func(i, j int) bool { return srcs[i] < srcs[j] })
 	factsPath := dayFactsPath(opts.StatePath, in.Source, in.Day)
-	if err := writeDayFacts(factsPath, srcs, an.Countries()); err != nil {
+	if err := writeDayFacts(factsPath, srcs, an.Regions()); err != nil {
 		return SiteDaySummary{}, false, fmt.Errorf("write facts: %w", err)
 	}
 
@@ -786,6 +960,16 @@ func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (boo
 	if err := json.Unmarshal(b, &rep); err != nil {
 		return false, fmt.Errorf("%s: %w", in.Path, err)
 	}
+	// A record written before the region columns were renamed is rewritten
+	// in the current format, so the published d/ tree never mixes two
+	// spellings of the same column. Only the format changes: the reader has
+	// already mapped the old keys, and no number is recomputed.
+	if rep.Schema < reportSchema {
+		rep.Schema = reportSchema
+		if err := writeJSONAtomic(in.Path, &rep); err != nil {
+			return false, err
+		}
+	}
 	// Same two fields processSiteDay sets before writing the page; the
 	// published JSON carries them, and a page written by an older binary or
 	// hand-assembled may not.
@@ -818,7 +1002,7 @@ func rerenderPageOnlyDay(opts *SiteOptions, state *SiteState, in siteInput) (boo
 
 // snapshot returns a deep copy of state for change detection.
 func (s *SiteState) snapshot() SiteState {
-	out := SiteState{Schema: s.Schema, Days: map[string]map[string]SiteDayState{}}
+	out := SiteState{Schema: s.Schema, History: s.History, Days: map[string]map[string]SiteDayState{}}
 	for src, days := range s.Days {
 		cp := map[string]SiteDayState{}
 		for d, st := range days {

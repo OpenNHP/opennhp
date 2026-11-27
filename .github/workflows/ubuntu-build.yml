@@ -14,10 +14,44 @@ on:
 
 jobs:
 
+  etcd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      etcd:
+        image: quay.io/coreos/etcd:v3.6.0
+        env:
+          ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+          ETCD_ADVERTISE_CLIENT_URLS: http://127.0.0.1:2379
+        ports:
+          - 2379:2379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache-dependency-path: nhp/go.sum
+      - name: Wait for etcd
+        # The official image has no shell for a Docker --health-cmd.
+        run: |
+          timeout 45s bash -c 'until docker exec "$1" /usr/local/bin/etcdctl endpoint health; do sleep 1; done' _ "${{ job.services.etcd.id }}"
+      - name: Test etcd client against a real service
+        working-directory: nhp
+        env:
+          OPENNHP_TEST_ETCD: http://127.0.0.1:2379
+        run: go test -race ./etcd -count=1 -timeout=90s
+
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
+
+    # The public pages (agent.opennhp.org / demo.opennhp.org) render the SDK
+    # version from nhp/version/VERSION. If that file drifts from the released
+    # version in .release-please-manifest.json, the pages advertise a stale
+    # SDK — so fail here, before anything is built or deployed.
+    - name: Check version sync
+      run: bash scripts/check-version-sync.sh
 
     - name: Set up Go
       uses: actions/setup-go@v7
@@ -33,18 +67,27 @@ jobs:
         bash -n docker/harden_nhp_server_udp.sh
         python3 docker/test_harden_nhp_server_udp.py
 
+    - name: Check the DNS adoption script
+      # The script is what repairs a DNS record the Terraform state lost, so
+      # it runs inside the demo pipeline with the state in front of it. A
+      # syntax error in it would only surface there, on the run that was
+      # meant to fix something.
+      run: |
+        bash -n scripts/adopt-dns-records.sh
+        bash tests/scripts/test_adopt_dns_records.sh scripts/adopt-dns-records.sh
+
     - name: Build
       run: make
 
     # `make` does not touch the eBPF C sources, so without this step a
-    # compile error in nhp_ebpf_xdp.c / tc_egress.c / nhp_server_xdp.c only
+    # compile error in nhp_ac_xdp.c / tc_egress.c / nhp_server_xdp.c only
     # surfaces when deploy-demo-v2 runs `make ebpf-objs` at deploy time.
     - name: Build eBPF objects
       run: |
         sudo apt-get update
         sudo apt-get install -y clang libbpf-dev
         make ebpf-objs
-        test -s release/nhp-ac/etc/nhp_ebpf_xdp.o
+        test -s release/nhp-ac/etc/nhp_ac_xdp.o
         test -s release/nhp-ac/etc/tc_egress.o
         test -s release/nhp-server/etc/nhp_server_xdp.o
 
@@ -101,6 +144,17 @@ jobs:
         cp ../../endpoints/js-agent/package.json node_modules/@opennhp/agent/package.json
         npm run build
 
+    # The js-agent SDK's unit tests run at PR time. They used to run only in
+    # the deploy pipeline (deploy-demo-v2.yml), which is how a broken
+    # browser-side protocol — e.g. the re-knock cookie exchange the Go server
+    # requires since the 2026-11-15 breaking change — could reach the demo
+    # with a green pipeline.
+    - name: Test js-agent SDK
+      working-directory: endpoints/js-agent
+      run: |
+        npm ci --no-audit --no-fund
+        npm run test:run
+
     # govulncheck scans the demoapp module's dependency graph for known
     # advisories (e.g. the go-jose CVE-2025-27144 that prompted the
     # v4.0.5 bump in review #1). Advisory only (continue-on-error):
@@ -138,6 +192,20 @@ jobs:
         cd ../endpoints
         go test -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
 
+    # The race detector is a separate run from the coverage one: the DHP
+    # console hands each request its own goroutine, so the agent's shared
+    # caches are only ever exercised concurrently in tests, and an
+    # unsynchronized map there is a Go runtime fatal error (not a panic —
+    # gin.Recovery() cannot catch it and the process exits). Coverage mode
+    # does not detect that; -race does. Same package selection as
+    # `make test-race`.
+    - name: Run tests with the race detector
+      run: |
+        cd nhp
+        go test -race $(go list ./... | grep -v 'wasm/policy')
+        cd ../endpoints
+        go test -race ./...
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
       with:
@@ -147,3 +215,192 @@ jobs:
         verbose: true
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # The kernel is the only thing that can accept or reject an eBPF object, and
+  # on the AC a rejected object is an outage: nhp-acd cannot start, the
+  # fail-closed backstop keeps tcp/443 shut, and the demo is dark. The build
+  # job above only proves the objects *compile*; this one proves the kernel
+  # *accepts* them, by loading all three the way the daemons load them and
+  # running them against packets.
+  #
+  # It runs as root, because a load without CAP_BPF is refused with EPERM and
+  # the load tests used to skip in that case -- which is exactly how a
+  # verifier rejection could reach a deploy unnoticed. The tests now fail
+  # instead of skipping when the process holds the privilege (see
+  # requireCaps in nhp/utils/ebpf/privileged_linux_test.go), so a rejected
+  # object fails this job with the verifier log in the output.
+  ebpf-verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.26'
+        cache-dependency-path: nhp/go.sum
+
+    - name: Install the eBPF toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang libbpf-dev
+
+    - name: Build the eBPF objects
+      run: make ebpf-objs
+
+    # The programs are loaded, not attached, but a load still needs a bpffs to
+    # pin the maps into.
+    - name: Mount bpffs
+      run: sudo mountpoint -q /sys/fs/bpf || sudo mount -t bpf bpf /sys/fs/bpf
+
+    # The verdict is asked through the loader the daemons use, not through
+    # bpftool: bpftool's libbpf refuses these objects outright ("program
+    # 'xdp_white_prog' is static and not supported"), because the programs
+    # are declared static in the C sources. A gate built on it never asked
+    # the kernel anything -- it reported its own plumbing.
+    #
+    # This is the same tool deploy-demo-v2 runs on the demo hosts: it loads
+    # the object through the real loader, with the constants the real load
+    # writes, into a pin directory of its own, and never attaches it. The
+    # runner's kernel is not the demo's kernel, which is why the deploy asks
+    # the question again there -- but a rejection that is a property of the
+    # program rather than of the kernel is caught here, on every PR.
+    - name: Ask the kernel whether it accepts the objects
+      run: |
+        set -euo pipefail
+        make ebpf-verify
+        verify=release/nhp-ebpf-verify/nhp-ebpf-verify
+        # A leftover from an earlier run that was killed would make the check
+        # at the end fail for the wrong reason, so it is cleared first.
+        sudo rm -rf /sys/fs/bpf/nhp-verify-*
+        # Root holds CAP_BPF; a load without it is refused with EPERM, which
+        # says nothing about the program.
+        sudo "$verify" --variant ac \
+          --obj release/nhp-ac/etc/nhp_ac_xdp.o \
+          --tc-obj release/nhp-ac/etc/tc_egress.o
+        sudo "$verify" --variant server \
+          --obj release/nhp-server/etc/nhp_server_xdp.o \
+          --port 62206 --min-frame-bytes 240
+        # The load pins into a directory of its own and removes it again;
+        # nothing of a running daemon's is touched. This asserts it, so a
+        # change that starts leaving pins behind fails here rather than on a
+        # demo host.
+        if sudo ls -A /sys/fs/bpf | grep -q '^nhp-verify'; then
+          echo "::error::the verify load left pins behind in /sys/fs/bpf"
+          sudo ls -A /sys/fs/bpf
+          exit 1
+        fi
+        # And nothing in the live directory either: that is where a running
+        # daemon pins its maps (/sys/fs/bpf/conn_track and the rest). A load
+        # that shared them would be checking the live filter's state instead
+        # of its own, and a map that did not exist before would be left there
+        # for the next start to trip over.
+        leaked=""
+        for name in conn_track spp icmpwhitelist sdwhitelist src_port \
+          port_list protocol_port events knock_peers icmp_echo nhp_config \
+          nhp_events nhp_action_stats nhp_port_hits nhp_src_hits nhp_relay_ips
+        do
+          if sudo test -e "/sys/fs/bpf/$name"; then
+            leaked="$leaked $name"
+          fi
+        done
+        if [ -n "$leaked" ]; then
+          echo "::error::the verify load left pins in the live directory:$leaked"
+          sudo ls -A /sys/fs/bpf
+          exit 1
+        fi
+
+    # The AC's XDP object is tracked in the source tree as well
+    # (endpoints/ac/main/etc/nhp_ac_xdp.o): a run started from there loads
+    # it from there -- the loader's object paths are relative to the working
+    # directory (endpoints/ac/ebpf/ebpfegine.go asks for
+    # "etc/nhp_ac_xdp.o") -- and not from the release directory this job
+    # fills. It is a build artifact of a toolchain this repository does not
+    # pin, so it has to be asked about here as well: an object nobody loads
+    # is an object nobody knows, and a refusal of it would surface only on
+    # the machine that runs from the source tree, where the fail-closed
+    # backstop then keeps tcp/443 shut.
+    #
+    # The TC egress object is the one this job built: the tree carries the
+    # XDP object alone, and the two share their maps by name, which is how
+    # the daemon loads them.
+    - name: Ask the kernel about the tracked AC object
+      run: |
+        set -euo pipefail
+        verify=release/nhp-ebpf-verify/nhp-ebpf-verify
+        tracked=endpoints/ac/main/etc/nhp_ac_xdp.o
+        if [ ! -x "$verify" ]; then
+          # Single quotes around the command: inside double quotes the
+          # backticks would be a command substitution, and this error path
+          # would run the build it is complaining about and paste its output
+          # into the message.
+          echo "::error::$verify is missing; the step above builds it with 'make ebpf-verify'"
+          exit 1
+        fi
+        if [ ! -s "$tracked" ]; then
+          # A tree that does not track the object has nothing to ask about;
+          # a tree that tracks it and lost it is broken.
+          if git ls-files --error-unmatch "$tracked" >/dev/null 2>&1; then
+            echo "::error::$tracked is tracked but missing or empty"
+            exit 1
+          fi
+          echo "the tree tracks no $tracked; there is nothing to ask about"
+          exit 0
+        fi
+        # A leftover from an earlier run that was killed would make the check
+        # at the end fail for the wrong reason, so it is cleared first.
+        sudo rm -rf /sys/fs/bpf/nhp-verify-*
+        # Root holds CAP_BPF; a load without it is refused with EPERM, which
+        # says nothing about the program.
+        sudo "$verify" --variant ac \
+          --obj "$tracked" \
+          --tc-obj release/nhp-ac/etc/tc_egress.o
+        # The load pins into a directory of its own and removes it again;
+        # nothing of a running daemon's is touched. This asserts it, so a
+        # change that starts leaving pins behind fails here rather than on a
+        # demo host.
+        if sudo ls -A /sys/fs/bpf | grep -q '^nhp-verify'; then
+          echo "::error::the verify load left pins behind in /sys/fs/bpf"
+          sudo ls -A /sys/fs/bpf
+          exit 1
+        fi
+
+    - name: Run the eBPF tests with CAP_BPF
+      working-directory: nhp
+      run: |
+        set -euo pipefail
+        # Root gets its own build and module caches: the runner's belong to
+        # the runner user, and a root-owned file left in them would break the
+        # cache save at the end of the job (and the next run's cache restore).
+        root_env=(env "PATH=$PATH" "HOME=/root" \
+          "GOCACHE=/tmp/ebpf-gocache" "GOMODCACHE=/tmp/ebpf-gomodcache")
+        sudo "${root_env[@]}" go mod download
+        # Root holds CAP_BPF and CAP_NET_ADMIN, so the load tests do not skip:
+        # a kernel that refuses one of the objects fails the job here, with
+        # the verifier log in the output.
+        sudo "${root_env[@]}" go test ./utils/ebpf/... -v -count=1 2>&1 | tee /tmp/ebpf-tests.log
+        # A load test that skipped proved nothing: this job exists to have the
+        # kernel accept the objects, so the tests that load them have to have
+        # run and passed. (Other tests may skip for an unrelated reason --
+        # a socket the runner will not let us bind -- so only these are
+        # required.)
+        for t in \
+          TestAcFilterAnswersTheHostsOwnPings \
+          TestAcEgressProgramRecordsTheHostsOwnFlow \
+          TestAcFilterKeepsTheKnockedEchoReply \
+          TestAcFilterAdmitsDespiteALapsedPortScopedKnock \
+          TestEbpfRuleAddWritesOneEntryPerProtocol \
+          TestEbpfRuleAddWritesNothingForARefusedPortRange \
+          TestServerEngineLoadAttachesToLoopback \
+          TestServerFilterKnocksOnTheConfiguredPort \
+          TestServerFilterLetsTheRelaySendShortKnocks
+        do
+          if ! grep -q -- "--- PASS: $t" /tmp/ebpf-tests.log; then
+            echo "::error::$t did not run and pass; the objects were not exercised"
+            exit 1
+          fi
+        done
+        # Anything else that skipped is worth seeing, but it is not this
+        # job's business.
+        grep -- '--- SKIP' /tmp/ebpf-tests.log || true

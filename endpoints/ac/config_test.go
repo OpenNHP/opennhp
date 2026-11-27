@@ -266,3 +266,73 @@ func TestEndpointKey_DistinctSamePubKeyDifferentHostnames(t *testing.T) {
 			endpointKey(a))
 	}
 }
+
+// TestAcSourceNets pins how the AC's two client-protocol source ranges are
+// read.
+//
+// An empty value narrows nothing -- it is what the filter did before the
+// settings existed, and it is what a host that says nothing keeps. A value
+// that is present but unusable is an error, and the daemon stops on it: an
+// unreadable narrowing that was quietly ignored would leave the pair open
+// while the configuration said it was closed.
+func TestAcSourceNets(t *testing.T) {
+	cases := []struct {
+		name     string
+		conf     Config
+		wantErr  bool
+		wantDhcp bool
+		wantNtp  bool
+	}{
+		{
+			name: "unset narrows nothing",
+			conf: Config{},
+		},
+		{
+			name:     "an address narrows the pair",
+			conf:     Config{DhcpServerIP: "169.254.169.253", NtpServerIP: "169.254.169.123"},
+			wantDhcp: true,
+			wantNtp:  true,
+		},
+		{
+			name:     "a prefix narrows the pair",
+			conf:     Config{DhcpServerIP: "169.254.169.0/24"},
+			wantDhcp: true,
+		},
+		{
+			name:    "a garbage address is an error",
+			conf:    Config{DhcpServerIP: "not-an-address"},
+			wantErr: true,
+		},
+		{
+			name:    "a garbage prefix is an error",
+			conf:    Config{NtpServerIP: "169.254.169.0/33"},
+			wantErr: true,
+		},
+		{
+			name:    "an IPv6 address is an error",
+			conf:    Config{DhcpServerIP: "::1"},
+			wantErr: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dhcp, ntp, err := acSourceNets(&c.conf)
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("acSourceNets() = %v, %v, want an error", dhcp, ntp)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("acSourceNets(): %v", err)
+			}
+			if dhcp.IsSet() != c.wantDhcp {
+				t.Errorf("dhcp narrowing = %v, want %v", dhcp.IsSet(), c.wantDhcp)
+			}
+			if ntp.IsSet() != c.wantNtp {
+				t.Errorf("ntp narrowing = %v, want %v", ntp.IsSet(), c.wantNtp)
+			}
+		})
+	}
+}

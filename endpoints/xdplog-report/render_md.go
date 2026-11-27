@@ -26,6 +26,7 @@ func renderMarkdown(w io.Writer, r *Report) error {
 	p("- Attack = `[NHP-DROP]`; `PASS` is allowed traffic, shown only as a baseline.\n")
 	p("- **Exact** packet totals come from the per-minute `[NHP-STAT]` lines (PKTS summed, duplicates removed).\n")
 	p("- **Sampled** counts come from per-packet lines, which the filter rate-limits per class; bulk classes may have none. Rankings (IP, geo, port) use sampled events and are not comparable in volume across classes.\n")
+	p("- A drop that is not an attack - a peer whose knock window closed - is left out of every attack figure here and counted on its own. It is a legitimate peer that came back too late, not a scanner.\n")
 	p("- The log has no date per line; dates come from file names.\n\n")
 
 	p("## Overview\n\n")
@@ -34,6 +35,9 @@ func renderMarkdown(w io.Writer, r *Report) error {
 	p("| Time range | %s – %s |\n", r.From, r.To)
 	p("| Total packets (exact) | %d |\n", r.TotalPkts)
 	p("| Attack (DROP) packets (exact) | %d (%s) |\n", r.DropPkts, pc(r.DropShare))
+	if r.NonAttackPkts > 0 {
+		p("| Dropped, not an attack (exact) | %d |\n", r.NonAttackPkts)
+	}
 	p("| Allowed (PASS) packets (exact) | %d |\n", r.PassPkts)
 	p("| Sampled DROP events | %d |\n", r.DropEvents)
 	p("| Sampling rate (events / exact DROP) | %s |\n", pc(r.SamplingRate))
@@ -59,7 +63,7 @@ func renderMarkdown(w io.Writer, r *Report) error {
 	p("\n## Top %d attack sources (sampled)\n\n", r.TopN)
 	p("| # | IP | Events | Share | Categories | First seen | Last seen | Top dst ports | Location |\n|---|---|---:|---:|---:|---|---|---|---|\n")
 	for i, x := range r.TopIPs {
-		loc := strings.TrimSpace(x.Country + " " + x.City)
+		loc := strings.TrimSpace(x.Region + " " + x.City)
 		p("| %d | %s | %d | %s | %d | %s | %s | %v | %s |\n", i+1, x.IP, x.Events, pc(x.Share), x.Categories, x.First, x.Last, x.TopPorts, loc)
 	}
 
@@ -67,10 +71,11 @@ func renderMarkdown(w io.Writer, r *Report) error {
 	if !r.GeoEnabled {
 		p("Not enabled (no `-geo-csv` given). No lookups are performed online.\n")
 	} else {
-		p("| # | Country | Events | Unique IPs | Share |\n|---|---|---:|---:|---:|\n")
+		p("| # | Region | Events | Unique IPs | Share |\n|---|---|---:|---:|---:|\n")
 		for i, x := range r.TopGeo {
-			p("| %d | %s | %d | %d | %s |\n", i+1, x.Country, x.Events, x.IPs, pc(x.Share))
+			p("| %d | %s | %d | %d | %s |\n", i+1, x.Region, x.Events, x.IPs, pc(x.Share))
 		}
+		p("\nRegions are the ISO 3166-1 alpha-2 codes the international standard assigns to each country and area; the GeoIP database attributes an address to one of them.\n")
 	}
 
 	p("\n## Top destination ports (sampled)\n\n| Port | Events | Share |\n|---|---:|---:|\n")

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -26,7 +27,32 @@ var (
 
 	errLoadConfig = fmt.Errorf("config load error")
 
+	// errMemoryModeNotSupported is returned by the file-backed config paths
+	// (key rotation, server-peer file reads and writes) when the agent runs in
+	// ConfigSourceMemory. In memory mode there is no etc/*.toml to read or
+	// rewrite and a restart reloads from the in-memory template, so writing a
+	// file would report success while changing nothing the running agent uses.
+	// The embedding caller owns key/peer lifecycle directly (ReinitWithKey,
+	// AddServer), so these operations fail loudly instead.
+	errMemoryModeNotSupported = fmt.Errorf("operation not supported in memory config mode")
+
 	secretCreated = "/var/run/secret.created"
+)
+
+// ConfigSource selects where an agent reads its configuration.
+type ConfigSource int
+
+const (
+	// ConfigSourceFile (default) reads etc/*.toml at startup and watches those
+	// files for changes, reloading them live. This is the standalone-agent
+	// model and the zero value, so existing callers are unaffected.
+	ConfigSourceFile ConfigSource = iota
+	// ConfigSourceMemory takes configuration programmatically and never reads
+	// or watches etc/*.toml. No file watcher is armed, so a config.toml that
+	// appears later can never override an identity, key, cipher scheme, peer,
+	// or resource established in code. This is the model for SDK-managed and
+	// other embedded agents.
+	ConfigSourceMemory
 )
 
 type Config struct {
@@ -176,6 +202,12 @@ type Resources struct {
 }
 
 func (a *UdpAgent) loadBaseConfig() error {
+	if a.configSource == ConfigSourceMemory {
+		// Memory mode: apply the in-memory config, read no etc/config.toml, and
+		// arm no watcher. A config.toml appearing later therefore cannot override
+		// the identity, key, or cipher scheme set in code.
+		return a.applyInMemoryBaseConfig()
+	}
 	// config.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 	if err := a.updateBaseConfig(fileName); err != nil {
@@ -190,7 +222,70 @@ func (a *UdpAgent) loadBaseConfig() error {
 	return nil
 }
 
+// cloneConfigData copies a Config's data fields into a fresh Config. Config
+// carries a lock (keyMu) and must never be copied by value, so this copies the
+// serialized fields explicitly. UserData and DHPConfig get their own copies too
+// (UserData shallowly: values inside it are still shared), so no load ever
+// shares state with the template or the caller's Config.
+func cloneConfigData(src *Config) *Config {
+	if src == nil {
+		return &Config{}
+	}
+	dst := &Config{
+		LogLevel:            src.LogLevel,
+		DefaultCipherScheme: src.DefaultCipherScheme,
+		PrivateKeyBase64:    src.PrivateKeyBase64,
+		KnockUser:           src.KnockUser,
+	}
+	dst.UserData = maps.Clone(src.UserData)
+	if src.DHPConfig != nil {
+		dhp := *src.DHPConfig
+		dst.DHPConfig = &dhp
+	}
+	return dst
+}
+
+// applyInMemoryBaseConfig populates the agent from the programmatic config
+// template (memConfig), mirroring the first-load branch of updateBaseConfig
+// (knock user, base config, log level) without reading a file or arming a
+// watcher. A nil memConfig yields an empty config, matching the SDK path that
+// installs the key and identity after Start. A fresh Config is built each call
+// (Config carries a lock and must not be aliased into a.config, where a rekey
+// mutates it in place), but the template itself is kept current with the live
+// state by ReinitWithKey/SetKnockUser, so a Stop/Start restart rebuilds the
+// agent with the key and identity it last held rather than reverting.
+func (a *UdpAgent) applyInMemoryBaseConfig() error {
+	a.memConfigMutex.Lock()
+	conf := cloneConfigData(a.memConfig)
+	supplied := a.memConfigSupplied
+	a.memConfigMutex.Unlock()
+
+	a.knockUserMutex.Lock()
+	a.knockUser = &KnockUser{
+		UserId:         conf.UserId,
+		OrganizationId: conf.OrganizationId,
+		UserData:       conf.UserData,
+	}
+	a.knockUserMutex.Unlock()
+
+	a.config = conf
+	// Only a supplied config sets the log level. Without one LogLevel is just
+	// the zero value (silent), and Start's logLevel must stand.
+	if a.log != nil && supplied {
+		a.log.SetLogLevel(conf.LogLevel)
+	}
+	return nil
+}
+
 func (a *UdpAgent) loadDHPConfig() error {
+	if a.configSource == ConfigSourceMemory {
+		// Match file mode's post-load state (a non-nil DHPConfig) without
+		// reading dhp.toml or arming a watcher.
+		if a.config != nil && a.config.DHPConfig == nil {
+			a.config.DHPConfig = &DHPConfig{}
+		}
+		return nil
+	}
 	// dhp.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
 	if err := a.updateDHPConfig(fileName); err != nil {
@@ -207,6 +302,11 @@ func (a *UdpAgent) loadDHPConfig() error {
 }
 
 func (a *UdpAgent) loadPeers() error {
+	if a.configSource == ConfigSourceMemory {
+		// Peers are added programmatically (AddServer); no server.toml is read
+		// and no watcher is armed.
+		return nil
+	}
 	// server.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
 	if err := a.updateServerPeers(fileName); err != nil {
@@ -223,6 +323,18 @@ func (a *UdpAgent) loadPeers() error {
 }
 
 func (a *UdpAgent) loadResources() error {
+	if a.configSource == ConfigSourceMemory {
+		// Resources are managed programmatically; no resource.toml is read and
+		// no watcher is armed. AddResource still needs the map that
+		// updateResources creates in file mode; keep an existing one so a
+		// restart does not drop added resources.
+		a.knockTargetMapMutex.Lock()
+		if a.knockTargetMap == nil {
+			a.knockTargetMap = make(map[string]*KnockTarget)
+		}
+		a.knockTargetMapMutex.Unlock()
+		return nil
+	}
 	// resource.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "resource.toml")
 	if err := a.updateResources(fileName); err != nil {
@@ -524,6 +636,15 @@ func (a *UdpAgent) StopConfigWatch() {
 	}
 }
 
+// stopOwnConfigWatch is the teardown both Stop and a failed Start use. The
+// watchers are package globals and only a file-mode agent arms them, so a
+// memory-mode agent leaves them alone rather than closing a file-mode agent's.
+func (a *UdpAgent) stopOwnConfigWatch() {
+	if a.configSource != ConfigSourceMemory {
+		a.StopConfigWatch()
+	}
+}
+
 // NewEcdhFromConfigFile reads and parses etc/config.toml, returning both a
 // fresh ECDH keypair derived from its cipher scheme and the parsed Config
 // itself — RotateAgentKey needs the latter to check whether the current key
@@ -549,6 +670,9 @@ func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, *Config, error) {
 // intentionally out of scope for encryption-at-rest (`seal`): it is always
 // written and read as plain base64, unlike the agent's own PrivateKeyBase64.
 func (a *UdpAgent) RotateTeeKey() error {
+	if a.configSource == ConfigSourceMemory {
+		return errMemoryModeNotSupported
+	}
 	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
 
 	ecdh, _, err := a.NewEcdhFromConfigFile()
@@ -564,6 +688,9 @@ func (a *UdpAgent) RotateTeeKey() error {
 }
 
 func (a *UdpAgent) RotateAgentKey() error {
+	if a.configSource == ConfigSourceMemory {
+		return errMemoryModeNotSupported
+	}
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 
 	ecdh, conf, err := a.NewEcdhFromConfigFile()

@@ -70,6 +70,9 @@ func (hs *HttpAC) Start(uac *UdpAC, hc *HttpConfig) error {
 		IdleTimeout:  5000 * time.Millisecond,
 	}
 
+	// Set before either listener starts: the HTTPS branch returns early, and
+	// Stop does nothing while running is false.
+	hs.running.Store(true)
 	hs.wg.Add(1)
 	if hc.EnableTLS {
 		certFilePath := filepath.Join(ExeDirPath, hc.TLSCertFile)
@@ -101,7 +104,6 @@ func (hs *HttpAC) Start(uac *UdpAC, hc *HttpConfig) error {
 		}
 	}()
 
-	hs.running.Store(true)
 	return nil
 }
 

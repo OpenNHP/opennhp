@@ -28,6 +28,13 @@ var (
 	ExeDirPath string
 )
 
+// The XDP loader and its cleanup, as variables so tests can stand in for them:
+// the real loader needs Linux and root.
+var (
+	ebpfEngineLoad  = ebpflocal.EbpfEngineLoad
+	cleanupBPFFiles = ebpflocal.CleanupBPFFiles
+)
+
 type UdpAC struct {
 	config     *Config
 	httpConfig *HttpConfig
@@ -121,12 +128,18 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("initialize remote configuration: %w", err)
 	}
 	// A failed Start has no normal Stop; release the persistent etcd client.
+	var xdpLoaded bool
 	defer func() {
 		if err == nil {
 			return
 		}
 		if a.etcdConn != nil {
 			a.etcdConn.Close()
+		}
+		// The CLI only defers the eBPF cleanup after Start succeeds, so a
+		// loaded XDP program would otherwise stay attached and pinned.
+		if xdpLoaded {
+			cleanupBPFFiles()
 		}
 		// The initial config load may already have started the HTTP knock
 		// listener and the file watchers; nothing else stops them.
@@ -186,7 +199,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return sourceErr
 		}
 
-		err = ebpflocal.EbpfEngineLoad(dirPath, logLevel, a.config.ACId, ebpflocal.LoadOptions{
+		err = ebpfEngineLoad(dirPath, logLevel, a.config.ACId, ebpflocal.LoadOptions{
 			DisableIPv6Filter:       a.config.DisableIPv6Filter,
 			AuditLogRetentionDays:   a.config.AuditLogRetentionDays,
 			AuditLogRetentionBytes:  a.config.AuditLogRetentionBytes,
@@ -197,6 +210,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		if err != nil {
 			return err
 		}
+		xdpLoaded = true
 	default:
 		log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
 		return

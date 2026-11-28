@@ -1583,7 +1583,12 @@ scan-report knobs are set.
 
 `data.aws_ami.amazon_linux_2023` selects the reviewed image ID and version in
 `ami.tf`, including deprecated images so deprecation does not block security
-rollback plans. `aws_instance.ami` is ForceNew. Without a lifecycle guard, a
+rollback plans. The pin names the encrypted private copy owned by account
+`401696231478` of AWS image `ami-0bdaca0026bed499d`. Keep its backing snapshot
+and private launch permissions for supported rollback. The expected boot is
+`6.12.113-138.209.amzn2023.x86_64` with the matching `kernel6.12` RPM;
+copy completion does not qualify a boot or customer path.
+`aws_instance.ami` is ForceNew. Without a lifecycle guard, a
 later reviewed image pin would replace all three hosts on the next `apply`. The relay's private address is not pinned
 by default, so a replaced relay comes back on a new address that the server's
 live XDP whitelist does not contain — and the deploy that would fix the list

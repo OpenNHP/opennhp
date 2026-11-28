@@ -1586,8 +1586,14 @@ scan-report knobs are set.
 rollback plans. The pin names the encrypted private copy owned by account
 `401696231478` of AWS image `ami-0bdaca0026bed499d`. Keep its backing snapshot
 and private launch permissions for supported rollback. The expected boot is
-`6.12.113-138.209.amzn2023.x86_64` with the matching `kernel6.12` RPM;
-copy completion does not qualify a boot or customer path.
+`6.12.115-140.210.amzn2023.x86_64` with the matching `kernel6.12` RPM;
+copy completion does not qualify a boot or customer path. The helper also keeps the
+previous fixed `6.12.113` pair for existing hosts. AWS advisory
+[ALAS2023-2026-3335](https://alas.aws.amazon.com/AL2023/ALAS2023-2026-3335.html)
+fixes this CVE in `6.12.113`; the later
+[20261112 release](https://docs.aws.amazon.com/linux/al2023/release-notes/relnotes-2023.12.20261112.html)
+includes `kernel6.12-6.12.115-140.210.amzn2023`. A boot-entry screenshot is not
+running-kernel or owning-package proof.
 `aws_instance.ami` is ForceNew. Without a lifecycle guard, a
 later reviewed image pin would replace all three hosts on the next `apply`. The relay's private address is not pinned
 by default, so a replaced relay comes back on a new address that the server's

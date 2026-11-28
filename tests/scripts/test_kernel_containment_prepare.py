@@ -15,6 +15,11 @@ class PreparationTest(unittest.TestCase):
         cases = [
             (False, '6.1.189-236.400.amzn2023.x86_64', 'kernel-6.1.189-236.400.amzn2023.x86_64', 0, 0, True),
             (False, '6.12.113-138.209.amzn2023.x86_64', 'kernel6.12-6.12.113-138.209.amzn2023.x86_64', 0, 0, True),
+            (False, '6.12.115-140.210.amzn2023.x86_64', 'kernel6.12-6.12.115-140.210.amzn2023.x86_64', 0, 0, True),
+            (False, '6.12.115-140.210.amzn2023.x86_64', 'kernel6.12-6.12.113-138.209.amzn2023.x86_64', 0, 0, False),
+            (False, '6.12.115-140.210.amzn2023.x86_64', 'kernel6.12-6.12.115-140.210.amzn2023.x86_64\nother', 0, 0, False),
+            (False, '6.12.115-140.210.amzn2023.x86_64', 'kernel6.12-6.12.115-140.210.amzn2023.x86_64', 1, 0, False),
+            (False, '6.12.116-141.211.amzn2023.x86_64', 'kernel6.12-6.12.116-141.211.amzn2023.x86_64', 0, 0, False),
             (False, '6.1.188-233.393.amzn2023.x86_64', 'kernel-old', 0, 0, False),
             (False, '6.1.189-236.400.amzn2023.x86_64', 'kernel-wrong', 0, 0, False),
             (False, '6.1.189-236.400.amzn2023.x86_64', 'kernel-6.1.189-236.400.amzn2023.x86_64\nother', 0, 0, False),

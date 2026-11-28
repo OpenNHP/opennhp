@@ -1,6 +1,6 @@
 # Keep fresh hosts on the image version admitted by the first-download guard.
 # Candidate image: owned ami-09424005afd2baed7 (us-east-2).
-# Require 6.12.113-138.209.amzn2023.x86_64 and its matching kernel6.12 RPM.
+# Require 6.12.115-140.210.amzn2023.x86_64 and its matching kernel6.12 RPM.
 # Encrypted private copy of AWS ami-0bdaca0026bed499d; confirm actual boot
 # before admission or a fresh-host release. Copy metadata is not boot proof.
 # Change the ID, image name and admitted pair together in one reviewed commit.

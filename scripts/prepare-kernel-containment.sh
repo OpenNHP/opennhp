@@ -10,7 +10,7 @@ if ! command -v iptables >/dev/null 2>&1; then
   running_kernel="$(uname -r)"
   case "$running_kernel" in
     6.1.189-236.400.amzn2023.x86_64) expected_package="kernel-$running_kernel" ;;
-    6.12.113-138.209.amzn2023.x86_64) expected_package="kernel6.12-$running_kernel" ;;
+    6.12.113-138.209.amzn2023.x86_64|6.12.115-140.210.amzn2023.x86_64) expected_package="kernel6.12-$running_kernel" ;;
     *) echo "FATAL: unqualified kernel $running_kernel cannot download containment tools" >&2; exit 1 ;;
   esac
   if ! owner="$(rpm -qf "/boot/vmlinuz-$running_kernel" --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}')" || [[ "$owner" != "$expected_package" ]]; then

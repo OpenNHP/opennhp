@@ -73,6 +73,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **ci:** the js-agent SDK's unit tests run on every pull request.
   `npm run test:run` only ran in the deploy pipeline, so a browser-side protocol break — the re-knock cookie exchange above — could reach the demo with a green pipeline.
 
+## [1.2.0](https://github.com/OpenNHP/opennhp/compare/v1.1.0...v1.2.0) (2026-11-28)
+
+
+### Features
+
+* **agent:** add in-memory config source for SDK and embedded agents ([40ebe96](https://github.com/OpenNHP/opennhp/commit/40ebe96f079cca6ebcb0ac0897dd3c0117239c91))
+
+
+### Bug Fixes
+
+* **ac:** clean up XDP and HTTPS when Start fails ([4fa2d45](https://github.com/OpenNHP/opennhp/commit/4fa2d45c496015e4d39d7f9dd7a6b5d985cd0530))
+* **ac:** fall back to legacy XDP object name on upgrade ([3148335](https://github.com/OpenNHP/opennhp/commit/31483357c4ea16d165eaf20aa0e7e475cf0e15a0))
+* **ac:** rebuild the tracked XDP object from the current source ([76fc54a](https://github.com/OpenNHP/opennhp/commit/76fc54a6ed41f81c452a33fd9d36910e10077852))
+* **ac:** refuse to start when the initial etcd config has no valid server peers ([2311a7b](https://github.com/OpenNHP/opennhp/commit/2311a7b931774ee116bfbfde1ab049890931be19))
+* **ac:** refuse to start when the initial etcd config has no valid server peers ([2a252ab](https://github.com/OpenNHP/opennhp/commit/2a252aba2f133f734925f2729c3af0dbcb6f4f3a))
+* **ci:** quote the command in the ebpf-verify error message ([526cc86](https://github.com/OpenNHP/opennhp/commit/526cc8630646b9f2a8e45b2ff85f45b53061ea34))
+* **demo:** adopt DNS records left out of the Terraform state ([a6a872d](https://github.com/OpenNHP/opennhp/commit/a6a872d07fb079018e0f3788a77aeb4161072e41))
+* **demo:** harden the DNS record adoption in infra-demo ([6bf53dc](https://github.com/OpenNHP/opennhp/commit/6bf53dccb38976ef2ee3ce4818a2242c90cfd07c))
+* **demo:** keep the DNS token off the command line and compare ids ([0cc1b8a](https://github.com/OpenNHP/opennhp/commit/0cc1b8a4d8686790c59e66527a571da23c86af45))
+* **demo:** read the DNS state and the import ids the way Terraform wants ([3786ded](https://github.com/OpenNHP/opennhp/commit/3786dedf401e14424b33133468428dd150fad137))
+* **demo:** retire the auth-plugin.opennhp.org DNS record ([5c9aa6f](https://github.com/OpenNHP/opennhp/commit/5c9aa6fe73ec83f185db84df45a08ac33242b042))
+* **demo:** retire the auth-plugin.opennhp.org DNS record ([b4bbd36](https://github.com/OpenNHP/opennhp/commit/b4bbd36a4df6a5fc535d2e3ad435cc6e73ef155e))
+* **deploy:** keep legacy XDP object until the new binary is installed ([eac2fd3](https://github.com/OpenNHP/opennhp/commit/eac2fd3922eda2063a2fe6f072082af8bed704d4))
+* **deploy:** ship the AC XDP object under both names on config-only deploys ([67810c8](https://github.com/OpenNHP/opennhp/commit/67810c8e727560014224a57612033929ebd5ccfb))
+* **release:** sync SDK version with releases and show it on demo.opennhp.org ([0e38ee0](https://github.com/OpenNHP/opennhp/commit/0e38ee08d17ea922c307263852180ec7309ff7f9))
+* rename nhp_ebpf_xdp.o to nhp_ac_xdp.o for naming consistency ([625e84a](https://github.com/OpenNHP/opennhp/commit/625e84a632aa4db8e809a7cf2846bea581656c6b))
+* **ui:** auto-fetch SDK version and display v1.1.0 on both sites ([2f76b45](https://github.com/OpenNHP/opennhp/commit/2f76b45b6855bad79008415a153e8a3f1cce1a94))
+
 ## 1.1.0 (2026-11-19)
 
 

@@ -71,6 +71,8 @@ type UdpAC struct {
 	sendMsgCh chan *core.MsgData
 	// etcd client
 	etcdConn *etcd.EtcdConn
+	// getRemoteValue overrides etcdConn.GetValue for the initial load; tests only.
+	getRemoteValue func() ([]byte, error)
 	// serverLossReported keeps the fail-closed notice to one line per
 	// outage; the discovery check runs every few seconds. Cleared when a
 	// server answers again, so a later outage is reported again.
@@ -120,9 +122,18 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	}
 	// A failed Start has no normal Stop; release the persistent etcd client.
 	defer func() {
-		if err != nil && a.etcdConn != nil {
+		if err == nil {
+			return
+		}
+		if a.etcdConn != nil {
 			a.etcdConn.Close()
 		}
+		// The initial config load may already have started the HTTP knock
+		// listener and the file watchers; nothing else stops them.
+		if a.httpServer != nil {
+			a.httpServer.Stop()
+		}
+		a.StopConfigWatch()
 	}()
 	if a.etcdConn == nil {
 		// init config
@@ -236,22 +247,8 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	}
 	a.aopReplay = newAOPReplayCacheWithParams(entries, aopReplayCacheTTL)
 
-	if a.etcdConn != nil {
-		_ = a.loadRemoteConfig()
-	} else {
-		// load http config and turn on http server if needed
-		_ = a.loadHttpConfig()
-
-		// load peers. A non-nil error here means the initial
-		// expandServerPeers parse failed and the running peerMap is
-		// empty. Starting the daemon in that state lets it drop
-		// AOL/AOP traffic silently (no peer matches), which is much
-		// harder to diagnose than a startup refusal. Reloads still
-		// keep the previous peer table on parse error — that's the
-		// right call once a good table is live.
-		if loadErr := a.loadPeers(); loadErr != nil {
-			return fmt.Errorf("server peer config invalid on initial load: %w", loadErr)
-		}
+	if err = a.loadInitialConfig(); err != nil {
+		return err
 	}
 
 	if a.config.FilterMode == FilterMode_EBPFXDP {
@@ -332,6 +329,27 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	}
 	a.metricsEndpoint = ep
 
+	return nil
+}
+
+// loadInitialConfig loads the server peers (and the HTTP config) at startup.
+// An error means the peer table is empty or invalid, and Start must refuse to
+// run: the daemon would otherwise drop all AOL/AOP traffic without any hint.
+// Reloads keep the previous peer table on a parse error; that is right once a
+// good table is live.
+func (a *UdpAC) loadInitialConfig() error {
+	if a.etcdConn != nil {
+		if err := a.loadRemoteConfig(); err != nil {
+			return fmt.Errorf("remote config invalid on initial load: %w", err)
+		}
+		return nil
+	}
+	// load http config and turn on http server if needed
+	_ = a.loadHttpConfig()
+
+	if err := a.loadPeers(); err != nil {
+		return fmt.Errorf("server peer config invalid on initial load: %w", err)
+	}
 	return nil
 }
 

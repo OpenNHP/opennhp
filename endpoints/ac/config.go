@@ -570,7 +570,11 @@ func (a *UdpAC) initRemoteConn() error {
 }
 
 func (a *UdpAC) loadRemoteConfig() error {
-	value, err := a.etcdConn.GetValue()
+	getValue := a.etcdConn.GetValue
+	if a.getRemoteValue != nil {
+		getValue = a.getRemoteValue
+	}
+	value, err := getValue()
 	if err != nil {
 		return err
 	}
